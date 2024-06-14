@@ -1,0 +1,726 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><section data-pdf-bookmark="Chapter 8. Parallel Data Processing with Streams" data-type="chapter" epub:type="chapter"><div class="chapter" id="_01-parallel-streams">
+<h1><span class="label">Chapter 8. </span>Parallel Data Processing with Streams</h1>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="idm45115231363312">
+<h1>A Note for Early Release Readers</h1>
+<p>With Early Release ebooks, you get books in their earliest form—the author’s raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.</p>
+<p>This will be the 8th chapter of the final book. Please note that the GitHub repo will be made active later on.</p>
+<p>If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the editor at <em>rfernando@oreilly.com</em>.</p>
+</div></aside>
+<p>Our world is overwhelmingly concurrent and parallel; we can almost always do more than one thing at once.
+Our programs need to solve more and more problems, that’s why data processing often benefits from being parallel, too.</p>
+<p>In <a data-type="xref" href="ch06.xhtml#_02-data-processing">Chapter 6</a>, you’ve learned about Streams as data processing pipelines built of functional operations.
+Now it’s time to go parallel!</p>
+<p>In this chapter, you will learn about the importance of concurrency and parallelism, how and when to use parallel Streams, and when not to.
+Everything you learned in the previous two chapters about data processing with Streams so far also applies to using them for parallel processing.
+That’s why this chapter will concentrate on the differences and intricacies of parallel Streams.</p>
+<section data-pdf-bookmark="Concurrency Versus Parallelism" data-type="sect1"><div class="sect1" id="idm45115231358560">
+<h1>Concurrency Versus Parallelism</h1>
+<p>The terms <em>parallelism</em> and <em>concurrency</em> often get mixed up because the concepts are closely related.
+Rob Pike, one of the co-designers of the programming language <a href="https://go.dev"><em>Go</em></a>, defined the terms nicely:</p>
+<blockquote>
+<p>Concurrency is about <strong>dealing</strong> with a lot of things at once.
+Parallelism is about <strong>doing</strong> a lot of things at once.
+The ideas are, obviously, related, but one is inherently associated with structure, and the other is associated with execution.
+Concurrency is structuring things in a way that might allow parallelism to actually execute them simultaneously.
+But parallelism is not the goal of concurrency.
+The goal of concurrency is good structure and the possibility to implement execution modes like parallelism.</p>
+<p data-type="attribution">Rob Pike, <cite><a href="https://go.dev/blog/waza-talk">“Concurrency Is Not Parallelism” at Waza 2012</a></cite></p>
+</blockquote>
+<p><em>Concurrency</em> is the general concept of multiple tasks running in overlapping time periods competing over the available resources.
+A single CPU core interleaves them by scheduling and switching between tasks as it sees fit.
+Switching between tasks is relatively easy and fast.
+This way, two tasks can <em>figuratively</em> run on a single CPU core simultaneously, even though they <em>literally</em> don’t.
+Think of it like a juggler using only one hand (single CPU core) with multiple balls (tasks).
+They can only hold a single ball at any time (doing the work), but which ball changes over time (interrupting and switching to another task).
+Even with only two balls, they have to juggle the workload.</p>
+<p><em>Parallelism</em>, on the other hand, isn’t about managing interleaved tasks but their <em>simultaneous</em> execution.
+If more than one CPU core is available, the tasks can run <em>in-parallel</em> on different cores.
+The juggler now uses both hands (more than one CPU core) to hold two balls at once (doing the work simultaneously).</p>
+<p>See <a data-type="xref" href="#_01-parallel-concurrent-async_concurrent-vs-parallel">Figure 8-1</a> for a more visual representation of how thread scheduling differs between the two concepts.</p>
+<figure><div class="figure" id="_01-parallel-concurrent-async_concurrent-vs-parallel">
+<img alt="Concurrent versus parallel thread execution" height="434" src="assets/afaj_0801.png" width="376"/>
+<h6><span class="label">Figure 8-1. </span>Concurrent versus parallel thread execution</h6>
+</div></figure>
+<p><em>Concurrency</em> and <em>parallelism</em> in Java share the same goal: taking care of <em>multiple</em> tasks with threads.
+Their difference lies in the difficulty to do it efficiently, with ease, and doing it right, and in a safe manner.</p>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="idm45115231344144">
+<h1>Concurrency and Parallelism in the real world</h1>
+<p>A real-world example of the distinction between concurrency and parallelism is walkie-talkies.
+On a single channel, people can talk concurrently, one at a time.
+They manage the context switching by saying “over” so the other person can talk.
+If you introduce multiple walkie-talkie channels, people can talk in parallel.
+Each channel is still concurrent, requiring a locking mechanism.
+But on different channels, people can talk simultaneously without requiring coordination between channels.</p>
+</div></aside>
+<p>Both multi-tasking concepts aren’t mutually exclusive and are often used together.</p>
+<p>One thing to consider when using multiple threads is that you can no longer easily follow or debug the actual flow of your application as you could do in a single-threaded one.
+To use data structures in concurrent environments, they have to be “thread-safe,” usually requiring coordination with locks, semaphores, etc., to work correctly and guarantee safe access to any shared state.
+Executing code in parallel usually lacks such coordination because it’s focused on the execution itself.
+This makes it safer, more natural, and easier to reason with.</p>
+</div></section>
+<section data-pdf-bookmark="Streams as Parallel Functional Pipelines" data-type="sect1"><div class="sect1" id="_01-parallel-concurrent-async_parallel-streams">
+<h1>Streams as Parallel Functional Pipelines</h1>
+<p>Java provides an easy-to-use data processing pipeline with parallel processing capabilities: <em>Streams</em>.
+As I’ve discussed before in <a data-type="xref" href="ch06.xhtml#_02-data-processing">Chapter 6</a>, they process their operations in <em>sequential</em> order by default.
+However, a single method call switches the pipeline into “parallel mode,” either the intermediate Stream operation <code>parallel</code>, or the <code>parallelStream</code> method available on <code>java.util.Collection</code>-based types.
+Going back to a sequentially processed Stream is possible, too, by calling the intermediate operation <code>sequential()</code>.</p>
+<div data-type="warning" epub:type="warning"><h6>Warning</h6>
+<p>Switching between execution modes with <code>parallel()</code> and <code>sequential()</code> affects the Stream pipeline as a whole regardless of the position in the pipeline.
+The last one called before the terminal operation dictates the mode for the whole pipeline.
+There’s no way to run a certain part of the Stream in a different execution mode from the rest.</p>
+</div>
+<p>Parallel Streams use the concept of <em>recursive decomposition</em>, meaning they <em>divide and conquer</em> the data source by splitting up the elements with the underlying <code>Spliterator</code> to process chunks of elements in parallel.
+Each chunk is processed by a dedicated thread and may even be split up again, recursively, until the Stream API is satisfied that the chunks and threads are a good match for the available resources.</p>
+<p>You don’t have to create or manage these threads or use an explicit <code>ExecutorService</code>.
+Instead, the Stream API uses the <em>common</em> <code>ForkJoinPool</code> internally to spin-off and manage new threads.</p>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="idm45115231330480">
+<h1>ForkJoinPool</h1>
+<p>A <code>ForkJoinPool</code> executes threads in a <em>work-stealing</em> manner.
+That means that worker threads that have finished their own tasks can “steal” tasks from other threads waiting to be processed, and therefore utilize idle threads more efficiently.</p>
+<p>The <em>common</em> <code>ForkJoinPool</code> is a lazily initialized <code>static</code> thread-pool managed by the runtime itself.
+It’s configured with sensible defaults to utilize the available resources the best way possible, e.g., not using up all CPU cores at once.
+If the defaults don’t fit your requirements, you can configure certain aspects via system properties, as explained in <a href="https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/ForkJoinPool.xhtml">its documentation</a>.</p>
+<p>Two major concurrent features use the <em>common</em> <code>ForkJoinPool</code>: parallel Streams, and asynchronous Tasks with <code>CompletableFuture</code>, which you’ll learn more about in <a data-type="xref" href="ch13.xhtml#_02-completable-future">Chapter 13</a>.</p>
+</div></aside>
+<p>These chunks of elements and their operations are forked into multiple threads.
+Finally, the sub-results of the threads are joined again to derive a final result, as shown in <a data-type="xref" href="#_02-data-processing_parallel-fork-join">Figure 8-2</a>.</p>
+<figure><div class="figure" id="_02-data-processing_parallel-fork-join">
+<img alt="Parallel Stream Fork/Join" height="588" src="assets/afaj_0802.png" width="459"/>
+<h6><span class="label">Figure 8-2. </span>Parallel Stream Fork/Join</h6>
+</div></figure>
+<p>The size of the chunks varies, depending on the Stream’s data source underlying <code>Spliterator</code> characteristics.
+<a data-type="xref" href="#_02-parallel-streams_data-source">“Choosing the Right Data Source”</a> goes over the different characteristics and data sources and their affinity for proficiency in splitting elements into chunks.</p>
+</div></section>
+<section data-pdf-bookmark="Parallel Streams in Action" data-type="sect1"><div class="sect1" id="idm45115231341392">
+<h1>Parallel Streams in Action</h1>
+<p>To illustrate how to process a Stream in parallel, we’re going to count the occurrences of distinct words in Tolstoy’s “War and Peace” again, <sup><a data-type="noteref" href="ch08.xhtml#idm45115231315840" id="idm45115231315840-marker">1</a></sup>, as was done in the previous chapter.</p>
+<p>First, a rough approach should be outlined as a blueprint for the necessary steps that need to be translated into Stream operations:</p>
+<ul>
+<li>
+<p>Loading the content of “War and Peace”</p>
+</li>
+<li>
+<p>Cleaning the content by removing punctuation, etc.</p>
+</li>
+<li>
+<p>Splitting the content to create words</p>
+</li>
+<li>
+<p>Counting all distinct words</p>
+</li>
+</ul>
+<p>Instead of using the <code>Files.lines</code> method, a more naïve sequential approach, as shown in &lt;&lt;<a data-type="xref" href="#_01-parallel-concurrent-async_war-and-peace-seq">Example 8-1</a> is chosen to better represent the improvements the right data source and parallel Streams can have.</p>
+<div data-type="example" id="_01-parallel-concurrent-async_war-and-peace-seq">
+<h5><span class="label">Example 8-1. </span>Sequentially counting words in “War and Peace”</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">location</code> <code class="o">=</code> <code class="n">Paths</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="s">"</code><code class="s">war-and-peace-text.txt</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+
+<code class="c1">// CLEANUP PATTERNS </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO1-1" id="co_parallel_data_processing_with_streams_CO1-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+<code class="kd">var</code> <code class="n">punctuation</code> <code class="o">=</code> <code class="n">Pattern</code><code class="p">.</code><code class="na">compile</code><code class="p">(</code><code class="s">"</code><code class="s">\\</code><code class="s">p{Punct}</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+<code class="kd">var</code> <code class="n">whitespace</code>  <code class="o">=</code> <code class="n">Pattern</code><code class="p">.</code><code class="na">compile</code><code class="p">(</code><code class="s">"</code><code class="s">\\</code><code class="s">s+</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+<code class="kd">var</code> <code class="n">words</code>       <code class="o">=</code> <code class="n">Pattern</code><code class="p">.</code><code class="na">compile</code><code class="p">(</code><code class="s">"</code><code class="s">\\</code><code class="s">w+</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+
+<code class="k">try</code> <code class="p">{</code>
+  <code class="c1">// LOAD CONTENT </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO1-2" id="co_parallel_data_processing_with_streams_CO1-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+  <code class="kd">var</code> <code class="n">content</code> <code class="o">=</code> <code class="n">Files</code><code class="p">.</code><code class="na">readString</code><code class="p">(</code><code class="n">location</code><code class="p">)</code><code class="p">;</code>
+
+  <code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">Integer</code><code class="o">&gt;</code> <code class="n">wordCount</code> <code class="o">=</code>
+    <code class="n">Stream</code><code class="p">.</code><code class="na">of</code><code class="p">(</code><code class="n">content</code><code class="p">)</code>
+          <code class="c1">// CLEAN CONTENT </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO1-3" id="co_parallel_data_processing_with_streams_CO1-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">punctuation</code><code class="p">:</code><code class="p">:</code><code class="n">matcher</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">matcher</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">matcher</code><code class="p">.</code><code class="na">replaceAll</code><code class="p">(</code><code class="s">"</code><code class="s">"</code><code class="p">)</code><code class="p">)</code>
+          <code class="c1">// SPLIT TO WORDS </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO1-4" id="co_parallel_data_processing_with_streams_CO1-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">whitespace</code><code class="p">:</code><code class="p">:</code><code class="n">split</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">flatMap</code><code class="p">(</code><code class="n">Arrays</code><code class="p">:</code><code class="p">:</code><code class="n">stream</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">word</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">words</code><code class="p">.</code><code class="na">matcher</code><code class="p">(</code><code class="n">word</code><code class="p">)</code><code class="p">.</code><code class="na">matches</code><code class="p">(</code><code class="p">)</code><code class="p">)</code>
+          <code class="c1">// COUNTING </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO1-5" id="co_parallel_data_processing_with_streams_CO1-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">String</code><code class="p">:</code><code class="p">:</code><code class="n">toLowerCase</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">toMap</code><code class="p">(</code><code class="n">Function</code><code class="p">.</code><code class="na">identity</code><code class="p">(</code><code class="p">)</code><code class="p">,</code>
+                                    <code class="n">word</code> <code class="o">-</code><code class="o">&gt;</code> <code class="mi">1</code><code class="p">,</code>
+                                    <code class="n">Integer</code><code class="p">:</code><code class="p">:</code><code class="n">sum</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+<code class="p">}</code> <code class="p">(</code><code class="n">IOException</code> <code class="n">e</code><code class="p">)</code> <code class="p">{</code>
+  <code class="c1">// ...</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO1-1" id="callout_parallel_data_processing_with_streams_CO1-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>Multiple pre-compiled <code>Pattern</code> instances are used to clean up the content.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO1-2" id="callout_parallel_data_processing_with_streams_CO1-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The content is read in one swoop.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO1-3" id="callout_parallel_data_processing_with_streams_CO1-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The cleanup patterns remove all punctuation.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO1-4" id="callout_parallel_data_processing_with_streams_CO1-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>The lines are split on whitespace and the resulting <code>String[]</code> array is flat-mapped to a Stream of <code>String</code> elements, which are further filtered to be actually “words.”</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO1-5" id="callout_parallel_data_processing_with_streams_CO1-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a></dt>
+<dd><p>Counting words in a case-insensitive fashion is simply done by converting all words to lowercase and letting a Collector do the actual work.</p></dd>
+</dl>
+<p>Counting is done with the help of <code>Collectors.toMap</code>, which takes the words as keys by calling <code>Function.identity()</code>, which is a shortcut to create a <code>Function&lt;T, T&gt;</code> that returns its input argument.
+If a key collision occurs, meaning a word is encountered more than once, the Collector merges the existing value with the new value, <code>1</code>, by evaluation <code>Integer::sum</code> with both values.</p>
+<p>On my computer with a 6-core / 12-thread CPU, the sequential version runs in ~140ms.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Threads, in the case of a CPU, refer to <em>simultanous multithreading</em> (SMT), not Java threads.
+It’s often referred to as <em>hyper-threading</em>, which is the proprietary implementation of SMT by Intel.</p>
+</div>
+<p>This initial Stream pipeline might solve the problem of counting words in “War and Peace” but it leaves quite some room for improvement.
+Making it parallel wouldn’t change much because the data source only provides a singular element, so only later operations can be forked off.
+So how can the pipeline be redesigned to gain performance from a parallel approach?</p>
+<p>If you think back to <a data-type="xref" href="#_02-data-processing_parallel-fork-join">Figure 8-2</a>, parallel Streams fork pipelines of operations that are merged back together to create a result.
+Right now, the pipeline counts words for a singular <code>String</code> which is the whole book.
+A more the pipeline could easily count words in any <code>String</code> element flowing through the pipeline and let the terminal <code>collect</code> operation merge the results just as easily.</p>
+<p>For a good parallel performance of all operations, the Stream pipeline needs a data source with multiple elements.
+Instead of using <code>Files.readString</code>, the convenience type also has a <code>Stream</code>-creating method that reads a file line-by-line: <code>static Stream&lt;String&gt; lines(Path path) throws IOException</code>.
+Even though processing more elements will result in more clean-up operation calls in total, the tasks are distributed to multiple threads run in parallel to use the available resources most efficiently.</p>
+<p>Another important change must be done to the <code>collect</code> operation.
+To ensure no <code>ConcurrentModificationException</code> occurs, the thread-safe variant <code>Collectors.toConcurrentMap</code> is used with the same arguments as before.</p>
+<div data-type="warning" epub:type="warning"><h1>Using Collectors in parallel environments</h1>
+<p>As Collectors share a mutable intermediate results container, they’re susceptible to concurrent modifications from multiple threads during the <code>combiner</code> step.
+That’s why you should always check the documentation of the Collector used in a parallel pipeline for thread-safety, and choose an appropriate alternative if necessary.</p>
+</div>
+<p>All these small adaptions to switch to a parallel approach accumulates in the code shown in <a data-type="xref" href="#_01-parallel-concurrent-async_war-and-peace-parallel">Example 8-2</a>.</p>
+<div data-type="example" id="_01-parallel-concurrent-async_war-and-peace-parallel">
+<h5><span class="label">Example 8-2. </span>Parallel counting words in “War and Peace”</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// ...</code>
+
+<code class="c1">// LOAD CONTENT </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO2-1" id="co_parallel_data_processing_with_streams_CO2-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+<code class="k">try</code> <code class="p">(</code><code class="n">Stream</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">stream</code> <code class="o">=</code> <code class="n">Files</code><code class="p">.</code><code class="na">lines</code><code class="p">(</code><code class="n">location</code><code class="p">)</code><code class="p">)</code> <code class="p">{</code>
+
+  <code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">Integer</code><code class="o">&gt;</code> <code class="n">wordCount</code> <code class="o">=</code>
+    <code class="n">stream</code><code class="p">.</code><code class="na">parallel</code><code class="p">(</code><code class="p">)</code>
+          <code class="c1">// CLEAN LINES </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO2-2" id="co_parallel_data_processing_with_streams_CO2-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">punctionaction</code><code class="p">:</code><code class="p">:</code><code class="n">matcher</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">matcher</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">matcher</code><code class="p">.</code><code class="na">replaceAll</code><code class="p">(</code><code class="s">"</code><code class="s">"</code><code class="p">)</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">whitespace</code><code class="p">:</code><code class="p">:</code><code class="n">split</code><code class="p">)</code>
+          <code class="c1">// SPLIT TO WORDS </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO2-2" id="co_parallel_data_processing_with_streams_CO2-3"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+          <code class="p">.</code><code class="na">flatMap</code><code class="p">(</code><code class="n">Arrays</code><code class="p">:</code><code class="p">:</code><code class="n">stream</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">word</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">words</code><code class="p">.</code><code class="na">matcher</code><code class="p">(</code><code class="n">word</code><code class="p">)</code><code class="p">.</code><code class="na">matches</code><code class="p">(</code><code class="p">)</code><code class="p">)</code>
+          <code class="c1">// COUNTING </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO2-3" id="co_parallel_data_processing_with_streams_CO2-4"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">String</code><code class="p">:</code><code class="p">:</code><code class="n">toLowerCase</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">toConcurrentMap</code><code class="p">(</code><code class="n">Function</code><code class="p">.</code><code class="na">identity</code><code class="p">(</code><code class="p">)</code><code class="p">,</code>
+                                              <code class="n">word</code> <code class="o">-</code><code class="o">&gt;</code> <code class="mi">1</code><code class="p">,</code>
+                                              <code class="n">Integer</code><code class="p">:</code><code class="p">:</code><code class="n">sum</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO2-1" id="callout_parallel_data_processing_with_streams_CO2-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The <code>Files.lines</code> call requires you to close the <code>Stream</code>.
+Using it in a <code>try-with-resources</code>-block delegates the work to the runtime, so you don’t have to close it manually.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO2-2" id="callout_parallel_data_processing_with_streams_CO2-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>All previous steps — cleaning and splitting the lines — are unchanged.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO2-4" id="callout_parallel_data_processing_with_streams_CO2-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>Counting is done the same way but with a thread-safe Collector variant instead.</p></dd>
+</dl>
+<p>By using an optimized data source and adding a <code>parallel()</code> call into the pipeline, the required time decreases to ~25ms.</p>
+<p>That’s a performance increase of over 5x!
+So why don’t we always use parallel Streams?</p>
+</div></section>
+<section data-pdf-bookmark="When to Use and When to Avoid Parallel Streams" data-type="sect1"><div class="sect1" id="_01-parallel-concurrent-async_when-to-use-parallelism">
+<h1>When to Use and When to Avoid Parallel Streams</h1>
+<p>Why use a sequential Stream if a parallel Stream can provide a performance boost with a single method call and a few considerations to the data source and terminal operation?
+The simple answer: any performance gains aren’t guaranteed and are affected by many factors.
+Using parallel Streams is primarily a performance optimization and should always be a conscious and informed decision, not just because it’s <em>easy</em> thanks to a single method call.</p>
+<p>There are no <em>absolute</em> rules about choosing parallel over sequential data processing.
+The criteria depend on many different factors, like your requirements, the task at hand, available resources, etc., and all influence each other.
+That’s why there is no easy answer to the question “when to use parallel Streams?”, neither <em>quantitative</em> nor <em>qualitative</em>.
+Still, there are certain <em>informal</em> guidelines that provide a good starting point to decide.</p>
+<p>Let’s take a look at them in order of how a Stream pipeline is built, from creating a Stream to adding intermediate operation and finishing the pipeline by adding the terminal operation.</p>
+<section data-pdf-bookmark="Choosing the Right Data Source" data-type="sect2"><div class="sect2" id="_02-parallel-streams_data-source">
+<h2>Choosing the Right Data Source</h2>
+<p>Every Stream — sequential and parallel — begins with a data source handled by a <code>Spliterator</code>.</p>
+<p>In a sequential Stream, the <code>Spliterator</code> behaves like a simple <code>Iterator</code>, supplying the Stream with one element after another.
+For parallel Streams, however, the data source gets split up into multiple chunks.
+Ideally, these chunks are of roughly equivalent size, so the work is distributed evenly, but that isn’t always possible, depending on the data source itself.
+This splitting process is called <em>decomposing the data source</em>.
+It can be cheap or favorable for parallel processing; or complicated and costly.</p>
+<p>For example, an array-based data source, like <code>ArrayList</code>, knows its exact size and easily decomposes because the location of all elements is known, so equally large chunks are easily obtainable.</p>
+<p>A linked list, on the other hand, is a fundamentally sequential data source, with each of its elements only effectively knowing their direct neighbors.
+Finding a specific position means you have to traverse all beforehand.
+Although Java’s implementation, <code>LinkedList</code>, <em>cheats</em> by keeping track of the size, which creates the more favorable <code>Spliterator</code> characteristics <code>SIZED</code> and <code>SUBSIZED</code>.
+Nevertheless, it’s not a preferred data source for parallel Streams.</p>
+<p><a data-type="xref" href="#_01-parallel-streams_decomposability">Table 8-1</a> lists different common data sources and their proficiency of decomposability for parallel use.</p>
+<table id="_01-parallel-streams_decomposability">
+<caption><span class="label">Table 8-1. </span>Parallel decomposability</caption>
+<thead>
+<tr>
+<th>Data source</th>
+<th>Parallel Decomposability</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>IntStream.range / .rangeClosed</code></p></td>
+<td><p><code>+++</code></p></td>
+</tr>
+<tr>
+<td><p><code>Arrays.stream</code> (primitives)</p></td>
+<td><p><code>+++</code></p></td>
+</tr>
+<tr>
+<td><p><code>ArrayList</code></p></td>
+<td><p><code>++</code></p></td>
+</tr>
+<tr>
+<td><p><code>Arrays.stream</code> (objects)</p></td>
+<td><p><code>++</code></p></td>
+</tr>
+<tr>
+<td><p><code>HashSet</code></p></td>
+<td><p><code>+</code></p></td>
+</tr>
+<tr>
+<td><p><code>TreeSet</code></p></td>
+<td><p><code>+</code></p></td>
+</tr>
+<tr>
+<td><p><code>LinkedList</code></p></td>
+<td><p><code>--</code></p></td>
+</tr>
+<tr>
+<td><p><code>Stream.iterate</code></p></td>
+<td><p><code>--</code></p></td>
+</tr>
+</tbody>
+</table>
+<p>The degree of efficient decomposability isn’t the only factor regarding data sources and their possible performance in parallel Streams.
+A more technical aspect that’s easy to overlook is <em>data locality</em>.</p>
+<p>Besides more cores, modern computers feature a myriad of caches to improve performance at a memory level.
+Where memory is stored depends on the decisions made by the runtime and the CPU itself.
+Reading from L1 cache is ~100 times faster than RAM, L2 cache ~25 times.
+The “closer” the data is to actual processing, the better performance can be achieved.</p>
+<p>Usually, JDK implementations store object fields and arrays in adjacent memory locations.
+This design allows for prefetching “near” data and speeding up any task.</p>
+<p>Arrays and lists of reference types, a <code>List&lt;Integer&gt;</code> or an <code>Integer[]</code>, store a collection of pointers to the actual values, compared to an array of primitives — <code>int[]</code> — which stores its values next to each other.
+If there’s a cache miss because the required next value isn’t prefetched, the CPU has to wait for the actual data to be loaded, and therefore <em>wasting</em> resources.
+That doesn’t mean that only primitive arrays are a good match for parallel processing, though.
+<em>Data locality</em> is just one of many criteria that might affect your decision to choose the right data source for going parallel.
+Compared to the other criteria, though, it’s quite a minuscule one and slightly out of your direct control of how the runtime and JDK store data.</p>
+</div></section>
+<section data-pdf-bookmark="Number of Elements" data-type="sect2"><div class="sect2" id="idm45115230736512">
+<h2>Number of Elements</h2>
+<p>There’s no definitive number of elements that will give you the best parallel performance, but one thing is clear: the more elements a parallel Stream has to process, the better, so it can offset the overhead of coordinating multiple threads.</p>
+<p>To process elements in parallel, they must be partitioned, processed, and joined again for the final result.
+These operations are all related, and finding a sensible balance is a <em>must-have</em>.
+This balance is represented by the <em>NQ model</em>.</p>
+<p><em>N</em> represents the number of elements, <em>Q</em> is the cost of a single task.
+Their product — <em>N * Q</em> — indicates the likeliness of getting a speedup from parallel processing.
+A general overview of weighing the different aspects can be seen in <a data-type="xref" href="#_01-parallel-concurrent-async_n-q">Figure 8-3</a>.</p>
+<figure><div class="figure" id="_01-parallel-concurrent-async_n-q">
+<img alt="Cost per task in relation to task count" height="358" src="assets/afaj_0803.png" width="433"/>
+<h6><span class="label">Figure 8-3. </span>The NQ model</h6>
+</div></figure>
+<p>As you can see, a higher number of elements is always a good indicator for possible speedup by parallel processing compared to a lower number.
+Long-running tasks also profit from being run in parallel and might even outweigh the lack of enough elements.
+But the best-case scenario is having both: lots of elements <em>and</em> non-cheap tasks.</p>
+</div></section>
+<section data-pdf-bookmark="Stream Operations" data-type="sect2"><div class="sect2" id="idm45115230697328">
+<h2>Stream Operations</h2>
+<p>After choosing the right data source, the operations are the next puzzle piece.
+The main goal of designing your parallel operations is to achieve the same final result as with a sequential Stream.
+That’s why most of the design choices for intermediate operations are universal.</p>
+<p>In the case of parallel Streams, though, issues that aren’t a big deal in sequential Streams can accumulate quickly.
+So adhering to more functional principles and parallel-friendly operations is important.</p>
+<section data-pdf-bookmark="Pure Lambdas" data-type="sect3"><div class="sect3" id="idm45115230695280">
+<h3>Pure Lambdas</h3>
+<p>Lambda expressions used in Stream operations should always be <em>pure</em>, meaning they shouldn’t rely on <em>non-local</em> mutable state or emit any side effects.
+To mitigate the most apparent <em>non-local</em> state issues, any captured variables must be effectively <code>final</code>, as explained in <a data-type="xref" href="ch02.xhtml#_01-functions_lambdas_effectively-final">“Effectively final”</a>, which only affects the reference itself.</p>
+<p>Reading immutable state isn’t an issue either.
+The real problem arises from a thread that changes <em>non-local</em> state, so any access requires synchronization between them, or you end up with non-deterministic behavior, like <em>race conditions</em>.</p>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="idm45115230689472">
+<h1>The origin of race conditions</h1>
+<p>Involving more than one thread in a task introduces a new set of challenges.
+The most common and urgent is dealing with <em>state access</em>.
+A so-called <em>race condition</em> can occur when two or more threads try to access the same shared state.</p>
+<p>Reading from multiple threads isn’t an issue as long as none of the threads can change the state.
+Changing the state is a problem, though, because the access order is non-deterministic if it’s not (manually) synchronized.
+The actual access order depends on how the threads are scheduled and other optimizations are done <em>behind the scenes</em>.</p>
+<p>The JVM employs the optimizations technique of <em>reordering</em> memory access, described in <a href="https://download.oracle.com/otndocs/jcp/memory_model-1.0-pfd-spec-oth-JSpec/">JSR-133</a>, executing it in a different order than defined in your code.
+But possible reordering doesn’t stop at the JVM.
+The CPU itself can also execute its instructions in any order and store its memory as it seems best.</p>
+</div></aside>
+<p>The easiest way to prevent any non-deterministic behavior is to make sure that any <em>non-local</em> state is deeply immutable.
+This way, the lambda stays pure and can’t be affected by other threads running the same lambda.</p>
+</div></section>
+<section data-pdf-bookmark="Parallel-friendly Operations" data-type="sect3"><div class="sect3" id="idm45115230683776">
+<h3>Parallel-friendly Operations</h3>
+<p>Not all Stream operations are a good fit for parallel processing.
+The simplest way to judge an operation is its reliance on a specific encounter order for the Stream’s elements.</p>
+<p>For example, the <code>limit</code>, <code>skip</code>, or <code>distinct</code> intermediate operations rely heavily on encounter order to provide a deterministic — or <em>stable</em> — behavior for ordered Streams, meaning they always choose or dismiss the same items.</p>
+<p>This stability, however, comes at a price in parallel Streams: synchronization across all threads and increased memory needs.
+For example, to guarantee that the <code>limit</code> operation produces the same results in parallel use as in sequential Streams, it must wait for all preceding operations to finish in encounter order and buffer all elements until it’s known if they are needed.</p>
+<p>Luckily, not all pipelines require a fixed encounter order.
+Calling <code>unordered()</code> on a Stream pipeline changes the resulting Streams characteristics to <code>UNORDERED</code>, and therefore,  <em>stable</em> operations become <em>unstable</em>.
+In many cases, it just doesn’t matter <em>which</em> distinct elements are picked, as long as the final result contains no duplicates.
+For <code>limit</code>, it’s a little trickier and depends on your requirements.</p>
+<p>There are also two <em>stable</em> terminal operations that depend on the encounter order of the data source, <code>findFirst</code> and <code>forEach</code>.
+Both of them provide an <em>unstable</em> variant, too, as listed in <a data-type="xref" href="#_01-parallel-streams-stable-unstable-terminal-ops">Table 8-2</a>.
+They should be preferred for parallel Streams if your requirements allow it.</p>
+<table id="_01-parallel-streams-stable-unstable-terminal-ops">
+<caption><span class="label">Table 8-2. </span>Stable versus unstable terminal operations</caption>
+<thead>
+<tr>
+<th>Stable operations</th>
+<th>Unstable operations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>findFirst()</code></p></td>
+<td><p><code>findAny()</code></p></td>
+</tr>
+<tr>
+<td><p><code>forEachOrdered(Consumer&lt;? super T&gt; action)</code></p></td>
+<td><p><code>forEach(Consumer&lt;? super T&gt; action)</code></p></td>
+</tr>
+</tbody>
+</table>
+<p>Even with fully parallelized intermediate operations, the final applicative terminal operation in a Stream pipeline is sequential to achieve a singular result or emit a side effect.
+Just like with unstable intermediate operations, the terminal operations <code>findAny()</code> and <code>forEach(…​)</code> can immensely profit from being unconstrained from encounter order and having to wait for other elements from other threads.</p>
+</div></section>
+<section data-pdf-bookmark="Reduce Versus Collect" data-type="sect3"><div class="sect3" id="idm45115230663264">
+<h3>Reduce Versus Collect</h3>
+<p>The terminal operations <code>reduce</code> and <code>collect</code> are two sides of the same coin: both are <em>reduction</em> — or  <em>fold</em> — operations.</p>
+<p>In functional programming, <em>fold</em> operations combine elements by applying a function to the elements and recombine the results recursively to build up a return value.
+The difference lies in the general approach on how to recombine the results: <em>immutable</em> versus <em>mutable</em> accumulation.</p>
+<p>As I’ve discussed in <a data-type="xref" href="ch06.xhtml#_02-data-processing_reduce-vs-collect">“Reducing Versus Collecting Elements”</a>, a <em>mutable</em> accumulation is more akin to how you would approach the problem in a <code>for</code>-loop, as seen in <a data-type="xref" href="#_01-parallel-streams_mutable-acc-for-loop">Example 8-3</a>.</p>
+<div data-type="example" id="_01-parallel-streams_mutable-acc-for-loop">
+<h5><span class="label">Example 8-3. </span>Mutable accumulation with a for-loop</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">numbers</code> <code class="o">=</code> <code class="n">List</code><code class="p">.</code><code class="na">of</code><code class="p">(</code><code class="mi">1</code><code class="p">,</code> <code class="mi">2</code><code class="p">,</code> <code class="mi">3</code><code class="p">,</code> <code class="mi">4</code><code class="p">,</code> <code class="mi">5</code><code class="p">,</code> <code class="mi">6</code><code class="p">,</code> <code class="p">...);</code>
+
+<code class="kt">int</code> <code class="n">total</code> <code class="o">=</code> <code class="mi">0</code><code class="p">;</code>
+
+<code class="k">for</code> <code class="p">(</code><code class="kt">int</code> <code class="n">value</code> <code class="p">:</code> <code class="n">numbers</code><code class="p">)</code> <code class="p">{</code>
+  <code class="n">total</code> <code class="o">+=</code> <code class="n">value</code><code class="p">;</code>
+<code class="p">}</code></pre></div>
+<p>For a sequentially processed problem, this is a straightforward approach.
+Using non-local and mutable state, however, is a contra-indicator for parallel processing.</p>
+<p>Functional programming favors <em>immutable</em> values, so the accumulation only depends on the previous result and current Stream element to produce a new and <em>immutable result</em>.
+This way, the operations can easily be run in parallel, as seen in <a data-type="xref" href="#_01-parallel-streams_immutable-reduction">Figure 8-4</a>.</p>
+<figure><div class="figure" id="_01-parallel-streams_immutable-reduction">
+<img alt="Immutable accumulation of numbers" height="479" src="assets/afaj_0804.png" width="600"/>
+<h6><span class="label">Figure 8-4. </span>Immutable accumulation of numbers</h6>
+</div></figure>
+<p>The flow still has the same elements as before: an initial value <code>0</code> for each summation of values.
+Instead of accumulating the results in a single value, each step returns a new value as the left operand for the next summation.
+The simplest Stream form is shown in <a data-type="xref" href="#_01-parallel-streams_immutable-reduction-stream">Example 8-4</a>.</p>
+<div data-type="example" id="_01-parallel-streams_immutable-reduction-stream">
+<h5><span class="label">Example 8-4. </span>Immutable accumulation of numbers with a Stream</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kt">int</code> <code class="n">total</code> <code class="o">=</code> <code class="n">Stream</code><code class="p">.</code><code class="na">of</code><code class="p">(</code><code class="mi">1</code><code class="p">,</code> <code class="mi">2</code><code class="p">,</code> <code class="mi">3</code><code class="p">,</code> <code class="mi">4</code><code class="p">,</code> <code class="mi">5</code><code class="p">,</code> <code class="mi">6</code><code class="p">,</code> <code class="p">.</code><code class="p">.</code><code class="p">.</code><code class="p">)</code>
+                  <code class="p">.</code><code class="na">parallel</code><code class="p">(</code><code class="p">)</code>
+                  <code class="p">.</code><code class="na">reduce</code><code class="p">(</code><code class="mi">0</code><code class="p">,</code> <a class="co" href="#callout_parallel_data_processing_with_streams_CO3-1" id="co_parallel_data_processing_with_streams_CO3-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                          <code class="n">Integer</code><code class="p">:</code><code class="p">:</code><code class="n">sum</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_parallel_data_processing_with_streams_CO3-2" id="co_parallel_data_processing_with_streams_CO3-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO3-1" id="callout_parallel_data_processing_with_streams_CO3-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The initial value — or <em>identity</em> — is used for every parallel reduction operation.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO3-2" id="callout_parallel_data_processing_with_streams_CO3-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The method reference translates into a <code>BiFunction&lt;Integer, Integer, Integer&gt;</code> to accumulate the previous (or initial) value with the current Stream element.</p></dd>
+</dl>
+<p>This more abstract form of reduction is easily parallelizable if it’s <em>associative</em> and without any shared state.
+A reduction is associative if the order or grouping of the accumulator arguments is irrelevant to the final result.</p>
+<p>Even though <em>immutable</em> reduction is more amenable to parallel processing, it’s not the only reduction option in town.
+Depending on your requirements, a <em>mutable</em> reduction might be a more fitting solution because creating a new immutable result for every accumulation step could be costly.
+With enough elements, such costs accumulate over time affecting performance and memory requirements.</p>
+<p>A <em>mutable</em> reduction mitigates this overhead by using a mutable results container.
+The accumulation function receives this container instead of only the prior result, and it doesn’t return any value, unlike a <code>reduce</code> operator.
+To create the final result, the combiner merges all containers.</p>
+<p>The factors that a decision between using <code>reduce</code> or <code>collect</code> in sequential and parallel Streams boil down to what kind of element you have and the usability and straightforwardness of the terminal <em>fold</em> operation.
+There are times when you might need every bit of performance available to you to improve your data processing, and a more complicated <em>fold</em> operation.
+Many other factors affect performance in general, so having an easier-to-understand and maintainable terminal operation might outweigh the downside of sacrificing a little bit more memory and CPU cycles.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Stream Overhead and Available Resources" data-type="sect2"><div class="sect2" id="_02-data-processing_overhead">
+<h2>Stream Overhead and Available Resources</h2>
+<p>Compared to traditional looping structures, a Stream always creates an unavoidable overhead, regardless of being sequential or parallel.
+Their advantage lies in providing a declarative way of defining data processing pipelines and utilizing many functional principles to maximize their ease of use and performance.
+In most real-world scenarios, though, the overhead is negligible compared to their conciseness and clarity.</p>
+<p>In the case of parallel Streams, though, you start with a more significant initial handicap compared to sequential Streams.
+Besides the overhead of the Stream scaffold itself, you have to think about data source decomposition costs, thread management by the <code>ForkJoinPool</code>, and recombining the final result, to get the full picture of all moving parts.
+And all those parts must have the resources — CPU cores and memory available to actually run them in parallel.</p>
+<p>Coined by the computer scientist Gene Amdahl in 1967, <em>Amdahl’s law</em>⁠<sup><a data-type="noteref" href="ch08.xhtml#idm45115230447824" id="idm45115230447824-marker">2</a></sup> provides a way to calculate the theoretical latency speedup in parallel executions for constant workloads.
+The law takes the <em>parallel portion</em> of a single task and the <em>number of tasks</em> running in parallel into account, as shown in <a data-type="xref" href="#_01-parallel-concurrent-async_amdhals-law">Figure 8-5</a>.</p>
+<figure><div class="figure" id="_01-parallel-concurrent-async_amdhals-law">
+<img alt="Amdahl's law" height="430" src="assets/afaj_0805.png" width="600"/>
+<h6><span class="label">Figure 8-5. </span>Amdahl’s law</h6>
+</div></figure>
+<p>As you can see, the maximum performance gains have a ceiling depending on the count of parallel tasks that can be run simultaneously.
+There is no benefit in easily parallelizable tasks if the runtime can’t actually run them parallel due to the lack of adequate resources and is forced to interleave the tasks instead.</p>
+</div></section>
+<section data-pdf-bookmark="Example: War and Peace (revisited)" data-type="sect2"><div class="sect2" id="idm45115230442048">
+<h2>Example: War and Peace (revisited)</h2>
+<p>With all these criteria for parallel Stream performance in mind, let’s analyze the previous example of counting the distinct words of Tolstoy’s “War and Peace” again to better understand why this particular Stream pipeline is a great match for parallel processing.</p>
+<dl>
+<dt>Data source characteristics</dt>
+<dd>
+<p>The Stream is created from a UTF-8 plain text file with the help of the <code>Files.lines</code> method, which has quite good parallel characteristics according to its documentation<sup><a data-type="noteref" href="ch08.xhtml#idm45115230437904" id="idm45115230437904-marker">3</a></sup>.</p>
+</dd>
+<dt>Number of elements</dt>
+<dd>
+<p>The text file contains over 60.000 lines, therefore, 60.000 elements flow through the pipeline.
+That’s not much for modern computers, but it’s also not a negligible number of elements.</p>
+</dd>
+<dt>Intermediate operations</dt>
+<dd>
+<p>Each Stream operation works on a single line, completely independent from another, without any shared or outside state that requires coordination.
+The regular expressions are pre-compiled and read-only.</p>
+</dd>
+<dt>Terminal operation</dt>
+<dd>
+<p>The <code>Collector</code> can gather the results independently and merges them with a simple arithmetic operation.</p>
+</dd>
+<dt>Available resources</dt>
+<dd>
+<p>My computer has 12 CPU threads available at most and therefore ~5.000 lines per thread if all of them are utilized.</p>
+</dd>
+</dl>
+<p>It looks like the example hit the <em>parallelism jackpot</em>, even if not all criteria were matched perfectly.
+That’s why the performance gain for even such a simple task was quite high and near the expected speedup of <em>Amdahl’s law</em> for highly parallelizable operations.
+Looking back at <a data-type="xref" href="#_01-parallel-concurrent-async_amdhals-law">Figure 8-5</a>, the 5x improvement on my setup with 6 cores / 12 threads suggests a parallelizability of ~90%.</p>
+</div></section>
+<section data-pdf-bookmark="Example: Random Numbers" data-type="sect2"><div class="sect2" id="_01-parallel-concurrent-async_seq-vs-para">
+<h2>Example: Random Numbers</h2>
+<p>This simplistic but deliberately chosen example of counting words in “War and Peace” showed that parallel Streams could provide enormous performance gains that scale with the available resources.
+But that’s not always the case for every workload, especially for a more complex one.</p>
+<p>Let’s look at another example, working with random numbers, and how <code>IntStream</code> — sequential and parallel — compares to a simple <code>for</code>-loop, as shown in <a data-type="xref" href="#_01-parallel-concurrent-async_for-seq-para">Example 8-5</a>.</p>
+<div data-type="example" id="_01-parallel-concurrent-async_for-seq-para">
+<h5><span class="label">Example 8-5. </span>Random number statistics</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">elementsCount</code> <code class="o">=</code> <code class="mi">100_000_000</code><code class="p">;</code> <a class="co" href="#callout_parallel_data_processing_with_streams_CO4-1" id="co_parallel_data_processing_with_streams_CO4-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+
+<code class="n">IntUnaryOperator</code> <code class="n">multiplyByTwo</code> <code class="o">=</code> <code class="n">in</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">in</code> <code class="o">*</code> <code class="mi">2</code><code class="p">;</code> <a class="co" href="#callout_parallel_data_processing_with_streams_CO4-2" id="co_parallel_data_processing_with_streams_CO4-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+
+<code class="kd">var</code> <code class="n">rnd</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Random</code><code class="p">(</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_parallel_data_processing_with_streams_CO4-3" id="co_parallel_data_processing_with_streams_CO4-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+
+
+<code class="c1">// FOR-LOOP </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO4-4" id="co_parallel_data_processing_with_streams_CO4-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+
+<code class="kd">var</code> <code class="n">loopStats</code> <code class="o">=</code> <code class="k">new</code> <code class="n">IntSummaryStatistics</code><code class="p">(</code><code class="p">)</code><code class="p">;</code>
+
+<code class="k">for</code><code class="p">(</code><code class="kt">int</code> <code class="n">idx</code> <code class="o">=</code> <code class="mi">0</code><code class="p">;</code> <code class="n">idx</code> <code class="o">&lt;</code> <code class="n">elementsCount</code><code class="p">;</code> <code class="n">idx</code><code class="o">+</code><code class="o">+</code><code class="p">)</code> <code class="p">{</code>
+  <code class="kd">var</code> <code class="n">value</code> <code class="o">=</code> <code class="n">rnd</code><code class="p">.</code><code class="na">nextInt</code><code class="p">(</code><code class="p">)</code><code class="p">;</code>
+  <code class="kd">var</code> <code class="n">subResult</code> <code class="o">=</code> <code class="n">multiplyByTwo</code><code class="p">.</code><code class="na">applyAsInt</code><code class="p">(</code><code class="n">value</code><code class="p">)</code><code class="p">;</code>
+  <code class="kd">var</code> <code class="n">finalResult</code> <code class="o">=</code> <code class="n">multiplyByTwo</code><code class="p">.</code><code class="na">applyAsInt</code><code class="p">(</code><code class="n">subResult</code><code class="p">)</code><code class="p">;</code>
+  <code class="n">loopStats</code><code class="p">.</code><code class="na">accept</code><code class="p">(</code><code class="n">finalResult</code><code class="p">)</code><code class="p">;</code>
+<code class="p">}</code>
+
+
+<code class="c1">// SEQUENTIAL IntStream </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO4-5" id="co_parallel_data_processing_with_streams_CO4-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a>
+
+<code class="kd">var</code> <code class="n">seqStats</code> <code class="o">=</code> <code class="n">rnd</code><code class="p">.</code><code class="na">ints</code><code class="p">(</code><code class="n">elementsCount</code><code class="p">)</code>
+                  <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">multiplyByTwo</code><code class="p">)</code>
+                  <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">multiplyByTwo</code><code class="p">)</code>
+                  <code class="p">.</code><code class="na">summaryStatistics</code><code class="p">(</code><code class="p">)</code><code class="p">;</code>
+
+
+<code class="c1">// PARALLEL IntStream </code><a class="co" href="#callout_parallel_data_processing_with_streams_CO4-6" id="co_parallel_data_processing_with_streams_CO4-6"><img alt="6" height="12" src="assets/6.png" width="12"/></a>
+
+<code class="kd">var</code> <code class="n">parallelStats</code> <code class="o">=</code> <code class="n">rnd</code><code class="p">.</code><code class="na">ints</code><code class="p">(</code><code class="n">elementsCount</code><code class="p">)</code>
+                       <code class="p">.</code><code class="na">parallel</code><code class="p">(</code><code class="p">)</code>
+                       <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">multiplyByTwo</code><code class="p">)</code>
+                       <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">multiplyByTwo</code><code class="p">)</code>
+                       <code class="p">.</code><code class="na">summaryStatistics</code><code class="p">(</code><code class="p">)</code><code class="p">;</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO4-1" id="callout_parallel_data_processing_with_streams_CO4-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>100 million elements should be enough elements to reach the (non-definite) threshold to gain a performance boost from parallel processing.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO4-2" id="callout_parallel_data_processing_with_streams_CO4-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>To do at least some work, the elements will be multiplied by <code>2</code> twice with the help of a shared lambda.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO4-3" id="callout_parallel_data_processing_with_streams_CO4-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The default source for pseudo-random numbers is used: <code>java.util.Random</code>.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO4-4" id="callout_parallel_data_processing_with_streams_CO4-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>The <code>for</code>-loop version tries to mimic a Stream as well as possible, including using the same logic for <em>collecting</em> the results.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO4-5" id="callout_parallel_data_processing_with_streams_CO4-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a></dt>
+<dd><p>The sequential Stream is as straightforward as possible: Stream creation, two mapping functions, and then the collection of the results in the form of summary statistics.</p></dd>
+<dt><a class="co" href="#co_parallel_data_processing_with_streams_CO4-6" id="callout_parallel_data_processing_with_streams_CO4-6"><img alt="6" height="12" src="assets/6.png" width="12"/></a></dt>
+<dd><p>The parallel variant only adds a <code>parallel()</code> call to the previous sequential one.</p></dd>
+</dl>
+<p>Is the summarizing of random numbers a good match for the criteria of parallel processing?
+Let’s analyze!</p>
+<dl>
+<dt>Data source characteristics</dt>
+<dd>
+<p>Even though <code>Random</code> is thread-safe, it’s explicitly mentioned in its documentation<sup><a data-type="noteref" href="ch08.xhtml#idm45115230117168" id="idm45115230117168-marker">4</a></sup> that repeated use from different threads will impact performance negatively.
+Instead, the <code>ThreadLocalRandom</code> type is recommended.</p>
+</dd>
+<dt>Number of elements</dt>
+<dd>
+<p>100 million elements should be enough to get a performance gain from parallel processing, no worries there.</p>
+</dd>
+<dt>Intermediate operations</dt>
+<dd>
+<p>No local or shared state.
+Another plus point for possible parallel performance.
+But the example might be too simplistic to offset the parallel overhead.</p>
+</dd>
+<dt>Terminal operation</dt>
+<dd>
+<p>The <code>IntSummaryStatistics</code> collector only holds four integers and can combine sub-results with simple arithmetics.
+It shouldn’t impact parallel performance negatively.</p>
+</dd>
+</dl>
+<p>The scorecard for parallel processing doesn’t look too bad.
+The most obvious problem is the data source itself.
+A more fitting data source might increase performance compared to the <em>default</em> <code>Random</code> number generator.</p>
+<p>Besides <code>Random</code> and <code>ThreadLocalRandom</code>, there’s also <code>SplittableRandom</code>, which is specially designed for Streams.
+After measuring the elapsed time of the <code>for</code>-loop as the baseline compared to the other options, the necessity of choosing a favorable data source and measuring the Stream’s performance is quite obvious
+The factor of increased time between the different data sources is listed in <a data-type="xref" href="#_01-parallel-concurrent-async_randoms">Table 8-3</a>.</p>
+<table id="_01-parallel-concurrent-async_randoms">
+<caption><span class="label">Table 8-3. </span>Elapsed time for different random number generators</caption>
+<thead>
+<tr>
+<th>Data source</th>
+<th>for-loop</th>
+<th>Sequential Stream</th>
+<th>Parallel Stream</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>Random</code></p></td>
+<td><p>1.0x</p></td>
+<td><p>1.05x</p></td>
+<td><p>27.4x</p></td>
+</tr>
+<tr>
+<td><p><code>SplittableRandom</code></p></td>
+<td><p>1.0x</p></td>
+<td><p>2.1x</p></td>
+<td><p>4.1x</p></td>
+</tr>
+<tr>
+<td><p><code>ThreadLocalRandom</code></p></td>
+<td><p>1.0x</p></td>
+<td><p>2.3x</p></td>
+<td><p>0.6x</p></td>
+</tr>
+</tbody>
+</table>
+<p>Even though there should be enough elements in the pipeline, enabling parallel processing can be counter-productive and decrease the performance manifold.
+That’s why making Stream’s parallel must be a conscious and informed decision.</p>
+<p>Better performance is a worthwhile goal, but it depends on the context and your requirements if a parallel Stream is preferable to sequential data processing.
+You should always start with a sequential Stream and only go parallel if the requirements dictate it and you’ve measured the performance gain.
+Sometimes, a “good old” <code>for</code>-loop might do the job just as well, or even better.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Parallel Streams Checklist" data-type="sect1"><div class="sect1" id="idm45115230813392">
+<h1>Parallel Streams Checklist</h1>
+<p><a data-type="xref" href="#_01-parallel-concurrent-async_for-seq-para">Example 8-5</a> exposed the problem of unfavorable data sources for parallel processing.
+But it’s not the only indicator for non-parallelizable workflows.
+Based on the criteria in <a data-type="xref" href="#_01-parallel-concurrent-async_when-to-use-parallelism">“When to Use and When to Avoid Parallel Streams”</a>, a checklist can be established as a quick indicator to favor a parallel Stream, or not, as seen in <a data-type="xref" href="#_01-parallel-streams_checklist">Table 8-4</a>.</p>
+<table id="_01-parallel-streams_checklist">
+<caption><span class="label">Table 8-4. </span>Parallel Stream checklist</caption>
+<thead>
+<tr>
+<th>Criteria</th>
+<th>Considerations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p>Data source</p></td>
+<td><div>
+<ul>
+<li>
+<p>Cost of Decomposability</p>
+</li>
+<li>
+<p>Evenness/predictability of split chunks</p>
+</li>
+<li>
+<p>Data locality of elements</p>
+</li>
+</ul></div></td>
+</tr>
+<tr>
+<td><p>Number of elements</p></td>
+<td><div>
+<ul>
+<li>
+<p>Total number of elements</p>
+</li>
+<li>
+<p><em>NQ</em> model</p>
+</li>
+</ul></div></td>
+</tr>
+<tr>
+<td><p>Intermediate operations</p></td>
+<td><div>
+<ul>
+<li>
+<p>Interdependence between operations</p>
+</li>
+<li>
+<p>Necessity of shared state</p>
+</li>
+<li>
+<p>Parallel-friendly operations</p>
+</li>
+<li>
+<p>Encounter order</p>
+</li>
+</ul></div></td>
+</tr>
+<tr>
+<td><p>Terminal operation</p></td>
+<td><div>
+<ul>
+<li>
+<p>Cost of merging the final result</p>
+</li>
+<li>
+<p>Mutable or immutable reduction</p>
+</li>
+</ul></div></td>
+</tr>
+<tr>
+<td><p>Available resources</p></td>
+<td><div>
+<ul>
+<li>
+<p>CPU count</p>
+</li>
+<li>
+<p>Memory</p>
+</li>
+<li>
+<p>Common <code>ForkJoinPool</code> or customized</p>
+</li>
+</ul></div></td>
+</tr>
+</tbody>
+</table>
+<p>Any of these criteria affect parallel Stream performance and should influence your decision.
+No single one of them is an absolute deal-breaker, though.</p>
+<p>Your code could <em>always</em> be more performant.
+Running Streams in parallel adds the complexity and overhead of coordinating multiple threads with possibly little gain or even decreased performance if not used correctly or in unfavorable environments.
+However, if used for fitting data sources and parallelizable tasks, using parallel Streams is an easy-to-use optimization technique for introducing a more efficient way of data processing into your pipelines.</p>
+</div></section>
+<section data-pdf-bookmark="Takeaways" data-type="sect1"><div class="sect1" id="idm45115230060256">
+<h1>Takeaways</h1>
+<ul>
+<li>
+<p>Hardware evolves in the direction of more cores, not necessarily faster ones.
+Concurrency and parallelism play an important role in utilizing all available resources.</p>
+</li>
+<li>
+<p>Sequential processing is defined by its textual order in the code.
+Parallel code execution may overlap, making it harder to follow, analyze, and debug.</p>
+</li>
+<li>
+<p>Going parallel with Streams is easy, but their inherent complexity is hidden.</p>
+</li>
+<li>
+<p>Concurrent and parallel code introduces a whole new set of requirements and possible problems and caveats.
+Parallel processing is an optimization technique and should be treated as such: if you don’t need it, don’t do it; it’s a hard problem.</p>
+</li>
+<li>
+<p>Most functionally preferred techniques, like <em>pure functions</em> and <em>immutability</em>, are beneficial, if not a requirement, for error-free and performant parallelized code.
+Adhering to these techniques early on, even in sequential code, allows an easier transition to parallel processing, if needed.</p>
+</li>
+<li>
+<p>Kent Beck’s famous quote applies to parallel Streams, too: “first make it work, then make it right, and, finally, make it fast."⁠<sup><a data-type="noteref" href="ch08.xhtml#idm45115230052720" id="idm45115230052720-marker">5</a></sup>
+Start with a sequential Stream to fulfill your data processing needs.
+Improve it by optimizing its operations.
+Only if necessary and proven beneficial, make it fast by going parallel.</p>
+</li>
+<li>
+<p>Read the documentation of your data source, operations, etc., to see if they are a good fit for parallel execution.
+It often provides the reasoning behind implementation details, performance indications, examples, and sometimes even alternative approaches.</p>
+</li>
+</ul>
+</div></section>
+<div data-type="footnotes"><p data-type="footnote" id="idm45115231315840"><sup><a href="ch08.xhtml#idm45115231315840-marker">1</a></sup> Project Gutenberg provides multiple versions of Tolstoy’s <a href="https://www.gutenberg.org/ebooks/2600">“War and Peace”</a> for free. The plain-text version is used so no additional formatting affects the process of counting words.</p><p data-type="footnote" id="idm45115230447824"><sup><a href="ch08.xhtml#idm45115230447824-marker">2</a></sup> The Wikipedia entry on <a href="https://en.wikipedia.org/wiki/Amdahl%27s_law">Amdahl’s law</a> describes the actual formula in detail.</p><p data-type="footnote" id="idm45115230437904"><sup><a href="ch08.xhtml#idm45115230437904-marker">3</a></sup> The call if delegated to <code>Files.lines(Path path, CharSet cs)</code> which <a href="https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/nio/file/Files.xhtml#lines(java.nio.file.Path,java.nio.charset.Charset)">documentation</a> lists possibly good parallel performance due to its <code>Spliterator</code> splitting in an optimal ratio under normal circumstances.</p><p data-type="footnote" id="idm45115230117168"><sup><a href="ch08.xhtml#idm45115230117168-marker">4</a></sup> Ususally, the documentation of a type, like for <a href="https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Random.xhtml"><code>java.util.Random</code></a> gives indications about their use in multi-threaded environments.</p><p data-type="footnote" id="idm45115230052720"><sup><a href="ch08.xhtml#idm45115230052720-marker">5</a></sup> Kent Beck is an American software engineer and the creator of <em>extreme programming</em>. The quote is usually attributed to him, even though the gist of it exists for a long time like described in B. W. Lampson, “Hints for Computer System Design,” in <a href="https://doi.org/10.1109/MS.1984.233391"><em>IEEE Software</em>, Vol. 1, No. 1, 11-28, Jan. 1984</a>.</p></div></div></section></div></body></html>

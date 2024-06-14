@@ -1,0 +1,586 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><section data-pdf-bookmark="Chapter 11. Lazy Evaluation" data-type="chapter" epub:type="chapter"><div class="chapter" id="_02-lazy-evaluation">
+<h1><span class="label">Chapter 11. </span>Lazy Evaluation</h1>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="idm45115222748768">
+<h1>A Note for Early Release Readers</h1>
+<p>With Early Release ebooks, you get books in their earliest form—the author’s raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.</p>
+<p>This will be the 11th chapter of the final book. Please note that the GitHub repo will be made active later on.</p>
+<p>If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the editor at <em>rfernando@oreilly.com</em>.</p>
+</div></aside>
+<p>Although <em>laziness</em> is often seen as a character flaw in people, it can be considered a favorable feature in some programming languages.
+In computer science terms, <em>laziness</em> is the antagonist to <em>strictness</em> —  or <em>eagerness</em> — of code evaluation.</p>
+<p>This chapter will show you how being lazy can improve performance.
+You will learn about the difference between strict and lazy evaluation and its impact on your code’s design.</p>
+<section data-pdf-bookmark="Laziness Versus Strictness" data-type="sect1"><div class="sect1" id="idm45115222743184">
+<h1>Laziness Versus Strictness</h1>
+<p>The strictness of a language describes the semantics of how your code is evaluated.</p>
+<p><em>Strict</em> evaluation happens as soon as possible, such as declaring or setting a variable or passing an expression as an argument.
+<em>Non-strict</em> evaluation, however, happens when the result of an expression is actually needed.
+This way, expressions can have a value even if one or more subexpressions fail to evaluate.</p>
+<p>For example, <em>Haskell</em> is a functional programming language with <em>non-strict</em> semantics by default, evaluating expressions from the outermost to the inner ones.
+This allows you to create control structures or infinite data sequences due to the separation of the <em>creation</em> and <em>consumption</em> of expressions.</p>
+<p>Let’s take a look at the following <em>strict</em> Java code of a simple method accepting two arguments but using only one for its logic:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kt">int</code> <code class="nf">add</code><code class="p">(</code><code class="kt">int</code> <code class="n">x</code><code class="p">,</code> <code class="kt">int</code> <code class="n">y</code><code class="p">)</code> <code class="p">{</code>
+  <code class="k">return</code> <code class="n">x</code> <code class="o">+</code> <code class="n">x</code><code class="p">;</code>
+<code class="p">}</code></pre>
+<p>The <em>non-strict</em> Haskell-equivalent function declaration looks more like a variable assignment:</p>
+<pre data-code-language="haskell" data-type="programlisting"><code class="nf">add</code> <code class="n">x</code> <code class="n">y</code> <code class="ow">=</code> <code class="n">x</code> <code class="o">+</code> <code class="n">x</code></pre>
+<p>This function also uses only its first argument and doesn’t evaluate the second argument, <code>y</code>, at all.
+That’s why the following Haskell code still yields a result:</p>
+<pre data-code-language="haskell" data-type="programlisting"><code class="nf">add</code> <code class="mi">5</code> <code class="p">(</code><code class="mi">1</code><code class="o">/</code><code class="mi">0</code><code class="p">)</code>
+<code class="ow">=&gt;</code> <code class="mi">10</code></pre>
+<p>If you call the Java equivalent of this function with the same arguments, the value <code>1</code> and the expression <code>(1/0)</code>, it will throw an exception:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">result</code> <code class="o">=</code> <code class="n">add</code><code class="p">(</code><code class="mi">5</code><code class="p">,</code> <code class="p">(</code><code class="mi">1</code><code class="o">/</code><code class="mi">0</code><code class="p">));</code>
+<code class="c1">// =&gt; java.lang.ArithmeticException: Division by zero</code></pre>
+<p>Even though the second parameter of the <code>add</code> call isn’t used in any capacity, Java, as a <em>strict</em> language, evaluates the expression immediately.
+Method arguments are <em>passed-by-value</em>, which means they’re evaluated before being passed to the method, which in this case throws an <code>ArithmeticException</code>.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Java’s method arguments are always pass-by-value.
+In the case of non-primitive types, arguments are passed as <em>object-handles</em> by the JVM with a special type called <code>references</code>.
+These are technically still passed-by-value, making the general terminology and semantics quite confusing.</p>
+</div>
+<p>Conversely, lazy evaluation is defined as evaluating expressions only when their result is needed.
+That means the declaration of an expression doesn’t trigger its immediate evaluation, which makes Java lambda expressions the perfect match for lazy evaluation, as seen in <a data-type="xref" href="#_02-lazy-evaluation_lazy">Example 11-1</a>.</p>
+<div data-type="example" id="_02-lazy-evaluation_lazy">
+<h5><span class="label">Example 11-1. </span>Lazy Evaluation with Java and Suppliers</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kt">int</code> <code class="nf">add</code> <code class="p">(</code><code class="n">IntSupplier</code> <code class="n">x</code><code class="p">,</code> <code class="n">IntSupplier</code> <code class="n">y</code><code class="p">)</code> <code class="p">{</code>
+
+  <code class="kd">var</code> <code class="n">actualX</code> <code class="o">=</code> <code class="n">x</code><code class="p">.</code><code class="na">getAsInt</code><code class="p">();</code>
+
+  <code class="k">return</code> <code class="n">actualX</code> <code class="o">+</code> <code class="n">actualX</code><code class="p">;</code>
+<code class="p">}</code>
+
+<code class="kd">var</code> <code class="n">result</code> <code class="o">=</code> <code class="n">add</code><code class="p">(()</code> <code class="o">-&gt;</code> <code class="mi">5</code><code class="p">,</code>
+                 <code class="p">()</code> <code class="o">-&gt;</code> <code class="mi">1</code> <code class="o">/</code> <code class="mi">0</code><code class="p">);</code>
+<code class="c1">// =&gt; 10</code></pre></div>
+<p>The declaration of the <code>IntSupplier</code> instances, or their inline equivalents, is a strict statement and is evaluated immediately.
+The actual lambda body, however, doesn’t evaluate until it’s explicitly called with <code>getAsInt</code>, preventing the <code>ArithmeticException</code> in this case.</p>
+<p>In essence, <em>strictness</em> is about “doing things,” but <em>laziness</em> is about “considering things to do.”</p>
+</div></section>
+<section data-pdf-bookmark="How Strict Is Java?" data-type="sect1"><div class="sect1" id="idm45115222742560">
+<h1>How Strict Is Java?</h1>
+<p>Most programming languages are neither fully lazy nor strict.
+Java is considered a strict language, but with some noteworthy lazy exceptions on a language level and in the available types of the JDK.</p>
+<p>Let’s go through them.</p>
+<section data-pdf-bookmark="Short-Circuit Evaluation" data-type="sect2"><div class="sect2" id="idm45115222535024">
+<h2>Short-Circuit Evaluation</h2>
+<p>Language-integrated laziness is available in Java in the form of the logical <em>short-circuit evaluation</em> with the logical operators <code>&amp;&amp;</code> (double ampersand) and <code>||</code> (double pipe) for <code>AND</code> and <code>OR</code>.
+These operators evaluate their operands left to right and only as required.
+If the logical expression is satisfied by the expression left of the operator, the right operand isn’t evaluated at all, as seen in <a data-type="xref" href="#_02-lazy-evaluation_logical-operators_table">Table 11-1</a>.</p>
+<table id="_02-lazy-evaluation_logical-operators_table">
+<caption><span class="label">Table 11-1. </span>Evaluation of logical short-circuit operators</caption>
+<thead>
+<tr>
+<th>Operations</th>
+<th>Value of <code>leftExpr</code></th>
+<th>Is <code>rightExpr</code> evaluated?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td rowspan="2"><p><code>leftExpr &amp;&amp; rightExpr</code></p></td>
+<td><p><code>true</code></p></td>
+<td><p>yes</p></td>
+</tr>
+<tr>
+<td><p><code>false</code></p></td>
+<td><p>no</p></td>
+</tr>
+<tr>
+<td rowspan="2"><p><code>leftExpr || rightExpr</code></p></td>
+<td><p><code>true</code></p></td>
+<td><p>no</p></td>
+</tr>
+<tr>
+<td><p><code>false</code></p></td>
+<td><p>yes</p></td>
+</tr>
+</tbody>
+</table>
+<div data-type="warning" epub:type="warning"><h1>Bitwise Logical Operators</h1>
+<p>The similar bitwise operators <code>&amp;</code> (single ampersand) and <code>|</code> (single pipe) evaluate <em>eagerly</em> and serve a different purpose than their logical brethren.
+Bitwise operators compare individual bits of integer types, resulting in an integer result.</p>
+</div>
+<p>Despite functioning similarly to a control structure, these logical operands can’t exist in a vacuum.
+They must always be part of another statement, like a condition for an <code>if</code>-block or a variable assignment, as seen in <a data-type="xref" href="#_02-lazy-evaluation_logical-operators_existence">Example 11-2</a>.
+Another advantage of short-circuit evaluation for assignments is that they create (effectively) <code>final</code>⁠<sup><a data-type="noteref" href="ch11.xhtml#idm45115222435312" id="idm45115222435312-marker">1</a></sup> references, making them a perfect fit to use with Java’s functional approach.</p>
+<div data-type="example" id="_02-lazy-evaluation_logical-operators_existence">
+<h5><span class="label">Example 11-2. </span>Usage of logical short-circuit operators</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// WON'T COMPILE: unused result</code>
+
+<code class="n">left</code><code class="p">()</code> <code class="o">||</code> <code class="n">right</code><code class="p">();</code>
+
+
+<code class="c1">// COMPILES: used as if condition</code>
+
+<code class="k">if</code> <code class="p">(</code><code class="n">left</code><code class="p">()</code> <code class="o">||</code> <code class="n">right</code><code class="p">())</code> <code class="p">{</code>
+    <code class="c1">// ...</code>
+<code class="p">}</code>
+
+<code class="c1">// COMPILES: used as variable assignment</code>
+
+<code class="kd">var</code> <code class="n">result</code> <code class="o">=</code> <code class="n">left</code><code class="p">()</code> <code class="o">||</code> <code class="n">right</code><code class="p">();</code></pre></div>
+<p>Omitting the evaluation of right-side operand evaluation is extremely helpful if the expression is costly or has any side effects, or doesn’t need to be evaluated if the left-side was.
+However, it also might be the source of not evaluating a required expression if the statement is short-circuited and the expression necessary is on the right side.
+If you make them a part of decision-making, make sure to design them carefully.</p>
+<p>Any decision-making code benefits immensely from pure functions.
+The intended behavior is straightforward and easily understandable, without any lurking side effects that might get unnoticed during redesigning or refactoring your code, introducing subtle bugs that are often hard to pin down.
+You should make sure that there are either no side effects at all, which in my opinion, is too absolute and generally an unrealistic goal, or name your methods to reflect their repercussions.</p>
+</div></section>
+<section data-pdf-bookmark="Control Structures" data-type="sect2"><div class="sect2" id="idm45115222389824">
+<h2>Control Structures</h2>
+<p>Control structures are responsible for changing the path taken through the instructions of your code.
+An <code>if</code>-<code>else</code> construct, for example, is a conditional branch with one (<code>if</code>-only) or more (<code>if</code>-<code>else</code>) blocks of code.
+These blocks are only evaluated depending on their corresponding condition, which is a lazy trait.
+Strictly evaluating any part of an <code>if</code>-<code>else</code> construct on declaration would defeat its purpose of using it as a conditional branch.
+This “lazy exception to the eager rules” applies to all branching and loop structures, as listed in <a data-type="xref" href="#_02-lazy-evaluation_control-structures-table">Table 11-2</a>.</p>
+<table id="_02-lazy-evaluation_control-structures-table">
+<caption><span class="label">Table 11-2. </span>Lazy structures in Java</caption>
+<thead>
+<tr>
+<th>Branching control structures</th>
+<th>Looping structures</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>if</code>-<code>else</code><br/>
+<code>? :</code> (ternary operator)<br/>
+<code>switch</code><br/>
+<code>catch</code></p></td>
+<td><p><code>for</code><br/>
+<code>while</code><br/>
+<code>do-while</code></p></td>
+</tr>
+</tbody>
+</table>
+<p>An absolutely strict language with non-lazy control structures is hard to imagine, if not impossible.</p>
+</div></section>
+<section data-pdf-bookmark="Lazy Types in the JDK" data-type="sect2"><div class="sect2" id="idm45115222341792">
+<h2>Lazy Types in the JDK</h2>
+<p>So far, I’ve talked about how Java’s laziness was built directly into the language in the form of operators and control structures.
+The JDK, however, also provides multiple built-in types and data structures with a certain degree of laziness at runtime as well.</p>
+<section data-pdf-bookmark="Lazy Maps" data-type="sect3"><div class="sect3" id="_01-lazy_maps">
+<h3>Lazy Maps</h3>
+<p>A common task for Maps is checking if a key already has a mapped value, and providing one if it’s missing.
+The related code requires multiple checks and non (effectively) <code>final</code> variables, as follows:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">User</code><code class="o">&gt;</code> <code class="n">users</code> <code class="o">=</code> <code class="p">...;</code>
+
+<code class="kd">var</code> <code class="n">email</code> <code class="o">=</code> <code class="s">"john@doe.com"</code><code class="p">;</code>
+
+<code class="kd">var</code> <code class="n">user</code> <code class="o">=</code> <code class="n">users</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="n">email</code><code class="p">);</code>
+<code class="k">if</code> <code class="p">(</code><code class="n">user</code> <code class="o">==</code> <code class="kc">null</code><code class="p">)</code> <code class="p">{</code>
+  <code class="n">user</code> <code class="o">=</code> <code class="n">loadUser</code><code class="p">(</code><code class="n">email</code><code class="p">);</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">put</code><code class="p">(</code><code class="n">email</code><code class="p">,</code> <code class="n">user</code><code class="p">);</code>
+<code class="p">}</code></pre>
+<p>The code might vary depending on the actual <code>Map</code> implementation, but the gist should be clear.</p>
+<p>In general, this is already a lazy approach, delaying loading a user until necessary.
+In the course of retrofitting functional additions to many types in JDK 8, the <code>Map</code> type received a more concise and functional alternative with its <code>computeIf…​</code> methods.</p>
+<p>There are two methods available based on the existence of a mapped value for a key:</p>
+<ul>
+<li>
+<p><code>V computeIfAbsent(K key, Function&lt;? super K, ? extends V&gt; mappingFunction)</code></p>
+</li>
+<li>
+<p><code>V computeIfPresent(K key, BiFunction&lt;? super K, ? super V, ? extends V&gt; remappingFunction)</code></p>
+</li>
+</ul>
+<p>The first one is an ideal replacement for the code of the previous example, as such:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">User</code><code class="o">&gt;</code> <code class="n">users</code> <code class="o">=</code> <code class="p">...;</code>
+
+<code class="kd">var</code> <code class="n">email</code> <code class="o">=</code> <code class="s">"john@doe.com"</code><code class="p">;</code>
+
+<code class="kd">var</code> <code class="n">user</code> <code class="o">=</code> <code class="n">users</code><code class="p">.</code><code class="na">computeIfAbsent</code><code class="p">(</code><code class="n">email</code><code class="p">,</code>
+                                 <code class="k">this</code><code class="p">::</code><code class="n">loadUser</code><code class="p">);</code></pre>
+<p>It requires the desired key as its first argument and a mapper <code>Function&lt;K, V&gt;</code> as its second argument that provides the new mapped value for the key if absent.
+The <code>computeIfPresent</code> is the antagonist for remapping values only if one’s present.</p>
+<p>A combination of both methods is also available in the form of the <code>V compute(K key, BiFunction&lt;? super K, ? super V, ? extends V&gt; remappingFunction)</code> method.
+It’s able to update and even delete mapped values depending on the result of the <code>remapping</code> function, as illustrated in <a data-type="xref" href="#_02-lazy-evaluation_map-compute">Figure 11-1</a>.</p>
+<figure><div class="figure" id="_02-lazy-evaluation_map-compute">
+<img alt="Lazy remapping with Map#compute" height="300" src="assets/afaj_1101.png" width="553"/>
+<h6><span class="label">Figure 11-1. </span>Lazy remapping with Map#compute</h6>
+</div></figure>
+<p>The general theme of a functional approach is clearly visible in Maps’ lazy additions.
+Instead of requiring you to write the verbose and repetitive code of <em>how</em> to work with the Map and its mapped values, now you can concentrate on <em>what</em> is happening and how to deal with keys and values.</p>
+</div></section>
+<section data-pdf-bookmark="Streams" data-type="sect3"><div class="sect3" id="idm45115222339696">
+<h3>Streams</h3>
+<p>Java Streams are the perfect example of lazy functional pipelines.
+You can define an intricate Stream scaffold filled with expensive functional operations that will only start evaluation after calling a terminal operation.
+The number of processed elements solely depends on the design of the pipeline, allowing you to minimize the required work as much as possible by separating the definition of an expression and its actual evaluation in a data processing pipeline.</p>
+<p><a data-type="xref" href="ch06.xhtml#_02-data-processing">Chapter 6</a> explains Streams and their lazy approach to data processing in detail.</p>
+</div></section>
+<section data-pdf-bookmark="Optionals" data-type="sect3"><div class="sect3" id="idm45115222192272">
+<h3>Optionals</h3>
+<p>Optionals are a non-lazy way of handling <code>null</code> values.
+Their general approach is similar to Streams, but they evaluate strictly compared to Streams.
+There are lazy operations available, for example, the <code>T orElseGet(Supplier&lt;? extends T&gt; supplier)</code> method that utilizes a <code>Supplier</code> to delay the execution to when it’s absolutely necessary.</p>
+<p><a data-type="xref" href="ch09.xhtml#_02-optionals">Chapter 9</a> gives a detailed introduction to Optionals and more information on how to use them.</p>
+</div></section>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Lambdas and Higher-Order Functions" data-type="sect1"><div class="sect1" id="idm45115222188128">
+<h1>Lambdas and Higher-Order Functions</h1>
+<p>Lambdas are a great way to introduce laziness on a code level.
+Their declaration is a statement and, therefore, strictly evaluated.
+Their body — the <em>single abstract method</em> --⁠, however, encapsulates the actual logic and evaluates at your discretion.
+That makes them a simple way to store and transfer expressions for later evaluation.</p>
+<p>Let’s look at some eager code for providing an argument to a method and how it can be made lazy with the help of lambdas.</p>
+<section data-pdf-bookmark="An Eager Approach" data-type="sect2"><div class="sect2" id="idm45115222185664">
+<h2>An Eager Approach</h2>
+<p>In <a data-type="xref" href="#_01-laziness_eager">Example 11-3</a>, a hypothetical <code>User</code> is updated with a list of roles.
+The update isn’t always done and depends on the inner logic of the <code>update</code> method.
+The arguments are provided <em>eagerly</em>, requiring a pretty expensive lookup call through the <em>DAO</em>⁠<sup><a data-type="noteref" href="ch11.xhtml#idm45115222180992" id="idm45115222180992-marker">2</a></sup>.</p>
+<div data-type="example" id="_01-laziness_eager">
+<h5><span class="label">Example 11-3. </span>Updating a <code>User</code> with eager method arguments</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="n">User</code> <code class="nf">updateUser</code><code class="p">(</code><code class="n">User</code> <code class="n">user</code><code class="p">,</code> <code class="n">List</code><code class="o">&lt;</code><code class="n">Role</code><code class="o">&gt;</code> <code class="n">availableRoles</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO1-1" id="co_lazy_evaluation_CO1-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+  <code class="c1">// ...</code>
+<code class="p">}</code>
+
+<code class="c1">// HOW TO USE</code>
+
+<code class="kd">var</code> <code class="n">user</code> <code class="o">=</code> <code class="n">loadUserById</code><code class="p">(</code><code class="mi">23L</code><code class="p">)</code><code class="p">;</code>
+<code class="kd">var</code> <code class="n">availableRoles</code> <code class="o">=</code> <code class="k">this</code><code class="p">.</code><code class="na">dao</code><code class="p">.</code><code class="na">loadAllAvailableRoles</code><code class="p">(</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_lazy_evaluation_CO1-2" id="co_lazy_evaluation_CO1-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+<code class="kd">var</code> <code class="n">updatedUser</code> <code class="o">=</code> <code class="n">updateUser</code><code class="p">(</code><code class="n">user</code><code class="p">,</code> <code class="n">availableRoles</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_lazy_evaluation_CO1-3" id="co_lazy_evaluation_CO1-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_lazy_evaluation_CO1-1" id="callout_lazy_evaluation_CO1-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The <code>updateUser</code> method requires the <code>user</code> and a list of all available roles.
+The update itself depends on the inner logic and might not need the roles after all.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO1-2" id="callout_lazy_evaluation_CO1-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The <code>loadAllAvailableRoles(user)</code> is called regardless of the <code>updateUser</code> method requiring the roles.
+This results in a costly trip to the database that might be unnecessary.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO1-3" id="callout_lazy_evaluation_CO1-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>All arguments are already evaluated at the time of the method call.</p></dd>
+</dl>
+<p>Providing <code>updateUser</code> with the roles, even if they aren’t necessary for every use-case, creates unnecessary database calls and wastes performance.</p>
+<p>So how can you make the call non-mandatory if it’s not always required?
+By introducing laziness.</p>
+</div></section>
+<section data-pdf-bookmark="A Lazier Approach" data-type="sect2"><div class="sect2" id="idm45115222020592">
+<h2>A Lazier Approach</h2>
+<p>In a strict language like Java, all method arguments are provided upfront and as-is.
+The method has no choice but to accept them, even if an argument isn’t actually needed.
+This is especially a problem when it comes to executing expensive operations to create such arguments beforehand, such as database calls, which can be a drain on your available resources and performance.</p>
+<p>The naïve approach to remedy unnecessary database calls is to change <code>updateUser</code> to accept the DAO directly, so it can only use it if necessary:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">User</code> <code class="nf">updateUser</code><code class="p">(</code><code class="n">User</code> <code class="n">user</code><code class="p">,</code> <code class="n">DAO</code> <code class="n">roleDAO</code><code class="p">)</code> <code class="p">{</code>
+  <code class="c1">// ...</code>
+<code class="p">}</code></pre>
+<p>The <code>updateUser</code> method now has all the tools necessary to load the available roles by itself.
+On a superficial level, the initial problem of non-lazy data access is solved, but this “solution” creates a new problem: cohesion.</p>
+<p>The <code>updateUser</code> method now uses the DAO directly and is no longer isolated from <em>how</em> the roles are acquired.
+This approach will make the method <em>impure</em>, as accessing the database is considered a side-effect and makes it harder to verify and test.
+Thanks to possible API boundaries, it gets even more complicated if the <code>updateUser</code> method doesn’t know the DAO type at all.
+So you need to create another abstraction to retrieve the roles.
+Instead of creating an additional abstract layer to bridge the gap between the DAO and the <code>updateUser</code> method, you can make <code>updateUser</code> a higher-order function and accept a lambda expression.</p>
+</div></section>
+<section data-pdf-bookmark="A Functional Approach" data-type="sect2"><div class="sect2" id="idm45115221990400">
+<h2>A Functional Approach</h2>
+<p>To create a functional abstraction for the retrieving of the required user roles in <a data-type="xref" href="#_01-laziness_eager">Example 11-3</a>, you must first dissect the problem into a more abstract representation, finding out <em>what</em> is actually needed as an argument and not <em>how</em> the argument’s value came to be.</p>
+<p>The <code>updateUser</code> method needs access to the available roles, as it is reflected in the original method signature.
+And that’s exactly the point in your code where introducing laziness will give you the most flexible solution.</p>
+<p>The <code>Supplier&lt;T&gt;</code> type is the most low-level possibility to encapsulate certain logic to retrieve a value at your discretion.
+Instead of providing <code>updateUser</code> directly with the DAO, a lambda expression is the lazy intermediate construct for loading the roles, as seen in <a data-type="xref" href="#_01-laziness_lazy">Example 11-4</a>.</p>
+<div data-type="example" id="_01-laziness_lazy">
+<h5><span class="label">Example 11-4. </span>Updating a <code>User</code> with a lambda</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kt">void</code> <code class="nf">updateUser</code><code class="p">(</code><code class="n">User</code> <code class="n">user</code><code class="p">,</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">List</code><code class="o">&lt;</code><code class="n">Role</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="n">availableRolesFn</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO2-1" id="co_lazy_evaluation_CO2-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+  <code class="c1">// ...</code>
+
+  <code class="kd">var</code> <code class="n">availableRoles</code> <code class="o">=</code> <code class="n">availableRolesFn</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="p">)</code><code class="p">;</code>
+
+  <code class="c1">// ...</code>
+<code class="p">}</code>
+
+
+<code class="c1">// HOW TO USE</code>
+
+<code class="kd">var</code> <code class="n">user</code> <code class="o">=</code> <code class="n">loadUserById</code><code class="p">(</code><code class="mi">23L</code><code class="p">)</code><code class="p">;</code>
+
+<code class="n">updateUser</code><code class="p">(</code><code class="n">user</code><code class="p">,</code> <code class="k">this</code><code class="p">.</code><code class="na">dao</code><code class="p">:</code><code class="p">:</code><code class="n">loadAllAvailableRoles</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_lazy_evaluation_CO2-2" id="co_lazy_evaluation_CO2-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_lazy_evaluation_CO2-1" id="callout_lazy_evaluation_CO2-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The <code>updateUser</code> method signature has to be changed to accept a <code>Supplier&lt;List&lt;Role&gt;&gt;</code> instead of the already loaded <code>List&lt;Role&gt;</code> or the DAO itself.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO2-2" id="callout_lazy_evaluation_CO2-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The logic of how to acquire the roles is now encapsulated in a method reference.</p></dd>
+</dl>
+<p>Making <code>updateUser</code> a higher-order function by accepting a <code>Supplier</code> creates a superficial new layer without requiring an additional custom type wrapping the role-loading process.</p>
+<p>Using the <code>DAO</code> directly as an argument eliminates the downsides:</p>
+<ul>
+<li>
+<p>There’s no longer a connection between the <code>DAO</code> and the <code>updateUser</code> method, creating the possibility of a pure, side-effect-free method.</p>
+</li>
+<li>
+<p>You don’t need an additional type to represent the abstraction.
+The already available <code>Supplier&lt;T&gt;</code> functional interface is the simplest and most compatible form of abstraction possible.</p>
+</li>
+<li>
+<p>Testability is restored without requiring the possibly complicated mocking of a DAO.</p>
+</li>
+</ul>
+<p>Costly operations, like database queries, can benefit immensely from a lazy approach if the call is avoidable.
+That doesn’t mean, though, that making all method arguments lazy without a real need is the right approach, either.
+There are other solutions, too, like caching the result of costly calls, that might be simpler to use than designing your method calls to accept lazy arguments.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Delayed Executions with Thunks" data-type="sect1"><div class="sect1" id="_01-lazy_delayed-executions-with-thunks">
+<h1>Delayed Executions with Thunks</h1>
+<p>Lambda expressions are a simple and low-level way to encapsulate an expression for later evaluation.
+One missing thing, though, is storing the result after evaluation — <em>memoization</em> — so you don’t re-evaluate an expression if called twice.
+There’s an easy way to remedy this omission: <em>Thunks</em>.</p>
+<p>A Thunk is a wrapper around a computation that is delayed until the result is needed.
+Unlike a <code>Supplier&lt;T&gt;</code>, which also delays a computation, a Thunk only evaluates once and directly returns the result on subsequent calls.</p>
+<p>Thunks fall into the general category of <em>lazy loading/initialization</em>, a design pattern often found in object-oriented code.
+Both techniques — lazy loading and lazy initialization — are similar mechanisms for achieving the same goal: non-strict evaluation and caching the result.
+Where a <code>Supplier&lt;T&gt;</code> just defers the evaluation, a Thunk also caches its result.</p>
+<p>Let’s create a simple Thunk that follows the <em>virtual proxy</em> design-pattern<sup><a data-type="noteref" href="ch11.xhtml#idm45115221832208" id="idm45115221832208-marker">3</a></sup> to be a drop-in replacement for <code>Supplier&lt;T&gt;</code>.</p>
+<section data-pdf-bookmark="Creating a Simple Thunk" data-type="sect2"><div class="sect2" id="idm45115221830064">
+<h2>Creating a Simple Thunk</h2>
+<p>The most straightforward approach is wrapping a <code>Supplier&lt;T&gt;</code> instance and storing its result after its first evaluation.
+By also implementing the <code>Supplier&lt;T&gt;</code> interface, the Thunk becomes a drop-in replacement, as shown in <a data-type="xref" href="#_01-lazy_thunk_01">Example 11-5</a>.</p>
+<div data-type="example" id="_01-lazy_thunk_01">
+<h5><span class="label">Example 11-5. </span>A simple <code>Thunk&lt;T&gt;</code></h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="kd">implements</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO3-1" id="co_lazy_evaluation_CO3-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+
+  <code class="kd">private</code> <code class="kd">final</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">expression</code><code class="p">;</code> <a class="co" href="#callout_lazy_evaluation_CO3-2" id="co_lazy_evaluation_CO3-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+
+  <code class="kd">private</code> <code class="n">T</code> <code class="n">result</code><code class="p">;</code> <a class="co" href="#callout_lazy_evaluation_CO3-3" id="co_lazy_evaluation_CO3-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+
+  <code class="kd">private</code> <code class="nf">Thunk</code><code class="p">(</code><code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">expression</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">this</code><code class="p">.</code><code class="na">expression</code> <code class="o">=</code> <code class="n">expression</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="nd">@Override</code>
+  <code class="kd">public</code> <code class="n">T</code> <code class="nf">get</code><code class="p">(</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">if</code> <code class="p">(</code><code class="k">this</code><code class="p">.</code><code class="na">result</code> <code class="o">=</code><code class="o">=</code> <code class="kc">null</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO3-4" id="co_lazy_evaluation_CO3-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+      <code class="k">this</code><code class="p">.</code><code class="na">result</code> <code class="o">=</code> <code class="k">this</code><code class="p">.</code><code class="na">expression</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="p">)</code><code class="p">;</code>
+    <code class="p">}</code>
+    <code class="k">return</code> <code class="k">this</code><code class="p">.</code><code class="na">result</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">public</code> <code class="kd">static</code> <code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="nf">of</code><code class="p">(</code><code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">expression</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO3-5" id="co_lazy_evaluation_CO3-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a>
+    <code class="k">if</code> <code class="p">(</code><code class="n">expression</code> <code class="k">instanceof</code> <code class="n">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO3-6" id="co_lazy_evaluation_CO3-6"><img alt="6" height="12" src="assets/6.png" width="12"/></a>
+      <code class="k">return</code> <code class="p">(</code><code class="n">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">)</code> <code class="n">expression</code><code class="p">;</code>
+    <code class="p">}</code>
+
+    <code class="k">return</code> <code class="k">new</code> <code class="n">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">(</code><code class="n">expression</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_lazy_evaluation_CO3-1" id="callout_lazy_evaluation_CO3-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p><code>Thunk&lt;T&gt;</code> implements <code>Supplier&lt;T&gt;</code> to serve as a drop-in replacement.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO3-2" id="callout_lazy_evaluation_CO3-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The actual <code>Supplier&lt;T&gt;</code> needs to be stored to delay evaluation.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO3-3" id="callout_lazy_evaluation_CO3-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The result must be stored after evaluation.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO3-4" id="callout_lazy_evaluation_CO3-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>If not evaluated yet, the expression gets resolved, and its result is stored.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO3-5" id="callout_lazy_evaluation_CO3-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a></dt>
+<dd><p>A convenience factory method to create a <code>Thunk</code> without needing <code>new</code> or generic type information, so the only constructor can be <code>private</code>.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO3-6" id="callout_lazy_evaluation_CO3-6"><img alt="6" height="12" src="assets/6.png" width="12"/></a></dt>
+<dd><p>No need to create a <code>Thunk&lt;T&gt;</code> for a <code>Thunk&lt;T&gt;</code>.</p></dd>
+</dl>
+<p>This Thunk implementation is simple yet powerful.
+It adds memoization by calling a factory method with any <code>Supplier&lt;T&gt;</code> to create a drop-in replacement.
+Updating a <code>User</code>, like in the previous section, requires wrapping the method reference in the <code>Thunk.of</code> method:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">updateUser</code><code class="p">(</code><code class="n">user</code><code class="p">,</code> <code class="n">Thunk</code><code class="p">.</code><code class="na">of</code><code class="p">(</code><code class="k">this</code><code class="p">.</code><code class="na">dao</code><code class="p">::</code><code class="n">loadAllAvailableRoles</code><code class="p">));</code></pre>
+<p>The functional additions to <code>Thunk&lt;T&gt;</code> don’t have to stop here.
+You can easily add “glue methods,” as I discussed in <a data-type="xref" href="ch02.xhtml#_01-functional-java">Chapter 2</a>, to support functional composition, as shown in <a data-type="xref" href="#_01-lazy_thunk_02">Example 11-6</a></p>
+<div data-type="example" id="_01-lazy_thunk_02">
+<h5><span class="label">Example 11-6. </span>Functional additions to <code>Thunk&lt;T&gt;</code></h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="kd">implements</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="p">{</code>
+
+  <code class="c1">// ...</code>
+
+  <code class="kd">public</code> <code class="kd">static</code> <code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="nf">of</code><code class="p">(</code><code class="n">T</code> <code class="n">value</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO4-1" id="co_lazy_evaluation_CO4-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+    <code class="k">return</code> <code class="k">new</code> <code class="n">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">(</code><code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">value</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">public</code> <code class="o">&lt;</code><code class="n">R</code><code class="o">&gt;</code> <code class="n">Thunk</code><code class="o">&lt;</code><code class="n">R</code><code class="o">&gt;</code> <code class="nf">map</code><code class="p">(</code><code class="n">Function</code><code class="o">&lt;</code><code class="n">T</code><code class="p">,</code> <code class="n">R</code><code class="o">&gt;</code> <code class="n">mapper</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO4-2" id="co_lazy_evaluation_CO4-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+    <code class="k">return</code> <code class="n">Thunk</code><code class="p">.</code><code class="na">of</code><code class="p">(</code><code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">mapper</code><code class="p">.</code><code class="na">apply</code><code class="p">(</code><code class="n">get</code><code class="p">(</code><code class="p">)</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">public</code> <code class="o">&lt;</code><code class="n">R</code><code class="o">&gt;</code> <code class="n">Thunk</code><code class="o">&lt;</code><code class="n">R</code><code class="o">&gt;</code> <code class="nf">flatMap</code><code class="p">(</code><code class="n">Function</code><code class="o">&lt;</code><code class="n">T</code><code class="p">,</code> <code class="n">Thunk</code><code class="o">&lt;</code><code class="n">R</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="n">mapper</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO4-3" id="co_lazy_evaluation_CO4-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+    <code class="k">return</code> <code class="n">Thunk</code><code class="p">.</code><code class="na">of</code><code class="p">(</code><code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">mapper</code><code class="p">.</code><code class="na">apply</code><code class="p">(</code><code class="n">get</code><code class="p">(</code><code class="p">)</code><code class="p">)</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">public</code> <code class="kt">void</code> <code class="nf">accept</code><code class="p">(</code><code class="n">Consumer</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">consumer</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO4-4" id="co_lazy_evaluation_CO4-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+    <code class="n">consumer</code><code class="p">.</code><code class="na">accept</code><code class="p">(</code><code class="n">get</code><code class="p">(</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_lazy_evaluation_CO4-1" id="callout_lazy_evaluation_CO4-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>Factory method for creating a <code>Thunk&lt;T&gt;</code> of a single value instead of an <code>Supplier&lt;T&gt;</code>.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO4-2" id="callout_lazy_evaluation_CO4-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>Creates a new <code>Thunk&lt;R&gt;</code> including the <code>mapper</code> function.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO4-3" id="callout_lazy_evaluation_CO4-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>Creates a new <code>Thunk&lt;R&gt;</code> from a function that returns a+Thunk&lt;T&gt;+ without needlessly wrapping it in another <code>Thunk</code>.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO4-4" id="callout_lazy_evaluation_CO4-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>Consumes a Thunks’ result.</p></dd>
+</dl>
+<p>With the addition of “glue” methods, the <code>Thunk&lt;T&gt;</code> type becomes a more versatile utility type for creating lazy pipelines for single expressions.</p>
+<p>One general problem remains, though: <em>thread-safety</em>.</p>
+</div></section>
+<section data-pdf-bookmark="A Thread-Safe Thunk" data-type="sect2"><div class="sect2" id="idm45115221829408">
+<h2>A Thread-Safe Thunk</h2>
+<p>For single-threaded environments, the <code>Thunk&lt;T&gt;</code> implementation I discussed in the previous section works as intended.
+However, if it’s accessed from another thread while the expression evaluates, a race condition might lead to re-evaluation.
+The only way to prevent this is to synchronize it across all accessing threads.</p>
+<p>The most straightforward approach would be to add the keyword <code>synchronized</code> to its <code>get</code> method.
+However, it has the obvious downside of <em>always</em> requiring <code>synchronized</code> access and the associated overhead, even if the evaluation is already finished.
+Synchronization might not be as slow as it used to be, but it’s still an overhead for <em>every</em> call to the <code>get</code> method and definitely will slow down your code unnecessarily.</p>
+<p>So how do you change the implementation to eliminate the race condition without affecting the overall performance more than necessary?
+You do a risk analysis of <em>where</em> and <em>when</em> a race condition can occur.</p>
+<p>The risk of the evaluation-related race condition exists only until the expression is evaluated.
+After that, no double evaluation can happen, as the result is returned instead.
+That allows you to only synchronize the evaluation itself, not each call to the <code>get</code> method.</p>
+<p><a data-type="xref" href="#_01-lazy_think-cas-01">Example 11-7</a> shows the introduction of a dedicated and <code>synchronized</code> <code>evaluate</code> method.
+The actual implementation of it, and how to access its result will be explained shortly.</p>
+<div data-type="example" id="_01-lazy_think-cas-01">
+<h5><span class="label">Example 11-7. </span><code>Thunk&lt;T&gt;</code> with synchronized evaluation</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="kd">implements</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="p">{</code>
+
+  <code class="kd">private</code> <code class="nf">Thunk</code><code class="p">(</code><code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">expression</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">this</code><code class="p">.</code><code class="na">expression</code> <code class="o">=</code> <code class="p">()</code> <code class="o">-&gt;</code> <code class="n">evaluate</code><code class="p">(</code><code class="n">expression</code><code class="p">);</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="kd">synchronized</code> <code class="n">T</code> <code class="nf">evaluate</code><code class="p">(</code><code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">expression</code><code class="p">)</code> <code class="p">{</code>
+    <code class="c1">// ...</code>
+  <code class="p">}</code>
+
+  <code class="c1">// ...</code>
+<code class="p">}</code></pre></div>
+<p>The previous version of the <code>Thunk</code> used an additional field, <code>value</code>, to determine if the <code>expression</code> was already evaluated.
+The new, thread-safe variant, however, replaces the stored <code>value</code> and its checks with a dedicated abstraction that holds the value, as follows:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">private</code> <code class="kd">static</code> <code class="kd">class</code> <code class="nc">Holder</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="kd">implements</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="p">{</code>
+
+  <code class="kd">private</code> <code class="kd">final</code> <code class="n">T</code> <code class="n">value</code><code class="p">;</code>
+
+  <code class="n">Holder</code><code class="p">(</code><code class="n">T</code> <code class="n">value</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">this</code><code class="p">.</code><code class="na">value</code> <code class="o">=</code> <code class="n">value</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="nd">@Override</code>
+  <code class="kd">public</code> <code class="n">T</code> <code class="nf">get</code><code class="p">()</code> <code class="p">{</code>
+    <code class="k">return</code> <code class="k">this</code><code class="p">.</code><code class="na">value</code><code class="p">;</code>
+  <code class="p">}</code>
+<code class="p">}</code></pre>
+<p>The <code>Holder&lt;T&gt;</code> does two things:</p>
+<ul>
+<li>
+<p>Hold the evaluated value</p>
+</li>
+<li>
+<p>Implement <code>Supplier&lt;T&gt;</code></p>
+</li>
+</ul>
+<p>Thanks to being a drop-in replacement for the field <code>expression</code>, a technique known as <em>compare &amp; swap</em> (CAS).
+It’s used for designing concurrent algorithms, by comparing the value of a variable with an expected value, and if they are equal, swapping out the value for the new value.
+The operation has to be <em>atomic</em>, meaning it’s all-or-nothing for accessing the underlying data.
+That’s why the <code>evaluate</code> method has to be <code>synchronized</code>.
+Any thread can either see the data before or after, but never in-between evaluation and, therefore, eliminating the race condition.</p>
+<p>In <a data-type="xref" href="#_01-lazy_think-cas-02">Example 11-8</a>, you see a CAS implementation of <code>evaluate</code>.</p>
+<p>Now, the <code>private</code> field +expression can be replaced by the new type, as shown in <a data-type="xref" href="#_01-lazy_think-cas-01">Example 11-7</a>.</p>
+<div data-type="example" id="_01-lazy_think-cas-02">
+<h5><span class="label">Example 11-8. </span>Using <code>Holder&lt;T&gt;</code> instead of <code>Supplier&lt;T&gt;</code></h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">Thunk</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="kd">implements</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="p">{</code>
+
+  <code class="kd">private</code> <code class="kd">static</code> <code class="kd">class</code> <code class="nc">Holder</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="kd">implements</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="p">{</code>
+    <code class="c1">// ...</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">holder</code><code class="p">;</code> <a class="co" href="#callout_lazy_evaluation_CO5-1" id="co_lazy_evaluation_CO5-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+
+  <code class="kd">private</code> <code class="nf">Thunk</code><code class="p">(</code><code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">expression</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">this</code><code class="p">.</code><code class="na">holder</code> <code class="o">=</code> <code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">evaluate</code><code class="p">(</code><code class="n">expression</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="kd">synchronized</code> <code class="n">T</code> <code class="nf">evaluate</code><code class="p">(</code><code class="n">Supplier</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">expression</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">if</code> <code class="p">(</code><code class="n">Holder</code><code class="p">.</code><code class="na">class</code><code class="p">.</code><code class="na">isInstance</code><code class="p">(</code><code class="k">this</code><code class="p">.</code><code class="na">holder</code><code class="p">)</code> <code class="o">=</code><code class="o">=</code> <code class="kc">false</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_lazy_evaluation_CO5-2" id="co_lazy_evaluation_CO5-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+      <code class="kd">var</code> <code class="n">evaluated</code> <code class="o">=</code> <code class="n">expression</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="p">)</code><code class="p">;</code>
+      <code class="k">this</code><code class="p">.</code><code class="na">holder</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Holder</code><code class="o">&lt;</code><code class="o">&gt;</code><code class="p">(</code><code class="n">evaluated</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_lazy_evaluation_CO5-3" id="co_lazy_evaluation_CO5-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+    <code class="p">}</code>
+    <code class="k">return</code> <code class="k">this</code><code class="p">.</code><code class="na">holder</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="nd">@Override</code>
+  <code class="kd">public</code> <code class="n">T</code> <code class="nf">get</code><code class="p">(</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">return</code> <code class="k">this</code><code class="p">.</code><code class="na">holder</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_lazy_evaluation_CO5-4" id="co_lazy_evaluation_CO5-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+  <code class="p">}</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_lazy_evaluation_CO5-1" id="callout_lazy_evaluation_CO5-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The field gets renamed to better reflect its usage, and also made non-<code>final</code>, as it has swapped out after the expression is evaluated.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO5-2" id="callout_lazy_evaluation_CO5-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The expression only gets evaluated if the <code>holder</code> field currently isn’t a <code>Holder</code> instance, but the expression created in the constructor.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO5-3" id="callout_lazy_evaluation_CO5-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The <code>holder</code> field, at this point holding the original lambda to evaluate the initial expression, gets swapped out for a <code>Holder</code> instance with the evaluated result.</p></dd>
+<dt><a class="co" href="#co_lazy_evaluation_CO5-4" id="callout_lazy_evaluation_CO5-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>The un-<code>synchronized</code> <code>get</code> method uses the <code>holder</code> field directly to access the value, as it always references a <code>Supplier</code>.</p></dd>
+</dl>
+<p>The improved <code>Thunk&lt;T&gt;</code> implementation isn’t as simple as before, but it eliminates the race condition by decoupling the evaluation of the expression from accessing it.</p>
+<p>On first access, the <code>holder</code> field will call <code>evaluate</code>, which is <code>synchronized</code>, and therefore thread-safe.
+Any additional calls while the expression is evaluated will call to <code>evaluate</code>, too.
+Instead of a re-evaluation, the type-check of the <code>holder</code> field skips directly to returning the result of <code>this.holder.get()</code>.
+Any access after the <code>holder</code> is re-assigned will skip any <code>synchronized</code> entirely.</p>
+<p>That’s it, you now have a thread-safe, lazily evaluated <code>Supplier&lt;T&gt;</code> drop-in that only evaluates once.</p>
+<p>Our <code>Thunk</code> implementation uses <code>synchronized</code>, but there are multiple approaches to implementing a <em>compare &amp; swap</em> algorithm.
+The same general behavior can be accomplished using one of the <code>java.util.concurrent.atomic.Atomic…​</code> types in the JDK, or even use a <code>ConcurrentHashMap#computeIfAbsent</code> to prevent the race condition.
+The book “Java Concurrency” by Brian Goetz<sup><a data-type="noteref" href="ch11.xhtml#idm45115220668960" id="idm45115220668960-marker">4</a></sup> provides a good starting point for better understanding atomic variables, non-blocking synchronization, and Java’s concurrency model in general.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Final Thoughts on Laziness" data-type="sect1"><div class="sect1" id="idm45115221206224">
+<h1>Final Thoughts on Laziness</h1>
+<p>At its core, the idea of laziness boils down to deferring required work until a point in time when it’s indispensable.
+The separation of <em>creating</em> and <em>consuming</em> expressions gives you a new axis of modularity in your code.
+This approach can improve performance immensely if an operation is optional and not required for each use case.
+Lazy evaluation also means, though, that you have to give up a certain degree of control over the exact time of evaluation.</p>
+<p>The perceived and actual <em>loss of control</em> makes it much harder to reason about the required performance and memory characteristics of your code.
+The total performance requirement is the sum of all evaluated parts.
+Eager evaluation allows for quite linear and compositional performance assessment.
+Laziness shifts the actual computational cost from where expressions are defined to when they are used, with the possibility of code not being run at all.
+That’s why idiomatic lazy performance is harder to assess because the perceived performance would most likely improve immediately compared to eager evaluation, especially if your code has many costly but maybe optional code paths.
+The total performance requirements may vary on the general context and what code is actually evaluated.
+You’d have to analyze your lazy code’s “average” usage patterns and estimate the performance characteristics required under different scenarios, making straightforward benchmarking quite hard.</p>
+<p>Software development is a constant battle of <em>effectively utilizing scarce resources</em> to reach the desired, or required, performance.
+Lazy techniques, like delayed evaluation, or Streams for data processing, are low-hanging fruits<sup><a data-type="noteref" href="ch11.xhtml#idm45115220665120" id="idm45115220665120-marker">5</a></sup> to improve your code’s performance that is easy to integrate into an existing codebase.
+It definitely will reduce the required work to a minimum, maybe even zero, freeing up precious performance for other tasks.
+If some expression or costly computation can be avoided, making it lazy will most definitely be a worthwhile endeavor in the long run.</p>
+</div></section>
+<section data-pdf-bookmark="Takeaways" data-type="sect1"><div class="sect1" id="idm45115220663760">
+<h1>Takeaways</h1>
+<ul>
+<li>
+<p>Strict evaluation means expressions and method arguments evaluate immediately on declaration.</p>
+</li>
+<li>
+<p>Lazy evaluation separates <em>creating</em> and <em>consuming</em> expressions by deferring their evaluation until their result is necessary, maybe even not evaluating them at all.</p>
+</li>
+<li>
+<p><em>Strictness</em> is about “doing things”; <em>laziness</em> is about “considering things to do.”</p>
+</li>
+<li>
+<p>Java is a “strict” language regarding expressions and method arguments, although certain <em>lazy</em> operators and control structures exist.</p>
+</li>
+<li>
+<p>Lambas encapsulate expressions, making them lazy wrappers to be evaluated at your discretion.</p>
+</li>
+<li>
+<p>The JDK has several lazy runtime constructs and helper methods.
+For example, Streams are lazy functional pipelines, <code>Optional</code> and <code>Map</code> provide <em>lazy</em> additions to their general interfaces.</p>
+</li>
+<li>
+<p>The <code>Supplier&lt;T&gt;</code> interface is the simplest way to create a lazy calculation.</p>
+</li>
+<li>
+<p>Memoization, in the form of a <code>Thunk</code>, helps to avoid re-evaluation and can be used as a drop-in replacement for <code>Supplier&lt;T&gt;</code>.</p>
+</li>
+<li>
+<p>Laziness is a performance optimization powerhouse.
+The best code is the one that’s not run at all.
+The next best alternative is to run it only lazily “on-demand.”</p>
+</li>
+<li>
+<p>The assessment of performance requirements for lazy code is difficult and might conceal performance problems if tested in environments not matching a “real-world” use case.</p>
+</li>
+</ul>
+</div></section>
+<div data-type="footnotes"><p data-type="footnote" id="idm45115222435312"><sup><a href="ch11.xhtml#idm45115222435312-marker">1</a></sup> See <a data-type="xref" href="ch02.xhtml#_01-functions_lambdas_effectively-final">“Effectively final”</a> for the definition and requirements of <em>effectively</em> <code>final</code> variables.</p><p data-type="footnote" id="idm45115222180992"><sup><a href="ch11.xhtml#idm45115222180992-marker">2</a></sup> A <em>DAO</em> (data access object) is a pattern to provide an abstract interface to a persistence layer like a database. It translates application calls to specific operations on the underlying persistence layer without exposing details of it.</p><p data-type="footnote" id="idm45115221832208"><sup><a href="ch11.xhtml#idm45115221832208-marker">3</a></sup> Wikipedia entry on <a href="https://en.wikipedia.org/wiki/Proxy_pattern">proxies</a> provides an overview of the different kinds of proxies and their usage.</p><p data-type="footnote" id="idm45115220668960"><sup><a href="ch11.xhtml#idm45115220668960-marker">4</a></sup> Goetz, Brian. 2006. “Java Concurrency in Practice.” Addison-Wesley. ISBN 978-0321349606.</p><p data-type="footnote" id="idm45115220665120"><sup><a href="ch11.xhtml#idm45115220665120-marker">5</a></sup> The concept of a <em>low-hanging fruit</em> describes a goal that is easy to achieve or taken advantage of, compared to the alternatives, like re-designing or refactoring your whole codebase.</p></div></div></section></div></body></html>

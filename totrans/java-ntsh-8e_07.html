@@ -1,0 +1,1000 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><section data-nutshell-tab="Memory and Concurrency" data-pdf-bookmark="Chapter 6. Java’s Approach to Memory and Concurrency" data-type="chapter" epub:type="chapter"><div class="chapter" id="javanut8-CHP-6">
+<h1><span class="label">Chapter 6. </span>Java’s Approach to Memory <span class="keep-together">and Concurrency</span></h1>
+<p><a data-primary="memory management" data-seealso="concurrency" data-type="indexterm" id="ix_ch06-asciidoc0"/>This chapter is an introduction to the handling of <a data-primary="concurrency" data-type="indexterm" id="idm45927731047472"/>concurrency
+(multithreading) and memory in the Java platform. These topics are
+inherently intertwined, so it makes sense to treat them together. We
+will cover:</p>
+<ul>
+<li>
+<p>Introduction to Java’s memory management</p>
+</li>
+<li>
+<p>The basic mark-and-sweep garbage collection (GC) algorithm</p>
+</li>
+<li>
+<p>How the HotSpot JVM optimizes GC according to the lifetime of the object</p>
+</li>
+<li>
+<p>Java’s concurrency primitives</p>
+</li>
+<li>
+<p>Data visibility and mutability</p>
+</li>
+</ul>
+<section data-pdf-bookmark="Basic Concepts of Java Memory Management" data-type="sect1"><div class="sect1" id="idm45927731041424">
+<h1>Basic Concepts of Java Memory Management</h1>
+<p><a data-primary="memory management" data-secondary="basic concepts" data-type="indexterm" id="ix_ch06-asciidoc1"/>In Java, the memory occupied by an object is automatically reclaimed when the object is no longer needed.
+This is done through a process known as <em>garbage collection</em> (or GC).
+Garbage collection is a technique that has been around for years and was pioneered by languages such as Lisp.
+It takes some getting used to for those programmers accustomed to languages such as C and C++, in which you must call the <code>free()</code> function or the <code>delete</code> operator to reclaim memory.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>The fact that you don’t need to remember to destroy every object you
+create is one of the features that makes Java a pleasant language to
+work with. It is also one of the features that makes programs written in
+Java less prone to bugs than those written in languages that don’t
+support automatic garbage <span class="keep-together">collection</span>.</p>
+</div>
+<p>Different VM implementations handle garbage collection in different
+ways, and the specifications do not impose very stringent restrictions
+on how GC must be implemented. Later in this chapter, we will discuss
+the HotSpot JVM (which is the basis of both the Oracle and OpenJDK
+implementations of Java). Although this is not the only JVM that you may
+encounter, it is by far the most common among server-side deployments and
+provides the reference example of a modern production JVM.</p>
+<section data-pdf-bookmark="Memory Leaks in Java" data-type="sect2"><div class="sect2" id="idm45927731034992">
+<h2>Memory Leaks in Java</h2>
+<p><a data-primary="memory leaks" data-type="indexterm" id="idm45927731033616"/><a data-primary="memory management" data-secondary="memory leaks" data-type="indexterm" id="idm45927731032912"/>The fact that Java supports garbage collection dramatically reduces the incidence of <em>memory leaks</em>.
+A memory leak occurs when memory is allocated and never reclaimed. At first glance, it might seem that
+garbage collection prevents all memory leaks because it reclaims all unused objects.</p>
+<p>A memory leak can still occur in Java, however, if a valid (but unused)
+reference to an unused object is left hanging around. For example, when
+a method runs for a long time (or forever), the local variables in that
+method can retain object references much longer than they are actually
+required. The following code illustrates:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">static</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">main</code><code class="p">(</code><code class="n">String</code><code class="w"> </code><code class="n">args</code><code class="o">[]</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="kt">int</code><code class="w"> </code><code class="n">bigArray</code><code class="o">[]</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="kt">int</code><code class="o">[</code><code class="mi">100000</code><code class="o">]</code><code class="p">;</code><code class="w"/>
+
+<code class="w">  </code><code class="c1">// Do some computations with bigArray and get a result.</code><code class="w"/>
+<code class="w">  </code><code class="kt">int</code><code class="w"> </code><code class="n">result</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">compute</code><code class="p">(</code><code class="n">bigArray</code><code class="p">);</code><code class="w"/>
+
+<code class="w">  </code><code class="c1">// We no longer need bigArray. It will get garbage collected when</code><code class="w"/>
+<code class="w">  </code><code class="c1">// there are no more references to it. Because bigArray is a local</code><code class="w"/>
+<code class="w">  </code><code class="c1">// variable, it refers to the array until this method returns. But</code><code class="w"/>
+<code class="w">  </code><code class="c1">// this method doesn't return.</code><code class="w"/>
+<code class="w">  </code><code class="c1">// If we explicitly sever the reference by assigning it to</code><code class="w"/>
+<code class="w">  </code><code class="c1">// null then the garbage collector knows it can reclaim the array.</code><code class="w"/>
+<code class="w">  </code><code class="n">bigArray</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="kc">null</code><code class="p">;</code><code class="w"/>
+
+<code class="w">  </code><code class="c1">// Loop forever, handling the user's input</code><code class="w"/>
+<code class="w">  </code><code class="k">for</code><code class="p">(;;)</code><code class="w"> </code><code class="n">handle_input</code><code class="p">(</code><code class="n">result</code><code class="p">);</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p class="pagebreak-before">Memory leaks can also occur when you use a <code>HashMap</code> or similar data structure to associate one object with another.
+Even when neither object is required anymore, the association remains in the map, preventing the objects from being reclaimed until the map itself is reclaimed.
+If the map has a substantially longer lifetime than the objects it holds, this can cause memory leaks.</p>
+</div></section>
+<section data-pdf-bookmark="Introducing Mark-and-Sweep" data-type="sect2"><div class="sect2" id="idm45927730940720">
+<h2>Introducing Mark-and-Sweep</h2>
+<p><a data-primary="mark-and-sweep algorithm" data-type="indexterm" id="ix_ch06-asciidoc2"/><a data-primary="memory management" data-secondary="mark-and-sweep algorithm" data-type="indexterm" id="ix_ch06-asciidoc3"/>Java GC typically relies on an algorithm from a family broadly known as <em>mark-and-sweep</em>.
+To understand these algorithms, recall that all Java objects are created in the heap, and a reference (basically a pointer) to them is stored in a Java local variable (or field) when an object is created.
+Local variables live in the method’s stack frame, and if an object is returned from a method, then the reference is passed back to the caller’s stack frame when the method exits.</p>
+<p>As all objects are allocated in the heap, GC will trigger when the heap gets full (or before, depending on the details).
+The basic idea of mark-and-sweep is to <em>trace</em> the heap and identify which objects are still in use.
+This can be done by examining the stack frames of each Java thread (and a few other sources of references) and following any references into the heap.
+Each object located is <em>marked</em> as still alive and can then be checked to see if it has any fields that are of reference type.
+If so, these references can be traced and marked as well.</p>
+<p>When the recursive tracing activity has completed, all remaining unmarked objects are known to be no longer needed and the heap space they occupy can be <em>swept</em> as garbage, i.e., the memory they used is reclaimed to use in further object allocations.
+<a data-primary="exact garbage collector" data-type="indexterm" id="idm45927730926544"/>If this analysis can be carried out exactly, then this type of collector is known, unsurprisingly enough, as an <em>exact garbage collector</em>.
+For all practical purposes, all Java GCs can be considered to be exact, but this may not be true in other software environments.</p>
+<p>In a real JVM, there will very likely be different areas of heap memory, and real programs will use all of them in normal operation. In <a data-type="xref" href="#javanut8-CHP-6-FIG-1">Figure 6-1</a> we show one possible layout of the heap, with two threads (T1 and T2) holding references that point into the heap.</p>
+<p>The different areas are called <em>Eden</em>, <em>Survivor</em> and <em>Tenured</em>; we’ll meet each of these later in the chapter and see how they relate to each other.
+For the sake of simplicity, the figures show an older form of the Java heap, where each memory area is a single lump of memory.
+Modern collectors don’t actually lay objects out this way, but it’s easier to understand by thinking about it this way first!</p>
+<figure><div class="figure" id="javanut8-CHP-6-FIG-1">
+<img alt="JN7 0601" height="682" src="assets/jns8_0601.png" width="600"/>
+<h6><span class="label">Figure 6-1. </span>Heap structure</h6>
+</div></figure>
+<p>The figure also shows that it would be dangerous to move objects that application threads have references to while the program is running.</p>
+<p><a data-primary="stop-the-world (STW) garbage collection" data-type="indexterm" id="idm45927730891296"/><a data-primary="STW (stop-the-world) garbage collection" data-type="indexterm" id="idm45927730890688"/>To avoid this, a simple tracing GC like the one just described will cause a
+<em>stop-the-world</em> (STW) pause when it runs.
+This works because all application threads are stopped, then GC occurs, and finally application threads are started up again.
+<a data-primary="safepoint" data-type="indexterm" id="idm45927730889568"/>The runtime takes care of this by halting application threads as they reach a <em>safepoint</em>—for example, the start of a loop or just before a method call returns.
+At these execution points, the runtime knows that it can stop an application thread without a problem.</p>
+<p>These pauses sometimes worry developers, but for most mainstream usages,
+Java is running on top of an operating system (and possibly multiple virtualization layers) that is constantly
+swapping processes on and off processor cores, so this slight additional
+stoppage is usually not a concern. In the HotSpot case, a large amount
+of work has been done to optimize GC and to reduce STW times, for those
+cases where it is important to an application’s workload. We will
+discuss some of those optimizations in the next section<a data-startref="ix_ch06-asciidoc3" data-type="indexterm" id="idm45927730888064"/><a data-startref="ix_ch06-asciidoc2" data-type="indexterm" id="idm45927730887456"/>.<a data-startref="ix_ch06-asciidoc1" data-type="indexterm" id="idm45927730886720"/></p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="How the JVM Optimizes Garbage Collection" data-type="sect1"><div class="sect1" id="idm45927730885984">
+<h1>How the JVM Optimizes Garbage Collection</h1>
+<p><a data-primary="garbage collection (GC)" data-seealso="memory management" data-type="indexterm" id="ix_ch06-asciidoc4"/><a data-primary="garbage collection (GC)" data-secondary="JVM's optimization of" data-type="indexterm" id="ix_ch06-asciidoc5"/><a data-primary="Java Virtual Machine (JVM)" data-secondary="garbage collection optimization by" data-type="indexterm" id="ix_ch06-asciidoc6"/><a data-primary="memory management" data-secondary="JVM's optimization of garbage collection" data-type="indexterm" id="ix_ch06-asciidoc7"/>The <a data-primary="weak generational hypothesis (WGH)" data-type="indexterm" id="idm45927730879120"/><em>weak generational hypothesis</em> (WGH) is a great example of one
+of the runtime facts about software that we introduced in
+<a data-type="xref" href="ch01.xhtml#javanut8-CHP-1">Chapter 1</a>. Simply put, it is that objects tend to
+have one of a small number of possible life expectancies (referred to
+as <span class="keep-together"><em>generations</em></span>).</p>
+<p>Usually objects are alive for only a very short amount of time (sometimes
+called transient objects) and then become eligible for garbage collection.
+<a data-primary="working set" data-type="indexterm" id="idm45927730875792"/>However, some small fraction of objects live longer and are destined to become part of the longer-term state of the program (sometimes referred to as the <em>working set</em>).
+This can be seen in <a data-type="xref" href="#javanut8-CHP-6-FIG-2">Figure 6-2</a> where we see volume of memory (or number of objects created) plotted against expected lifetime.</p>
+<figure><div class="figure" id="javanut8-CHP-6-FIG-2">
+<img alt="JN7 0602" height="392" src="assets/jns8_0602.png" width="600"/>
+<h6><span class="label">Figure 6-2. </span>Weak generational hypothesis</h6>
+</div></figure>
+<p>This fact is not deducible from static analysis of programs, and yet when we measure
+the runtime behavior of software, we see that it is broadly true across
+a wide range of workloads.</p>
+<p>The HotSpot JVM has a garbage collection subsystem that is designed
+specifically to take advantage of the weak generational hypothesis, and
+in this section, we will discuss how these techniques apply to
+short-lived objects (which is the majority case). This discussion is
+directly applicable to HotSpot, but other JVMs often employ
+similar or related techniques.</p>
+<p><a data-primary="generational garbage collector" data-type="indexterm" id="idm45927730870496"/>In its simplest form, a <em>generational garbage collector</em> is one
+that takes notice of the WGH. They take the position that some extra
+bookkeeping to monitor memory will be more than paid for by gains
+obtained by being friendly to the WGH. In the simplest forms of
+generational collector, there are usually just two generations—usually
+referred to as young and old generation.</p>
+<section data-pdf-bookmark="Evacuation" data-type="sect2"><div class="sect2" id="idm45927730869040">
+<h2>Evacuation</h2>
+<p><a data-primary="evacuation" data-type="indexterm" id="ix_ch06-asciidoc8"/><a data-primary="garbage collection (GC)" data-secondary="evacuation" data-type="indexterm" id="ix_ch06-asciidoc9"/>In our original formulation of mark-and-sweep, during the cleanup phase, the GC reclaimed individual objects for reuse.
+<a data-primary="free list" data-type="indexterm" id="idm45927730865200"/>This is fine, as far as it goes, but it leads to issues such as memory fragmentation and the GC needing to maintain a “free list” of memory blocks that are available.
+However, if the WGH is true, and on any given GC cycle most objects are dead, then it may make sense to use an alternative approach to reclaiming space.</p>
+<p><a data-primary="Eden space" data-type="indexterm" id="idm45927730864144"/>This works by dividing the heap up into separate memory spaces; new objects are created in a space called <em>Eden</em>.
+Then, on each GC run, we locate only the live objects and move them to a different space, in a process called <em>evacuation</em>.
+<a data-primary="evacuating collectors" data-type="indexterm" id="idm45927730862256"/>Collectors that do this are referred to as <em>evacuating collectors</em>, and they have the property that the entire memory space can be wiped at the end of the collection, to be reused again and again.</p>
+<p><a data-type="xref" href="#javanut8-CHP-6-FIG-3">Figure 6-3</a> shows an evacuating collector in action, with solid blocks representing surviving objects, and hatched boxes representing allocated but now dead (and unreachable) objects.</p>
+<figure><div class="figure" id="javanut8-CHP-6-FIG-3">
+<img alt="JN7 0603" height="327" src="assets/jns8_0603.png" width="600"/>
+<h6><span class="label">Figure 6-3. </span>Evacuating collectors</h6>
+</div></figure>
+<p>This is potentially much more efficient than the naive collection approach, because the dead objects are never touched.
+This means that the GC time is proportional to the number of live objects, rather than the number of allocated objects.
+The only downside is slightly more bookkeeping—we have to pay the cost of copying the live objects, but this is almost always a very small price compared to the huge gains realized by evacuation strategies.</p>
+<p><a data-primary="per-thread allocation" data-type="indexterm" id="idm45927730857216"/>The use of an evacuating collector also allows the use of per-thread
+allocation. <a data-primary="thread-local allocation buffer (TLAB)" data-type="indexterm" id="idm45927730856384"/><a data-primary="TLAB (thread-local allocation buffer)" data-type="indexterm" id="idm45927730855648"/>This means that each application thread can be given a
+contiguous chunk of memory (called a <em>thread-local allocation buffer</em> or TLAB)
+for its exclusive use when allocating new objects. When new objects are
+allocated, this just involves bumping a pointer in the allocation
+buffer, an extremely cheap operation.</p>
+<p>If an object is created just before a collection starts, then it will
+not have time to fulfill its purpose and die before the GC cycle starts.
+In a collector with only two generations, this short-lived object will
+be moved into the long-lived region, die almost immediately, and then
+stay there until the next full collection. As these are a lot less
+frequent (and typically a lot more expensive), this seems rather wasteful.</p>
+<p><a data-primary="survivor space" data-type="indexterm" id="idm45927730853664"/>To mitigate this, HotSpot has a concept of a <em>survivor space</em>, an area used to house objects that have survived previous collections of young objects.
+<a data-primary="tenuring threshold" data-type="indexterm" id="idm45927730852048"/>A surviving object is copied by the evacuating collector between survivor spaces until a <em>tenuring threshold</em> is reached, when the object will be <em>promoted</em> to the old generation, known as  <em>Tenured</em> or <em>OldGen</em>.
+This solves the problem of short-lived objects cluttering up the old generation, at the cost of more complexity in the GC subsystem.<a data-startref="ix_ch06-asciidoc9" data-type="indexterm" id="idm45927730849392"/><a data-startref="ix_ch06-asciidoc8" data-type="indexterm" id="idm45927730848688"/></p>
+</div></section>
+<section data-pdf-bookmark="Compaction" data-type="sect2"><div class="sect2" id="idm45927730848016">
+<h2>Compaction</h2>
+<p><a data-primary="compacting collector" data-type="indexterm" id="idm45927730846704"/><a data-primary="compaction" data-type="indexterm" id="idm45927730846000"/><a data-primary="garbage collection (GC)" data-secondary="compaction" data-type="indexterm" id="idm45927730845328"/>A different form of collection algorithm is known as a <em>compacting collector</em>.
+The main feature of these collectors is that, at the end of the collection cycle, allocated memory (i.e., surviving objects) is arranged as a single contiguous area within the collected region.</p>
+<p>The normal case is that all the surviving objects have been “shuffled up” within the memory pool (or region) usually to the start of the memory range, and there is now a pointer indicating the start of empty space available for objects to be written into once application threads restart.</p>
+<p>Compacting collectors will avoid memory fragmentation but typically are much more expensive in terms of amount of CPU consumed than evacuating collectors.
+There are design trade-offs between the two algorithms (the details of which are beyond the scope of this book), but both techniques are used in production collectors in Java (and in many other programming languages).
+The space where long-lived objects end up is typically cleaned using a compacting collector.</p>
+<p>A full discussion of the details of the GC subsystem is outside the scope of this book.
+For production applications that have to care about these details, specialist material such as <a class="orm:hideurl" href="http://shop.oreilly.com/product/0636920121718.do"><em>Optimizing Java</em></a> (O’Reilly) should be consulted.<a data-startref="ix_ch06-asciidoc7" data-type="indexterm" id="idm45927730840944"/><a data-startref="ix_ch06-asciidoc6" data-type="indexterm" id="idm45927730840272"/><a data-startref="ix_ch06-asciidoc5" data-type="indexterm" id="idm45927730839600"/><a data-startref="ix_ch06-asciidoc4" data-type="indexterm" id="idm45927730838928"/></p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="The HotSpot Heap" data-type="sect1"><div class="sect1" id="idm45927730838128">
+<h1>The HotSpot Heap</h1>
+<p><a data-primary="HotSpot heap" data-type="indexterm" id="ix_ch06-asciidoc10"/><a data-primary="memory management" data-secondary="HotSpot heap" data-type="indexterm" id="ix_ch06-asciidoc11"/>The HotSpot JVM is a relatively complex piece of code, made up of an
+interpreter and a just-in-time compiler, as well as a user-space memory
+management subsystem. It is composed of a mixture of C, C++, and a
+fairly large amount of platform-specific assembly code.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>HotSpot manages the JVM heap itself, more-or-less completely in user space, and does not need to perform system calls to allocate or free memory.
+The area where objects are initially created is usually called Eden (or the Nursery), and most production JVMs will use an evacuating strategy when collecting Eden.</p>
+</div>
+<p>At this point, let’s summarize our description of the HotSpot heap and recap its basic features:</p>
+<ul>
+<li>
+<p>The Java heap is a contiguous block of memory, which is reserved at JVM startup.</p>
+</li>
+<li>
+<p>Only some of the heap is initially allocated to the various memory pools.</p>
+</li>
+<li>
+<p>As the application runs, memory pools are resized as needed.</p>
+</li>
+<li>
+<p>These resizes are performed by the GC subsystem.</p>
+</li>
+<li>
+<p>Objects are created in Eden by application threads and are removed by a nondeterministic GC cycle.</p>
+</li>
+<li>
+<p>The GC cycle runs when necessary (i.e., when memory is getting low).</p>
+</li>
+<li>
+<p>The heap is divided into two generations, young and old.</p>
+</li>
+<li>
+<p><a data-primary="young generation" data-type="indexterm" id="idm45927730824512"/>The young generation is made up of Eden and survivor spaces, whereas the old generation is just one memory space.</p>
+</li>
+<li>
+<p>After surviving several GC cycles, objects get promoted to the old generation.</p>
+</li>
+<li>
+<p>Collections that collect only the young generation are usually very cheap (in terms of computation required).</p>
+</li>
+<li>
+<p>HotSpot uses an advanced form of mark-and-sweep and is prepared to do extra bookkeeping to improve GC performance.</p>
+</li>
+</ul>
+<p>When discussing garbage collectors, developers should know one other important terminology distinction:</p>
+<dl>
+<dt>Parallel collector</dt>
+<dd>
+<p><a data-primary="parallel collector" data-type="indexterm" id="idm45927730818672"/>A garbage collector that uses multiple threads to perform collection</p>
+</dd>
+<dt>Concurrent collector</dt>
+<dd>
+<p><a data-primary="concurrent collector" data-type="indexterm" id="idm45927730816688"/>A garbage collector that can run at the same time as application
+threads are still running</p>
+</dd>
+</dl>
+<p>In the discussion so far, the collection algorithms we have been describing have implicitly all been parallel, but not concurrent, collectors.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>In modern approaches to GC, there is a growing trend toward using partially concurrent algorithms.
+These types of algorithms are much more elaborate and computationally expensive than STW algorithms and involve trade-offs.
+However, today’s applications are typically willing to trade some extra computation for reduced application pauses.</p>
+</div>
+<p>In legacy Java versions (version 8 and older), the heap has a simple structure: each memory pool (Eden, survivor spaces, and Tenured) is a contiguous block of memory.
+This is the structure that we’ve shown in the diagrams, as it’s easier for beginners to visualize.
+The default collector for the old generation in these older versions is called <em>Parallel</em>.
+However, in modern versions of HotSpot, a new, partially concurrent collection algorithm known as <em>Garbage First</em> (G1) has become the default.</p>
+<section data-pdf-bookmark="G1" data-type="sect2"><div class="sect2" id="idm45927730812480">
+<h2>G1</h2>
+<p><a data-primary="Garbage First (G1) collector" data-type="indexterm" id="idm45927730810944"/><a data-primary="region-based collector" data-type="indexterm" id="idm45927730810224"/>G1 is an example of a <em>region-based collector</em> and has a different heap layout than the old-style heap.
+A region is an area of memory (usually 1M in size, but larger heaps may have regions of 2, 4, 8, 16, or 32M) where all the objects belong to the same memory pool.
+However, in a regional collector, the different regions that make up a pool are not necessarily located next to each other in memory.
+<a data-primary="Java 8" data-primary-sortas="Java 08" data-secondary="G1 collector" data-type="indexterm" id="idm45927730809008"/>This is unlike the Java 8 heap, where each pool is contiguous, although in both cases the entire heap remains contiguous.</p>
+<div data-type="warning" epub:type="warning"><h6>Warning</h6>
+<p>G1 uses a different version of the algorithm in each Java version, and there are some important differences in terms of performance and other behavior between versions.
+It is very important that, when upgrading from Java 8 to a later version and adopting G1, you undertake a full performance retest.
+You may find that when switching to Java 11 or 17, you require fewer resources (and may even save money).</p>
+</div>
+<p>G1 focuses its attention on regions that are mostly garbage, as they have the best free memory recovery.
+<a data-primary="incremental compaction" data-type="indexterm" id="idm45927730805984"/>It is an evacuating collector and does <em>incremental compaction</em> when evacuating individual regions.</p>
+<p><a data-primary="pause goals" data-type="indexterm" id="idm45927730804432"/>The G1 collector was originally intended to take over from a previous collector, CMS, as the low-pause collector, and it allows the user to specify <em>pause goals</em> in terms of how long and how often to pause when doing GC.</p>
+<p>The JVM provides a command-line switch that controls how long the collector will aim to pause: <code>-XX:MaxGCPauseMillis=200</code>.
+This means that the default pause time goal is 200 ms, but you can change this value depending on your needs.</p>
+<p>There are, of course, limits to how far the collector can be pushed.
+Java GC is driven by the rate at which new memory is allocated, which can be highly unpredictable for many Java applications.</p>
+<p>As noted, G1 was originally intended to be a replacement low-pause collector.
+However, the overall characteristics of its behavior have meant that it has actually evolved into a more general-purpose collector (which is why it has now become the default).</p>
+<p>Note that the development of a new production-grade collector that is suitable for general use is not a quick process.
+In the next section, let’s move on to discuss the alternative collectors that are provided by HotSpot (including the parallel collector of Java 8).</p>
+<p>A detailed full treatment is outside the scope of the book, but it is worth knowing about the existence of alternate collectors.
+For non-HotSpot users, you should consult your JVM’s documentation to see what options may be available for you.</p>
+</div></section>
+<section data-pdf-bookmark="ParallelOld" data-type="sect2"><div class="sect2" id="idm45927730811856">
+<h2>ParallelOld</h2>
+<p><a data-primary="garbage collection (GC)" data-secondary="ParallelOld collector" data-type="indexterm" id="idm45927730798992"/><a data-primary="ParallelOld collector" data-type="indexterm" id="idm45927730798016"/>By default, in Java 8 the collector for the old generation is a parallel (but not concurrent) mark-and-sweep collector.
+It seems, at first glance, to be similar to the collector used for the young generation.
+However, it differs in one very important respect: it is <em>not</em> an evacuating collector.
+Instead, the old generation is compacted when collection occurs.
+This is important so that the memory space does not become fragmented over time.</p>
+<p>The <code>ParallelOld</code> collector is very efficient, but it has two properties that make it less desirable for modern applications. It is:</p>
+<ul>
+<li>
+<p>Fully STW</p>
+</li>
+<li>
+<p>Linear in pause time with the size of the heap</p>
+</li>
+</ul>
+<p>This means that once GC has started, it cannot be aborted early, and the cycle must be allowed to finish.
+As heap sizes increase, this makes <code>ParallelOld</code> a less attractive option than G1, which can often keep a constant pause time regardless of heap size (assuming the allocation rate is manageable).</p>
+<p>In modern deployments, especially for Java 11+, G1 gives typically better performance on a large majority of applications that previously used <code>ParallelOld</code>.
+The <code>ParallelOld</code> collector is still available as of Java 17, for those (hopefully few) apps that still need it, but the direction of the platform is clear—toward using G1 wherever possible.</p>
+</div></section>
+<section data-pdf-bookmark="Serial" data-type="sect2"><div class="sect2" id="idm45927730790464">
+<h2>Serial</h2>
+<p><a data-primary="garbage collection (GC)" data-secondary="Serial collector" data-type="indexterm" id="idm45927730789264"/><a data-primary="Serial collector" data-type="indexterm" id="idm45927730788288"/><a data-primary="SerialOld collector" data-type="indexterm" id="idm45927730787616"/>The Serial and SerialOld collectors operate in a similar fashion to the Parallel collectors, with one important difference: they use only a single CPU core to perform fully STW GC.</p>
+<p>On modern multicore systems, there is no benefit from using these collectors, and so they should not be used, as they are just an inefficient form of the parallel collectors.
+However, one place where you may still encounter these collectors is when running Java applications in containers.
+A full discussion of containerized Java is outside the scope of this book. However, if your application is run in too small a container (either too little memory or with only a single CPU), then the JVM will automatically select the Serial collector.</p>
+<p>Therefore, we do not recommend running Java in a single-core container, as the Serial collector performs noticeably worse than G1 under almost all realistic load scenarios.</p>
+</div></section>
+<section data-pdf-bookmark="Shenandoah" data-type="sect2"><div class="sect2" id="idm45927730785376">
+<h2>Shenandoah</h2>
+<p><a data-primary="garbage collection (GC)" data-secondary="Shenandoah" data-type="indexterm" id="idm45927730784000"/><a data-primary="Shenandoah collector" data-type="indexterm" id="idm45927730783024"/>Shenandoah is a new GC algorithm developed by Red Hat to work effectively with certain use cases where G1 and other algorithms do not perform well.</p>
+<p>The aim of Shenandoah is to bring down pause times, especially on large heaps, and to guarantee (as far as possible) that pause times will not exceed 1 ms, no matter the size of the heap.</p>
+<p>Like G1, Shenandoah is an evacuating regional collector that performs concurrent marking.
+The evacuation of regions causes incremental compaction but the key difference is that in G1, evacuation happens during a STW phase, whereas in Shenandoah the evacuation is concurrent with application threads.</p>
+<p>There is no such thing as a free lunch, however, and users of Shenandoah could experience up to 15% overhead (i.e., reduction in application throughput), but the exact figure will depend on the details of the workload.
+For example, on some targeted benchmarks you can observe a significant overhead, towards the upper end of the expected range.</p>
+<p>Shenandoah can be activated with this command line switch:</p>
+<pre data-type="programlisting">-XX:+UseShenandoahGC</pre>
+<p>One important point to note is that, at time of writing, Shenandoah is not yet a generational collector, although work is underway to add generations to the implementation.</p>
+</div></section>
+<section data-pdf-bookmark="ZGC" data-type="sect2"><div class="sect2" id="idm45927730778976">
+<h2>ZGC</h2>
+<p><a data-primary="garbage collection (GC)" data-secondary="ZGC" data-type="indexterm" id="idm45927730777600"/><a data-primary="ZGC collector" data-type="indexterm" id="idm45927730776624"/>As well as Shenandoah, Oracle has also created a new ultra-low-pause collector, known as ZGC.
+It is designed to appeal to the same sorts of workloads as Shenandoah and is broadly similar in intent, effect, and overhead.
+ZGC is a single-generation, region-based, NUMA-aware, compacting collector.
+However, the implementation of ZGC is quite different from Shenandoah.</p>
+<p>ZGC can be activated with this command line switch:</p>
+<pre data-type="programlisting">-XX:+UseZGC</pre>
+<p>ZGC needs only a stop-the-world pause to perform root scanning, which means that GC pause times do not increase with the size of the heap or the number of live objects.
+Due to its intended domain of applicability (ultra-low pause on large heaps), ZGC is most commonly used by Oracle customers on the Oracle-supported builds of Java.<a data-startref="ix_ch06-asciidoc11" data-type="indexterm" id="idm45927730774240"/><a data-startref="ix_ch06-asciidoc10" data-type="indexterm" id="idm45927730773536"/></p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Finalization" data-type="sect1"><div class="sect1" id="javanut8-CHP-6-SECT-4">
+<h1>Finalization</h1>
+<p><a data-primary="finalization (resource management technique)" data-type="indexterm" id="ix_ch06-asciidoc12"/><a data-primary="finalize()" data-type="indexterm" id="ix_ch06-asciidoc13"/><a data-primary="memory management" data-secondary="finalization" data-type="indexterm" id="ix_ch06-asciidoc14"/>For completeness, developers should be aware of an old technique for resource management known as <em>finalization</em>.
+However, this technique is <em>extremely</em> heavily deprecated and the vast majority of Java developers should <em>not</em> directly use it under any circumstances.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Finalization has been deprecated and will be removed in a future release.
+The mechanism remains enabled by default for now but can be disabled with a switch.
+In a future release, it will be disabled by default and then eventually removed.</p>
+</div>
+<p>The finalization mechanism was intended to automatically release
+resources once they are no longer needed. Garbage collection
+automatically frees up the memory resources used by objects, but objects
+can hold other kinds of resources, such as open files and network
+connections. The garbage collector cannot free these additional
+resources for you, so the finalization mechanism was intended to allow
+the developer to perform cleanup tasks as closing files, terminating
+network connections, deleting temporary files, and so on.</p>
+<p>The finalization mechanism works as follows: if an object has a
+<code>finalize()</code> method (usually called a <em>finalizer</em>), this is invoked
+some time after the object becomes unused (or unreachable) but before the
+garbage collector reclaims the space allocated to the object. The
+finalizer is used to perform resource cleanup for an object.</p>
+<p>The central problem with finalization is that Java makes no guarantees
+about when garbage collection will occur or in what order objects will
+be collected. Therefore, the platform can make no guarantees about when
+(or even whether) a finalizer will be invoked or in what order
+finalizers will be invoked.</p>
+<section data-pdf-bookmark="Finalization Details" data-type="sect2"><div class="sect2" id="idm45927730763120">
+<h2>Finalization Details</h2>
+<p>The finalization mechanism is an attempt to implement a similar concept present in other languages and environments.
+<a data-primary="C/C++" data-secondary="RAII pattern" data-type="indexterm" id="idm45927730761488"/><a data-primary="RAII (Resource Acquisition Is Initialization) pattern" data-type="indexterm" id="idm45927730760512"/>In particular, C++ has a pattern known as RAII (Resource Acquisition Is Initialization) that provides automatic resource management in a similar way.
+In that pattern, a destructor method (which would be called <code>finalize()</code> in Java) is provided by the programmer, to perform cleanup and release resources when the object is destroyed.</p>
+<p>The basic use case for this is fairly simple: when an object is created, it takes ownership of some resource, and the object’s ownership of that resource is tied to the lifetime of the object.
+When the object dies, the ownership of the resource is automatically relinquished, as the platform calls the destructor without any programmer intervention.</p>
+<p>While finalization superficially sounds similar to this mechanism, in reality it is fundamentally different.
+In fact, the finalization language feature is fatally flawed, due to differences in the memory management schemes of Java versus C++.</p>
+<p>In the C++ case, memory is handled manually, with explicit lifetime management of objects under the control of the programmer.
+This means that the destructor can be called immediately after the object is deleted (the platform guarantees this), and so the acquisition and release of resources is directly tied to the lifetime of the object.</p>
+<p>On the other hand, Java’s memory management subsystem is a garbage collector that runs as needed, in response to running out of available memory to allocate.
+It therefore runs at variable (and nondeterministic) intervals and so  <code>finalize()</code> is run only when the object is collected, and this will be at an unknown time.</p>
+<p>If the <code>finalize()</code> mechanism was used to automatically release resources (e.g., filehandles), then there is no guarantee as to when (if ever) those resources will actually become available.
+This has the result of making the finalization mechanism fundamentally unsuitable for its stated purpose—automatic resource management.
+We cannot guarantee that finalization will happen fast enough to prevent us from running out of resources.
+As an automatic cleanup mechanism for protecting scarce resources (such as filehandles), finalization is broken by design.</p>
+<p>Finalization has only a very small number of legitimate use cases, and only a tiny minority of Java developers will ever encounter them.
+If in any doubt, do not use finalization—try-with-resources is usually the correct alternative.
+More details about <code>try</code>-with-resources can be found in <a data-type="xref" href="ch10.xhtml#javanut8-CHP-10">Chapter 10</a><a data-startref="ix_ch06-asciidoc14" data-type="indexterm" id="idm45927730754624"/>.<a data-startref="ix_ch06-asciidoc13" data-type="indexterm" id="idm45927730753824"/><a data-startref="ix_ch06-asciidoc12" data-type="indexterm" id="idm45927730753120"/><a data-startref="ix_ch06-asciidoc0" data-type="indexterm" id="idm45927730752448"/></p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Java’s Support for Concurrency" data-type="sect1"><div class="sect1" id="javanut8-CHP-6-SECT-5">
+<h1>Java’s Support for Concurrency</h1>
+<p><a data-primary="concurrency" data-seealso="memory management; threads" data-type="indexterm" id="ix_ch06-asciidoc15"/><a data-primary="threads" data-seealso="concurrency" data-type="indexterm" id="idm45927730748320"/>The idea of a <em>thread</em> is that of a lightweight unit of
+execution—smaller than a process, but still capable of executing
+arbitrary Java code. The usual way that this is implemented is for each
+thread to be a fully fledged unit of execution to the operating system
+but to belong to a process, with the address space of the process being
+shared between all threads comprising that process. This means each
+thread can be scheduled independently and has its own stack and program
+counter but shares memory and objects with other threads in the same
+process.</p>
+<p>The Java platform has supported multithreaded programming from the
+very first version. The platform exposes the ability to create new
+threads of execution to the developer.</p>
+<p>To understand this, first we must consider what happens in detail when a Java program starts up and the original application thread (usually referred to as <em>main</em> thread) appears:</p>
+<ol>
+<li>
+<p>The programmer executes <code>java Main</code> (other startup cases are possible).</p>
+</li>
+<li>
+<p>This causes the Java Virtual Machine, the context within which all Java programs run, to start up.</p>
+</li>
+<li>
+<p>The JVM examines its arguments and sees that the programmer has requested execution starting at the entry point (the <code>main()</code> method) of <code>Main.class</code>.</p>
+</li>
+<li>
+<p><a data-primary="main thread" data-type="indexterm" id="idm45927730739792"/>Assuming that <code>Main</code> passes classloading checks, a dedicated thread for the execution of the program is started (main thread).</p>
+</li>
+<li>
+<p>The JVM bytecode interpreter is started on main thread.</p>
+</li>
+<li>
+<p>Main thread’s interpreter reads the bytecode of <code>Main::main()</code> and execution begins, one bytecode at a time.</p>
+</li>
+</ol>
+<p>Every Java program starts this way, but this also means:</p>
+<ul>
+<li>
+<p>Every Java program starts as part of a managed model with one interpreter per thread.</p>
+</li>
+<li>
+<p>Every Java program always runs as part of a multithreaded operating system process.</p>
+</li>
+<li>
+<p>The JVM has a certain ability to control a Java application thread.</p>
+</li>
+</ul>
+<p>Following from this, when we create new threads of execution in Java code, this is usually as simple as:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Thread</code><code class="w"> </code><code class="n">t</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">Thread</code><code class="p">(()</code><code class="w"> </code><code class="o">-&gt;</code><code class="w"> </code><code class="p">{</code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"Hello Thread"</code><code class="p">);});</code><code class="w"/>
+<code class="n">t</code><code class="p">.</code><code class="na">start</code><code class="p">();</code><code class="w"/></pre>
+<p>This small piece of code creates and starts a new thread, which executes the body of the lambda expression and then executes.
+Technically speaking, the lambda is converted to an instance of the <code>Runnable</code> interface before being passed to the <code>Thread</code> constructor.</p>
+<p>The threading mechanism allows new threads to execute concurrently with the original application thread and the threads that the JVM itself starts up for various purposes.</p>
+<p>For mainstream implementations of the Java platform, every time we call <code>Thread::start()</code> this call is delegated to the operating system, and a new OS thread is created.
+This new OS thread <code>exec()</code>’s a new copy of the JVM bytecode interpreter.
+The interpreter starts executing at the <code>run()</code> method (or, equivalently, at the body of the lambda).</p>
+<p>This means that application threads have their access to the CPU controlled by the operating system <em>scheduler</em>—a built-in part of the OS that is responsible for managing timeslices of processor time (and that will not allow an application thread to exceed its allocated time).</p>
+<p><a data-primary="runtime-managed concurrency" data-type="indexterm" id="idm45927730696656"/>In more recent versions of Java, an increasing trend toward
+<em>runtime-managed concurrency</em> has appeared. This is the idea that for
+many purposes it’s not desirable for developers to explicitly manage threads. Instead, the runtime should provide “fire and forget”
+capabilities, whereby the program specifies what needs to be done, but
+the low-level details of how this is to be accomplished are left to the
+runtime.
+This viewpoint can be seen in the concurrency toolkit contained in <code>java.util.concurrent</code>, which we discuss briefly in <a data-type="xref" href="ch08.xhtml#javanut8-CHP-8">Chapter 8</a>.</p>
+<p>For the remainder of this chapter, we will introduce the low-level concurrency mechanisms that the Java platform provides and that every Java developer should be aware of.
+The reader is strongly encouraged to understand both the low-level <code>Thread</code>-based and the runtime-managed approaches before doing any significant concurrent programming.</p>
+<section data-pdf-bookmark="Thread Lifecycle" data-type="sect2"><div class="sect2" id="javanut8-CHP-6-SECT-5.1">
+<h2>Thread Lifecycle</h2>
+<p><a data-primary="concurrency" data-secondary="thread lifecycle" data-type="indexterm" id="ix_ch06-asciidoc16"/><a data-primary="threads" data-secondary="lifecycle of" data-type="indexterm" id="ix_ch06-asciidoc17"/>Let’s start by looking at the lifecycle of an application thread.
+Every operating system has a view of threads that can differ in the
+details (but in most cases is broadly similar at a high level). <a data-primary="Thread.State" data-type="indexterm" id="idm45927730688720"/>Java
+tries hard to abstract these details away and has an enum called
+<code>Thread.State</code>, which wrappers over the operating system’s view of the
+thread’s state. The values of <code>Thread.State</code> provide an overview of the
+lifecycle of a thread:</p>
+<dl>
+<dt><code>NEW</code></dt>
+<dd>
+<p>The thread has been created, but its <code>start()</code> method has not yet been
+called. All threads start in this state.</p>
+</dd>
+<dt><code>RUNNABLE</code></dt>
+<dd>
+<p>The thread is running or is available to run when the operating system
+
+<span class="keep-together">schedules it</span>.</p>
+</dd>
+<dt><code>BLOCKED</code></dt>
+<dd>
+<p>The thread is not running because it is waiting to acquire a lock so
+that it can enter a <code>synchronized</code> method or block. We’ll see more
+about <code>synchronized</code> methods and blocks later in this section.</p>
+</dd>
+<dt><code>WAITING</code></dt>
+<dd>
+<p>The thread is not running because it has called <code>Object.wait()</code> or
+<code>Thread.join()</code>.</p>
+</dd>
+<dt><code>TIMED_WAITING</code></dt>
+<dd>
+<p>The thread is not running because it has called <code>Thread.sleep()</code> or
+has called <code>Object.wait()</code> or <code>Thread.join()</code> with a timeout value.</p>
+</dd>
+<dt><code>TERMINATED</code></dt>
+<dd>
+<p>The thread has completed execution. Its <code>run()</code> method has exited
+normally or by throwing an exception.</p>
+</dd>
+</dl>
+<p>These states represent the view of a thread that is common (at least
+across mainstream operating systems), leading to a view like <a data-type="xref" href="#javanut8-CHP-6-FIG-4">Figure 6-4</a>.</p>
+<figure><div class="figure" id="javanut8-CHP-6-FIG-4">
+<img alt="JN7 0604" height="362" src="assets/jns8_0604.png" width="600"/>
+<h6><span class="label">Figure 6-4. </span>Thread lifecycle</h6>
+</div></figure>
+<p><a data-primary="Thread.sleep()" data-type="indexterm" id="idm45927730638400"/>Threads can also be made to sleep, by using the <code>Thread.sleep()</code>
+method. This takes an argument in milliseconds, which indicates how
+long the thread would like to sleep like this:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="k">try</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">Thread</code><code class="p">.</code><code class="na">sleep</code><code class="p">(</code><code class="mi">2000</code><code class="p">);</code><code class="w"/>
+<code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">InterruptedException</code><code class="w"> </code><code class="n">e</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">e</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>The argument to sleep is a request to the operating system, not a
+demand. For example, your program may sleep for longer than requested,
+depending on load and other factors specific to the runtime environment.</p>
+</div>
+<p>We will discuss the other methods of <code>Thread</code> later in this chapter, but
+first we need to cover some important theory that deals with how threads
+access memory and that is fundamental to understanding why
+multithreaded programming is hard and can cause developers a lot of
+problems.<a data-startref="ix_ch06-asciidoc17" data-type="indexterm" id="idm45927730575232"/><a data-startref="ix_ch06-asciidoc16" data-type="indexterm" id="idm45927730574528"/></p>
+</div></section>
+<section data-pdf-bookmark="Visibility and Mutability" data-type="sect2"><div class="sect2" id="idm45927730692720">
+<h2>Visibility and Mutability</h2>
+<p><a data-primary="concurrency" data-secondary="visibility and mutability" data-type="indexterm" id="ix_ch06-asciidoc18"/><a data-primary="mutability" data-secondary="concurrency and" data-type="indexterm" id="ix_ch06-asciidoc19"/><a data-primary="visibility" data-secondary="concurrency and" data-type="indexterm" id="ix_ch06-asciidoc20"/>In mainstream Java implementations, all Java application threads in a
+process have their own call stacks (and local variables) but share a
+single heap. This makes it very easy to share objects between threads,
+as all that is required is to pass a reference from one thread to
+another. This is illustrated in <a data-type="xref" href="#javanut8-CHP-6-FIG-5">Figure 6-5</a>.</p>
+<p><a data-primary="visibility" data-secondary="defined" data-type="indexterm" id="idm45927730567552"/>This leads to a general design principle of Java—that objects are
+<em>visible by default</em>. If I have a reference to an object, I can copy it
+and hand it off to another thread with no restrictions. A Java reference
+is essentially a typed pointer to a location in heap—and threads share
+the same heap, so visible by default is a natural model.</p>
+<p><a data-primary="mutability" data-secondary="defined" data-type="indexterm" id="idm45927730565936"/>In addition to visible by default, Java has another property that is
+important to fully understand concurrency, which is that objects are
+<em>mutable</em>: the contents of an object instance’s fields can usually be
+changed. We can make individual variables or references constant by
+using the <code>final</code> keyword, but this does not apply to the contents of
+the object.</p>
+<p>As we will see throughout the rest of this chapter, the combination of
+these two properties—visibility across threads and object
+mutability—gives rise to a great many complexities when trying to reason
+about concurrent Java programs.</p>
+<figure><div class="figure" id="javanut8-CHP-6-FIG-5">
+<img alt="JN7 0605" height="695" src="assets/jns8_0605.png" width="600"/>
+<h6><span class="label">Figure 6-5. </span>Shared memory between threads</h6>
+</div></figure>
+<section class="pagebreak-before" data-pdf-bookmark="Concurrent safety" data-type="sect3"><div class="sect3" id="idm45927730561296">
+<h3>Concurrent safety</h3>
+<p><a data-primary="concurrency" data-secondary="safety" data-type="indexterm" id="idm45927730559648"/><a data-primary="concurrent safety" data-type="indexterm" id="idm45927730558672"/><a data-primary="safety" data-secondary="concurrent" data-type="indexterm" id="idm45927730558000"/>If we’re to write correct multithreaded code, then we want our programs
+to satisfy a certain important property.</p>
+<p>In <a data-type="xref" href="ch05.xhtml#javanut8-CHP-5">Chapter 5</a>, we defined a safe object-oriented
+program to be one where we move objects from legal state to legal
+state by calling their accessible methods. This definition works well
+for single-threaded code. However, there is a particular difficulty that
+comes about when we try to extend it to concurrent programs.</p>
+<div data-type="tip"><h6>Tip</h6>
+<p><a data-primary="safe multithreaded program" data-type="indexterm" id="idm45927730554704"/>A <em>safe multithreaded program</em> is one in which it is impossible for
+any object to be seen in an illegal or inconsistent state by any
+other object, no matter what methods are called, and no matter in what order the application threads are scheduled by the operating system.</p>
+</div>
+<p>For most mainstream cases, the operating system will schedule threads to
+run on particular processor cores at seemingly random times, depending on load
+and what else is running in the system. If load is high, then there may
+be other processes that also need to run.</p>
+<p>The operating system will forcibly remove a Java thread from a CPU core
+if it needs to. The thread is suspended immediately, no matter what it’s
+doing—including being partway through executing a method. However, as we discussed
+in <a data-type="xref" href="ch05.xhtml#javanut8-CHP-5">Chapter 5</a>, a method can temporarily put an
+object into an illegal state while it is working on it, providing it
+corrects it before the method exits.</p>
+<p>This means that if a thread is swapped off before it has completed a
+long-running method, it may leave an object in an inconsistent state,
+<em>even if the program follows the safety rules</em>. Another way of saying
+this is that even data types that have been correctly modeled for the
+single-threaded case still need to protect against the effects of
+concurrency. Code that adds this extra layer of protection is
+called <em>concurrently safe</em> or (more informally) threadsafe.</p>
+<p>In the next section, we’ll discuss the primary means of achieving this
+safety, and at the end of the chapter, we’ll meet some other mechanisms
+that can also be useful under some circumstances.<a data-startref="ix_ch06-asciidoc20" data-type="indexterm" id="idm45927730549808"/><a data-startref="ix_ch06-asciidoc19" data-type="indexterm" id="idm45927730549104"/><a data-startref="ix_ch06-asciidoc18" data-type="indexterm" id="idm45927730548432"/></p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Exclusion and Protecting State" data-type="sect2"><div class="sect2" id="idm45927730547632">
+<h2>Exclusion and Protecting State</h2>
+<p><a data-primary="concurrency" data-secondary="exclusion and protecting state" data-type="indexterm" id="ix_ch06-asciidoc21"/><a data-primary="exclusion, protecting state with" data-type="indexterm" id="ix_ch06-asciidoc22"/><a data-primary="state, exclusion and" data-type="indexterm" id="ix_ch06-asciidoc23"/>Any code that modifies <em>or reads</em> state that can become inconsistent
+must be protected. To achieve this, the Java platform provides only one
+mechanism: <em>exclusion</em>.</p>
+<p>Consider a method that contains a sequence of operations that, if
+interrupted partway through, could leave an object in an inconsistent or
+illegal state. If this illegal state was visible to another object,
+incorrect code behavior could occur.</p>
+<p class="pagebreak-before">For example, consider an ATM or other cash-dispensing machine:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">class</code> <code class="nc">Account</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="kd">private</code><code class="w"> </code><code class="kt">double</code><code class="w"> </code><code class="n">balance</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="mf">0.0</code><code class="p">;</code><code class="w"> </code><code class="c1">// Must be &gt;= 0</code><code class="w"/>
+<code class="w">    </code><code class="c1">// Assume the existence of other field (e.g., name) and methods</code><code class="w"/>
+<code class="w">    </code><code class="c1">// such as deposit(), checkBalance(), and dispenseNotes()</code><code class="w"/>
+
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="nf">Account</code><code class="p">(</code><code class="kt">double</code><code class="w"> </code><code class="n">openingBal</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="n">balance</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">openingBal</code><code class="p">;</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="kt">boolean</code><code class="w"> </code><code class="nf">withdraw</code><code class="p">(</code><code class="kt">double</code><code class="w"> </code><code class="n">amount</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="k">if</code><code class="w"> </code><code class="p">(</code><code class="n">balance</code><code class="w"> </code><code class="o">&gt;=</code><code class="w"> </code><code class="n">amount</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">            </code><code class="k">try</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">                </code><code class="n">Thread</code><code class="p">.</code><code class="na">sleep</code><code class="p">(</code><code class="mi">2000</code><code class="p">);</code><code class="w"> </code><code class="c1">// Simulate risk checks</code><code class="w"/>
+<code class="w">            </code><code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">InterruptedException</code><code class="w"> </code><code class="n">e</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">                </code><code class="k">return</code><code class="w"> </code><code class="kc">false</code><code class="p">;</code><code class="w"/>
+<code class="w">            </code><code class="p">}</code><code class="w"/>
+<code class="w">            </code><code class="n">balance</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">balance</code><code class="w"> </code><code class="o">-</code><code class="w"> </code><code class="n">amount</code><code class="p">;</code><code class="w"/>
+<code class="w">            </code><code class="n">dispenseNotes</code><code class="p">(</code><code class="n">amount</code><code class="p">);</code><code class="w"/>
+<code class="w">            </code><code class="k">return</code><code class="w"> </code><code class="kc">true</code><code class="p">;</code><code class="w"/>
+<code class="w">        </code><code class="p">}</code><code class="w"/>
+<code class="w">        </code><code class="k">return</code><code class="w"> </code><code class="kc">false</code><code class="p">;</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>The sequence of operations that happens inside <code>withdraw()</code> can leave
+the object in an inconsistent state. In particular, after we’ve checked
+the balance, a second thread could come in while the first was sleeping
+in simulated risk checks, and the account could be overdrawn, in
+violation of the constraint that <code>balance &gt;= 0</code>.</p>
+<p>This is an example of a system where the operations on the objects are
+single-threaded safe (because the objects cannot reach an illegal state
+(<code>balance &lt; 0</code>) if called from a single thread) but not concurrently
+safe.</p>
+<p><a data-primary="synchronized keyword" data-type="indexterm" id="ix_ch06-asciidoc24"/>To allow the developer to make code like this concurrently safe, Java
+provides the <code>synchronized</code> keyword. This keyword can be applied to a
+block or to a method, and when it is used, the platform uses it to
+restrict access to the code inside the block or method.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Because <code>synchronized</code> surrounds code, many developers are led to the
+conclusion that concurrency in Java is about code. Some texts even refer
+to the code that is inside the synchronized block or method as a
+<em>critical section</em> and consider that to be the crucial aspect of
+concurrency. This is not the case; instead, it is the inconsistency of
+data that we must guard against, as we will see.</p>
+</div>
+<p><a data-primary="monitor token" data-type="indexterm" id="idm45927730360656"/>The Java platform keeps track of a special token, called a <em>monitor</em>,
+for every object that it ever creates. These monitors (also called
+<em>locks</em>) are used by <code>synchronized</code> to indicate that the following code
+could temporarily render the object inconsistent. The sequence of
+events for a synchronized block or method is:</p>
+<ol>
+<li>
+<p>Thread needs to modify an object and may make it briefly
+inconsistent as an intermediate step</p>
+</li>
+<li>
+<p>Thread acquires the monitor, indicating it requires temporary
+exclusive access to the object</p>
+</li>
+<li>
+<p>Thread modifies the object, leaving it in a consistent, legal state
+when done</p>
+</li>
+<li>
+<p>Thread releases the monitor</p>
+</li>
+</ol>
+<p>If another thread attempts to acquire the lock while the object is being
+modified, then the attempt to acquire the lock blocks, until the holding
+thread releases the lock.</p>
+<p>Note that you do not have to use the <code>synchronized</code> statement unless
+your program creates multiple threads that share data. If only one
+thread ever accesses a data structure, there is no need to protect it
+with <code>synchronized</code>.</p>
+<p>One point is of critical importance—acquiring the monitor does
+<em>not</em> prevent access to the object. It only prevents any other thread
+from claiming the lock. Correct concurrently safe code requires
+developers to ensure that all accesses that might modify <em>or read</em>
+potentially inconsistent state acquire the object monitor before
+operating on or reading that state.</p>
+<p>Put another way, if a <code>synchronized</code> method is working on an object and
+has placed it into an illegal state, and another method (which is not
+synchronized) reads from the object, it can still see the inconsistent
+state.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Synchronization is a cooperative mechanism for protecting state, and it
+is very fragile as a result. A single bug (such as missing a single
+<code>synchronized</code> keyword from a method it’s required on) can have
+catastrophic results for the safety of the system as a whole.</p>
+</div>
+<p>The reason we use the word <code>synchronized</code> as the keyword for “requires
+temporary exclusive access” is that in addition to acquiring the
+monitor, the JVM also rereads the current state of the object from main
+memory when the block is entered. Similarly, when the <code>synchronized</code>
+block or method is exited, the JVM flushes any modified state of the
+object back to main memory.</p>
+<p>Without synchronization, different CPU cores in the system may not see
+the same view of memory, and memory inconsistencies can damage the state
+of a running program, as we saw in our ATM example.</p>
+<p>The simplest example of this is known as <em>lost update</em>, as demonstrated in the following code:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">class</code> <code class="nc">Counter</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="kd">private</code><code class="w"> </code><code class="kt">int</code><code class="w"> </code><code class="n">i</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="mi">0</code><code class="p">;</code><code class="w"/>
+
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="kt">int</code><code class="w"> </code><code class="nf">increment</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="k">return</code><code class="w"> </code><code class="n">i</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">i</code><code class="w"> </code><code class="o">+</code><code class="w"> </code><code class="mi">1</code><code class="p">;</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="kt">int</code><code class="w"> </code><code class="nf">getCounter</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"> </code><code class="k">return</code><code class="w"> </code><code class="n">i</code><code class="p">;</code><code class="w"> </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>This can be driven via a simple control program:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="w">    </code><code class="n">Counter</code><code class="w"> </code><code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">Counter</code><code class="p">();</code><code class="w"/>
+<code class="w">    </code><code class="kt">int</code><code class="w"> </code><code class="n">REPEAT</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="mi">10_000_000</code><code class="p">;</code><code class="w"/>
+<code class="w">    </code><code class="n">Runnable</code><code class="w"> </code><code class="n">r</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="p">()</code><code class="w"> </code><code class="o">-&gt;</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="k">for</code><code class="w"> </code><code class="p">(</code><code class="kt">int</code><code class="w"> </code><code class="n">i</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="mi">0</code><code class="p">;</code><code class="w"> </code><code class="n">i</code><code class="w"> </code><code class="o">&lt;</code><code class="w"> </code><code class="n">REPEAT</code><code class="p">;</code><code class="w"> </code><code class="n">i</code><code class="o">++</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">            </code><code class="n">c</code><code class="p">.</code><code class="na">increment</code><code class="p">();</code><code class="w"/>
+<code class="w">        </code><code class="p">}</code><code class="w"/>
+<code class="w">    </code><code class="p">};</code><code class="w"/>
+<code class="w">    </code><code class="n">Thread</code><code class="w"> </code><code class="n">t1</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">Thread</code><code class="p">(</code><code class="n">r</code><code class="p">);</code><code class="w"/>
+<code class="w">    </code><code class="n">Thread</code><code class="w"> </code><code class="n">t2</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">Thread</code><code class="p">(</code><code class="n">r</code><code class="p">);</code><code class="w"/>
+<code class="w">    </code>
+<code class="w">    </code><code class="n">t1</code><code class="p">.</code><code class="na">start</code><code class="p">();</code><code class="w"/>
+<code class="w">    </code><code class="n">t2</code><code class="p">.</code><code class="na">start</code><code class="p">();</code><code class="w"/>
+<code class="w">    </code><code class="n">t1</code><code class="p">.</code><code class="na">join</code><code class="p">();</code><code class="w"/>
+<code class="w">    </code><code class="n">t2</code><code class="p">.</code><code class="na">join</code><code class="p">();</code><code class="w"/>
+
+<code class="w">    </code><code class="kt">int</code><code class="w"> </code><code class="n">anomaly</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="p">(</code><code class="mi">2</code><code class="w"> </code><code class="o">*</code><code class="w"> </code><code class="n">REPEAT</code><code class="p">)</code><code class="w"> </code><code class="o">-</code><code class="w"> </code><code class="n">c</code><code class="p">.</code><code class="na">getCounter</code><code class="p">();</code><code class="w"/>
+<code class="w">    </code><code class="kt">double</code><code class="w"> </code><code class="n">perc</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="p">((</code><code class="kt">double</code><code class="p">)</code><code class="w"> </code><code class="n">anomaly</code><code class="w"> </code><code class="o">*</code><code class="w"> </code><code class="mi">100</code><code class="p">)</code><code class="w"> </code><code class="o">/</code><code class="w"> </code><code class="p">(</code><code class="mi">2</code><code class="w"> </code><code class="o">*</code><code class="w"> </code><code class="n">REPEAT</code><code class="p">);</code><code class="w"/>
+<code class="w">    </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"Lost updates: "</code><code class="o">+</code><code class="w"> </code><code class="n">anomaly</code><code class="w"> </code><code class="o">+</code><code class="s">" ; % = "</code><code class="w"> </code><code class="o">+</code><code class="w"> </code><code class="n">perc</code><code class="p">);</code><code class="w"/></pre>
+<p>If this concurrent program was correct, then the value for the anomaly (number of lost updates) should be exactly zero.
+It is not, and so we may conclude that unsynchronized access is fundamentally unsafe.</p>
+<p>By contrast, we also see that the addition of the keyword <code>synchronized</code> to the increment method is sufficient to reduce the lost update anomaly to zero—​that is, to make the method correct, even in the presence of multiple threads<a data-startref="ix_ch06-asciidoc24" data-type="indexterm" id="idm45927730188624"/>.<a data-startref="ix_ch06-asciidoc23" data-type="indexterm" id="idm45927730187888"/><a data-startref="ix_ch06-asciidoc22" data-type="indexterm" id="idm45927730136160"/><a data-startref="ix_ch06-asciidoc21" data-type="indexterm" id="idm45927730135600"/></p>
+</div></section>
+<section data-pdf-bookmark="volatile" data-type="sect2"><div class="sect2" id="idm45927730546720">
+<h2>volatile</h2>
+<p><a data-primary="concurrency" data-secondary="volatile keyword" data-type="indexterm" id="idm45927730133760"/>Java provides another keyword for dealing with concurrent access to data.
+This is the <code>volatile</code> keyword, and it indicates that before being used by application code, the value of the field or variable must be reread from main memory.
+Equally, after a volatile value has been modified, as soon as the write to the variable has completed, it must be written back to main memory.</p>
+<p><a data-primary="run-until-shutdown pattern" data-type="indexterm" id="idm45927730131680"/><a data-primary="volatile keyword" data-type="indexterm" id="idm45927730131008"/>One common usage of the <code>volatile</code> keyword is in the
+“run-until-shutdown” pattern. This is used in multithreaded programming
+where an external user or system needs to signal to a processing thread
+that it should finish the current job being worked on and then shut down
+gracefully. <a data-primary="graceful completion pattern" data-type="indexterm" id="idm45927730129824"/>This is sometimes called the “graceful completion” pattern.
+Let’s look at a typical example, supposing that this code for our
+processing thread is in a class that implements <code>Runnable</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">private</code><code class="w"> </code><code class="kd">volatile</code><code class="w"> </code><code class="kt">boolean</code><code class="w"> </code><code class="n">shutdown</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="kc">false</code><code class="p">;</code><code class="w"/>
+
+<code class="kd">public</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">shutdown</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">shutdown</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="kc">true</code><code class="p">;</code><code class="w"/>
+<code class="p">}</code><code class="w"/>
+
+<code class="kd">public</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">run</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="k">while</code><code class="w"> </code><code class="p">(</code><code class="o">!</code><code class="n">shutdown</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="c1">// ... process another task</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p><a data-primary="shutdown()" data-type="indexterm" id="idm45927729930480"/>All the time that the <code>shutdown()</code> method is not called by another
+thread, the processing thread continues to sequentially process tasks
+(this is often combined very usefully with a <code>BlockingQueue</code> to deliver
+work). Once <code>shutdown()</code> is called by another thread, the
+processing thread immediately sees the <code>shutdown</code> flag change to <code>true</code>.
+This does not affect the running job, but once the task finishes, the
+processing thread will not accept another task and instead will shut
+down gracefully.</p>
+<p>However, useful as the <code>volatile</code> keyword is, it does not provide a complete protection of state—as we can see by using it to mark the field in <code>Counter</code> as <code>volatile</code>.
+We might naively assume that this would protect the code in <code>Counter</code>.
+However, it does not.
+To see this, modify the previous <code>Counter</code> example and add the word <code>volatile</code> to the field <code>i</code> and rerun the example.
+The observed nonzero value of the anomaly (and therefore, the presence of the lost update problem) tells us that by itself, <code>volatile</code> does not make code threadsafe.</p>
+</div></section>
+<section data-pdf-bookmark="Useful Methods of Thread" data-type="sect2"><div class="sect2" id="idm45927729863712">
+<h2>Useful Methods of Thread</h2>
+<p><a data-primary="concurrency" data-secondary="useful methods of threads" data-type="indexterm" id="ix_ch06-asciidoc25"/><a data-primary="threads" data-secondary="useful methods of" data-type="indexterm" id="ix_ch06-asciidoc26"/>The <code>Thread</code> class has a
+number of methods to make your life easier when you’re creating new application threads. This is
+not an exhaustive list—there are many other methods on <code>Thread</code>, but
+this is a description of some of the more common methods.</p>
+<section data-pdf-bookmark="getId()" data-type="sect3"><div class="sect3" id="idm45927729859072">
+<h3>getId()</h3>
+<p><a data-primary="getId()" data-type="indexterm" id="idm45927729858064"/>This method returns the ID number of the thread, as a <code>long</code>. This ID
+will stay the same for the lifetime of the thread and is guaranteed to be unique within this instance of the JVM.</p>
+</div></section>
+<section data-pdf-bookmark="getPriority() and setPriority()" data-type="sect3"><div class="sect3" id="idm45927729856656">
+<h3>getPriority() and setPriority()</h3>
+<p><a data-primary="getPriority()" data-type="indexterm" id="idm45927729855488"/><a data-primary="setPriority()" data-type="indexterm" id="idm45927729854784"/>These methods are used to control the priority of threads. The
+scheduler decides how to handle thread priorities; for example, one
+strategy could be to not have any low-priority threads run while there
+are high-priority threads waiting. In most cases, there is no way to
+influence how the scheduler will interpret priorities. Thread priorities
+are represented as an integer between 1 and 10, with 10 being the highest.</p>
+</div></section>
+<section data-pdf-bookmark="setName() and getName()" data-type="sect3"><div class="sect3" id="idm45927729853728">
+<h3>setName() and getName()</h3>
+<p><a data-primary="getName()" data-type="indexterm" id="idm45927729852560"/><a data-primary="setName()" data-type="indexterm" id="idm45927729851856"/>These methods allow the developer to set or retrieve a name for an individual
+thread.
+Naming threads is good practice, as it can make debugging much, much easier, especially in a tool such as JDK Mission Control (which we will discuss briefly in <a data-type="xref" href="ch13.xhtml#javanut8-CHP-13">Chapter 13</a>).</p>
+</div></section>
+<section data-pdf-bookmark="getState()" data-type="sect3"><div class="sect3" id="idm45927729850000">
+<h3>getState()</h3>
+<p><a data-primary="getState()" data-type="indexterm" id="idm45927729848800"/>This returns a <code>Thread.State</code> object that indicates which state this thread
+is in, as per the values defined in
+<a data-type="xref" href="#javanut8-CHP-6-SECT-5.1">“Thread Lifecycle”</a>.</p>
+</div></section>
+<section data-pdf-bookmark="isAlive()" data-type="sect3"><div class="sect3" id="idm45927729846496">
+<h3>isAlive()</h3>
+<p><a data-primary="isAlive()" data-type="indexterm" id="idm45927729845296"/>This method is used to test whether a thread is still alive.</p>
+</div></section>
+<section data-pdf-bookmark="start()" data-type="sect3"><div class="sect3" id="idm45927729844208">
+<h3>start()</h3>
+<p><a data-primary="start()" data-type="indexterm" id="idm45927729843040"/>This method is used to create a new application thread, and to schedule
+it, with the <code>run()</code> method being the entry point for execution. A
+thread terminates normally when it reaches the end of its <code>run()</code> method
+or when it executes a <code>return</code> statement in that method.</p>
+</div></section>
+<section data-pdf-bookmark="interrupt()" data-type="sect3"><div class="sect3" id="idm45927729840608">
+<h3>interrupt()</h3>
+<p><a data-primary="interrupt()" data-type="indexterm" id="idm45927729839408"/>If a thread is blocked in a <code>sleep()</code>, <code>wait()</code>, or <code>join()</code> call, then
+calling <code>interrupt()</code> on the <code>Thread</code> object that represents the thread
+will cause the thread to be sent an <code>InterruptedException</code> (and to wake
+up).</p>
+<p>If the thread was involved in interruptible I/O, then the I/O will
+be terminated and the thread will receive a
+<code>ClosedByInterruptException</code>. The interrupt status of the thread will be
+set to <code>true</code>, even if the thread was not engaged in any activity that
+could be interrupted.</p>
+</div></section>
+<section data-pdf-bookmark="join()" data-type="sect3"><div class="sect3" id="idm45927729834288">
+<h3>join()</h3>
+<p><a data-primary="join()" data-type="indexterm" id="idm45927729833056"/>The current thread waits until the thread corresponding to the <code>Thread</code>
+object has died. It can be thought of as an instruction not to proceed
+until the other thread has completed.</p>
+</div></section>
+<section data-pdf-bookmark="setDaemon()" data-type="sect3"><div class="sect3" id="idm45927729831360">
+<h3>setDaemon()</h3>
+<p><a data-primary="setDaemon()" data-type="indexterm" id="idm45927729830160"/><a data-primary="user thread" data-type="indexterm" id="idm45927729829232"/>A <em>user thread</em> is a thread that will prevent the process from exiting
+if it is still alive—this is the default for threads. <a data-primary="daemon thread" data-type="indexterm" id="idm45927729827888"/>Sometimes,
+programmers want threads that will not prevent an exit from
+occurring—these are called <em>daemon threads</em>. The status of a thread as
+a daemon or user thread can be controlled by the <code>setDaemon()</code> method and checked using <code>isDaemon()</code>.</p>
+</div></section>
+<section data-pdf-bookmark="setUncaughtExceptionHandler()" data-type="sect3"><div class="sect3" id="idm45927729825600">
+<h3>setUncaughtExceptionHandler()</h3>
+<p><a data-primary="setUncaughtExceptionHandler()" data-type="indexterm" id="idm45927729824256"/>When a thread exits by throwing an exception (i.e., one that the program did not catch), the default behavior is to print the name of the thread, the type of the exception, the
+exception message, and a stack trace. If this isn’t sufficient, you can
+install a custom handler for uncaught exceptions in a thread. For
+example:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// This thread just throws an exception</code><code class="w"/>
+<code class="n">Thread</code><code class="w"> </code><code class="n">handledThread</code><code class="w"> </code><code class="o">=</code><code class="w"/>
+<code class="w">  </code><code class="k">new</code><code class="w"> </code><code class="n">Thread</code><code class="p">(()</code><code class="w"> </code><code class="o">-&gt;</code><code class="w"> </code><code class="p">{</code><code class="w"> </code><code class="k">throw</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">UnsupportedOperationException</code><code class="p">();</code><code class="w"> </code><code class="p">});</code><code class="w"/>
+
+<code class="c1">// Giving threads a name helps with debugging</code><code class="w"/>
+<code class="n">handledThread</code><code class="p">.</code><code class="na">setName</code><code class="p">(</code><code class="s">"My Broken Thread"</code><code class="p">);</code><code class="w"/>
+
+<code class="c1">// Here's a handler for the error.</code><code class="w"/>
+<code class="n">handledThread</code><code class="p">.</code><code class="na">setUncaughtExceptionHandler</code><code class="p">((</code><code class="n">t</code><code class="p">,</code><code class="w"> </code><code class="n">e</code><code class="p">)</code><code class="w"> </code><code class="o">-&gt;</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">System</code><code class="p">.</code><code class="na">err</code><code class="p">.</code><code class="na">printf</code><code class="p">(</code><code class="s">"Exception in thread %d '%s':"</code><code class="w"> </code><code class="o">+</code><code class="w"/>
+<code class="w">        </code><code class="s">"%s at line %d of %s%n"</code><code class="p">,</code><code class="w"/>
+<code class="w">        </code><code class="n">t</code><code class="p">.</code><code class="na">getId</code><code class="p">(),</code><code class="w">    </code><code class="c1">// Thread id</code><code class="w"/>
+<code class="w">        </code><code class="n">t</code><code class="p">.</code><code class="na">getName</code><code class="p">(),</code><code class="w">  </code><code class="c1">// Thread name</code><code class="w"/>
+<code class="w">        </code><code class="n">e</code><code class="p">.</code><code class="na">toString</code><code class="p">(),</code><code class="w"> </code><code class="c1">// Exception name and message</code><code class="w"/>
+<code class="w">        </code><code class="n">e</code><code class="p">.</code><code class="na">getStackTrace</code><code class="p">()</code><code class="o">[</code><code class="mi">0</code><code class="o">]</code><code class="p">.</code><code class="na">getLineNumber</code><code class="p">(),</code><code class="w"/>
+<code class="w">        </code><code class="n">e</code><code class="p">.</code><code class="na">getStackTrace</code><code class="p">()</code><code class="o">[</code><code class="mi">0</code><code class="o">]</code><code class="p">.</code><code class="na">getFileName</code><code class="p">());</code><code class="w"> </code><code class="p">});</code><code class="w"/>
+<code class="n">handledThread</code><code class="p">.</code><code class="na">start</code><code class="p">();</code><code class="w"/></pre>
+<p>This can be useful in some situations; for example, if one thread is
+supervising a group of other worker threads, then this pattern can be
+used to restart any threads that die.</p>
+<p>There is also <code>setDefaultUncaughtExceptionHandler()</code>, a <code>static</code> method that sets a backup handler for catching any thread’s uncaught exceptions.<a data-startref="ix_ch06-asciidoc26" data-type="indexterm" id="idm45927729747184"/><a data-startref="ix_ch06-asciidoc25" data-type="indexterm" id="idm45927729746512"/></p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Deprecated Methods of Thread" data-type="sect2"><div class="sect2" id="idm45927729745584">
+<h2>Deprecated Methods of Thread</h2>
+<p><a data-primary="concurrency" data-secondary="deprecated methods of threads" data-type="indexterm" id="idm45927729744176"/><a data-primary="threads" data-secondary="deprecated methods of" data-type="indexterm" id="idm45927729743184"/>In addition to the useful methods of <code>Thread</code>, there are a number of dangerous methods you should not use.
+These methods form part of the original Java thread API but were quickly found to be unsuitable for developer use.
+Unfortunately, due to Java’s backward compatibility requirements, it has not been possible to remove them from the API.
+Developers simply need to be aware of them and to avoid  using them under <em>all</em> circumstances.</p>
+<section data-pdf-bookmark="stop()" data-type="sect3"><div class="sect3" id="idm45927729741184">
+<h3>stop()</h3>
+<p><a data-primary="stop()" data-type="indexterm" id="idm45927729739952"/><code>Thread.stop()</code> is almost impossible to use correctly without violating
+concurrent safety, as <code>stop()</code> kills the thread immediately, without
+giving it any opportunity to recover objects to legal states. This is in
+direct opposition to principles such as concurrent safety and so should
+never be used.</p>
+</div></section>
+<section data-pdf-bookmark="suspend(), resume(), and countStackFrames()" data-type="sect3"><div class="sect3" id="idm45927729738192">
+<h3>suspend(), resume(), and countStackFrames()</h3>
+<p><a data-primary="suspend()" data-type="indexterm" id="idm45927729737024"/>The <code>suspend()</code> mechanism does not release any monitors it holds when it suspends, so any other thread that attempts to access those monitors will deadlock.
+<a data-primary="resume()" data-type="indexterm" id="idm45927729735616"/>In practice, this mechanism produces race conditions between these deadlocks and <code>resume()</code> that render this group of methods unusable.
+<a data-primary="countStackFrames()" data-type="indexterm" id="idm45927729734400"/>The method <code>countStackFrames()</code> only works when called on a suspended thread so is also made nonfunctional by this restriction.</p>
+</div></section>
+<section data-pdf-bookmark="destroy()" data-type="sect3"><div class="sect3" id="idm45927729732912">
+<h3>destroy()</h3>
+<p><a data-primary="destroy()" data-type="indexterm" id="idm45927729642176"/>This method was never implemented—it would have suffered from the same
+race condition issues as <code>suspend()</code> if it had been.</p>
+<p>All of these deprecated methods should always be avoided. A set
+of safe alternative patterns that achieve the same intended aims as the
+preceding methods have been developed. A good example of one of these
+patterns is the run-until-shutdown pattern that we already met.<a data-startref="ix_ch06-asciidoc15" data-type="indexterm" id="idm45927729640464"/></p>
+</div></section>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Working with Threads" data-type="sect1"><div class="sect1" id="idm45927730750736">
+<h1>Working with Threads</h1>
+<p><a data-primary="concurrency" data-secondary="working with threads" data-type="indexterm" id="ix_ch06-asciidoc27"/><a data-primary="threads" data-secondary="working with" data-type="indexterm" id="ix_ch06-asciidoc28"/>To work effectively with multithreaded code, you need the basic facts about monitors and locks at your command. This
+checklist contains the main facts you should know:</p>
+<ul>
+<li>
+<p>Synchronization is about protecting object state and memory, not code.</p>
+</li>
+<li>
+<p>Synchronization is a cooperative mechanism between threads. One bug
+can break the cooperative model and have far-reaching consequences.</p>
+</li>
+<li>
+<p>Acquiring a monitor only prevents other threads from acquiring the
+monitor—it does not protect the object.</p>
+</li>
+<li>
+<p>Unsynchronized methods can see (and modify) inconsistent state, even
+while the object’s monitor is locked.</p>
+</li>
+<li>
+<p>Locking an <code>Object[]</code> doesn’t lock the individual objects.</p>
+</li>
+<li>
+<p>Primitives are not mutable, so they can’t (and don’t need to) be
+locked.</p>
+</li>
+<li>
+<p><code>synchronized</code> can’t appear on a method declaration in an interface.</p>
+</li>
+<li>
+<p>Inner classes are just syntactic sugar, so locks on inner classes have
+no effect on the enclosing class (and vice versa).</p>
+</li>
+<li>
+<p>Java’s locks are <em>reentrant</em>. This means that if a thread holding a
+monitor encounters a synchronized block for the same monitor, it can
+enter the block.<sup><a data-type="noteref" href="ch06.xhtml#idm45927729626048" id="idm45927729626048-marker">1</a></sup></p>
+</li>
+</ul>
+<p>We’ve also seen that threads can be asked to sleep for a period of time.
+It is also useful to go to sleep for an unspecified amount of time and
+wait until a condition is met. <a data-primary="notify()" data-type="indexterm" id="idm45927729624784"/><a data-primary="wait()" data-type="indexterm" id="idm45927729624080"/>In Java, this is handled by the
+<code>wait()</code> and <code>notify()</code> methods that are present on <code>Object</code>.</p>
+<p>Just as every Java object has a lock associated with it, every object
+maintains a list of waiting threads. When a thread calls the <code>wait()</code>
+method of an object, any locks the thread holds are temporarily
+released, and the thread is added to the list of waiting threads for
+that object and stops running. When another thread calls the
+<span class="keep-together"><code>notifyAll()</code></span> method of the same object, the object wakes up the
+waiting threads and allows them to continue running.</p>
+<p>For example, let’s look at a simplified version of a queue that is safe
+for multithreaded use:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="cm">/*</code>
+<code class="cm"> * One thread calls push() to put an object on the queue.</code>
+<code class="cm"> * Another calls pop() to get an object off the queue. If there is no</code>
+<code class="cm"> * data, pop() waits until there is some, using wait()/notify().</code>
+<code class="cm"> */</code><code class="w"/>
+<code class="kd">public</code><code class="w"> </code><code class="kd">class</code> <code class="nc">WaitingQueue</code><code class="o">&lt;</code><code class="n">E</code><code class="o">&gt;</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">LinkedList</code><code class="o">&lt;</code><code class="n">E</code><code class="o">&gt;</code><code class="w"> </code><code class="n">q</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">LinkedList</code><code class="o">&lt;</code><code class="n">E</code><code class="o">&gt;</code><code class="p">();</code><code class="w"> </code><code class="c1">// storage</code><code class="w"/>
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="kd">synchronized</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">push</code><code class="p">(</code><code class="n">E</code><code class="w"> </code><code class="n">o</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="n">q</code><code class="p">.</code><code class="na">add</code><code class="p">(</code><code class="n">o</code><code class="p">);</code><code class="w">         </code><code class="c1">// Append the object to the end of the list</code><code class="w"/>
+<code class="w">        </code><code class="k">this</code><code class="p">.</code><code class="na">notifyAll</code><code class="p">();</code><code class="w"> </code><code class="c1">// Tell waiting threads that data is ready</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="kd">synchronized</code><code class="w"> </code><code class="n">E</code><code class="w"> </code><code class="nf">pop</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="k">while</code><code class="p">(</code><code class="n">q</code><code class="p">.</code><code class="na">size</code><code class="p">()</code><code class="w"> </code><code class="o">==</code><code class="w"> </code><code class="mi">0</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">            </code><code class="k">try</code><code class="w"> </code><code class="p">{</code><code class="w"> </code><code class="k">this</code><code class="p">.</code><code class="na">wait</code><code class="p">();</code><code class="w"> </code><code class="p">}</code><code class="w"/>
+<code class="w">            </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">InterruptedException</code><code class="w"> </code><code class="n">ignore</code><code class="p">)</code><code class="w"> </code><code class="p">{}</code><code class="w"/>
+<code class="w">        </code><code class="p">}</code><code class="w"/>
+<code class="w">        </code><code class="k">return</code><code class="w"> </code><code class="n">q</code><code class="p">.</code><code class="na">remove</code><code class="p">();</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>This class uses a <code>wait()</code> on the instance of <code>WaitingQueue</code> if the
+queue is empty (which would make the <code>pop()</code> fail). The waiting thread
+temporarily releases its monitor, allowing another thread to claim it—a
+thread that might <code>push()</code> something new onto the queue. When the
+original thread is woken up again, it is restarted where it originally
+began to wait, and it will have reacquired its monitor.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p><code>wait()</code> and <code>notify()</code> must be used inside a <code>synchronized</code> method or
+block, because of the temporary relinquishing of locks required
+for them to work properly.</p>
+</div>
+<p class="pagebreak-before">In general, most developers shouldn’t roll their own classes like the
+one in this example—instead, use the libraries and components
+that the Java platform provides for you.<a data-startref="ix_ch06-asciidoc28" data-type="indexterm" id="idm45927729468608"/><a data-startref="ix_ch06-asciidoc27" data-type="indexterm" id="idm45927729467904"/></p>
+</div></section>
+<section data-pdf-bookmark="Summary" data-type="sect1"><div class="sect1" id="idm45927729639376">
+<h1>Summary</h1>
+<p>In this chapter, we’ve discussed Java’s view of memory and concurrency and seen how these topics are intrinsically linked.</p>
+<p>Java’s garbage collection is one of the major aspects of the platform that simplifies development by removing the need for programmers to manually manage memory.
+We have seen how Java provides advanced GC capabilities and how modern versions of Java use the partially concurrent G1 collector by default.</p>
+<p>We have also discussed how, as processors develop more and more cores, we will need to use concurrent programming techniques to use those cores effectively.
+In other words, concurrency is key to the future of well-performing applications.</p>
+<p>Java’s threading model is based on three fundamental concepts:</p>
+<dl>
+<dt>Shared, visible-by-default mutable state</dt>
+<dd>
+<p>Objects are easily shared between different threads in
+a process, and they can be changed (“mutated”) by any thread
+holding a reference to them.</p>
+</dd>
+<dt>Preemptive thread scheduling</dt>
+<dd>
+<p>The OS thread scheduler can swap threads on and off cores at more or
+less any time.</p>
+</dd>
+<dt>Object state can only be protected by locks</dt>
+<dd>
+<p>Locks can be hard to use correctly, and state is quite vulnerable—even
+in unexpected places such as read operations.</p>
+</dd>
+</dl>
+<p>Taken together, these three aspects of Java’s approach to concurrency
+explain why multithreaded programming can cause so many headaches for
+developers.</p>
+</div></section>
+<div data-type="footnotes"><p data-type="footnote" id="idm45927729626048"><sup><a href="ch06.xhtml#idm45927729626048-marker">1</a></sup> Outside of Java, not all implementations of locks have this property.</p></div></div></section></div></body></html>

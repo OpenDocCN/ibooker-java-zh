@@ -1,0 +1,1002 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><section data-pdf-bookmark="Chapter 13. Asynchronous Tasks" data-type="chapter" epub:type="chapter"><div class="chapter" id="_02-completable-future">
+<h1><span class="label">Chapter 13. </span>Asynchronous Tasks</h1>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="idm45115219212832">
+<h1>A Note for Early Release Readers</h1>
+<p>With Early Release ebooks, you get books in their earliest form—the author’s raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.</p>
+<p>This will be the 13th chapter of the final book. Please note that the GitHub repo will be made active later on.</p>
+<p>If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the editor at <em>rfernando@oreilly.com</em>.</p>
+</div></aside>
+<p>Modern workloads require more thought about how to use available system resources efficiently.
+Asynchronous tasks are an excellent tool for improving the responsiveness of your application by avoiding performance bottlenecks.</p>
+<p>Java 8 introduced the new type <code>CompletableFuture&lt;T&gt;</code>, which improved upon the previously available <code>Future&lt;T&gt;</code> type to create async tasks by utilizing a declarative and functional approach.</p>
+<p>This chapter explains why and how to utilize asynchronous programming and how <code>CompletableFuture&lt;T&gt;</code> is a more flexible and functional approach to asynchronous tasks than what was included in the JDK before.</p>
+<section data-pdf-bookmark="Synchronous Versus Asynchronous" data-type="sect1"><div class="sect1" id="idm45115219207152">
+<h1>Synchronous Versus Asynchronous</h1>
+<p>The concept of synchronous and asynchronous tasks is not restricted to software development.</p>
+<p>For example, an in-person meeting or conference call is a synchronous activity, at least if you pay attention.
+You can’t do anything else except participate and maybe take notes.
+Every other task is <em>blocked</em> until the meeting/call is over.
+If the meeting/call would have been an e-mail instead — as most of my meetings could and should be — your current task isn’t interrupted by requiring immediate attention before you could resume your previous task.
+Therefore, an e-mail is <em>non-blocking</em> communication.</p>
+<p>The same principles are true for software development.
+Synchronously executed tasks run in sequence, blocking further work until they’re finished.
+From a single-threaded point of view, a blocking task means waiting for the result, possibly wasting resources by not doing anything else until the task is finished.</p>
+<p>Asynchronous tasks are about starting a task that is processed “somewhere else” and you get notified when it’s done.
+Such tasks are non-blocking by using concurrency techniques to spin off their work — usually to another thread — so they don’t have to wait for them to finish.
+Therefore, the current thread isn’t blocked and can continue with other tasks, as illustrated in <a data-type="xref" href="#_02-completable-future_sync-vs-async">Figure 13-1</a>.</p>
+<figure><div class="figure" id="_02-completable-future_sync-vs-async">
+<img alt="Comparison of synchronous and asynchronous execution" height="359" src="assets/afaj_1301.png" width="508"/>
+<h6><span class="label">Figure 13-1. </span>Comparison of synchronous and asynchronous execution</h6>
+</div></figure>
+<p>Parallel execution, as I’ve discussed in <a data-type="xref" href="ch08.xhtml#_01-parallel-streams">Chapter 8</a>, strives for maximum throughput as its primary objective; the completion time of a single task is generally of lesser concern in the greater scheme of things.
+An asynchronous execution model like with <code>CompletableFuture</code>, on the other hand, is focused on the overall latency and responsiveness of the system.
+Spinning off tasks ensures a responsive system even in single-threaded or resource-constrained environments.</p>
+</div></section>
+<section data-pdf-bookmark="Java Futures" data-type="sect1"><div class="sect1" id="idm45115219198800">
+<h1>Java Futures</h1>
+<p>Java 5 introduced the interface <code>java.util.concurrent.Future&lt;T&gt;</code> as a container type for an eventual result of an asynchronous computation.
+To create a <code>Future</code>, a task in the form of a <code>Runnable</code> or a <code>Callable&lt;T&gt;</code> gets submitted to an <code>ExecutorService</code> which starts the task in a separate thread but immediately returns a Future instance.
+This way, the current thread can continue to do more work without waiting for the eventual result of the <code>Future</code> computation.</p>
+<p>The result is retrievable by calling the <code>get</code> method on a <code>Future&lt;T&gt;</code> instance, which might block the current thread, though, if the computation hasn’t finished yet.
+A simple example of the general flow is visualized in <a data-type="xref" href="#_02-completable-future_execution-flow">Example 13-1</a>.</p>
+<div data-type="example" id="_02-completable-future_execution-flow">
+<h5><span class="label">Example 13-1. </span><code>Future&lt;T&gt;</code> flow of execution</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">executor</code> <code class="o">=</code> <code class="n">Executors</code><code class="p">.</code><code class="na">newFixedThreadPool</code><code class="p">(</code><code class="mi">10</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_asynchronous_tasks_CO1-1" id="co_asynchronous_tasks_CO1-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+
+<code class="n">Callable</code><code class="o">&lt;</code><code class="n">Integer</code><code class="o">&gt;</code> <code class="n">expensiveTask</code> <code class="o">=</code> <code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="p">{</code> <a class="co" href="#callout_asynchronous_tasks_CO1-2" id="co_asynchronous_tasks_CO1-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+
+    <code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"</code><code class="s">(task) start</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+
+    <code class="n">TimeUnit</code><code class="p">.</code><code class="na">SECONDS</code><code class="p">.</code><code class="na">sleep</code><code class="p">(</code><code class="mi">2</code><code class="p">)</code><code class="p">;</code>
+
+    <code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"</code><code class="s">(task) done</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+
+    <code class="k">return</code> <code class="mi">42</code><code class="p">;</code>
+<code class="p">}</code><code class="p">;</code>
+
+
+<code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"</code><code class="s">(main) before submitting the task</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+
+<code class="kd">var</code> <code class="n">future</code> <code class="o">=</code> <code class="n">executor</code><code class="p">.</code><code class="na">submit</code><code class="p">(</code><code class="n">expensiveTask</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_asynchronous_tasks_CO1-3" id="co_asynchronous_tasks_CO1-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+
+<code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"</code><code class="s">(main) after submitting the task</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+
+
+<code class="kd">var</code> <code class="n">theAnswer</code> <code class="o">=</code> <code class="n">future</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_asynchronous_tasks_CO1-4" id="co_asynchronous_tasks_CO1-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+
+<code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"</code><code class="s">(main) after the blocking call future.get()</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+
+<code class="c1">// OUTPUT:</code>
+<code class="c1">// (main) before submitting the task</code>
+<code class="c1">// (task) start</code>
+<code class="c1">// (main) after submitting the task</code>
+<code class="c1">// ~~ 2 sec delay ~~</code>
+<code class="c1">// (task) done</code>
+<code class="c1">// (main) after the blocking call future.get()</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_asynchronous_tasks_CO1-1" id="callout_asynchronous_tasks_CO1-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>An explicit <code>ExecutorService</code> is needed to spin-off a <code>Callable&lt;T&gt;</code> or <code>Runnable</code>.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO1-2" id="callout_asynchronous_tasks_CO1-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The <code>Callable&lt;T&gt;</code> interface has been available since before the introduction of lambdas of functional interfaces.
+Its intended use case is equivalent to <code>Supplier&lt;T&gt;</code> but it throws an <code>Exception</code> in its single abstract method.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO1-3" id="callout_asynchronous_tasks_CO1-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The computation of <code>expensiveTask</code> starts immediately, reflected in the output.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO1-4" id="callout_asynchronous_tasks_CO1-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>At this point, the calculation isn’t finished yet, so calling the <code>get</code> method on <code>future</code> blocks the current thread until it is finished.</p></dd>
+</dl>
+<p>Although the <code>Future&lt;T&gt;</code> type achieves the essential requirement of being a <em>non-blocking</em> container for asynchronous computation, its feature set is limited to only a few methods: checking if the computation is done, canceling it, and retrieving its result.</p>
+<p>To have a versatile tool for asynchronous programming, there are a lot of features left to be desired:</p>
+<ul>
+<li>
+<p>Easier way of retrieving a result, like callbacks on completion or failure.</p>
+</li>
+<li>
+<p>Chaining and combining multiple tasks in the spirit of functional composition.</p>
+</li>
+<li>
+<p>Integrated error handling and recovery possibilities.</p>
+</li>
+<li>
+<p>Manual creation or completion of tasks without requiring an <code>ExecutorService</code>.</p>
+</li>
+</ul>
+<p>Java 8 improved upon Futures to remedy the lacking features by introducing the interface <code>CompletionStage&lt;T&gt;</code>, and its sole implementation, <code>CompletableFuture&lt;T&gt;</code>, in the same package <code>java.util.concurrent</code>.
+They’re versatile tools to build asynchronous task pipelines with a richer feature set than Futures before them.
+Where <code>Future&lt;T&gt;</code> is a container type for an asynchronous computation of an eventual value, <code>CompletionStage&lt;T&gt;</code> represents a single stage of an asynchronous pipeline with a massive API of over 70 methods!</p>
+</div></section>
+<section data-pdf-bookmark="Designing Asynchronous Pipelines with CompletableFuture&lt;T&gt;" data-type="sect1"><div class="sect1" id="idm45115218951568">
+<h1>Designing Asynchronous Pipelines with CompletableFuture&lt;T&gt;</h1>
+<p>The general design philosophy of CompletableFutures is similar to Streams: both are task-based pipelines offering parameterized methods accepting common functional interfaces.
+The new API adds a myriad of coordination tools that return new instances of <code>CompletionStage&lt;T&gt;</code> or +CompletableFuture&lt;T&gt;.
+This amalgamation of a container for asynchronous computation and coordination tools provides all the previously missing features in a fluently composable and declarative API.</p>
+<p>Due to the massive <code>CompletableFuture&lt;T&gt;</code> API and the complex mental model of asynchronous programming in general, let’s start with a simple metaphor: <em>making breakfast</em>.</p>
+<p>The imaginary breakfast consists of coffee, toast, and eggs.
+Preparing the breakfast in synchronous — or <em>blocking</em> — order doesn’t make much sense.
+Waiting for the coffee maker to finish or for the toast to be done before starting with the eggs is a poor use of available resources that will add unnecessarily to the total prep time, leaving you hungry by the time you sit down to eat.
+Instead, you can start frying the eggs while the coffee maker and toaster do their thing and only react to them when the toaster pops or the coffeemaker is done.</p>
+<p>The same logic applies to programming.
+The available resources should be allocated as needed and not wasted by waiting for <em>expensive</em> and long-running tasks.
+The underlying concept of such asynchronous pipelines is available in many languages under a different, maybe more common name: <em>Promises</em>.</p>
+<section data-pdf-bookmark="Promising a Value" data-type="sect2"><div class="sect2" id="_02-completable-future_promise">
+<h2>Promising a Value</h2>
+<p><em>Promises</em> are the building blocks for asynchronous pipelines with built-in coordination tools that allow chaining and combining multiple tasks, including error handling.
+Such a building block is either <em>pending</em> (not settled), <em>resolved</em> (settled and computation completed), or <em>rejected</em> (settled, but in the error state).
+Moving between states in the compositional pipeline is done by switching between two channels: <em>data</em> and <em>error</em>, as shown in <a data-type="xref" href="#_02-completable-future_channels">Figure 13-2</a>.</p>
+<figure><div class="figure" id="_02-completable-future_channels">
+<img alt="Promise data and error channels" height="171" src="assets/afaj_1302.png" width="600"/>
+<h6><span class="label">Figure 13-2. </span>Promise data and error channels</h6>
+</div></figure>
+<p>The data channel is the “happy path” if everything goes right.
+However, if a promise fails, the pipeline switches to the error channel.
+This way, a failure doesn’t crash the whole pipeline, like with Streams, and can be handled gracefully, or even recover and switch the pipeline back to the data channel.</p>
+<p>As you will see, the CompletableFuture API is a Promise by another name.</p>
+</div></section>
+<section data-pdf-bookmark="Creating a CompletableFuture&lt;T&gt;" data-type="sect2"><div class="sect2" id="idm45115218937232">
+<h2>Creating a CompletableFuture&lt;T&gt;</h2>
+<p>Like its predecessor, <code>Future&lt;T&gt;</code>, the new <code>CompletableFuture&lt;T&gt;</code> type doesn’t provide any constructors to create an instance.
+New <code>Future&lt;T&gt;</code> instances are created by submitting tasks to <code>java.util.concurrent.ExecutorService</code> which returns an instance with its task already started.</p>
+<p><code>CompletableFuture&lt;T&gt;</code> follows the same principle.
+However, it doesn’t necessarily require an explicit <code>ExecutorService</code> to schedule tasks, thanks to its <code>static</code> factory methods:</p>
+<ul>
+<li>
+<p><code>CompletableFuture&lt;Void&gt; runAsync(Runnable runnable)</code></p>
+</li>
+<li>
+<p><code>CompletableFuture&lt;U&gt; supplyAsync(Supplier&lt;U&gt; supplier)</code></p>
+</li>
+</ul>
+<p>Both methods are also available with a second argument, accepting a <code>java.util.concurrent.Executor</code>, which is the base interface of the <code>ExecutorService</code> type.
+If you choose the <code>Executor</code>-less variants, the common ForkJoinPool is used, just like for parallel Stream pipelines as explained in <a data-type="xref" href="ch08.xhtml#_01-parallel-concurrent-async_parallel-streams">“Streams as Parallel Functional Pipelines”</a>.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>The most apparent difference to submitting tasks to an <code>ExecutorService</code> for creating a <code>Future&lt;T&gt;</code> is the use of <code>Supplier&lt;T&gt;</code> instead of <code>Callable&lt;T&gt;</code>.
+The latter explicitly throws an <code>Exception</code> in its method signature.
+Therefore, <code>supplyAsync</code> isn’t a drop-in replacement for submitting a <code>Callable&lt;T&gt;</code> to an <code>Executor</code>.</p>
+</div>
+<p>Creating a <code>CompletableFuture&lt;T&gt;</code> instance is almost equivalent to creating a <code>Future&lt;T&gt;</code> one, as shown in <a data-type="xref" href="#_02-completable-future_creation-vs-future">Example 13-2</a>.
+The example doesn’t use type inference, so the returning types are visible.
+Usually, you would prefer the <code>var</code> keyword instead of using the explicit type.</p>
+<div data-type="example" id="_02-completable-future_creation-vs-future">
+<h5><span class="label">Example 13-2. </span>CompletableFuture creation with convenience methods</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// FUTURE&lt;T&gt;</code>
+
+<code class="kd">var</code> <code class="n">executorService</code> <code class="o">=</code> <code class="n">ForkJoinPool</code><code class="p">.</code><code class="na">commonPool</code><code class="p">();</code>
+
+<code class="n">Future</code><code class="o">&lt;?&gt;</code> <code class="n">futureRunnable</code> <code class="o">=</code>
+  <code class="n">executorService</code><code class="p">.</code><code class="na">submit</code><code class="p">(()</code> <code class="o">-&gt;</code> <code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"not returning a value"</code><code class="p">));</code>
+
+<code class="n">Future</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">futureCallable</code> <code class="o">=</code>
+  <code class="n">executorService</code><code class="p">.</code><code class="na">submit</code><code class="p">(()</code> <code class="o">-&gt;</code> <code class="s">"Hello, Async World!"</code><code class="p">);</code>
+
+
+<code class="c1">// COMPLETABLEFUTURE&lt;T&gt;</code>
+
+<code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">Void</code><code class="o">&gt;</code> <code class="n">completableFutureRunnable</code> <code class="o">=</code>
+  <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">runAsync</code><code class="p">(()</code> <code class="o">-&gt;</code> <code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"not returning a value"</code><code class="p">));</code>
+
+<code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">completableFutureSupplier</code> <code class="o">=</code>
+  <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(()</code> <code class="o">-&gt;</code> <code class="s">"Hello, Async World!"</code><code class="p">);</code></pre></div>
+<p>Even though the creation of instances is similar between <code>Future&lt;T&gt;</code> and <code>CompletableFuture&lt;T&gt;</code>, the latter is more concise by not necessarily requiring an <code>ExecutorService</code>.
+The bigger difference, though, is that a <code>CompletableFuture&lt;T&gt;</code> instance provides a starting point for a declarative and functional pipeline of <code>CompletionStage&lt;T&gt;</code> instances instead of a singular isolated async task in the case of a <code>Future&lt;T&gt;</code>.</p>
+</div></section>
+<section data-pdf-bookmark="Compositing and Combining Tasks" data-type="sect2"><div class="sect2" id="idm45115218854608">
+<h2>Compositing and Combining Tasks</h2>
+<p>After starting with a <code>CompletableFuture&lt;T&gt;</code> instance, it’s time to combine and compose them further to create a more complex pipeline.</p>
+<p>The broad range of operations available to build your asynchronous pipelines is separable into three groups, depending on their accepted arguments and intended use cases:</p>
+<dl>
+<dt>Transforming a result</dt>
+<dd>
+<p>Like the <code>map</code> operation of Streams and Optionals, the CompletableFuture API gives you the similar <code>thenApply</code> method, which uses a <code>Function&lt;T, U&gt;</code> to transform the previous result of type <code>T</code> and returns another <code>CompletionStage&lt;U&gt;</code>.
+If the transformation function returns another <code>CompletionStage</code>, using the <code>thenCompose</code> method prevents additional nesting, similar to Stream’s and Optional’s <code>flatMap</code> operation.</p>
+</dd>
+<dt>Consuming a result</dt>
+<dd>
+<p>As its name suggests, the <code>thenAccept</code> method requires a <code>Consumer&lt;T&gt;</code> to work with the previous result of type <code>T</code> and returns a new <code>CompletionStage&lt;Void&gt;</code>.</p>
+</dd>
+<dt>Executing after finishing</dt>
+<dd>
+<p>If you don’t require access to the previous result, the <code>thenRun</code> method executes a <code>Runnable</code> and returns a new <code>CompletionStage&lt;Void&gt;</code>.</p>
+</dd>
+</dl>
+<p>There are too many methods to discuss each one in detail, especially with the additional <code>-Async</code> methods.
+Most of these methods have two additional <code>-Async</code> variants: one matching the non-<code>Async</code> and another one with an additional <code>Executor</code> argument.</p>
+<p>The non-<code>Async</code> methods execute their task in the same thread as the previous task, even though that’s not guaranteed, as explained later in <a data-type="xref" href="#_02-completable-future_threads">“About Thread Pools and Timeouts”</a>.
+The <code>-Async</code> variants will use a new thread, either created by the common <code>ForkJoinPool</code>, or by the provided <code>Executor</code>.</p>
+<p>I will mostly discuss the non-<code>Async</code> variants to keep things simple.</p>
+<section data-pdf-bookmark="Compositing Tasks" data-type="sect3"><div class="sect3" id="idm45115218746560">
+<h3>Compositing Tasks</h3>
+<p>Compositing tasks creates a serial pipeline of connected CompletionStages.</p>
+<p>All compositing operations follow a general naming scheme:</p>
+<pre data-type="programlisting">&lt;operation&gt;[Async](argument [, Executor])</pre>
+<p>The <code>&lt;operation&gt;</code> name derives from the type of operation and its arguments, mainly using the prefix <code>then</code> plus the name of the SAM of the functional interface they accept:</p>
+<ul>
+<li>
+<p><code>CompletableFuture&lt;Void&gt; thenAccept(Consumer&lt;? super T&gt; action)</code></p>
+</li>
+<li>
+<p><code>CompletableFuture&lt;Void&gt; thenRun(Runnable action)</code></p>
+</li>
+<li>
+<p><code>CompletableFuture&lt;U&gt;    thenApply(Function&lt;? super T,? extends U&gt; fn)</code></p>
+</li>
+</ul>
+<p>Thanks to the API’s proper naming scheme, using any of the operations results in a fluent and straightforward call chain.
+For example, imagine a bookmark manager that scrapes its websites for storing a permanent copy.
+The overall task could be run async so it won’t stop the UI thread.
+The task itself consists of three steps: downloading the website, preparing the content for offline consumption, and finally, storing it, as shown in <a data-type="xref" href="#_02-completable-future_async-bookmark-manager_compositing">Example 13-3</a>.</p>
+<div data-type="example" id="_02-completable-future_async-bookmark-manager_compositing">
+<h5><span class="label">Example 13-3. </span>Async bookmark manager workflow</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">task</code> <code class="o">=</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(()</code> <code class="o">-&gt;</code> <code class="k">this</code><code class="p">.</code><code class="na">downloadService</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="n">url</code><code class="p">))</code>
+                            <code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="k">this</code><code class="p">.</code><code class="na">contentCleaner</code><code class="p">::</code><code class="n">clean</code><code class="p">)</code>
+                            <code class="p">.</code><code class="na">thenRun</code><code class="p">(</code><code class="k">this</code><code class="p">.</code><code class="na">storage</code><code class="p">::</code><code class="n">save</code><code class="p">);</code></pre></div>
+<p>Compositing operations are 1:1-only, meaning they take the result of the previous stage and do their intended job.
+If your task pipeline requires multiple flows to converge, you need to combine tasks.</p>
+</div></section>
+<section data-pdf-bookmark="Combining Tasks" data-type="sect3"><div class="sect3" id="_02-completable-future_combining-tasks">
+<h3>Combining Tasks</h3>
+<p>Compositing interconnected futures to create a more complex task can be immensely helpful.
+Sometimes, however, the different tasks don’t need or can run in serial.
+In this case, you can combine <code>CompletionStage</code> instances by using operations that accept another stage in addition to their usual arguments.</p>
+<p>Their naming scheme is similar to the previous 1:1 compositing operations:</p>
+<pre data-type="programlisting">&lt;operation&gt;&lt;restriction&gt;[Async](other, argument [, Executor])</pre>
+<p>The additional <code>restriction</code> indicates if the operation works on both stages, or either, using the aptly named suffixes <code>-Both</code> and <code>-Either</code>.</p>
+<p><a data-type="xref" href="#_02-completable-future_combinational_ops">Table 13-1</a> lists the available 2:1 operations.</p>
+<table id="_02-completable-future_combinational_ops">
+<caption><span class="label">Table 13-1. </span>Combinational Operations</caption>
+<thead>
+<tr>
+<th>Method</th>
+<th>Argument</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>thenCombine</code></p></td>
+<td><p><code>BiFunction&lt;T, U, V&gt;</code></p></td>
+<td><p>Applies the <code>BiFunction</code> after <em>both</em> stages completed normally.</p></td>
+</tr>
+<tr>
+<td><p><code>thenAcceptBoth</code></p></td>
+<td><p><code>BiConsumer&lt;T, U&gt;</code></p></td>
+<td><p>Like <code>thenCombine</code>, but doesn’t produce any value.</p></td>
+</tr>
+<tr>
+<td><p><code>runAfterBoth</code></p></td>
+<td><p><code>Runnable</code></p></td>
+<td><p>Evaluate the <code>Runnable</code> after both given stages have been completed normally.</p></td>
+</tr>
+<tr>
+<td><p><code>applyToEither</code></p></td>
+<td><p><code>Function&lt;T, U&gt;</code></p></td>
+<td><p>Applies the <code>Function</code> to the first completed stage.</p></td>
+</tr>
+<tr>
+<td><p><code>acceptEither</code></p></td>
+<td><p><code>Consumer&lt;T, U&gt;</code></p></td>
+<td><p>Like <code>applyToEither</code>, but doesn’t produce any value.</p></td>
+</tr>
+<tr>
+<td><p><code>runAfterEither</code></p></td>
+<td><p><code>Runnable</code></p></td>
+<td><p>Evaluate the <code>Runnable</code> after either of the given stages has been completed normally.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Like with other functional Java features, the many different operations are owed to Java’s static type system and how generic types are resolved.
+Unlike other languages, like JavaScript, methods can’t accept multiple types in a single argument or as a return type.</p>
+<p>The composing operations can easily be mixed with the compositing ones, as illustrated in <a data-type="xref" href="#_01-completable-future_compositing-combining-flow">Figure 13-3</a>.</p>
+<figure><div class="figure" id="_01-completable-future_compositing-combining-flow">
+<img alt="Compositing and combining tasks" height="264" src="assets/afaj_1303.png" width="593"/>
+<h6><span class="label">Figure 13-3. </span>Compositing and combining tasks</h6>
+</div></figure>
+<p>The available operations provide a variety of functionality for almost any use case.
+Still, there are certain blindspots in Java’s asynchronous API, especially a particular variant is missing:
+combining the result of two stages with a <code>BiFunction</code> returning another stage without creating a nested <code>CompletionStage</code>.</p>
+<p>The <code>thenCombine</code> behavior is similar to other <code>map</code> operations in Java.
+In the case of a nested return value, a <code>flatMap</code>-like operation is required, which is missing for <code>CompletableFuture&lt;T&gt;</code>.
+Instead, you need an additional <code>thenCompose</code> operation to flatten the nested values, as shown in <a data-type="xref" href="#_02-completable-future_thenCompose-combine">Example 13-4</a>.</p>
+<div data-type="example" id="_02-completable-future_thenCompose-combine">
+<h5><span class="label">Example 13-4. </span>Unwrapping nested stages</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">Integer</code><code class="o">&gt;</code> <code class="n">future1</code> <code class="o">=</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(</code><code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="mi">42</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_asynchronous_tasks_CO2-1" id="co_asynchronous_tasks_CO2-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+<code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">Integer</code><code class="o">&gt;</code> <code class="n">future2</code> <code class="o">=</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(</code><code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="mi">23</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_asynchronous_tasks_CO2-1" id="co_asynchronous_tasks_CO2-2"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+
+<code class="n">BiFunction</code><code class="o">&lt;</code><code class="n">Integer</code><code class="p">,</code> <code class="n">Integer</code><code class="p">,</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">Integer</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="n">task</code> <code class="o">=</code> <a class="co" href="#callout_asynchronous_tasks_CO2-2" id="co_asynchronous_tasks_CO2-3"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+  <code class="p">(</code><code class="n">lhs</code><code class="p">,</code> <code class="n">rhs</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(</code><code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">lhs</code> <code class="o">+</code> <code class="n">rhs</code><code class="p">)</code><code class="p">;</code>
+
+<code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">Integer</code><code class="o">&gt;</code> <code class="n">combined</code> <code class="o">=</code>
+  <code class="n">future1</code><code class="p">.</code><code class="na">thenCombine</code><code class="p">(</code><code class="n">future2</code><code class="p">,</code> <code class="n">task</code><code class="p">)</code> <a class="co" href="#callout_asynchronous_tasks_CO2-3" id="co_asynchronous_tasks_CO2-4"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+         <code class="p">.</code><code class="na">thenCompose</code><code class="p">(</code><code class="n">Function</code><code class="p">.</code><code class="na">identity</code><code class="p">(</code><code class="p">)</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_asynchronous_tasks_CO2-4" id="co_asynchronous_tasks_CO2-5"><img alt="4" height="12" src="assets/4.png" width="12"/></a></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_asynchronous_tasks_CO2-1" id="callout_asynchronous_tasks_CO2-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The two stages that should combine their results.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO2-3" id="callout_asynchronous_tasks_CO2-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The task consuming the combined results of the previous stage.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO2-4" id="callout_asynchronous_tasks_CO2-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The return value of <code>task</code> is wrapped into another stage by <code>thenCombine</code>, resulting in an unwanted <code>CompletionStage&lt;CompletionStage&lt;Integer&gt;&gt;</code>.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO2-5" id="callout_asynchronous_tasks_CO2-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>The <code>thenCompose</code> call with <code>Function.identity()</code> unwraps the nested stage and the pipeline is a <code>CompletionStage&lt;Integer&gt;</code> again.</p></dd>
+</dl>
+<p>This approach is helpful if the task returns a <code>CompletableFuture</code> itself instead of relying on the caller to handle it asynchronously by wrapping it into a <code>CompletableFuture</code> if needed.</p>
+</div></section>
+<section data-pdf-bookmark="Running More Two CompletableFuture&lt;T&gt; at Once" data-type="sect3"><div class="sect3" id="idm45115218709184">
+<h3>Running More Two CompletableFuture&lt;T&gt; at Once</h3>
+<p>The previously discussed operations allow you to run up to two CompletableFutures to create a new one.
+Handling more than two, however, isn’t possible with combinational operations like <code>thenCombine</code> without creating a nested method-call nightmare.
+That’s why <code>CompletableFuture&lt;T&gt;</code> type has two <code>static</code> convenience methods for dealing with more than two instances at once:</p>
+<ul>
+<li>
+<p><code>CompletableFuture&lt;Void&gt; allOf(CompletableFuture&lt;?&gt;…​ cfs)</code></p>
+</li>
+<li>
+<p><code>CompletableFuture&lt;Object&gt; anyOf(CompletableFuture&lt;?&gt;…​ cfs)</code></p>
+</li>
+</ul>
+<p>The <code>allOf</code> and <code>anyOf</code> methods coordinate pre-existing instances.
+Therefore, both of them don’t provide matching <code>-Async</code> variants because each given <code>CompletableFuture</code> instance already has its designated <code>Executor</code>.
+Another aspect of the coordination-only nature is their restrictive return types.
+Because both accept any kind of <code>CompletableFuture</code> instances, signified by the generic bound <code>&lt;?&gt;</code>, no definitive <code>T</code> for the overall result is determinable, as the types can be mixed freely.
+The return type of the <code>allOf</code> is a <code>CompletableFuture&lt;Void&gt;</code>, so you don’t have access to any result of the given instances in later stages.
+However, it’s possible to create helper methods that support returning a result as an alternative.
+I’ll show you how to do that in <a data-type="xref" href="#_02-completable-future_designing-helper">“Creating a CompletableFuture Helper”</a>, but for now, let’s go through the other operations of <code>CompletableFuture</code> first.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Exception Handling" data-type="sect2"><div class="sect2" id="idm45115218853952">
+<h2>Exception Handling</h2>
+<p>So far, I’ve shown you pipelines that have only trotted along the “happy path” without any hiccups.
+However, a promise can be rejected, or as it is called in Java, <em>complete exceptionally</em>, if an exception occurs in the pipeline.</p>
+<p>Instead of blowing up the whole pipeline in the case of an Exception, as Streams or Optionals do, the CompletableFuture API sees Exceptions as first-class citizens and an essential part of its workflow.
+That’s why exception handling isn’t imposed on the tasks themselves, and there are multiple operations available to handle possibly rejected Promises:</p>
+<ul>
+<li>
+<p><code>CompletionStage&lt;T&gt; exceptionally(Function&lt;Throwable, T&gt; fn)</code></p>
+</li>
+<li>
+<p><code>CompletionStage&lt;U&gt; handle(BiFunction&lt;T, Throwable, U&gt; fn)</code></p>
+</li>
+<li>
+<p><code>CompletionStage&lt;T&gt; whenComplete(BiConsumer&lt;T, Throwable&gt; action)</code></p>
+</li>
+</ul>
+<p>Using the <code>exceptionally</code> operation adds an Exception hook into the pipeline, which will complete normally with the previous stage’s result if no Exception has occurred in any previous stage.
+In the case of a rejected stage, its Exception is applied to the hook’s <code>fn</code> for a recovery effort.
+To recover, <code>fn</code> needs to return any value of type <code>T</code>, which will switch the pipeline back to the data channel.
+If no recovery is possible, throwing a new Exception, or rethrowing the applied one, will keep the pipeline in the exceptionally completed state and on the error channel.</p>
+<p>The more flexible <code>handle</code> operation combines the logic of <code>exceptionally</code> and <code>thenApply</code> into a single operation.
+The <code>BiFunction</code> arguments depend on the result of the previous stage.
+If it was rejected, the second argument of type <code>Throwable</code> is non-<code>null</code>.
+Otherwise, the first argument of type <code>T</code> has value.
+Be aware that it still might be a <code>null</code>-value.</p>
+<p>The last operation, <code>whenComplete</code>, is similar to <code>handle</code> but doesn’t offer a way to recover a rejected Promise.</p>
+<section data-pdf-bookmark="Data and Error Channel Revisited" data-type="sect3"><div class="sect3" id="idm45115218409728">
+<h3>Data and Error Channel Revisited</h3>
+<p>Even though I explained Promises have technically two channels, data and error, a CompletableFuture pipeline is actually a straight line of operations, like Streams.
+Each pipeline stage looks for the next compatible operation, depending on which state the current stage has completed.
+In case of completing normally, the next <code>then</code>/<code>run</code>/<code>apply</code>/etc. executes.
+These operations are “pass-through” for exceptionally completed stages, and the pipeline looks further for the next <code>exceptionally</code>/<code>handle</code>/<code>whenComplete</code>/etc. operation.</p>
+<p>A CompletableFuture pipeline might be a straight line created by a fluent call, visualizing it as two channels, though, as done previously in <a data-type="xref" href="#_02-completable-future_channels">Figure 13-2</a>, gives you a better overview of what’s happening.
+Each operation exists in either the data or error channel, except the <code>handle</code> and <code>whenComplete</code> operations, which exist in between, as they’re executed regardless of the pipeline’s state.</p>
+</div></section>
+<section data-pdf-bookmark="Rejected Either Tasks" data-type="sect3"><div class="sect3" id="idm45115218402976">
+<h3>Rejected Either Tasks</h3>
+<p>A straight pipeline might get another CompletableFuture injected by using a combinatorial operation.
+You might think the suffix <code>-Either</code> might imply that <em>either</em> pipelines might complete normally to create a new, non-rejected stage.
+Well, you’re in for a surprise!</p>
+<p>If the previous stage is rejected, the <code>acceptEither</code> operation remains rejected regardless of whether the other stage is completed normally, as shown in <a data-type="xref" href="#_02-completable-future_either">Example 13-5</a>.</p>
+<div data-type="example" id="_02-completable-future_either">
+<h5><span class="label">Example 13-5. </span>Either operations and rejected stages</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">notFailed</code> <code class="o">=</code>
+  <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(()</code> <code class="o">-&gt;</code> <code class="s">"Success!"</code><code class="p">);</code>
+
+<code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">failed</code> <code class="o">=</code>
+  <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(()</code> <code class="o">-&gt;</code> <code class="p">{</code> <code class="k">throw</code> <code class="k">new</code> <code class="n">RuntimeException</code><code class="p">();</code> <code class="p">});</code>
+
+
+<code class="c1">// NO OUTPUT BECAUSE THE PREVIOUS STAGE FAILED</code>
+
+<code class="kd">var</code> <code class="n">rejected</code> <code class="o">=</code> <code class="n">failed</code><code class="p">.</code><code class="na">acceptEither</code><code class="p">(</code><code class="n">notFailed</code><code class="p">,</code> <code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">::</code><code class="n">println</code><code class="p">);</code>
+
+
+<code class="c1">// OUTPUT BECAUSE THE PREVIOUS STAGE COMPLETED NORMALLY</code>
+<code class="kd">var</code> <code class="n">resolved</code> <code class="o">=</code> <code class="n">notFailed</code><code class="p">.</code><code class="na">acceptEither</code><code class="p">(</code><code class="n">failed</code><code class="p">,</code> <code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">::</code><code class="n">println</code><code class="p">);</code>
+<code class="c1">// =&gt; Success!</code></pre></div>
+<p>The gist to remember is that all operations, except the error-handling ones, require a non-rejected previous stage to work properly, even for <code>-Either</code> operations.
+If in doubt, use an error-handling operation to ensure a pipeline is still on the data channel.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Terminal operations" data-type="sect2"><div class="sect2" id="idm45115218393312">
+<h2>Terminal operations</h2>
+<p>Up to this point, any operation returns another <code>CompletionStage&lt;T&gt;</code> to extend the pipeline further.
+The <code>Consumer</code>-based operations might fulfill many use cases, but at some point, you need the actual value even if it might block the current thread.</p>
+<p>The <code>CompletionStage&lt;T&gt;</code> type itself doesn’t provide any additional retrieval methods compared to the <code>Future&lt;t&gt;</code> type.
+Its implementation <code>CompletableFuture&lt;T&gt;</code>, though, gives you two options: the <code>getNow</code> and <code>join</code> methods.
+This ups the number of terminal operations to four, as listed in <a data-type="xref" href="#_02-completable-future_terminal">Table 13-2</a>.</p>
+<table id="_02-completable-future_terminal">
+<caption><span class="label">Table 13-2. </span>Getting a value from a pipeline</caption>
+<thead>
+<tr>
+<th>Method signature</th>
+<th>Use-case</th>
+<th>Exceptions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>T get()</code></p></td>
+<td><p>Blocks the current thread until the pipeline is completed.</p></td>
+<td><p><code>InterruptedException</code> (checked)<br/>
+<code>ExecutionException</code> (checked)<br/>
+<code>CancellationException</code> (unchecked)</p></td>
+</tr>
+<tr>
+<td><p><code>T get(long timeout, TimeUnit unit)</code></p></td>
+<td><p>Blocks the current thread until the pipeline is completed but throws an Exception after the <code>timeout</code> is reached.</p></td>
+<td><p><code>TimeoutException</code> (checked)<br/>
+<code>InterruptedException</code> (checked)<br/>
+<code>ExecutionException</code> (checked)<br/>
+<code>CancellationException</code> (unchecked)</p></td>
+</tr>
+<tr>
+<td><p><code>T getNow(T valueIfAbsent)</code></p></td>
+<td><p>Returns the pipeline’s result if completed normally or throws an  <code>CompletionException</code>.<br/>
+If the result is still pending, the provided fallback value <code>T</code> is returned immediately without canceling the pipeline.</p></td>
+<td><p><code>CompletionException</code> (unchecked)<br/>
+<code>CancellationException</code> (unchecked)</p></td>
+</tr>
+<tr>
+<td><p><code>join()</code></p></td>
+<td><p>Blocks the current thread until the pipeline is done.</p></td>
+<td><p>If it completes exceptionally, the corresponding exception is wrapped into a <code>CompletionException</code>.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>CompletableFuture&lt;T&gt;</code> type also adds another pipeline coordination method, <code>isCompletedExceptionally</code>, giving you a total of four methods for affecting or retrieving the pipeline’s state, as listed in <a data-type="xref" href="#_02-completable-future_coordination">Table 13-3</a>.</p>
+<table id="_02-completable-future_coordination">
+<caption><span class="label">Table 13-3. </span>Coordination methods</caption>
+<thead>
+<tr>
+<th>Method Signature</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>boolean cancel(boolean mayInterruptIfRunning)</code></p></td>
+<td><p>Completes a not already completed stage exceptionally with a <code>CancellationException</code>.
+   The argument <code>mayInterruptIfRunning</code> is ignored because interrupts aren’t used for control, unlike in <code>Future&lt;T&gt;</code>.</p></td>
+</tr>
+<tr>
+<td><p><code>boolean isCancelled()</code></p></td>
+<td><p>Returns <code>true</code> if the stage was canceled before it has completed.</p></td>
+</tr>
+<tr>
+<td><p><code>boolean isDone()</code></p></td>
+<td><p>Returns <code>true</code> if the stage has been completed in any state.</p></td>
+</tr>
+<tr>
+<td><p><code>boolean isCompletedExceptionally()</code></p></td>
+<td><p>Returns <code>true</code> if the stage has been completed exceptionally, or is already in the rejected state.</p></td>
+</tr>
+</tbody>
+</table>
+<p>That’s quite a humongous API, covering a lot of use cases.
+Still, depending on your requirements, some edge cases might be missing.
+But adding your helper to fill any gaps is easy, so let’s do it.</p>
+</div></section>
+<section data-pdf-bookmark="Creating a CompletableFuture Helper" data-type="sect2"><div class="sect2" id="_02-completable-future_designing-helper">
+<h2>Creating a CompletableFuture Helper</h2>
+<p>Although the CompletableFuture API is massive, it’s still missing certain use cases.
+For example, as mentioned earlier in <a data-type="xref" href="#_02-completable-future_combining-tasks">“Combining Tasks”</a>, the return type of the <code>static</code> helper <code>allOf</code> is <code>CompletableFuture&lt;Void&gt;</code>, so you don’t have access to any result of the given instances in later stages.
+It’s a flexible coordination-only method that accepts any kind of <code>CompletableFuture&lt;?&gt;</code> as its arguments but with the trade-off of not having access to any of the results.
+To make up for this, you can create a helper to complement the existing API as needed.</p>
+<p>Let’s create a helper in the vein of <code>allOf</code>, running more than two <code>CompletableFuture</code> instances at once, but still giving access to their results:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">static</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">List</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;&gt;</code> <code class="nf">eachOf</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">cfs</code><code class="p">...)</code></pre>
+<p>The proposed helper <code>eachOf</code> runs all of the given <code>CompletableFuture</code> instances, like <code>allOf</code>.
+However, unlike <code>allOf</code>, the new helper uses the Generic type <code>T</code> instead of <code>?</code> (question mark).
+This restriction to a singular type makes it possible that the <code>eachOf</code> method can actually return a <code>CompletableFuture&lt;List&lt;T&gt;&gt;</code> instead of a result-less <code>CompletableFuture&lt;Void&gt;</code>.</p>
+<section data-pdf-bookmark="The Helper Scaffold" data-type="sect3"><div class="sect3" id="idm45115218196160">
+<h3>The Helper Scaffold</h3>
+<p>A convenience <code>class</code> is needed to hold any helper methods.
+Such helper methods are useful for particular edge cases that aren’t possible to solve otherwise in a concise way, or even at all, with the provided API.
+The most idiomatic and safe way is to use a <code>class</code> with a <code>private</code> constructor as shown as follows to prevent anyone from accidentally extending or instantiating the type.</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">final</code> <code class="kd">class</code> <code class="nc">CompletableFutures</code> <code class="p">{</code>
+
+  <code class="kd">private</code> <code class="nf">CompletableFutures</code><code class="p">()</code> <code class="p">{</code>
+    <code class="c1">// SUPPRESS DEFAULT CONSTRUCTOR</code>
+  <code class="p">}</code>
+<code class="p">}</code></pre>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Helper classes with a <code>private</code> default constructor don’t have to be <code>final</code> per se to prevent extendability.
+The extending class won’t compile without a visible implicit <code>super</code> constructor.
+Nevertheless, making the helper class <code>final</code> signifies the desired intent without relying on implicit behavior.</p>
+</div>
+</div></section>
+<section data-pdf-bookmark="Designing eachOf" data-type="sect3"><div class="sect3" id="idm45115218136176">
+<h3>Designing eachOf</h3>
+<p>The goal of <code>eachOf</code> is almost identical to <code>allOf</code>.
+Both methods coordinate one or more <code>CompletableFuture</code> instances.
+However, <code>eachOf</code> is going further by managing the results, too.
+This leads to the following requirements:</p>
+<ul>
+<li>
+<p>Returning a <code>CompletableFuture</code> containing all the given instances, like <code>allOf</code>.</p>
+</li>
+<li>
+<p>Giving access to the results of successfully completed instances.</p>
+</li>
+</ul>
+<p>The first requirement is fulfilled by the <code>allOf</code> method.
+The second one, however, requires additional logic.
+It requires you to inspect the given instances individually and aggregate their results.</p>
+<p>The simplest way of running any logic after a previous stage completes in any way is using the <code>thenApply</code> operation as shown as follows:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">static</code> <code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">List</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;&gt;</code> <code class="nf">eachOf</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">...</code> <code class="n">cfs</code><code class="p">)</code> <code class="p">{</code>
+
+  <code class="k">return</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">allOf</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code>
+                          <code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="o">???</code><code class="p">);</code>
+<code class="p">}</code></pre>
+<p>Using what you’ve learned so far in the book, the aggregation of the results of successfully completed <code>CompletableFuture</code> instances can be done by creating a Stream data processing pipeline.</p>
+<p>Let’s go through the steps needed to create such a pipeline.</p>
+<p>First, the Stream must be created from the given <code>CompletableFuture&lt;T&gt;</code> instances.
+It’s an <code>vararg</code> method argument so it corresponds to an array.
+The helper <code>Arrays#stream(T[] arrays)</code> is the obvious choice when dealing with a <code>vararg</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Arrays</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code></pre>
+<p>Next, the successfully completed instances are filtered.
+There is no explicit method to ask an instance if it is completed normally, but you can ask the inverse thanks to <code>Predicate.not</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Arrays</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code>
+      <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">Predicate</code><code class="p">.</code><code class="na">not</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">::</code><code class="n">isCompletedExceptionally</code><code class="p">))</code></pre>
+<p>There are two methods for getting a result immediately from a <code>CompletableFuture</code>: <code>get()</code> and <code>join()</code>.
+In this case, the latter is preferable, because it doesn’t throw a checked Exception, simplifying the Stream pipeline as discussed in <a data-type="xref" href="ch10.xhtml#_02-exception-handling">Chapter 10</a>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Arrays</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code>
+      <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">Predicate</code><code class="p">.</code><code class="na">not</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">::</code><code class="n">isCompletedExceptionally</code><code class="p">))</code>
+      <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">::</code><code class="n">join</code><code class="p">)</code></pre>
+<p>Using the <code>join</code> method blocks the current thread to get the result.
+However, the Stream pipeline is run after <code>allOf</code> is completed anyway, so all results are already available.
+And by filtering non-successfully completed elements beforehand, no Exception is thrown that might implode the pipeline.</p>
+<p>Finally, the results are aggregated into a <code>List&lt;T&gt;</code>.
+This can be either done with a <code>collect</code> operation, or if you’re using Java 16+, the <code>Stream&lt;T&gt;</code> type’s <code>toList</code> method:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Arrays</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code>
+      <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">Predicate</code><code class="p">.</code><code class="na">not</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">::</code><code class="n">isCompletedExceptionally</code><code class="p">))</code>
+      <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">::</code><code class="n">join</code><code class="p">)</code>
+      <code class="p">.</code><code class="na">toList</code><code class="p">();</code></pre>
+<p>The Stream pipeline can now be used to gather the results in the <code>thenApply</code> call.
+The full implementation of <code>CompletableFutures</code> and its <code>eachOf</code> helper method is shown in <a data-type="xref" href="#_02-completable-future_futures-eachof-complete">Example 13-6</a>.</p>
+<div data-type="example" id="_02-completable-future_futures-eachof-complete">
+<h5><span class="label">Example 13-6. </span>Complete implementation of <code>eachOf</code></h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">final</code> <code class="kd">class</code> <code class="nc">CompletableFutures</code> <code class="p">{</code>
+
+  <code class="kd">private</code> <code class="kd">final</code> <code class="kd">static</code> <code class="n">Predicate</code><code class="o">&lt;</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="o">?</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="n">EXCEPTIONALLY</code> <code class="o">=</code> <a class="co" href="#callout_asynchronous_tasks_CO3-1" id="co_asynchronous_tasks_CO3-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+    <code class="n">Predicate</code><code class="p">.</code><code class="na">not</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">:</code><code class="p">:</code><code class="n">isCompletedExceptionally</code><code class="p">)</code><code class="p">;</code>
+
+  <code class="kd">public</code> <code class="kd">static</code> <code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">List</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="nf">eachOf</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">.</code><code class="p">.</code><code class="p">.</code> <code class="n">cfs</code><code class="p">)</code> <code class="p">{</code>
+
+    <code class="n">Function</code><code class="o">&lt;</code><code class="n">Void</code><code class="p">,</code> <code class="n">List</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="n">fn</code> <code class="o">=</code> <code class="n">unused</code> <code class="o">-</code><code class="o">&gt;</code> <a class="co" href="#callout_asynchronous_tasks_CO3-2" id="co_asynchronous_tasks_CO3-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+      <code class="n">Arrays</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code>
+            <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">Predicate</code><code class="p">.</code><code class="na">not</code><code class="p">(</code><code class="n">EXCEPTIONALLY</code><code class="p">)</code><code class="p">)</code>
+            <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">:</code><code class="p">:</code><code class="n">join</code><code class="p">)</code>
+            <code class="p">.</code><code class="na">toList</code><code class="p">(</code><code class="p">)</code><code class="p">;</code>
+
+    <code class="k">return</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">allOf</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code> <a class="co" href="#callout_asynchronous_tasks_CO3-3" id="co_asynchronous_tasks_CO3-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+                            <code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="n">fn</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="nf">CompletableFutures</code><code class="p">(</code><code class="p">)</code> <code class="p">{</code>
+    <code class="c1">// SUPPRESS DEFAULT CONSTRUCTOR</code>
+  <code class="p">}</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_asynchronous_tasks_CO3-1" id="callout_asynchronous_tasks_CO3-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The <code>Predicate</code> for testing successful completion isn’t bound to a specific <code>CompletableFuture</code> instance and, therefore, reusable as a <code>final static</code> field.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO3-2" id="callout_asynchronous_tasks_CO3-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The result gathering action is represented by <code>Function&lt;Void, List&lt;T&gt;&gt;</code>, which matches the inner types of the return type of <code>allOf</code> and the intended return type of <code>eachOf</code>.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO3-3" id="callout_asynchronous_tasks_CO3-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The overall task is merely calling the pre-existing <code>allOf</code> and combining it with the result aggregating pipeline.</p></dd>
+</dl>
+<p>That’s it!
+We’ve created an alternative to <code>allOf</code> for certain use cases when the results should be easily accessible.</p>
+<p>The final implementation is an example of the functional approach to solving problems.
+Each task in itself is isolated and could be used on its own.
+By combining them, though, you create a more complex solution built of smaller parts.</p>
+</div></section>
+<section data-pdf-bookmark="Improving the CompletableFutures Helper" data-type="sect3"><div class="sect3" id="idm45115218135232">
+<h3>Improving the CompletableFutures Helper</h3>
+<p>The <code>eachOf</code> method works as you would expect it as a complementary method to <code>allOf</code>.
+If any of the given <code>CompletableFuture</code> instances fails, the returned <code>CompletableFuture&lt;List&lt;T&gt;&gt;</code> has also completed exceptionally.</p>
+<p>Still, there are “fire &amp; forget” use cases, where you are only interested in the successfully completed tasks and don’t care about any failures.
+A failed <code>CompletableFuture</code>, though, will throw an Exception if you try to extract its value with <code>get</code> or similar methods.
+So let’s add a <code>bestEffort</code> helper method based on <code>eachOf</code> that always completes successfully and only returns the successful results.</p>
+<p>The main goal is almost identical to <code>eachOf</code>, except if the <code>allOf</code> call returns an exceptionally completed <code>CompletableFuture&lt;Void&gt;</code>, it must recover.
+Adding an Exception hook by interjecting an <code>exceptionally</code> operation is the obvious choice:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">static</code>
+<code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">List</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;&gt;</code> <code class="nf">bestEffort</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">...</code> <code class="n">cfs</code><code class="p">)</code> <code class="p">{</code>
+
+  <code class="n">Function</code><code class="o">&lt;</code><code class="n">Void</code><code class="p">,</code> <code class="n">List</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;&gt;</code> <code class="n">fn</code> <code class="o">=</code> <code class="p">...;</code> <code class="c1">// no changes to Stream pipeline</code>
+
+  <code class="k">return</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">allOf</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code>
+                          <code class="p">.</code><code class="na">exceptionally</code><code class="p">(</code><code class="n">ex</code> <code class="o">-&gt;</code> <code class="kc">null</code><code class="p">)</code>
+                          <code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="n">fn</code><code class="p">);</code>
+<code class="p">}</code></pre>
+<p>The <code>exceptionally</code> lambda <code>ex -&gt; null</code> might look weird at first.
+But if you check out the underlying method signature, its intention becomes clearer.</p>
+<p>In this case, the <code>exceptionally</code> operation requires a <code>Function&lt;Throwable, Void&gt;</code> to recover the <code>CompletableFuture</code> by returning a value of type <code>Void</code> instead of throwing an Exception.
+This is achieved by returning <code>null</code>.
+After that, the aggregation Stream pipeline from <code>eachOf</code> is used to gather the results.</p>
+<div data-type="tip"><h6>Tip</h6>
+<p>The same behavior could be achieved with the <code>handle</code> operation and handle both states, success or rejection, in a singular <code>BiFunction</code>.
+Still, handling the states in separate steps makes a more readable pipeline.</p>
+</div>
+<p>Now that we have two helper methods with shared logic, it might make sense to extract common logic into their own methods.
+This underlies the functional approach of combining isolated logic to create a more complex and complete task.
+A possible refactored implementation of <code>Futures</code> is shown in <a data-type="xref" href="#_02-completable-future_futures-eachof-complete-refactored">Example 13-7</a>.</p>
+<div data-type="example" id="_02-completable-future_futures-eachof-complete-refactored">
+<h5><span class="label">Example 13-7. </span>Refactored implementation of Futures with <code>eachOf</code> and <code>bestEffort</code></h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">final</code> <code class="kd">class</code> <code class="nc">CompletableFutures</code> <code class="p">{</code>
+
+  <code class="kd">private</code> <code class="kd">final</code> <code class="kd">static</code> <code class="n">Predicate</code><code class="o">&lt;</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="o">?</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="n">EXCEPTIONALLY</code> <code class="o">=</code> <a class="co" href="#callout_asynchronous_tasks_CO4-1" id="co_asynchronous_tasks_CO4-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+    <code class="n">Predicate</code><code class="p">.</code><code class="na">not</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">:</code><code class="p">:</code><code class="n">isCompletedExceptionally</code><code class="p">)</code><code class="p">;</code>
+
+  <code class="kd">private</code> <code class="kd">static</code> <code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">Function</code><code class="o">&lt;</code><code class="n">Void</code><code class="p">,</code> <code class="n">List</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="o">&gt;</code>
+                     <code class="nf">gatherResultsFn</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">.</code><code class="p">.</code><code class="p">.</code> <code class="n">cfs</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_asynchronous_tasks_CO4-2" id="co_asynchronous_tasks_CO4-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+
+    <code class="k">return</code> <code class="n">unused</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">Arrays</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code>
+                      <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">Predicate</code><code class="p">.</code><code class="na">not</code><code class="p">(</code><code class="n">EXCEPTIONALLY</code><code class="p">)</code><code class="p">)</code>
+                      <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">:</code><code class="p">:</code><code class="n">join</code><code class="p">)</code>
+                      <code class="p">.</code><code class="na">toList</code><code class="p">(</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">public</code> <code class="kd">static</code> <code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">List</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="nf">eachOf</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">.</code><code class="p">.</code><code class="p">.</code> <code class="n">cfs</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_asynchronous_tasks_CO4-3" id="co_asynchronous_tasks_CO4-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+    <code class="k">return</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">allOf</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code>
+                            <code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="n">gatherResultsFn</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">public</code> <code class="kd">static</code> <code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">List</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="nf">bestEffort</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code><code class="p">.</code><code class="p">.</code><code class="p">.</code> <code class="n">cfs</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_asynchronous_tasks_CO4-3" id="co_asynchronous_tasks_CO4-4"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+    <code class="k">return</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">allOf</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code>
+                            <code class="p">.</code><code class="na">exceptionally</code><code class="p">(</code><code class="n">ex</code> <code class="o">-</code><code class="o">&gt;</code> <code class="kc">null</code><code class="p">)</code>
+                            <code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="n">gatherResultsFn</code><code class="p">(</code><code class="n">cfs</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="nf">CompletableFutures</code><code class="p">(</code><code class="p">)</code> <code class="p">{</code>
+    <code class="c1">// SUPPRESS DEFAULT CONSTRUCTOR</code>
+  <code class="p">}</code>
+<code class="p">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_asynchronous_tasks_CO4-1" id="callout_asynchronous_tasks_CO4-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The <code>Predicate</code> is unchanged.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO4-2" id="callout_asynchronous_tasks_CO4-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The result-gathering logic is refactored into a <code>private</code> factory method to ensure consistent handling across both <code>eachOf</code> and <code>bestEffort</code>.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO4-3" id="callout_asynchronous_tasks_CO4-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>Both <code>public</code> helper methods are reduced to the absolute minimum.</p></dd>
+</dl></div>
+<p>The refactored <code>CompletableFutures</code> helper is simpler and more robust than before.
+Any sharable complex logic is reused so it provides consistent behavior throughout its method and minimizes the required documentation that should definitely add to communicate the intended functionality to any caller.</p>
+</div></section>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Manual Creation and Completion" data-type="sect1"><div class="sect1" id="idm45115218951104">
+<h1>Manual Creation and Completion</h1>
+<p>The only way to create <code>Future&lt;T&gt;</code> instances besides implementing the interface yourself is by submitting a task to an <code>ExecutorService</code>.
+The <code>static</code> convenience factory methods <code>runAsync</code> or <code>supplyAsync</code> of <code>CompletableFuture&lt;T&gt;</code> are quite similar.
+Unlike its predecessor, they’re not the only way to create instances, though.</p>
+<section data-pdf-bookmark="Manual Creation" data-type="sect2"><div class="sect2" id="idm45115217236416">
+<h2>Manual Creation</h2>
+<p>Thanks to being an actual implementation and not an interface, the <code>CompletableFuture&lt;T&gt;</code> type has a constructor that you can use to create an unsettled instance as shown as follows:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">unsettled</code> <code class="o">=</code> <code class="k">new</code> <code class="n">CompletableFuture</code><code class="o">&lt;&gt;</code><code class="p">();</code></pre>
+<p>Without an attached task, however, it will never be completed or fail.
+Instead, you need to complete such a task manually.</p>
+</div></section>
+<section data-pdf-bookmark="Manual Completion" data-type="sect2"><div class="sect2" id="idm45115217131008">
+<h2>Manual Completion</h2>
+<p>There are a couple of ways to settle an existing <code>CompletableFuture&lt;T&gt;</code> instance and kickstart the attached pipeline:</p>
+<ul>
+<li>
+<p><code>boolean complete(T value)</code></p>
+</li>
+<li>
+<p><code>boolean completeExceptionally(Throwable ex)</code></p>
+</li>
+</ul>
+<p>Both methods return <code>true</code> if the call transitions the stage to the expected state.</p>
+<p>Java 9 introduced additional <code>complete</code> methods for normally completed stages, in the form of <code>-Async</code> variants, and a timeout-based one:</p>
+<ul>
+<li>
+<p><code>CompletableFuture&lt;T&gt; completeAsync(Supplier&lt;T&gt; supplier)</code></p>
+</li>
+<li>
+<p><code>CompletableFuture&lt;T&gt; completeAsync(Supplier&lt;T&gt; supplier, Executor executor)</code></p>
+</li>
+<li>
+<p><code>CompletableFuture&lt;T&gt; completeOnTimeout(T value, long timeout, TimeUnit unit)</code></p>
+</li>
+</ul>
+<p>The <code>-Async</code> variants complete the current stage with the result of the <code>supplier</code> in a new asynchronous task.</p>
+<p>The other method, <code>completeOnTimeout</code>, settles the current stage with the given <code>value</code> if the stage doesn’t complete otherwise before the <code>timeout</code> is reached.</p>
+<p>Instead of creating a new instance and then manually completing it, you can also create an already completed instance with one of these <code>static</code> convenience factory methods:</p>
+<ul>
+<li>
+<p><code>CompletableFuture&lt;U&gt; completedFuture(U value)</code></p>
+</li>
+<li>
+<p><code>CompletableFuture&lt;U&gt; failedFuture(Throwable ex)</code> (Java 9+)</p>
+</li>
+<li>
+<p><code>CompletionStage&lt;U&gt; completedStage(U value)</code> (Java 9+)</p>
+</li>
+<li>
+<p><code>CompletionStage&lt;U&gt; failedStage(Throwable ex)</code> (Java 9+)</p>
+</li>
+</ul>
+<p>Such already completed futures can then be used in any of the combinatorial operations, or as a starting point for a CompletableFutures pipeline, as I’m going to discuss in the next section.</p>
+</div></section>
+<section data-pdf-bookmark="Use-Cases for Manually Created and Completed Instances" data-type="sect2"><div class="sect2" id="idm45115217114240">
+<h2>Use-Cases for Manually Created and Completed Instances</h2>
+<p>In essence, the CompletableFuture API provides an easy way to create an asynchronous task pipeline with multiple steps.
+By creating and completing a stage manually, you gain fine-grained control over how the pipeline is executed afterward.
+For example, you can circumvent spinning off a task if the result is already known.
+Or you can create a partial pipeline factory for common tasks.</p>
+<p>Let’s look at a few possible use cases.</p>
+<section data-pdf-bookmark="CompletableFuture as Return Value" data-type="sect3"><div class="sect3" id="idm45115217081856">
+<h3>CompletableFuture as Return Value</h3>
+<p><code>CompletableFuture</code> makes an excellent return value for possible costly or long-running tasks.</p>
+<p>Imagine a weather report service that calls a REST API to return a <code>WeatherInfo</code> object.
+Even though weather changes over time, it makes sense to cache the <code>WeatherInfo</code> for a particular place for some time before updating them with another REST call.</p>
+<p>A REST call is naturally costlier and requires more time than a simple cache lookup, and therefore might block the current thread too long to be acceptable.
+Wrapping it in a <code>CompletabaleFuture</code> provides an easy way to offload the task from the current thread, leading to the following general <code>WeatherService</code> with a singular <code>public</code> method:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">WeatherService</code> <code class="p">{</code>
+
+  <code class="kd">public</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="nf">check</code><code class="p">(</code><code class="n">ZipCode</code> <code class="n">zipCode</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">return</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(</code>
+      <code class="p">()</code> <code class="o">-&gt;</code> <code class="k">this</code><code class="p">.</code><code class="na">restAPI</code><code class="p">.</code><code class="na">getWeatherInfoFor</code><code class="p">(</code><code class="n">zipCode</code><code class="p">)</code>
+    <code class="p">);</code>
+  <code class="p">}</code>
+<code class="p">}</code></pre>
+<p>Adding a cache requires two methods, one for storing any result, and one for retrieving existing ones, as follows:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">WeatherService</code> <code class="p">{</code>
+
+  <code class="kd">private</code> <code class="n">Optional</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="nf">cached</code><code class="p">(</code><code class="n">ZipCode</code> <code class="n">zipCode</code><code class="p">)</code> <code class="p">{</code>
+    <code class="c1">// ...</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="n">WeatherInfo</code> <code class="nf">storeInCache</code><code class="p">(</code><code class="n">WeatherInfo</code> <code class="n">info</code><code class="p">)</code> <code class="p">{</code>
+    <code class="c1">// ...</code>
+  <code class="p">}</code>
+
+  <code class="c1">// ...</code>
+<code class="p">}</code></pre>
+<p>Using <code>Optional&lt;WeatherInfo&gt;</code> provides you with a functional launchpad to connect each part later.
+The actual implementation of the caching mechanism doesn’t matter for the purpose and intent of the example.</p>
+<p>The actual API call should be refactored, too, to create smaller logic units, leading to a singular <code>public</code> method and three <code>private</code> distinct operations.
+The logic to store a result in the cache can be added as a <code>CompletableFuture</code> operation by using <code>thenApply</code> with the <code>storeInCache</code> method:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">WeatherService</code> <code class="p">{</code>
+
+  <code class="kd">private</code> <code class="n">Optional</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="nf">cacheLookup</code><code class="p">(</code><code class="n">ZipCode</code> <code class="n">zipCode</code><code class="p">)</code> <code class="p">{</code>
+    <code class="c1">// ...</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="n">WeatherInfo</code> <code class="nf">storeInCache</code><code class="p">(</code><code class="n">WeatherInfo</code> <code class="n">info</code><code class="p">)</code> <code class="p">{</code>
+    <code class="c1">// ...</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="nf">restCall</code><code class="p">(</code><code class="n">ZipCode</code> <code class="n">zipCode</code><code class="p">)</code> <code class="p">{</code>
+
+    <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="n">restCall</code> <code class="o">=</code> <code class="k">this</code><code class="p">.</code><code class="na">restAPI</code><code class="p">.</code><code class="na">getWeatherInfoFor</code><code class="p">(</code><code class="n">zipCode</code><code class="p">);</code>
+
+    <code class="k">return</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(</code><code class="n">restCall</code><code class="p">)</code>
+                            <code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="k">this</code><code class="p">::</code><code class="n">storeInCache</code><code class="p">);</code>
+  <code class="p">}</code>
+
+  <code class="kd">public</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="nf">check</code><code class="p">(</code><code class="n">ZipCode</code> <code class="n">zipCode</code><code class="p">)</code> <code class="p">{</code>
+    <code class="c1">// ...</code>
+  <code class="p">}</code>
+<code class="p">}</code></pre>
+<p>Now all parts can be combined to fulfill the task of providing a cached weather service, as shown in <a data-type="xref" href="#_02-completable-future_weather-service">Example 13-8</a>.</p>
+<div data-type="example" id="_02-completable-future_weather-service">
+<h5><span class="label">Example 13-8. </span>Cached WeatherService with CompletableFutures</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">WeatherService</code> <code class="p">{</code>
+
+  <code class="kd">private</code> <code class="n">Optional</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="nf">cacheLookup</code><code class="p">(</code><code class="n">ZipCode</code> <code class="n">zipCode</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_asynchronous_tasks_CO5-1" id="co_asynchronous_tasks_CO5-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+    <code class="c1">// ...</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="n">WeatherInfo</code> <code class="nf">storeInCache</code><code class="p">(</code><code class="n">WeatherInfo</code> <code class="n">info</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_asynchronous_tasks_CO5-1" id="co_asynchronous_tasks_CO5-2"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+    <code class="c1">// ...</code>
+  <code class="p">}</code>
+
+  <code class="kd">private</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="nf">restCall</code><code class="p">(</code><code class="n">ZipCode</code> <code class="n">zipCode</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_asynchronous_tasks_CO5-2" id="co_asynchronous_tasks_CO5-3"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+
+    <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="n">restCall</code> <code class="o">=</code> <code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="k">this</code><code class="p">.</code><code class="na">restAPI</code><code class="p">.</code><code class="na">getWeatherInfoFor</code><code class="p">(</code><code class="n">zipCode</code><code class="p">)</code><code class="p">;</code>
+
+    <code class="k">return</code> <code class="n">CompletableFuture</code><code class="p">.</code><code class="na">supplyAsync</code><code class="p">(</code><code class="n">restCall</code><code class="p">)</code>
+                            <code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="k">this</code><code class="p">:</code><code class="p">:</code><code class="n">storeInCache</code><code class="p">)</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="kd">public</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">WeatherInfo</code><code class="o">&gt;</code> <code class="nf">check</code><code class="p">(</code><code class="n">ZipCode</code> <code class="n">zipCode</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_asynchronous_tasks_CO5-3" id="co_asynchronous_tasks_CO5-4"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+
+    <code class="k">return</code> <code class="n">cacheLookup</code><code class="p">(</code><code class="n">zipCode</code><code class="p">)</code><code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="p">:</code><code class="p">:</code><code class="n">completedFuture</code><code class="p">)</code> <a class="co" href="#callout_asynchronous_tasks_CO5-4" id="co_asynchronous_tasks_CO5-5"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+                               <code class="p">.</code><code class="na">orElseGet</code><code class="p">(</code><code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">restCall</code><code class="p">(</code><code class="n">zipCode</code><code class="p">)</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_asynchronous_tasks_CO5-5" id="co_asynchronous_tasks_CO5-6"><img alt="5" height="12" src="assets/5.png" width="12"/></a>
+  <code class="p">}</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_asynchronous_tasks_CO5-1" id="callout_asynchronous_tasks_CO5-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The cache lookup returns an <code>Optional&lt;WeatherInfo&gt;</code> to provide a fluent and functional jump-off point.
+The <code>storeInCache</code> method returns the stored <code>WeatherInfo</code> object to be usable as a method reference.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO5-3" id="callout_asynchronous_tasks_CO5-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The <code>restCall</code> method combines the REST call itself and stores the result if successfully completed, in the cache.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO5-4" id="callout_asynchronous_tasks_CO5-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The <code>check</code> method combines the other methods by looking in the cache first.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO5-5" id="callout_asynchronous_tasks_CO5-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>If a <code>WeatherInfo</code> is found, it returns an already completed <code>CompletableFuture&lt;WeatherInfo&gt;</code> immediately.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO5-6" id="callout_asynchronous_tasks_CO5-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a></dt>
+<dd><p>If no <code>WeahterInfo</code> object is found, the Optional’s <code>orElseGet</code> executes the <code>reastCall</code> method lazily.</p></dd>
+</dl>
+<p>The advantage of combining CompletableFutures with Optionals this way is that it doesn’t matter what happens behind the scenes for the caller, whether the data is loaded via REST or is coming directly from a cache.
+Each <code>private</code> method does a singular task most efficiently, with the sole <code>public</code> method combining them as an asynchronous task pipeline only doing its expensive work if absolutely required.</p>
+</div></section>
+<section data-pdf-bookmark="Pending CompletableFuture Pipelines" data-type="sect3"><div class="sect3" id="idm45115217081232">
+<h3>Pending CompletableFuture Pipelines</h3>
+<p>A pending CompletableFuture instance never completes by itself with any state.
+Similar to Streams that won’t start their data processing until a terminal operation is connected, a CompletableFuture task pipeline won’t do any work until the first stage completes.
+Therefore, it provides a perfect starting point as the first stage of a more intricate task pipeline or even a scaffold for a pre-defined task to be executed on demand later.</p>
+<p>Imagine you want to process image files.
+There are multiple independent steps involved that might fail.
+Instead of processing the files directly, a factory provides unsettled <code>CompletedFuture</code> instances, as shown in <a data-type="xref" href="#_02-completable-future_image-process-01">Example 13-9</a>.</p>
+<div data-type="example" id="_02-completable-future_image-process-01">
+<h5><span class="label">Example 13-9. </span>ImageProcessor with unsettled CompletableFuture</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">ImageProcessor</code> <code class="p">{</code>
+
+  <code class="kd">public</code> <code class="kd">record</code> <code class="nc">Task</code><code class="p">(</code><code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">Path</code><code class="o">&gt;</code> <code class="n">start</code><code class="p">,</code> <a class="co" href="#callout_asynchronous_tasks_CO6-1" id="co_asynchronous_tasks_CO6-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                     <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">InputStream</code><code class="o">&gt;</code> <code class="n">end</code><code class="p">)</code> <code class="p">{</code>
+    <code class="c1">// NO BODY</code>
+  <code class="p">}</code>
+
+  <code class="kd">public</code> <code class="n">Task</code> <code class="nf">createTask</code><code class="p">(</code><code class="kt">int</code> <code class="n">maxHeight</code><code class="p">,</code>
+                         <code class="kt">int</code> <code class="n">maxWidth</code><code class="p">,</code>
+                         <code class="kt">boolean</code> <code class="n">keepAspectRatio</code><code class="p">,</code>
+                         <code class="kt">boolean</code> <code class="n">trimWhitespace</code><code class="p">)</code> <code class="p">{</code>
+
+    <code class="kd">var</code> <code class="n">start</code> <code class="o">=</code> <code class="k">new</code> <code class="n">CompletableFuture</code><code class="o">&lt;</code><code class="n">Path</code><code class="o">&gt;</code><code class="p">(</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_asynchronous_tasks_CO6-2" id="co_asynchronous_tasks_CO6-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+
+    <code class="kd">var</code> <code class="n">end</code> <code class="o">=</code> <code class="n">unsettled</code><code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="p">.</code><code class="p">.</code><code class="p">.</code><code class="p">)</code> <a class="co" href="#callout_asynchronous_tasks_CO6-3" id="co_asynchronous_tasks_CO6-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+                       <code class="p">.</code><code class="na">exceptionally</code><code class="p">(</code><code class="p">.</code><code class="p">.</code><code class="p">.</code><code class="p">)</code>
+                       <code class="p">.</code><code class="na">thenApply</code><code class="p">(</code><code class="p">.</code><code class="p">.</code><code class="p">.</code><code class="p">)</code>
+                       <code class="p">.</code><code class="na">handle</code><code class="p">(</code><code class="p">.</code><code class="p">.</code><code class="p">.</code><code class="p">)</code><code class="p">;</code>
+
+    <code class="k">return</code> <code class="k">new</code> <code class="n">Task</code><code class="p">(</code><code class="n">start</code><code class="p">,</code> <code class="n">end</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_asynchronous_tasks_CO6-4" id="co_asynchronous_tasks_CO6-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+  <code class="p">}</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_asynchronous_tasks_CO6-1" id="callout_asynchronous_tasks_CO6-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The caller needs access to the unsettled first stage to start the pipeline, but also requires the stage to access the final result.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO6-2" id="callout_asynchronous_tasks_CO6-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The Generic type of the returned CompletableFuture instance must match the type you want the caller to provide when they actually execute the pipeline.
+In this case, the <code>Path</code> to an image file is used.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO6-3" id="callout_asynchronous_tasks_CO6-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The task pipeline starts with an unsettled instance so the required processing operations can be added lazily.</p></dd>
+<dt><a class="co" href="#co_asynchronous_tasks_CO6-4" id="callout_asynchronous_tasks_CO6-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>The <code>Task</code> record is returned to provide easy access to the first and last stages.</p></dd>
+</dl>
+<p>Running the task pipeline is done by calling any of the <code>complete</code> methods on the first stage <code>start</code>.
+Afterward, the last stage is used to retrieve a potential result, as shown below:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// CREATING LAZY TASK</code>
+<code class="kd">var</code> <code class="n">task</code> <code class="o">=</code> <code class="k">this</code><code class="p">.</code><code class="na">imageProcessor</code><code class="p">.</code><code class="na">createTask</code><code class="p">(</code><code class="mi">800</code><code class="p">,</code> <code class="mi">600</code><code class="p">,</code> <code class="kc">false</code><code class="p">,</code> <code class="kc">true</code><code class="p">);</code>
+
+
+<code class="c1">// RUNNING TASK</code>
+<code class="kd">var</code> <code class="n">path</code> <code class="o">=</code> <code class="n">Path</code><code class="p">.</code><code class="na">of</code><code class="p">(</code><code class="s">"a-functional-approach-to-java/cover.png"</code><code class="p">);</code>
+<code class="n">task</code><code class="p">.</code><code class="na">start</code><code class="p">().</code><code class="na">complete</code><code class="p">(</code><code class="n">path</code><code class="p">);</code>
+
+
+<code class="c1">// ACCESSING THE RESULT</code>
+<code class="kd">var</code> <code class="n">processed</code> <code class="o">=</code> <code class="n">task</code><code class="p">.</code><code class="na">end</code><code class="p">().</code><code class="na">get</code><code class="p">();</code></pre>
+<p>Just like a Stream pipeline without a terminal operation creates a lazy processing pipeline for multiple items, a pending CompletableFuture pipeline is a lazily usable task pipeline for a singular item.</p>
+</div></section>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="About Thread Pools and Timeouts" data-type="sect1"><div class="sect1" id="_02-completable-future_threads">
+<h1>About Thread Pools and Timeouts</h1>
+<p>Two last aspects of concurrent programming shouldn’t be ignored: timeouts and thread pools.</p>
+<p>By default, all <code>-Async</code> <code>CompletableFuture</code> operations use the JDK’s common <code>ForkJoinPool</code>.
+It’s a highly optimized thread pool based on runtime settings with sensible defaults<sup><a data-type="noteref" href="ch13.xhtml#idm45115216237728" id="idm45115216237728-marker">1</a></sup>.
+As its name implies, the “common” pool is a shared one also used by other parts of the JDK, like parallel Streams.
+Unlike parallel Streams, though, the async operations can use a custom <code>Executor</code> instead.
+That allows you to use a thread pool fitting your requirements<sup><a data-type="noteref" href="ch13.xhtml#idm45115216235488" id="idm45115216235488-marker">2</a></sup> without affecting the common pool.</p>
+<div data-type="warning" epub:type="warning"><h1>Daemon Threads</h1>
+<p>An important difference between using Threads via the <code>ForkJoinPool</code> and user-created ones via an <code>Executor</code> is their ability to outlive the main thread.
+By default, user-created Threads are non-daemon, which means they outlive the main thread and prevent the JVM from exiting, even if the main thread has finished all its work.
+Using Threads via the <code>ForkJoinPool</code>, however, might get killed with the main thread.
+See this <a href="https://bazlur.com/2021/07/be-sure-of-using-fork/join-common-pool-they-are-daemon-threads/">blog post</a> by Java Champion A N M Bazlur Rahman for more details on the topic.</p>
+</div>
+<p>Running your tasks on the most efficient thread is only the first half of the equation; thinking about timeouts is the other half.
+A <code>CompletableFuture</code> that never completes or times out will remain pending for eternity, blocking its thread.
+If you try to retrieve its value, for example, by calling <code>get()</code>, the current thread is blocked, too.
+Choosing appropriate timeouts can prevent eternally blocked threads.
+However, using timeouts means that you also have to deal with a possible <code>TimeoutException</code> now.</p>
+<p>There are multiple operations available, both intermediate and terminal, as listed in <a data-type="xref" href="#_02-completable-future_timeout">Table 13-4</a>.</p>
+<table id="_02-completable-future_timeout">
+<caption><span class="label">Table 13-4. </span>Timeout-related operations</caption>
+<thead>
+<tr>
+<th>Method signature</th>
+<th>Use-case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>CompletableFuture&lt;T&gt;<br/>
+completeOnTimeout(T value,<br/>
+                  long timeout,<br/>
+                  TimeUnit unit)</code></p></td>
+<td><p>Completes the stage normally with the provided value after the timeout is reached. (Java 9+)</p></td>
+</tr>
+<tr>
+<td><p><code>CompletableFuture&lt;T&gt;<br/>
+orTimeout(long timeout, <br/>
+          TimeUnit unit)</code></p></td>
+<td><p>Completes the stage exceptionally after the timeout is reached. (Java 9+)</p></td>
+</tr>
+<tr>
+<td><p><code>T get(long timeout,<br/>
+TimeUnit unit)</code></p></td>
+<td><p>Blocks the current thread until the end of the computation.
+   If the <code>timeout</code> is reached, a <code>TimeoutException</code> is thrown.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The intermediate operations <code>completeOnTimeout</code> and <code>orTimeout</code> provide an interceptor-like operation to handle timeouts at any position of a <code>CompletableFuture</code> pipeline.</p>
+<p>An alternative to timeouts is canceling a running stage by calling <code>boolean cancel(boolean mayInterruptIfRunning)</code>.
+It cancels an unsettled stage and its dependents, so it might require some coordination and keeping track of what’s happening to cancel the right one.</p>
+</div></section>
+<section data-pdf-bookmark="Final Thoughts on Asynchronous Tasks" data-type="sect1"><div class="sect1" id="idm45115216241088">
+<h1>Final Thoughts on Asynchronous Tasks</h1>
+<p>Asynchronous programming is an important aspect of concurrent programming to achieve better performance and responsiveness.
+However, it can be difficult to reason about asynchronous code execution, because it’s no longer obvious <em>when</em> and on <em>which thread</em> a task is executed.</p>
+<p>Coordinating different threads is nothing new to Java.
+It can be a hassle and is hard to do right and efficiently, especially if you’re not used to multi-threaded programming.
+That’s where the <code>CompletableFuture</code> API really shines.
+It combines the creation of intricate asynchronous possibly multi-step tasks and their coordination into an extensive, consistent, and easy-to-use API.
+This allows you to incorporate asynchronous programming into your code way easier than before.
+Furthermore, you don’t require the common boilerplate and “handrails” normally associated with multi-threaded programming.</p>
+<p>Still, like with all programming techniques, there’s an <em>optimal problem context</em>.
+If used indiscriminately, asynchronous tasks might achieve the opposite of their intended goal.</p>
+<p>Running tasks asynchronously is a good fit for any of these criteria:</p>
+<ul>
+<li>
+<p>Many tasks need to be done simultaneously with at least one being able to make progress.</p>
+</li>
+<li>
+<p>Tasks performing heavy I/O, long-running computations, network calls, or any kind of blocking operation.</p>
+</li>
+<li>
+<p>Tasks are mostly independent and don’t have to wait for another one to complete.</p>
+</li>
+</ul>
+<p>Even with such a quite high-level abstraction like <code>CompletableFuture</code>, multi-threaded code trades simplicity for possible efficiency.</p>
+<p>Like other concurrent or parallel high-level APIs, such as the parallel Stream API I discussed in <a data-type="xref" href="ch08.xhtml#_01-parallel-streams">Chapter 8</a>, there are non-obvious costs involved in coordinating multiple threads.
+Such APIs should be chosen deliberately as an optimization technique, not as a one-size-fits-all solution to hopefully use the available resources more efficiently.</p>
+<p>If you’re interested in the finer details of how to navigate multi-threaded environments safely, I recommend the book <em>Java Concurrency in Practice</em> by Brian Goetz<sup><a data-type="noteref" href="ch13.xhtml#idm45115216152080" id="idm45115216152080-marker">3</a></sup>, the Java Language Architect at Oracle.
+Even with all the new concurrent features introduced since its release in 2006, this book is still the de-facto reference manual on the topic.</p>
+</div></section>
+<section data-pdf-bookmark="Takeaways" data-type="sect1"><div class="sect1" id="idm45115216151152">
+<h1>Takeaways</h1>
+<ul>
+<li>
+<p>Java 5 introduced the type <code>Future&lt;T&gt;</code> as a container type for asynchronous tasks with an eventual result.</p>
+</li>
+<li>
+<p>The CompletableFuture API improves upon the <code>Future&lt;T&gt;</code> type by providing many desirable features previously unavailable.
+It’s a declarative, reactive, lambda-based coordination API with 70+ methods.</p>
+</li>
+<li>
+<p>Tasks can be easily chained or merged into a more complex pipeline that runs each task in a new thread if required.</p>
+</li>
+<li>
+<p>Exceptions are <em>first-class-citizens</em> and you can recover within the functional fluent call, unlike the Streams API.</p>
+</li>
+<li>
+<p><code>CompletableFuture&lt;T&gt;</code> instances can be created manually with either a preexisting value without requiring any threads or other coordination, or as a pending instance to provide an on-demand starting point for its attached operations.</p>
+</li>
+<li>
+<p>As the <code>CompletableFuture</code> API is a concurrency tool, the usual concurrency-related aspects and issues need to be considered, too, like timeouts and thread pools.
+Like parallel Streams, running tasks asynchronously should be considered an optimization technique, not necessarily the first option to go to.</p>
+</li>
+</ul>
+</div></section>
+<div data-type="footnotes"><p data-type="footnote" id="idm45115216237728"><sup><a href="ch13.xhtml#idm45115216237728-marker">1</a></sup> The default settings of the common <code>ForkJoinPool</code> and how to change them is explained in <a href="https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/ForkJoinPool.xhtml">its documentation</a></p><p data-type="footnote" id="idm45115216235488"><sup><a href="ch13.xhtml#idm45115216235488-marker">2</a></sup> The excellent book <em>Java Concurrency in Practice</em> by Josh Bloch et.al. (ISBN 9780321349606) has all the information you might need in <em>Part II: Chapter 8. Applying Thread Pools</em> to better understand how thread pools work and are utilized best.</p><p data-type="footnote" id="idm45115216152080"><sup><a href="ch13.xhtml#idm45115216152080-marker">3</a></sup> Goetz, Brian. 2006. “Java Concurrency in Practice.” Addison-Wesley. ISBN 978-0321349606.</p></div></div></section></div></body></html>

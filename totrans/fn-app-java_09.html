@@ -1,0 +1,1294 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><section data-pdf-bookmark="Chapter 7. Working With Streams" data-type="chapter" epub:type="chapter"><div class="chapter" id="_02-streams">
+<h1><span class="label">Chapter 7. </span>Working With Streams</h1>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="idm45115235904896">
+<h1>A Note for Early Release Readers</h1>
+<p>With Early Release ebooks, you get books in their earliest form—the author’s raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.</p>
+<p>This will be the 7th chapter of the final book. Please note that the GitHub repo will be made active later on.</p>
+<p>If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the editor at <em>rfernando@oreilly.com</em>.</p>
+</div></aside>
+<p>Streams utilize many of the functional features introduced in Java 8 to provide a declarative way to process data.
+The Stream API covers many use cases, but you need to know the different operations and available helper classes work to make the most of them.</p>
+<p><a data-type="xref" href="ch06.xhtml#_02-data-processing">Chapter 6</a> concentrated on showing you the foundation of Streams.
+This chapter will build on that and teach you different ways to create and work with Streams for various use cases.</p>
+<section data-pdf-bookmark="Primitive Streams" data-type="sect1"><div class="sect1" id="_02-streams-primitives-streams">
+<h1>Primitive Streams</h1>
+<p>In Java, generics only work with object-based types (yet<sup><a data-type="noteref" href="ch07.xhtml#idm45115235898112" id="idm45115235898112-marker">1</a></sup>).
+That’s why <code>Stream&lt;T&gt;</code> can’t be used for sequences of primitive values like <code>int</code>.
+There are only two options for using primitive types with Streams:</p>
+<ul>
+<li>
+<p>Autoboxing</p>
+</li>
+<li>
+<p>Specialized Stream variants</p>
+</li>
+</ul>
+<p>Java’s autoboxing support — the automatic conversion between primitive types and the object-based counterparts like <code>int</code> and <code>Integer</code> — may seem like a simple workaround because it automagically works, as shown as follows:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Stream</code><code class="o">&lt;</code><code class="n">Long</code><code class="o">&gt;</code> <code class="n">longStream</code> <code class="o">=</code> <code class="n">Stream</code><code class="p">.</code><code class="na">of</code><code class="p">(</code><code class="mi">5L</code><code class="p">,</code> <code class="mi">23L</code><code class="p">,</code> <code class="mi">42L</code><code class="p">);</code></pre>
+<p>Autoboxing introduces multiple problems, though.
+For one, there’s the overhead associated with the conversion from primitive values to objects compared to using primitive types directly.
+Usually, the overhead is negligible.
+Still, in a data processing pipeline, the overhead of such frequent creation of wrapper types accumulates and can degrade overall performance.</p>
+<p>Another non-issue with primitive wrappers is the possibility of <code>null</code> elements.
+The direct conversion from primitive to object type never results in <code>null</code>, but any operation in the pipeline might return <code>null</code> if it has to deal with the wrapper type instead of a primitive.</p>
+<p>To mitigate, the Stream API, like other functional features of the JDK, has specialized variants for primitive types <code>int</code>, <code>long</code>, and <code>double</code> without relying on autoboxing, as listed in <a data-type="xref" href="#_02-streams_primitive-streams-equivalents">Table 7-1</a>.</p>
+<table id="_02-streams_primitive-streams-equivalents">
+<caption><span class="label">Table 7-1. </span>Primitive Streams and their equivalents</caption>
+<thead>
+<tr>
+<th>Primitive Type</th>
+<th>Primitive Stream</th>
+<th>Boxed Stream</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>int</code></p></td>
+<td><p><code>IntStream</code></p></td>
+<td><p><code>Stream&lt;Integer&gt;</code></p></td>
+</tr>
+<tr>
+<td><p><code>long</code></p></td>
+<td><p><code>LongStream</code></p></td>
+<td><p><code>Stream&lt;Long&gt;</code></p></td>
+</tr>
+<tr>
+<td><p><code>double</code></p></td>
+<td><p><code>DoubleStream</code></p></td>
+<td><p><code>Stream&lt;Double&gt;</code></p></td>
+</tr>
+</tbody>
+</table>
+<p>The available operations on primitive Streams are similar to their generic counterpart but use primitive functional interfaces.
+For example, an <code>IntStream</code> provides a <code>map</code> operation for transforming elements, just like <code>Stream&lt;T&gt;</code>.
+Unlike <code>Stream&lt;T&gt;</code> though, the required higher-order function to do so is the specialized variant <code>IntUnaryOperator</code>, which accepts and returns an <code>int</code>, as the following simplified interface declaration shows:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="nd">@FunctionalInterface</code>
+<code class="kd">public</code> <code class="kd">interface</code> <code class="nc">IntUnaryOperator</code> <code class="p">{</code>
+
+    <code class="kt">int</code> <code class="nf">applyAsInt</code><code class="p">(</code><code class="kt">int</code> <code class="n">operand</code><code class="p">);</code>
+
+    <code class="c1">// ...</code>
+<code class="p">}</code></pre>
+<p>Operations accepting higher-order functions on primitive Streams use specialized functional interfaces, like <code>IntConsumer</code> or <code>IntPredicate</code>, to stay within the confines of the primitive Stream.
+That reduces the number of available operations compared to <code>Stream&lt;T&gt;</code>.
+Still, you can easily switch between a primitive Stream and a <code>Stream&lt;T&gt;</code> by either mapping to another type or converting the primitive Stream to its boxed variant:</p>
+<ul>
+<li>
+<p><code>Stream&lt;Integer&gt; boxed()</code></p>
+</li>
+<li>
+<p><code>Stream&lt;U&gt; mapToObj(IntFunction&lt;? extends U&gt; mapper)</code></p>
+</li>
+</ul>
+<p>The other way around, from <code>Stream&lt;T&gt;</code> to a primitive Stream, is also supported, with <code>mapTo…​</code> and <code>flatMapTo…​</code> operations available on <code>Stream&lt;T&gt;</code>:</p>
+<ul>
+<li>
+<p><code>IntStream mapToInt(ToIntFunction&lt;? super T&gt; mapper)</code></p>
+</li>
+<li>
+<p><code>IntStream flatMapToInt(Function&lt;? super T, ? extends IntStream&gt; mapper)</code></p>
+</li>
+</ul>
+<p>Besides the usual intermediate operations, primitive Streams have a set of self-explanatory arithmetic terminal operations for common tasks:</p>
+<ul>
+<li>
+<p><code>int sum()</code></p>
+</li>
+<li>
+<p><code>OptionalInt min()</code></p>
+</li>
+<li>
+<p><code>OptionalInt max()</code></p>
+</li>
+<li>
+<p><code>OptionalDouble average()</code></p>
+</li>
+</ul>
+<p>These operations don’t need any arguments because their behavior is non-negotiable for numbers.
+The returned types are the primitive equivalents you expect from similar <code>Stream&lt;T&gt;</code> operations.</p>
+<p>As with primitive Streams in general, doing arithmetics with Streams has its use cases, like highly optimized parallel processing of humongous amounts of data.
+For simpler use cases, though, switching to primitive Streams compared to existing processing structures usually won’t be worth it.</p>
+</div></section>
+<section data-pdf-bookmark="Iterative Streams" data-type="sect1"><div class="sect1" id="idm45115235899776">
+<h1>Iterative Streams</h1>
+<p>Stream pipelines and their internal iteration usually deal with existing sequences of elements or data structures readily convertible to sequences of elements.
+Compared to traditional looping constructs, you have to let go of controlling the iteration process and let the Stream take over.
+If you require more control, though, the Stream API still has you covered with its <code>static iterate</code> methods available on the <code>Stream&lt;T&gt;</code> type:</p>
+<ul>
+<li>
+<p><code>&lt;T&gt; Stream&lt;T&gt; iterate(T seed, UnaryOperator&lt;T&gt; f)</code></p>
+</li>
+<li>
+<p><code>IntStream iterate(int seed, IntUnaryOperator f)</code></p>
+</li>
+</ul>
+<p>Java 9 added two additional methods, including a <code>Predicate</code> variant to have an end condition:</p>
+<ul>
+<li>
+<p><code>&lt;T&gt; Stream&lt;T&gt; iterate(T seed, Predicate&lt;T&gt; hasNext, UnaryOperator&lt;T&gt; next)</code></p>
+</li>
+<li>
+<p><code>IntStream iterate(int seed, IntPredicate hasNext, IntUnaryOperator next)</code></p>
+</li>
+</ul>
+<p>Primitive <code>iterate</code> variants are available for <code>int</code>, <code>long</code>, and <code>double</code> on their corresponding Stream variants.</p>
+<p>The iterative approach to Streams produces an <em>ordered</em> and potentially infinite sequence of elements by applying an <code>UnaryOperator</code> to a seed value.
+In other words, the Stream elements will be <code>[seed, f(seed), f(f(seed)), …​]</code>, and so on.</p>
+<p>If the general concept feels familiar, you’re right!
+It’s a Stream-equivalent to a <code>for</code>-loop:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// FOR-LOOP</code>
+<code class="k">for</code> <code class="p">(</code><code class="kt">int</code> <code class="n">idx</code> <code class="o">=</code> <code class="mi">1</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO1-1" id="co_working_with_streams_CO1-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+     <code class="n">idx</code> <code class="o">&lt;</code> <code class="mi">5</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO1-2" id="co_working_with_streams_CO1-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+     <code class="n">idx</code><code class="o">+</code><code class="o">+</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_working_with_streams_CO1-3" id="co_working_with_streams_CO1-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+  <code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="n">idx</code><code class="p">)</code><code class="p">;</code>
+<code class="p">}</code>
+
+
+<code class="c1">// EQUIVALENT STREAM (Java 8)</code>
+<code class="n">IntStream</code><code class="p">.</code><code class="na">iterate</code><code class="p">(</code><code class="mi">1</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO1-1" id="co_working_with_streams_CO1-4"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                  <code class="n">idx</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">idx</code> <code class="o">+</code> <code class="mi">1</code><code class="p">)</code> <a class="co" href="#callout_working_with_streams_CO1-3" id="co_working_with_streams_CO1-5"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+         <code class="p">.</code><code class="na">limit</code><code class="p">(</code><code class="mi">4</code><code class="p">)</code> <a class="co" href="#callout_working_with_streams_CO1-2" id="co_working_with_streams_CO1-6"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+         <code class="p">.</code><code class="na">forEachOrdered</code><code class="p">(</code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">:</code><code class="p">:</code><code class="n">println</code><code class="p">)</code><code class="p">;</code>
+
+
+<code class="c1">// EQUIVALENT STREAM (Java 9+)</code>
+<code class="n">IntStream</code><code class="p">.</code><code class="na">iterate</code><code class="p">(</code><code class="mi">1</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO1-1" id="co_working_with_streams_CO1-7"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                  <code class="n">idx</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">idx</code> <code class="o">&lt;</code> <code class="mi">5</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO1-2" id="co_working_with_streams_CO1-8"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+                  <code class="n">idx</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">idx</code> <code class="o">+</code> <code class="mi">1</code><code class="p">)</code> <a class="co" href="#callout_working_with_streams_CO1-3" id="co_working_with_streams_CO1-9"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+         <code class="p">.</code><code class="na">forEachOrdered</code><code class="p">(</code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">:</code><code class="p">:</code><code class="n">println</code><code class="p">)</code><code class="p">;</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_working_with_streams_CO1-1" id="callout_working_with_streams_CO1-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The seed, or initial iteration value.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO1-2" id="callout_working_with_streams_CO1-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The termination condition.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO1-3" id="callout_working_with_streams_CO1-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The incrementation of the iteration value.
+The <code>for</code>-loop needs an assignment where the <code>Stream</code> requires a return value instead.</p></dd>
+</dl>
+<p>Both loop and Streams variants produce the same elements for the loop body / subsequent Stream operations.
+Java 9 introduced an <code>iterate</code> variant that includes a limiting <code>Predicate</code>, so no additional operations are needed to restrict the overall elements.</p>
+<p>The most significant advantage of an iterative Stream over a <code>for</code> loop is that you can still use a loop-like iteration but gain the benefits of a lazy functional Stream pipeline.</p>
+<p>The end condition doesn’t have to be defined on Stream creation.
+Instead, a later intermediate Stream operation, like <code>limit</code>, or a terminal condition, like <code>anyMatch</code>, may provide it.</p>
+<p>The characteristics of an iterative Stream are <code>ORDERED</code>, <code>IMMUTABLE</code>, and in the case of primitive Streams, <code>NONNULL</code>.
+If the iteration is number-based and the range is known beforehand, you can benefit from more Stream optimizations, like short-circuiting, by using the <code>static range…​</code> methods for Stream creation available on <code>IntStream</code> and <code>LongStream</code> instead:</p>
+<ul>
+<li>
+<p><code>IntStream range(int startInclusive, int endExclusive)</code></p>
+</li>
+<li>
+<p><code>IntStream rangeClosed(int startInclusive, int endInclusive)</code></p>
+</li>
+<li>
+<p><code>LongStream range(long startInclusive, +long endExclusive)</code></p>
+</li>
+<li>
+<p><code>LongStream rangeClosed(long startInclusive, long endInclusive)</code></p>
+</li>
+</ul>
+<p>Even though the same results are achievable with <code>iterate</code>, the main difference is the underlying <code>Spliterator</code>.
+The returned Stream’s characteristics <code>ORDERED</code>, <code>SIZED</code>, <code>SUBSIZED</code>, <code>IMMUTABLE</code>, <code>NONNULL</code>, <code>DISTINCT</code>, and <code>SORTED</code>.</p>
+<p>Choosing between iterative or ranged Stream creation depends on what you want to achieve.
+The iterative approach gives you more freedom for the iteration process, but you lose out on Stream characteristics enabling the most optimization possibilities, especially in parallel Streams.</p>
+</div></section>
+<section data-pdf-bookmark="Infinite Streams" data-type="sect1"><div class="sect1" id="idm45115235780064">
+<h1>Infinite Streams</h1>
+<p>The lazy nature of Streams allows for infinite sequences of elements as they are processed <em>on-demand</em>, and not <em>all at once</em>.</p>
+<p>All available Stream interfaces in the JDK — <code>Stream&lt;T&gt;</code> and its primitive brethren <code>IntStream</code>, <code>LongStream</code>, and <code>DoubleStream</code> — have <code>static</code> convenience methods to create infinite Streams either based on an iterative approach or an unordered generative one.</p>
+<p>While the <code>iterate</code> methods from the previous section start with a <em>seed</em> and rely on applying their <code>UnaryOperator</code> on the current iteration value, the <code>static generate</code> methods only rely on a <code>Supplier</code> to generate their next Stream element:</p>
+<ul>
+<li>
+<p><code>&lt;T&gt; Stream&lt;T&gt; generate(Supplier&lt;T&gt; s)</code></p>
+</li>
+<li>
+<p><code>IntStream generate(IntSupplier s)</code></p>
+</li>
+<li>
+<p><code>LongStream generate(LongSupplier s)</code></p>
+</li>
+<li>
+<p><code>DoubleStream generate(DoubleSupplier s)</code></p>
+</li>
+</ul>
+<p>The lack of a starting seed value affects the Stream’s characteristics, making it <code>UNORDERED</code>, which can be beneficial for parallel use.
+An unordered Stream created by a <code>Supplier</code> is helpful for constant non-interdependent sequences of elements, like random values.
+For example, creating an <code>UUID</code> Stream factory is quite simple:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Stream</code><code class="o">&lt;</code><code class="n">UUID</code><code class="o">&gt;</code> <code class="nf">createStream</code><code class="p">(</code><code class="kt">int</code> <code class="n">count</code><code class="p">)</code> <code class="p">{</code>
+  <code class="k">return</code> <code class="n">Stream</code><code class="p">.</code><code class="na">generate</code><code class="p">(</code><code class="n">UUID</code><code class="p">::</code><code class="n">randomUUID</code><code class="p">)</code>
+               <code class="p">.</code><code class="na">limit</code><code class="p">(</code><code class="n">count</code><code class="p">);</code>
+<code class="p">}</code></pre>
+<p>The downside of unordered Streams is that they won’t guarantee that a <code>limit</code> operation will pick the first <code>n</code> elements in a parallel environment.
+That may result in more calls to the element generating <code>Supplier</code> than are actually necessary for the result of the Stream.</p>
+<p>Take the following example:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Stream</code><code class="p">.</code><code class="na">generate</code><code class="p">(</code><code class="k">new</code> <code class="n">AtomicInteger</code><code class="p">()::</code><code class="n">incrementAndGet</code><code class="p">)</code>
+      <code class="p">.</code><code class="na">parallel</code><code class="p">()</code>
+      <code class="p">.</code><code class="na">limit</code><code class="p">(</code><code class="mi">1_000</code><code class="p">)</code>
+      <code class="p">.</code><code class="na">mapToInt</code><code class="p">(</code><code class="n">Integer</code><code class="p">::</code><code class="n">valueOf</code><code class="p">)</code>
+      <code class="p">.</code><code class="na">max</code><code class="p">()</code>
+      <code class="p">.</code><code class="na">ifPresent</code><code class="p">(</code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">::</code><code class="n">println</code><code class="p">);</code></pre>
+<p>The expected output of the pipeline is <code>1000</code>.
+The output, though, will most likely be greater than <code>1000</code>.</p>
+<p>This behavior is expected from an unordered Stream in a parallel execution environment.
+Under most circumstances, it won’t matter much, but it highlights the necessity of choosing the right Stream type with favorable characteristics to gain maximum performance and the fewest invocations possible.</p>
+<section data-pdf-bookmark="Random Numbers" data-type="sect2"><div class="sect2" id="idm45115235390816">
+<h2>Random Numbers</h2>
+<p>The Stream API has special considerations for generating an infinite Stream of random numbers.
+Although it’s possible to create such a Stream with <code>Stream.generate</code> using, for example, <code>Random#next()</code>, there’s an easier way available.</p>
+<p>Three different random-number-generating types are capable of creating Streams:</p>
+<ul>
+<li>
+<p><code>java.util.Random</code></p>
+</li>
+<li>
+<p><code>java.util.concurrent.ThreadLocalRandom</code></p>
+</li>
+<li>
+<p><code>java.util.SplittableRandom</code></p>
+</li>
+</ul>
+<p>All three of them provide multiple methods to create Streams of random elements:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">IntStream</code> <code class="nf">ints</code><code class="p">()</code>
+<code class="n">IntStream</code> <code class="nf">ints</code><code class="p">(</code><code class="kt">long</code> <code class="n">streamSize</code><code class="p">)</code>
+
+<code class="n">IntStream</code> <code class="nf">ints</code><code class="p">(</code><code class="kt">int</code> <code class="n">randomNumberOrigin</code><code class="p">,</code>
+               <code class="kt">int</code> <code class="n">randomNumberBound</code><code class="p">)</code>
+
+<code class="n">IntStream</code> <code class="nf">ints</code><code class="p">(</code><code class="kt">long</code> <code class="n">streamSize</code><code class="p">,</code>
+               <code class="kt">int</code> <code class="n">randomNumberOrigin</code><code class="p">,</code>
+               <code class="kt">int</code> <code class="n">randomNumberBound</code><code class="p">)</code>
+
+
+<code class="n">LongStream</code> <code class="nf">longs</code><code class="p">()</code>
+
+<code class="n">LongStream</code> <code class="nf">longs</code><code class="p">(</code><code class="kt">long</code> <code class="n">streamSize</code><code class="p">)</code>
+
+<code class="n">LongStream</code> <code class="nf">longs</code><code class="p">(</code><code class="kt">long</code> <code class="n">randomNumberOrigin</code><code class="p">,</code>
+                 <code class="kt">long</code> <code class="n">randomNumberBound</code><code class="p">)</code>
+
+<code class="n">LongStream</code> <code class="nf">longs</code><code class="p">(</code><code class="kt">long</code> <code class="n">streamSize</code><code class="p">,</code>
+                 <code class="kt">long</code> <code class="n">randomNumberOrigin</code><code class="p">,</code>
+                 <code class="kt">long</code> <code class="n">randomNumberBound</code><code class="p">)</code>
+
+
+<code class="n">DoubleStream</code> <code class="nf">doubles</code><code class="p">()</code>
+
+<code class="n">DoubleStream</code> <code class="nf">doubles</code><code class="p">(</code><code class="kt">long</code> <code class="n">streamSize</code><code class="p">)</code>
+
+<code class="n">DoubleStream</code> <code class="nf">doubles</code><code class="p">(</code><code class="kt">double</code> <code class="n">randomNumberOrigin</code><code class="p">,</code>
+                     <code class="kt">double</code> <code class="n">randomNumberBound</code><code class="p">)</code>
+
+<code class="n">DoubleStream</code> <code class="nf">doubles</code><code class="p">(</code><code class="kt">long</code> <code class="n">streamSize</code><code class="p">,</code>
+                     <code class="kt">double</code> <code class="n">randomNumberOrigin</code><code class="p">,</code>
+                     <code class="kt">double</code> <code class="n">randomNumberBound</code><code class="p">)</code></pre>
+<p>Technically, the Streams are only <em>effectively infinite</em>, as it’s stated in their documentation<sup><a data-type="noteref" href="ch07.xhtml#idm45115235350064" id="idm45115235350064-marker">2</a></sup>.
+If no <code>streamSize</code> is provided, the resulting Stream contains <code>Long.MAX_VALUE</code> elements.
+The upper and lower bounds are set with the <code>randomNumberOrigin</code> (inclusive) and <code>randomNumberBound</code> (exclusive).</p>
+<p>General usage and performance characteristics will be discussed in <a data-type="xref" href="ch08.xhtml#_01-parallel-concurrent-async_seq-vs-para">“Example: Random Numbers”</a>.</p>
+</div></section>
+<section data-pdf-bookmark="Memory Isn’t Infinite" data-type="sect2"><div class="sect2" id="idm45115235208080">
+<h2>Memory Isn’t Infinite</h2>
+<p>The most important thing to remember when using infinite Streams is that your memory is quite finite.
+Limiting your infinite Streams isn’t just important, it’s an absolute necessity!
+Forgetting to put a restricting intermediate or terminal operation will inevitably use up all memory available to the JVM and eventually throw an <code>OutOfMemoryError</code>.</p>
+<p>The available operations to restrict any Stream are listed in <a data-type="xref" href="#_02-streams_infinite-restricting-ops">Table 7-2</a>.</p>
+<table id="_02-streams_infinite-restricting-ops">
+<caption><span class="label">Table 7-2. </span>Stream-restricting operations</caption>
+<thead>
+<tr>
+<th>Operation Type</th>
+<th>Operation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td rowspan="2"><p>Intermediate Operations</p></td>
+<td><p><code>limit(long maxSize)</code></p></td>
+<td><p>Limits a Stream to <code>maxSize</code> elements</p></td>
+</tr>
+<tr>
+<td><p><code>takeWhile(Predicate&lt;T&gt; predicate)</code></p></td>
+<td><p>Takes elements until <code>predicate</code> evaluates <code>false</code> (Java 9+)</p></td>
+</tr>
+<tr>
+<td rowspan="2"><p>Terminal Operations<br/>
+(guaranteed)</p></td>
+<td><p><code>Optional&lt;T&gt; findFirst()</code></p></td>
+<td><p>Returns the first element of the Stream</p></td>
+</tr>
+<tr>
+<td><p><code>Optional&lt;T&gt; findAny()</code></p></td>
+<td><p>Return a single, non-deterministic Steam element</p></td>
+</tr>
+<tr>
+<td rowspan="3"><p>Terminal Operations<br/>
+(non-guaranteed)</p></td>
+<td><p><code>boolean anyMatch(Predicate&lt;T&gt; predicate)</code></p></td>
+<td><p>Returns whether <em>any</em> Stream elements match <code>predicate</code></p></td>
+</tr>
+<tr>
+<td><p><code>boolean allMatch(Predicate&lt;T&gt; predicate)</code></p></td>
+<td><p>Returns whether <em>all</em> Stream elements match <code>predicate</code></p></td>
+</tr>
+<tr>
+<td><p><code>boolean noneMatch(Predicate&lt;T&gt; predicate)</code></p></td>
+<td><p>Returns whether <em>no</em> Stream element matches <code>predicate</code></p></td>
+</tr>
+</tbody>
+</table>
+<p>The most straightforward choice is <code>limit</code>.
+Choice-based operations using <code>Predicate&lt;T&gt;</code> like <code>takeWhile</code> must be crafted with diligence, or you might still end up with a Stream consuming more memory than needed.
+For terminal operations, only the <code>find…​</code> operations are guaranteed to terminate the Stream.</p>
+<p>The <code>…​Match</code> operations suffer from the same problem as <code>takeWhile</code>.
+If the predicate doesn’t match according to their purpose, the Stream pipeline will process an <em>infinite</em> number of elements and, therefore, all the available memory.</p>
+<p>As discussed in <a data-type="xref" href="ch06.xhtml#_02-data-processing_order-matters">“The Cost of Operations”</a>, the position of the restricting operation in the Stream also makes a difference in how many elements will pass through.
+Even if the final result might be identical, restricting the flow of Stream elements as early as possible will save you more memory and CPU cycles.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="From Arrays to Streams and Back" data-type="sect1"><div class="sect1" id="idm45115235513616">
+<h1>From Arrays to Streams and Back</h1>
+<p>Arrays are a particular type of object.
+They’re a collection-like structure, holding elements of their <em>base type</em>, and only provide a method to access a specific element by its index, and the overall length of the array, besides the <em>usual</em> methods inherited from <code>java.lang.Object</code>.
+They’re also the only way to have a collection of primitive types until <em>Project Valhalla</em> becomes available in the future<sup><a data-type="noteref" href="ch07.xhtml#idm45115235120224" id="idm45115235120224-marker">3</a></sup>.</p>
+<p>However, two characteristics make arrays a good match for Stream-based processing.
+First, their length is set on their creation and won’t change.
+Second, they’re an ordered sequence.
+That’s why there are multiple convenience methods available on <code>java.util.Arrays</code> to create an appropriate Stream for different base types.
+Creating an array from a Stream is done with an appropriate terminal operation.</p>
+<section data-pdf-bookmark="Object-Type Arrays" data-type="sect2"><div class="sect2" id="idm45115235117232">
+<h2>Object-Type Arrays</h2>
+<p>Creating a typical <code>Stream&lt;T&gt;</code> is supported by two <code>static</code> convenience methods on <code>java.util.Arrays</code>:</p>
+<ul>
+<li>
+<p><code>&lt;T&gt; Stream&lt;T&gt; stream(T[] array)</code></p>
+</li>
+<li>
+<p><code>&lt;T&gt; Stream&lt;T&gt; stream(T[] array, int startInclusive, int endExclusive)</code></p>
+</li>
+</ul>
+<p>As you can see, creating a <code>Stream&lt;T&gt;</code> from an array is quite self-explanatory.</p>
+<p>The other way around, from <code>Stream&lt;T&gt;</code> to <code>T[]</code> is done by using one of these two terminal operations:</p>
+<ul>
+<li>
+<p><code>Object[] toArray()</code></p>
+</li>
+<li>
+<p><code>&lt;A&gt; A[] toArray(IntFunction&lt;A[]&gt; generator)</code></p>
+</li>
+</ul>
+<p>The first variant can only return an <code>Object[]</code> array regardless of the actual element type of the Stream due to how arrays are created by the JVM.
+If you need an array of the Stream’s elements type, you need to provide the Stream with a way to create an appropriate array.
+That’s where the second variant comes in.</p>
+<p>The second variant requires an <code>IntFunction</code> that creates the array of the provided size.
+The most straightforward way is to use a method reference:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">String</code><code class="o">[]</code> <code class="n">fruits</code> <code class="o">=</code> <code class="k">new</code> <code class="n">String</code><code class="o">[]</code> <code class="p">{</code>
+    <code class="s">"Banana"</code><code class="p">,</code>
+    <code class="s">"Melon"</code><code class="p">,</code>
+    <code class="s">"Orange"</code>
+<code class="p">};</code>
+
+<code class="n">String</code><code class="o">[]</code> <code class="n">result</code> <code class="o">=</code> <code class="n">Arrays</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="n">fruits</code><code class="p">)</code>
+                        <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">fruit</code> <code class="o">-&gt;</code> <code class="n">fruit</code><code class="p">.</code><code class="na">contains</code><code class="p">(</code><code class="s">"a"</code><code class="p">))</code>
+                        <code class="p">.</code><code class="na">toArray</code><code class="p">(</code><code class="n">String</code><code class="o">[]</code><code class="p">::</code><code class="k">new</code><code class="p">);</code></pre>
+<div data-type="warning" epub:type="warning"><h6>Warning</h6>
+<p>There is no static type checking for using the created array in <code>toArray</code>.
+Types are checked at runtime when an element is stored in the allocated array, throwing an <code>ArrayStoreException</code> if the types aren’t compatible.</p>
+</div>
+</div></section>
+<section data-pdf-bookmark="Primitive Arrays" data-type="sect2"><div class="sect2" id="idm45115235116576">
+<h2>Primitive Arrays</h2>
+<p>The three primitive Stream specializations, <code>IntStream</code>, <code>LongStream</code>, and <code>DoubleStream</code>, have all dedicated variants of the <code>static</code> method <code>Arrays.stream</code>:</p>
+<ul>
+<li>
+<p><code>IntStream stream(int[] array)</code></p>
+</li>
+<li>
+<p><code>IntStream stream(int[] array, int startInclusive, int endExclusive)</code></p>
+</li>
+</ul>
+<p>The <code>LongStream</code> and <code>DoubleStream</code> variants only differ in the <code>array</code> type and the returned primitive Stream.</p>
+<p>Because the element type is fixed in a primitive Stream, they only have a singular <code>toArray</code> method that doesn’t require an <code>IntFunction</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kt">int</code><code class="o">[]</code> <code class="n">fibonacci</code> <code class="o">=</code> <code class="k">new</code> <code class="kt">int</code><code class="o">[]</code> <code class="p">{</code>
+    <code class="mi">0</code><code class="p">,</code> <code class="mi">1</code><code class="p">,</code> <code class="mi">1</code><code class="p">,</code> <code class="mi">2</code><code class="p">,</code> <code class="mi">3</code><code class="p">,</code> <code class="mi">5</code><code class="p">,</code> <code class="mi">8</code><code class="p">,</code> <code class="mi">13</code><code class="p">,</code> <code class="mi">21</code><code class="p">,</code> <code class="mi">34</code>
+<code class="p">};</code>
+
+<code class="kt">int</code><code class="o">[]</code> <code class="n">evenNumbers</code> <code class="o">=</code> <code class="n">Arrays</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="n">fibonacci</code><code class="p">)</code>
+                          <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">value</code> <code class="o">-&gt;</code> <code class="n">value</code> <code class="o">%</code> <code class="mi">2</code> <code class="o">==</code> <code class="mi">0</code><code class="p">)</code>
+                          <code class="p">.</code><code class="na">toArray</code><code class="p">();</code></pre>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Low-Level Stream Creation" data-type="sect1"><div class="sect1" id="idm45115234906432">
+<h1>Low-Level Stream Creation</h1>
+<p>So far, all Stream creation methods I’ve discussed were quite high-level, creating a Stream from another data source, iteration, generation, or arbitrary objects.
+They are directly available on their respective types, with as few arguments needed as possible.
+The auxiliary type <code>java.util.stream.StreamSupport</code> has also several low-level <code>static</code> convenience methods available for creating Streams directly from a Spliterator.
+This way, you can create a Stream representation for your own custom data structures.</p>
+<p>The following two methods accept a Spliterator to create a new Stream:</p>
+<dl>
+<dt><code>Stream&lt;T&gt; stream(Spliterator&lt;T&gt; spliterator, boolean parallel)</code></dt>
+<dd>
+<p>The easiest way to create a sequential or parallel Stream from any source that is representable by a <code>Spliterator&lt;T&gt;</code>.</p>
+</dd>
+<dt><code>Stream&lt;T&gt; stream(Supplier&lt;? extends Spliterator&lt;T&gt;&gt; supplier, int characteristics, boolean parallel)</code></dt>
+<dd>
+<p>Instead of using the Spliterator right away, the Supplier gets called once and only after the terminal operation of the Stream pipeline is invoked.
+That relays any possible interference with the source data structure to a smaller timeframe, making it safer for non-<code>IMMUTABLE</code> or non-<code>CONCURRENT</code> eager-bound Streams.</p>
+</dd>
+</dl>
+<p>It’s strongly recommended that the Spliterators used to create a <code>Stream&lt;T&gt;</code> are either <code>IMMUTABLE</code> or <code>CONCURRENT</code> to minimize possible interference or changes to the underlying data source during the traversal.</p>
+<p>Another good option is using a <em>late-binding</em> Spliterator, meaning the elements aren’t fixed at the creation of the Spliterator.
+Instead, they’re bound on first use, when the Stream pipeline starts processing its elements after calling a terminal operation.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Low-level Stream creation methods also exist for the primitive Spliterator variants.</p>
+</div>
+<p>If you don’t have a <code>Spliterator&lt;T&gt;</code> but a <code>Iterator&lt;T&gt;</code>, the JDK got you covered.
+The type <code>java.util.Spliterators</code> has multiple convenience methods for creating Spliterators, with two methods designated for <code>Iterator&lt;T&gt;</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Spliterator</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="nf">spliterator</code><code class="p">(</code><code class="n">Iterator</code><code class="o">&lt;?</code> <code class="kd">extends</code> <code class="n">T</code><code class="o">&gt;</code> <code class="n">iterator</code><code class="p">,</code>
+                                                 <code class="kt">long</code> <code class="n">size</code><code class="p">,</code>
+                                                 <code class="kt">int</code> <code class="n">characteristics</code><code class="p">)</code>
+
+<code class="n">Spliterator</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="nf">spliteratorUnknownSize</code><code class="p">(</code><code class="n">Iterator</code><code class="o">&lt;?</code> <code class="kd">extends</code> <code class="n">T</code><code class="o">&gt;</code> <code class="n">iterator</code><code class="p">,</code>
+                                      <code class="kt">int</code> <code class="n">characteristics</code><code class="p">)</code></pre>
+<p>You can use the created <code>Spliterator&lt;T&gt;</code> instance in the previously discussed <code>Stream&lt;T&gt; stream(Spliterator&lt;T&gt; spliterator, boolean parallel)</code> method to finally create a <code>Stream&lt;T&gt;</code>.</p>
+</div></section>
+<section data-pdf-bookmark="Working with File I/O" data-type="sect1"><div class="sect1" id="idm45115234905840">
+<h1>Working with File I/O</h1>
+<p>Streams aren’t only for collection-based traversal.
+They also provide an excellent way to traverse the filesystem with the help of the <code>java.nio.file.Files</code> class.</p>
+<p>This section will look at several use cases for file I/O and Streams.
+Contrary to other Streams, I/O-related Streams must be explicitly closed by calling <code>Stream#close()</code> after you are finished using them.
+<code>Stream&lt;T&gt;</code> conforms to the <code>java.lang.AutoCloseable</code> interface, so the examples will use a <code>try-with-resources</code>-block, which will be explained in <a data-type="xref" href="#_02-streams-file-io_caveats">“Caveats of File I/O Streams”</a>.</p>
+<p>All examples in this section use the files in the book’s <a href="https://github.com/benweidig/a-functional-approach-to-java">code repository</a> as their source.
+The following filesystem tree represents the overall structure of the files used in the examples:</p>
+<pre data-type="programlisting">├── README.md
+├── assets
+│   └── a-functional-approach-to-java.png
+├── part-1
+│   ├── 01-an-introduction-to-functional-programming
+│   │   └── README.md
+│   ├── 02-functional-java
+│   │   ├── README.md
+│   │   ├── java
+|   |   └─ ...
+└── part-2
+    ├── 04-immutability
+    │   ├── ...
+    │   └── jshell
+    │       ├── immutable-copy.java
+    │       ├── immutable-math.java
+    │       ├── unmodifiable-list-exception.java
+    │       └── unmodifiable-list-modify-original.java
+    ├─ ...</pre>
+<section data-pdf-bookmark="Reading Directory Contents" data-type="sect2"><div class="sect2" id="idm45115234782608">
+<h2>Reading Directory Contents</h2>
+<p>Listing the contents of a directory can be done by calling the method <code>Files.list</code> to create a lazily populated <code>Stream&lt;Path&gt;</code> of the provided <code>Path</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">static</code> <code class="n">Stream</code><code class="o">&lt;</code><code class="n">Path</code><code class="o">&gt;</code> <code class="nf">list</code><code class="p">(</code><code class="n">Path</code> <code class="n">dir</code><code class="p">)</code> <code class="kd">throws</code> <code class="n">IOException</code></pre>
+<p>Its argument must be a directory, or else it will throw a <code>NotDirectoryException</code>.
+<a data-type="xref" href="#_02-streams_list">Example 7-1</a> shows how to list a directory.</p>
+<div data-type="example" id="_02-streams_list">
+<h5><span class="label">Example 7-1. </span>Listing a directory</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">dir</code> <code class="o">=</code> <code class="n">Paths</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="s">"./part-2/04-immutability/jshell"</code><code class="p">);</code>
+
+<code class="k">try</code> <code class="p">(</code><code class="kd">var</code> <code class="n">stream</code> <code class="o">=</code> <code class="n">Files</code><code class="p">.</code><code class="na">list</code><code class="p">(</code><code class="n">dir</code><code class="p">))</code> <code class="p">{</code>
+  <code class="n">stream</code><code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">Path</code><code class="p">::</code><code class="n">getFileName</code><code class="p">)</code>
+        <code class="p">.</code><code class="na">forEach</code><code class="p">(</code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">::</code><code class="n">println</code><code class="p">);</code>
+<code class="p">}</code> <code class="k">catch</code> <code class="p">(</code><code class="n">IOException</code> <code class="n">e</code><code class="p">)</code> <code class="p">{</code>
+  <code class="c1">// ...</code>
+<code class="p">}</code></pre></div>
+<p>The output lists the files of the directory <code>jshell</code> for <a data-type="xref" href="ch04.xhtml#_02-data-structures">Chapter 4</a>:</p>
+<pre data-type="programlisting">unmodifiable-list-exception.java
+unmodifiable-list-modify-original.java
+immutable-copy.java
+immutable-math.java</pre>
+<p>The order of retrieved content isn’t guaranteed, which I will go into more detail about in <a data-type="xref" href="#_02-streams-file-io_caveats">“Caveats of File I/O Streams”</a>.</p>
+</div></section>
+<section data-pdf-bookmark="Depth-First Directory Traversal" data-type="sect2"><div class="sect2" id="_02-streams_streams_depth-first-traversal">
+<h2>Depth-First Directory Traversal</h2>
+<p>The two <code>walk</code> methods do, as their name suggests, “walk” the whole file tree from a specific starting point.
+The lazily populated <code>Stream&lt;Path&gt;</code> traverses <em>depth-first</em>, meaning if an element is a directory, it will be entered and traversed first before the next element in the current directory.</p>
+<p>The difference between the two <code>walk</code> variants in <code>java.nio.file.Files</code> is the maximum directory depth they’re going to traverse:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">static</code> <code class="n">Stream</code><code class="o">&lt;</code><code class="n">Path</code><code class="o">&gt;</code> <code class="nf">walk</code><code class="p">(</code><code class="n">Path</code> <code class="n">start</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO2-1" id="co_working_with_streams_CO2-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                         <code class="kt">int</code> <code class="n">maxDepth</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO2-2" id="co_working_with_streams_CO2-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+                         <code class="n">FileVisitOption</code><code class="p">.</code><code class="p">.</code><code class="p">.</code> <code class="n">options</code><code class="p">)</code> <a class="co" href="#callout_working_with_streams_CO2-3" id="co_working_with_streams_CO2-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+                         <code class="kd">throws</code> <code class="n">IOException</code>
+
+<code class="kd">static</code> <code class="n">Stream</code><code class="o">&lt;</code><code class="n">Path</code><code class="o">&gt;</code> <code class="nf">walk</code><code class="p">(</code><code class="n">Path</code> <code class="n">start</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO2-1" id="co_working_with_streams_CO2-4"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                         <code class="n">FileVisitOption</code><code class="p">.</code><code class="p">.</code><code class="p">.</code> <code class="n">options</code><code class="p">)</code> <a class="co" href="#callout_working_with_streams_CO2-3" id="co_working_with_streams_CO2-5"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+                         <code class="kd">throws</code> <code class="n">IOException</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_working_with_streams_CO2-1" id="callout_working_with_streams_CO2-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The starting point of the traversal.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO2-2" id="callout_working_with_streams_CO2-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The maximum number of directory levels to traverse.
+<code>0</code> (zero) restricts the Stream to the starting level.
+The second variant without <code>maxDepth</code> has no depth limit.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO2-3" id="callout_working_with_streams_CO2-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>Zero or more options on how to traverse the filesystem.
+So far, only <code>FOLLOW_LINKS</code> exists.
+Be aware that by following links, a possible cyclic traversal might occur.
+If the JDK detects this, it throws a <code>FileSystemLoopException</code>.</p></dd>
+</dl>
+<p>You can walk the filesystem as shown in <a data-type="xref" href="#_02-streams_walk">Example 7-2</a>.</p>
+<div data-type="example" id="_02-streams_walk">
+<h5><span class="label">Example 7-2. </span>Walking the Filesystem</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">start</code> <code class="o">=</code> <code class="n">Paths</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="s">"./part-1"</code><code class="p">);</code>
+
+<code class="k">try</code> <code class="p">(</code><code class="kd">var</code> <code class="n">stream</code> <code class="o">=</code> <code class="n">Files</code><code class="p">.</code><code class="na">walk</code><code class="p">(</code><code class="n">start</code><code class="p">))</code> <code class="p">{</code>
+  <code class="n">stream</code><code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">Path</code><code class="p">::</code><code class="n">toFile</code><code class="p">)</code>
+        <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">Predicate</code><code class="p">.</code><code class="na">not</code><code class="p">(</code><code class="n">File</code><code class="p">::</code><code class="n">isFile</code><code class="p">))</code>
+        <code class="p">.</code><code class="na">sorted</code><code class="p">()</code>
+        <code class="p">.</code><code class="na">forEach</code><code class="p">(</code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">::</code><code class="n">println</code><code class="p">);</code>
+<code class="p">}</code> <code class="k">catch</code> <code class="p">(</code><code class="n">IOException</code> <code class="n">e</code><code class="p">)</code> <code class="p">{</code>
+  <code class="c1">// ...</code>
+<code class="p">}</code></pre></div>
+<p>The traversal generates the following output:</p>
+<pre data-type="programlisting">./part-1
+./part-1/01-an-introduction-to-functional-programming
+./part-1/02-functional-java
+./part-1/02-functional-java/java
+./part-1/02-functional-java/jshell
+./part-1/02-functional-java/other
+./part-1/03-functional-jdk
+./part-1/03-functional-jdk/java
+./part-1/03-functional-jdk/jshell</pre>
+<p>The Stream will have at least one element, the starting point.
+If it’s not accessible, an <code>IOException</code> is thrown.
+As with <code>list</code>, the Stream elements encounter order isn’t guaranteed, which I will go into more detail in <a data-type="xref" href="#_02-streams-file-io_caveats">“Caveats of File I/O Streams”</a>.</p>
+</div></section>
+<section data-pdf-bookmark="Searching the Filesystem" data-type="sect2"><div class="sect2" id="idm45115234669552">
+<h2>Searching the Filesystem</h2>
+<p>Although you can search for a particular <code>Path</code> with <code>walk</code>, you could use the method <code>find</code> instead.
+It bakes a <code>BiPredicate</code> with access to the <code>BasicFileAttribute</code> of the current element directly into the Stream creation, making the Stream more focused on your task’s requirements:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">static</code> <code class="n">Stream</code><code class="o">&lt;</code><code class="n">Path</code><code class="o">&gt;</code> <code class="nf">find</code><code class="p">(</code><code class="n">Path</code> <code class="n">start</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO3-1" id="co_working_with_streams_CO3-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                         <code class="kt">int</code> <code class="n">maxDepth</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO3-2" id="co_working_with_streams_CO3-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+                         <code class="n">BiPredicate</code><code class="o">&lt;</code><code class="n">Path</code><code class="p">,</code> <code class="n">BasicFileAttributes</code><code class="o">&gt;</code> <code class="n">matcher</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO3-3" id="co_working_with_streams_CO3-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+                         <code class="n">FileVisitOption</code><code class="p">.</code><code class="p">.</code><code class="p">.</code> <code class="n">options</code><code class="p">)</code> <a class="co" href="#callout_working_with_streams_CO3-4" id="co_working_with_streams_CO3-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+                         <code class="kd">throws</code> <code class="n">IOException</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_working_with_streams_CO3-1" id="callout_working_with_streams_CO3-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The starting point of the search.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO3-2" id="callout_working_with_streams_CO3-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The maximum number of directory levels to traverse.
+<code>0</code> (zero) restricts it to the starting level.
+Unlike <code>Files.walk</code> no method variant without <code>maxDepth</code> exists.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO3-3" id="callout_working_with_streams_CO3-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>Criteria for including a <code>Path</code> in the Stream.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO3-4" id="callout_working_with_streams_CO3-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>Zero or more options on how to traverse the filesystem.
+So far, only <code>FOLLOW_LINKS</code> exists.
+Be aware that by following links, a possible cyclic traversal might occur.
+If the JDK detects this, it throws a <code>FileSystemLoopException</code>.</p></dd>
+</dl>
+<p>With it, <a data-type="xref" href="#_02-streams_walk">Example 7-2</a> can be implemented without needing to map the <code>Path</code> to a <code>File</code>, as shown in <a data-type="xref" href="#_02-streams_find">Example 7-3</a>.</p>
+<div data-type="example" id="_02-streams_find">
+<h5><span class="label">Example 7-3. </span>Finding Files</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">start</code> <code class="o">=</code> <code class="n">Paths</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="s">"./part-1"</code><code class="p">);</code>
+
+<code class="n">BiPredicate</code><code class="o">&lt;</code><code class="n">Path</code><code class="p">,</code> <code class="n">BasicFileAttributes</code><code class="o">&gt;</code> <code class="n">matcher</code> <code class="o">=</code>
+  <code class="p">(</code><code class="n">path</code><code class="p">,</code> <code class="n">attr</code><code class="p">)</code> <code class="o">-&gt;</code> <code class="n">attr</code><code class="p">.</code><code class="na">isDirectory</code><code class="p">();</code>
+
+<code class="k">try</code> <code class="p">(</code><code class="kd">var</code> <code class="n">stream</code> <code class="o">=</code> <code class="n">Files</code><code class="p">.</code><code class="na">find</code><code class="p">(</code><code class="n">start</code><code class="p">,</code>
+                             <code class="n">Integer</code><code class="p">.</code><code class="na">MAX_VALUE</code><code class="p">,</code>
+                             <code class="n">matcher</code><code class="p">))</code> <code class="p">{</code>
+
+    <code class="n">stream</code><code class="p">.</code><code class="na">sorted</code><code class="p">()</code>
+          <code class="p">.</code><code class="na">forEach</code><code class="p">(</code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">::</code><code class="n">println</code><code class="p">);</code>
+<code class="p">}</code> <code class="k">catch</code> <code class="p">(</code><code class="n">IOException</code> <code class="n">e</code><code class="p">)</code> <code class="p">{</code>
+  <code class="c1">// ...</code>
+<code class="p">}</code></pre></div>
+<p>The output is equivalent to using <code>walk</code>, and the same assumptions — <em>depth-first</em> and non-guaranteed encounter order — apply to <code>find</code>, too.
+The real difference is the access to the <code>BasicFileAttributes</code> of the current element, which may affect performance.
+If you need to filter or match by file attributes, using <code>find</code> will save you reading the file attributes explicitly from the <code>Path</code> element, which could be slightly more performant.
+However, if you only require the <code>Path</code> element and no access to its file attributes, the <code>walk</code> method is just as good an alternative.</p>
+</div></section>
+<section data-pdf-bookmark="Reading Files Line-By-Line" data-type="sect2"><div class="sect2" id="idm45115234189056">
+<h2>Reading Files Line-By-Line</h2>
+<p>The common task of reading a file and processing it line-by-line is a breeze with Streams, which provides the <code>lines</code> method.
+There are two variants, depending on the file’s <code>Charset</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">static</code> <code class="n">Stream</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="nf">lines</code><code class="p">(</code><code class="n">Path</code> <code class="n">path</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO4-1" id="co_working_with_streams_CO4-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                            <code class="n">Charset</code> <code class="n">cs</code><code class="p">)</code> <a class="co" href="#callout_working_with_streams_CO4-2" id="co_working_with_streams_CO4-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+                            <code class="kd">throws</code> <code class="n">IOException</code>
+
+<code class="kd">static</code> <code class="n">Stream</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="nf">lines</code><code class="p">(</code><code class="n">Path</code> <code class="n">path</code><code class="p">)</code> <a class="co" href="#callout_working_with_streams_CO4-1" id="co_working_with_streams_CO4-3"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                      <code class="kd">throws</code> <code class="n">IOException</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_working_with_streams_CO4-1" id="callout_working_with_streams_CO4-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p><code>Path</code> pointing the file to read.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO4-2" id="callout_working_with_streams_CO4-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The charset of the file.
+The second variant defaults to <code>StandardCharsets.UTF_8</code>.</p></dd>
+</dl>
+<div data-type="tip"><h6>Tip</h6>
+<p>Even though you can use any <code>Charset</code> you want, it will make a performance difference in parallel processing.
+The <code>lines</code> method is optimized for <code>UTF_8</code>, <code>US_ASCII</code>, and <code>ISO_8859_1</code>.</p>
+</div>
+<p>Let’s look at a simple example of counting the words in <em>War and Peace</em> by Tolstoy, as seen in <a data-type="xref" href="#_01-parallel-concurrent-async_war-and-peace">Example 7-4</a>.</p>
+<div data-type="example" id="_01-parallel-concurrent-async_war-and-peace">
+<h5><span class="label">Example 7-4. </span>Counting words in “War and Peace”</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">location</code> <code class="o">=</code> <code class="n">Paths</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="s">"</code><code class="s">war-and-peace.txt</code><code class="s">"</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO5-1" id="co_working_with_streams_CO5-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+
+<code class="c1">// CLEANUP PATTERNS </code><a class="co" href="#callout_working_with_streams_CO5-2" id="co_working_with_streams_CO5-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+<code class="kd">var</code> <code class="n">punctuation</code> <code class="o">=</code> <code class="n">Pattern</code><code class="p">.</code><code class="na">compile</code><code class="p">(</code><code class="s">"</code><code class="s">\\</code><code class="s">p{Punct}</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+<code class="kd">var</code> <code class="n">whitespace</code>  <code class="o">=</code> <code class="n">Pattern</code><code class="p">.</code><code class="na">compile</code><code class="p">(</code><code class="s">"</code><code class="s">\\</code><code class="s">s+</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+<code class="kd">var</code> <code class="n">words</code>       <code class="o">=</code> <code class="n">Pattern</code><code class="p">.</code><code class="na">compile</code><code class="p">(</code><code class="s">"</code><code class="s">\\</code><code class="s">w+</code><code class="s">"</code><code class="p">)</code><code class="p">;</code>
+
+<code class="k">try</code> <code class="p">(</code><code class="n">Stream</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">stream</code> <code class="o">=</code> <code class="n">Files</code><code class="p">.</code><code class="na">lines</code><code class="p">(</code><code class="n">location</code><code class="p">)</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_working_with_streams_CO5-3" id="co_working_with_streams_CO5-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+
+  <code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">Integer</code><code class="o">&gt;</code> <code class="n">wordCount</code> <code class="o">=</code>
+
+           <code class="c1">// CLEAN CONTENT </code><a class="co" href="#callout_working_with_streams_CO5-4" id="co_working_with_streams_CO5-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+    <code class="n">stream</code><code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">punctuation</code><code class="p">:</code><code class="p">:</code><code class="n">matcher</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">matcher</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">matcher</code><code class="p">.</code><code class="na">replaceAll</code><code class="p">(</code><code class="s">"</code><code class="s">"</code><code class="p">)</code><code class="p">)</code>
+          <code class="c1">// SPLIT TO WORDS </code><a class="co" href="#callout_working_with_streams_CO5-5" id="co_working_with_streams_CO5-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">whitespace</code><code class="p">:</code><code class="p">:</code><code class="n">split</code><code class="p">)</code>
+          <code class="p">.</code><code class="na">flatMap</code><code class="p">(</code><code class="n">Arrays</code><code class="p">:</code><code class="p">:</code><code class="n">stream</code><code class="p">)</code>
+          <code class="c1">// ADDITIONAL CLEANUP </code><a class="co" href="#callout_working_with_streams_CO5-6" id="co_working_with_streams_CO5-6"><img alt="6" height="12" src="assets/6.png" width="12"/></a>
+          <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">word</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">words</code><code class="p">.</code><code class="na">matcher</code><code class="p">(</code><code class="n">word</code><code class="p">)</code><code class="p">.</code><code class="na">matches</code><code class="p">(</code><code class="p">)</code><code class="p">)</code>
+          <code class="c1">// NORMALIZE </code><a class="co" href="#callout_working_with_streams_CO5-7" id="co_working_with_streams_CO5-7"><img alt="7" height="12" src="assets/7.png" width="12"/></a>
+          <code class="p">.</code><code class="na">map</code><code class="p">(</code><code class="n">String</code><code class="p">:</code><code class="p">:</code><code class="n">toLowerCase</code><code class="p">)</code>
+          <code class="c1">// COUNTING </code><a class="co" href="#callout_working_with_streams_CO5-8" id="co_working_with_streams_CO5-8"><img alt="8" height="12" src="assets/8.png" width="12"/></a>
+          <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">toMap</code><code class="p">(</code><code class="n">Function</code><code class="p">.</code><code class="na">identity</code><code class="p">(</code><code class="p">)</code><code class="p">,</code>
+                                    <code class="n">word</code> <code class="o">-</code><code class="o">&gt;</code> <code class="mi">1</code><code class="p">,</code>
+                                    <code class="n">Integer</code><code class="p">:</code><code class="p">:</code><code class="n">sum</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+<code class="p">}</code> <code class="k">catch</code> <code class="p">(</code><code class="n">IOException</code> <code class="n">e</code><code class="p">)</code> <code class="p">{</code>
+  <code class="c1">// ...</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_working_with_streams_CO5-1" id="callout_working_with_streams_CO5-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The plain text version of <em>War and Peace</em> from Project Gutenberg<sup><a data-type="noteref" href="ch07.xhtml#idm45115233771312" id="idm45115233771312-marker">4</a></sup> is used, so no formatting might get in the way of counting words.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO5-2" id="callout_working_with_streams_CO5-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The regular expressions are pre-compiled to prevent recompilation for each element.
+Such optimizations are essential because of the overhead of creating a <code>Pattern</code> for each element and <code>map</code> operation will quickly compound and affect the overall performance.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO5-3" id="callout_working_with_streams_CO5-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The <code>lines</code> call returns a <code>Stream&lt;String&gt;</code> with the file’s lines as elements.
+The <code>try-with-resources</code> block is required because the I/O operation must be closed explicitly, which you’ll learn more about in <a data-type="xref" href="#_02-streams-file-io_caveats">“Caveats of File I/O Streams”</a>.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO5-4" id="callout_working_with_streams_CO5-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>The punctuation needs to be removed, or identical words directly next to any punctuation will be counted as different words.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO5-5" id="callout_working_with_streams_CO5-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a></dt>
+<dd><p>The cleaned line is now split on whitespace characters which creates a <code>Stream&lt;String[]&gt;</code>.
+To actually count the words, the <code>flatMap</code> operation will flatten the Stream to a <code>Stream&lt;String&gt;</code>.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO5-6" id="callout_working_with_streams_CO5-6"><img alt="6" height="12" src="assets/6.png" width="12"/></a></dt>
+<dd><p>The “word” matcher is an additional cleanup and selection step to only count the actual words.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO5-7" id="callout_working_with_streams_CO5-7"><img alt="7" height="12" src="assets/7.png" width="12"/></a></dt>
+<dd><p>Mapping the element to lowercase ensures differently-cased words are counted as one.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO5-8" id="callout_working_with_streams_CO5-8"><img alt="8" height="12" src="assets/8.png" width="12"/></a></dt>
+<dd><p>The terminal operation creates a <code>Map&lt;String, Integer&gt;</code> with the word as its key and the occurrence count as its value.</p></dd>
+</dl>
+<p>The Stream pipeline does what it was set out to do, taking over the task of reading the file and providing you with its content line-by-line so that you can concentrate your code on the processing steps.</p>
+<p>We will revisit this particular example in <a data-type="xref" href="ch08.xhtml#_01-parallel-streams">Chapter 8</a> to take another look at how such a common task can be improved immensely by using a parallel Stream.</p>
+</div></section>
+<section data-pdf-bookmark="Caveats of File I/O Streams" data-type="sect2"><div class="sect2" id="_02-streams-file-io_caveats">
+<h2>Caveats of File I/O Streams</h2>
+<p>Working with Streams and file I/O is pretty straightforward.
+However, there are three unusual aspects I mentioned before.
+They aren’t a big deal and don’t diminish the usability or usefulness of using Stream-based file I/O, although you need to be aware of them:</p>
+<ul>
+<li>
+<p>Closing the Streams is required</p>
+</li>
+<li>
+<p>Directory contents are weakly consistent</p>
+</li>
+<li>
+<p>Non-guaranteed element order</p>
+</li>
+</ul>
+<p>These aspects stem from dealing with I/O in general and are found in most I/O-related code, not only Stream pipelines.</p>
+<section data-pdf-bookmark="Explicit Closing of the Stream" data-type="sect3"><div class="sect3" id="idm45115233686064">
+<h3>Explicit Closing of the Stream</h3>
+<p>Dealing with resources in Java, like file I/O, typically requires you to close them after use.
+An unclosed resource can <em>leak</em>, meaning the garbage collector can’t reclaim its memory after the resource is no longer required or used.
+The same is true for dealing with I/O with Streams.
+That’s why you need to close I/O-based Streams explicitly, at least compared to non-I/O Streams.</p>
+<p>The <code>Stream&lt;T&gt;</code> type extends <code>java.io.AutoClosable</code> through <code>BaseStream</code>, so the most straightforward way to close it is to use a <code>try-with-resources</code> block, as seen throughout the “Working with File I/O” section and in the following code:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="k">try</code> <code class="p">(</code><code class="n">Stream</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">stream</code> <code class="o">=</code> <code class="n">Files</code><code class="p">.</code><code class="na">lines</code><code class="p">(</code><code class="n">location</code><code class="p">))</code> <code class="p">{</code>
+  <code class="n">stream</code><code class="p">.</code><code class="na">map</code><code class="p">(...)</code>
+        <code class="p">...</code>
+<code class="p">}</code></pre>
+<p>All Stream-related methods on <code>java.nio.file.Files</code> throw an <code>IOException</code> according to their signatures, so you need to handle that exception in some form.
+Combining a <code>try-with-resources</code>-block with an appropriate <code>catch</code>-block can solve both requirements in one fell swoop.</p>
+</div></section>
+<section data-pdf-bookmark="Weakly Consistent Directory Content" data-type="sect3"><div class="sect3" id="idm45115233625728">
+<h3>Weakly Consistent Directory Content</h3>
+<p>The <code>list</code>, <code>walk</code>, and <code>find</code> methods on <code>java.nio.file.Files</code> are <em>weakly consistent</em> and <em>lazily</em> populated.
+That means the actual directory content isn’t scanned once on Stream creation to have a fixed snapshot during traversal.
+Any updates to the filesystem may or may not be reflected after the <code>Stream&lt;Path&gt;</code> is created or traversed.</p>
+<p>The reasoning behind this constraint is quite most likely due to performance and optimization considerations.
+Stream pipelines are supposed to be lazy sequential pipelines with no distinction of their elements.
+A fixed snapshot of the file tree would require gathering all possible elements on Stream creation, not lazily on the actual Stream processing triggered by a terminal operation.</p>
+</div></section>
+<section data-pdf-bookmark="Non-guaranteed Element Order" data-type="sect3"><div class="sect3" id="idm45115233618720">
+<h3>Non-guaranteed Element Order</h3>
+<p>The lazy nature of Streams creates another aspect of file I/O Streams you might not expect.
+The encounter order of file I/O Streams isn’t guaranteed to be in natural order — in this case, alphabetically —  which is why you might need an additional <code>sorted</code> intermediate operation to ensure consistent element order.
+That’s because the Stream is populated by the filesystem, which isn’t guaranteed to return its files and directories in an ordered fashion.</p>
+</div></section>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Dealing with Date and Time" data-type="sect1"><div class="sect1" id="idm45115234789312">
+<h1>Dealing with Date and Time</h1>
+<p>Dealing with dates is always a challenge with many edge cases.
+Thankfully, a new <em>Date &amp; Time API</em>⁠<sup><a data-type="noteref" href="ch07.xhtml#idm45115233615264" id="idm45115233615264-marker">5</a></sup> was introduced in Java 8.
+Its immutable nature fits nicely in any functional code and provides some Stream-related methods, too.</p>
+<section data-pdf-bookmark="Querying Temporal Types" data-type="sect2"><div class="sect2" id="idm45115233612576">
+<h2>Querying Temporal Types</h2>
+<p>The new Date and Time API provides a flexible and functional query interface for arbitrary properties.
+Like most Stream operations, you inject the actually required logic to do your task into the method via its arguments, making the methods themselves more general scaffolds with greater versatility:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="o">&lt;</code><code class="n">R</code><code class="o">&gt;</code> <code class="n">R</code> <code class="nf">query</code><code class="p">(</code><code class="n">TemporalQuery</code><code class="o">&lt;</code><code class="n">R</code><code class="o">&gt;</code> <code class="n">query</code><code class="p">);</code></pre>
+<p>The generic signature allows querying for any type, making it quite flexible:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// TemporalQuery&lt;Boolean&gt; == Predicate&lt;TemporalAccessor&gt;</code>
+
+<code class="kt">boolean</code> <code class="n">isItTeaTime</code> <code class="o">=</code> <code class="n">LocalDateTime</code><code class="p">.</code><code class="na">now</code><code class="p">()</code>
+                                   <code class="p">.</code><code class="na">query</code><code class="p">(</code><code class="n">temporal</code> <code class="o">-&gt;</code> <code class="p">{</code>
+                                     <code class="kd">var</code> <code class="n">time</code> <code class="o">=</code> <code class="n">LocalTime</code><code class="p">.</code><code class="na">from</code><code class="p">(</code><code class="n">temporal</code><code class="p">);</code>
+                                     <code class="k">return</code> <code class="n">time</code><code class="p">.</code><code class="na">getHour</code><code class="p">()</code> <code class="o">&gt;=</code> <code class="mi">16</code><code class="p">;</code>
+                                   <code class="p">});</code>
+
+
+<code class="c1">// TemporalQuery&lt;LocalTime&gt; == Function&lt;TemporalAccessor,Localtime&gt;</code>
+<code class="n">LocalTime</code> <code class="n">time</code> <code class="o">=</code> <code class="n">LocalDateTime</code><code class="p">.</code><code class="na">now</code><code class="p">().</code><code class="na">query</code><code class="p">(</code><code class="n">LocalTime</code><code class="p">::</code><code class="n">from</code><code class="p">);</code></pre>
+<p>The utility class <code>java.time.temporal.TemporalQueries</code> provides pre-defined queries, shown in <a data-type="xref" href="#_02-streams-jsr310_temporalquery">Table 7-3</a>, to eliminate the need to create common queries yourself.</p>
+<table id="_02-streams-jsr310_temporalquery">
+<caption><span class="label">Table 7-3. </span>Pre-defined <code>TemporalQuery&lt;T&gt;</code> in <code>java.time.temporal.TemporalQueries</code></caption>
+<thead>
+<tr>
+<th><code>static</code> method</th>
+<th>Return Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>chronology()</code></p></td>
+<td><p><code>Chronology</code></p></td>
+</tr>
+<tr>
+<td><p><code>offset()</code></p></td>
+<td><p><code>ZoneOffset</code></p></td>
+</tr>
+<tr>
+<td><p><code>localDate()</code></p></td>
+<td><p><code>LocalDate</code></p></td>
+</tr>
+<tr>
+<td><p><code>localTime()</code></p></td>
+<td><p><code>LocalTime</code></p></td>
+</tr>
+<tr>
+<td><p><code>precision()</code></p></td>
+<td><p><code>TemporalUnit</code></p></td>
+</tr>
+<tr>
+<td><p><code>zoneId()</code></p></td>
+<td><p><code>ZoneId</code></p></td>
+</tr>
+<tr>
+<td><p><code>zone()</code></p></td>
+<td><p><code>ZoneId</code></p></td>
+</tr>
+</tbody>
+</table>
+<p>Obviously, not all Time API types support each query type.
+For example, you can’t get a <code>ZoneId</code>/<code>ZoneOffset</code> from a <code>Local…​</code> type.
+Each method is documented<sup><a data-type="noteref" href="ch07.xhtml#idm45115233447600" id="idm45115233447600-marker">6</a></sup> quite well with their supported types and intended use cases.</p>
+</div></section>
+<section data-pdf-bookmark="LocalDate-Range Streams" data-type="sect2"><div class="sect2" id="idm45115233445552">
+<h2>LocalDate-Range Streams</h2>
+<p>Java 9 introduced Stream capabilities for a single JSR 310 type, <code>java.time.LocalDate</code>, to create a consecutive range of <code>LocalDate</code> elements.
+You don’t have to worry about all the intricacies and edge cases of different calendar systems and how the date calculations are actually performed.
+The date and time API will handle them for you by giving you a consistent and easy-to-use abstraction.</p>
+<p>Two <code>LocalDate</code> instance methods create an ordered and consecutive Stream:</p>
+<ul>
+<li>
+<p><code>Stream&lt;LocalDate&gt; datesUntil(LocalDate endExclusive)</code></p>
+</li>
+<li>
+<p><code>Stream&lt;LocalDate&gt; datesUntil(LocalDate endExclusive, Period step)</code></p>
+</li>
+</ul>
+<p>The first variant is equivalent to using <code>Period.ofDays(1)</code>.
+Their implementation won’t overflow, meaning that any element plus <code>step</code> <em>must</em> be before <code>endExclusive</code>.
+The direction of the dates isn’t <em>future-only</em>, too.
+If <code>endExclusive</code> is in the past, you must provide a negative <code>step</code> to create a Stream going toward the past.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Measuring Stream Performance with JMH" data-type="sect1"><div class="sect1" id="idm45115233436016">
+<h1>Measuring Stream Performance with JMH</h1>
+<p>Throughout the book, I mention how Java’s functional techniques and tools, like Streams, incur a certain overhead compared to a <em>traditional</em> approach and that you have to consider it.
+This is why measuring the performance of Stream pipelines with benchmarks can be crucial.
+Streams aren’t an easy target for benchmarking because they are complex pipelines of multiple operations with many optimizations behind the scenes that depend on their data and operations.</p>
+<p>The JVM and its <em>just-in-time</em> compiler can be tricky to benchmark and determine the actual performance.
+That’s where the <em>Java Micro-Benchmarking Harness</em> comes in to help.</p>
+<p>The <a href="https://openjdk.java.net/projects/code-tools/jmh/">JMH</a> takes care of JVM warm-up, iterations, and code-optimizations that might dilute the results, making them more reliable and, therefore, a better baseline for evaluation.
+It’s the <em>de-facto</em> standard for benchmarking and got included in the JDK with version 12<sup><a data-type="noteref" href="ch07.xhtml#idm45115233431088" id="idm45115233431088-marker">7</a></sup>.</p>
+<p>Plugins are available for IDEs and build systems like <a href="https://github.com/melix/jmh-gradle-plugin">Gradle</a>, <a href="https://github.com/artyushov/idea-jmh-plugin">IntelliJ</a>, <a href="https://github.com/brianfromoregon/jmh-plugin">Jenkins</a>, or <a href="https://github.com/presidentio/teamcity-plugin-jmh">TeamCity</a>.</p>
+<p>The <a href="https://github.com/openjdk/jmh/blob/master/jmh-samples/src/main/java/org/openjdk/jmh/samples/">JMH GitHub repository sample directory</a> has a myriad of well-documented benchmarks explaining the intricacies of its usage.</p>
+<p>I won’t talk further about how to benchmark Streams or lambdas in general because it is out of scope for this chapter and it could easily consume the space of an entire book.
+In fact, I recommend you check out <em>Optimizing Java</em> by Benjamin J Evans, James Gough, and Chris Newland<sup><a data-type="noteref" href="ch07.xhtml#idm45115233423152" id="idm45115233423152-marker">8</a></sup> and <em>Java Performance</em> by Scott Oaks<sup><a data-type="noteref" href="ch07.xhtml#idm45115233422032" id="idm45115233422032-marker">9</a></sup> to learn more about benchmarking and how to measure performance in Java.</p>
+</div></section>
+<section data-pdf-bookmark="More about Collectors" data-type="sect1"><div class="sect1" id="idm45115233421072">
+<h1>More about Collectors</h1>
+<p><a data-type="xref" href="ch06.xhtml#_02-data-processing">Chapter 6</a> introduced Collectors and the corresponding terminal operation <code>collect</code> as a powerful tool to aggregate a Stream pipeline’s elements into new data structures.
+The utility type <code>java.util.stream.Collectors</code> has a plethora of <code>static</code> factory methods to create Collectors for almost any task, from simple aggregation into a new <code>Collection</code> type, or even more complex, multi-step aggregation pipelines.
+Such more complex Collectors are done with the concept of <em>downstream Collectors</em>.</p>
+<p>The general idea of Collectors is simple: collect elements into a new data structure.
+That’s a pretty straightforward operation if you want a Collection-based type like <code>List&lt;T&gt;</code> or <code>Set&lt;T&gt;</code>.
+In the case of a <code>Map&lt;K, V&gt;</code>, however, you usually need complex logic to get a correctly formed data structure that fulfills your goal.</p>
+<p>Collecting a sequence of elements to a key-value-based data structure like <code>Map&lt;K, V&gt;</code> can be done in various ways, each with its own challenges.
+For example, even with a simple key-value mapping where each key has only one value, there’s already the problem of key collisions to be dealt with.
+But if you want to further transform the Map’s value-part, like grouping, reducing, or partitioning, you need a way to manipulate the collected values.
+That’s where downstream Collectors come into play.</p>
+<section data-pdf-bookmark="Downstream Collectors" data-type="sect2"><div class="sect2" id="idm45115233413616">
+<h2>Downstream Collectors</h2>
+<p>Some of the pre-defined Collectors available via <code>java.util.stream.Collectors</code> factory methods accept an additional Collector to manipulate <em>downstream</em> elements.
+Basically, this means that after the primary Collector has done its job, the downstream Collector makes further changes to the collected values.
+It’s almost like a secondary Stream pipeline working on the previously collected elements.</p>
+<p>Typical tasks for downstream Collectors include:</p>
+<ul>
+<li>
+<p>Transforming</p>
+</li>
+<li>
+<p>Reducing</p>
+</li>
+<li>
+<p>Flattening</p>
+</li>
+<li>
+<p>Filtering</p>
+</li>
+<li>
+<p>Composite Collector operations</p>
+</li>
+</ul>
+<p>All examples of this section will use the following <code>User</code> Record and <code>users</code> data source:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">record</code> <code class="nc">User</code><code class="p">(</code><code class="n">UUID</code> <code class="n">id</code><code class="p">,</code>
+            <code class="n">String</code> <code class="n">group</code><code class="p">,</code>
+            <code class="n">LocalDateTime</code> <code class="n">lastLogin</code><code class="p">,</code>
+            <code class="n">List</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">logEntries</code><code class="p">)</code> <code class="p">{</code> <code class="p">}</code>
+
+<code class="n">List</code><code class="o">&lt;</code><code class="n">User</code><code class="o">&gt;</code> <code class="n">users</code> <code class="o">=</code> <code class="p">...;</code></pre>
+<section data-pdf-bookmark="Transforming Elements" data-type="sect3"><div class="sect3" id="idm45115233387440">
+<h3>Transforming Elements</h3>
+<p>Grouping Stream elements into simple key-value Maps is easy with the <code>Collectors.groupingBy</code> methods.
+The value part of a key-value mapping, though, might not be represented in the form you need and require additional transformation.</p>
+<p>For example, grouping a <code>Stream&lt;User&gt;</code> by its <code>group</code> creates a <code>Map&lt;String, List&lt;User&gt;&gt;</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">List</code><code class="o">&lt;</code><code class="n">User</code><code class="o">&gt;&gt;</code> <code class="n">lookup</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">()</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">group</code><code class="p">));</code></pre>
+<p>Simple enough.</p>
+<p>What if you don’t want the whole <code>User</code> and only its <code>id</code> in its place?
+You can’t use an intermediate <code>map</code> operation to transform the elements before collecting them because you wouldn’t have access to the <code>User</code> anymore to actually group them.
+Instead, you can use a downstream Collector to transform the collected elements.
+That’s why there are multiple <code>groupingBy</code> methods available, like the one we’re going to use in this section:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Collector</code><code class="o">&lt;</code><code class="n">T</code><code class="p">,</code> <code class="o">?</code><code class="p">,</code> <code class="n">Map</code><code class="o">&lt;</code><code class="n">K</code><code class="p">,</code> <code class="n">D</code><code class="o">&gt;&gt;</code> <code class="nf">groupingBy</code><code class="p">(</code><code class="n">Function</code><code class="o">&lt;?</code> <code class="kd">super</code> <code class="n">T</code><code class="p">,</code> <code class="o">?</code> <code class="kd">extends</code> <code class="n">K</code><code class="o">&gt;</code> <code class="n">classifier</code><code class="p">,</code>
+                                      <code class="n">Collector</code><code class="o">&lt;?</code> <code class="kd">super</code> <code class="n">T</code><code class="p">,</code> <code class="n">A</code><code class="p">,</code> <code class="n">D</code><code class="o">&gt;</code> <code class="n">downstream</code><code class="p">)</code></pre>
+<p>Although the different generic types in this method signature might look intimidating, don’t fret!
+Let’s break the signature down into its parts to get a better understanding of what’s happening.</p>
+<p>There are four types involved are listed in <a data-type="xref" href="#_02-streams-downstream_generic-types-groupingBy">Table 7-4</a>.</p>
+<table id="_02-streams-downstream_generic-types-groupingBy">
+<caption><span class="label">Table 7-4. </span>Generic types of <code>groupingBy</code></caption>
+<thead>
+<tr>
+<th>Generic Type</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>T</code></p></td>
+<td><p>The Stream’s elements type before collecting.</p></td>
+</tr>
+<tr>
+<td><p><code>K</code></p></td>
+<td><p>The <code>Map</code> result’s key type.</p></td>
+</tr>
+<tr>
+<td><p><code>D</code></p></td>
+<td><p>The type of the result <code>Map</code> value part that is created by the downstream Collector.</p></td>
+</tr>
+<tr>
+<td><p><code>A</code></p></td>
+<td><p>The accumulator type of the downstream Collector.</p></td>
+</tr>
+</tbody>
+</table>
+<p>As you can see, each type of the method-signature represents a part of the overall process.
+The <code>classifier</code> creates the keys, mapping the elements of type <code>T</code> to the key type <code>K</code>.
+The downstream Collector aggregates the elements of type <code>T</code> to the new result type <code>D</code>.
+The overall result will therefore be a <code>Map&lt;K, D&gt;</code>.</p>
+<div data-type="tip"><h6>Tip</h6>
+<p>Java’s type inference will usually do the heavy lifting of matching the correct types for you, so you don’t have to think much about the actual generic signatures if you only want to use such complex generic methods and not write them yourselves.
+If a type mismatch occurs and the compiler can’t deduct the types automatically, try to refactor the operation logic into dedicated variables with the help of your IDE to see the inferred types.
+It’s easier to tweak smaller blocks of code than an entire Stream pipeline at once.</p>
+</div>
+<p>In essence, each Collector accepting an additional downstream Collector consists of the original logic — in this case, the key-mapper — and a downstream Collector, affecting the values mapped to a key.
+You can think of the downstream collecting process as working like another Stream that’s collected.
+Instead of all elements, though, it only encounters the values associated with the key by the primary Collector.</p>
+<p>Let’s get back to the lookup Map for <code>User</code> groups.
+The goal is to create a <code>Map&lt;String, Set&lt;UUID&gt;&gt;</code>, mapping the <code>User</code> groups to a list of distinct <code>id</code> instances.
+The best way to create a downstream Collector is to think about the particular steps required to achieve your goal and which factory methods of <code>java.util.stream.Collectors</code> could achieve them.</p>
+<p>First, you want the <code>id</code> of a <code>User</code> element, which is a mapping operation.
+The method <code>Collector&lt;T, ?, R&gt; mapping(Function&lt;? super T, ? extends U&gt; mapper, Collector&lt;? super U, A, R&gt; downstream)</code> creates a Collector that maps the collected elements before passing them down to another Collector.
+The reasoning behind requiring another downstream Collector is simple; the mapping Collector’s sole purpose is, you might have guessed, <em>mapping</em> the elements.
+The actual collection of mapped elements is outside its scope and therefore delegated to the downstream Collectors.</p>
+<p>Second, you want to collect the mapped elements into a <code>Set</code>, which can be done by <code>Collectors.toSet()</code>.</p>
+<p>By writing the Collectors separately, their intent and hierarchy become more visible:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// COLLECT ELEMENTS TO SET</code>
+<code class="n">Collector</code><code class="o">&lt;</code><code class="n">UUID</code><code class="p">,</code> <code class="o">?</code><code class="p">,</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">UUID</code><code class="o">&gt;&gt;</code> <code class="n">collectToSet</code> <code class="o">=</code> <code class="n">Collectors</code><code class="p">.</code><code class="na">toSet</code><code class="p">();</code>
+
+<code class="c1">// MAP FROM USER TO UUID</code>
+<code class="n">Collector</code><code class="o">&lt;</code><code class="n">User</code><code class="p">,</code> <code class="o">?</code><code class="p">,</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">UUID</code><code class="o">&gt;&gt;</code> <code class="n">mapToId</code> <code class="o">=</code>
+  <code class="n">Collectors</code><code class="p">.</code><code class="na">mapping</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">id</code><code class="p">,</code>
+                     <code class="n">collectToSet</code><code class="p">);</code>
+
+<code class="c1">// GROUPING BY GROUP</code>
+<code class="n">Collector</code><code class="o">&lt;</code><code class="n">User</code><code class="p">,</code> <code class="o">?</code><code class="p">,</code> <code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">UUID</code><code class="o">&gt;&gt;&gt;</code> <code class="n">groupingBy</code> <code class="o">=</code>
+  <code class="n">Collectors</code><code class="p">.</code><code class="na">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">group</code><code class="p">,</code> <code class="n">mapToId</code><code class="p">);</code></pre>
+<p>As I said before, you can usually let the compiler infer the types and use the <code>Collectors</code> factory methods directly.
+If you import the class statically, you can even forgo the repetitive <code>Collectors.</code> prefix.
+Combining all the Collectors and using them in the Stream pipeline leads to a straightforward collection pipeline:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kn">import static</code> <code class="nn">java.util.stream.Collectors.*</code><code class="p">;</code>
+
+<code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">UUID</code><code class="o">&gt;&gt;</code> <code class="n">lookup</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">()</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">group</code><code class="p">,</code>
+                           <code class="n">mapping</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">id</code><code class="p">,</code> <code class="n">toSet</code><code class="p">())));</code></pre>
+<p>The result type is inferable by the compiler, too.
+Still, I prefer to explicitly state it to communicate better what kind of type is returned by the Stream pipeline.</p>
+<p>An alternative approach is keeping the primary downstream Collector as a variable to keep the <code>collect</code> call simpler.
+The downside of this is the necessity to help the compiler infer the correct types if it’s not obvious, like in the case of using a lambda expression instead of a method reference.</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">collectIdsToSet</code> <code class="o">=</code> <code class="n">Collectors</code><code class="p">.</code><code class="na">mapping</code><code class="p">(</code><code class="n">User</code><code class="p">:</code><code class="p">:</code><code class="n">id</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO6-1" id="co_working_with_streams_CO6-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+                                         <code class="n">Collectors</code><code class="p">.</code><code class="na">toSet</code><code class="p">(</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+
+<code class="c1">// LAMBDA ALTERNATIVE</code>
+
+<code class="kd">var</code> <code class="n">collectIdsToSetLambda</code> <code class="o">=</code> <code class="n">Collectors</code><code class="p">.</code><code class="na">mapping</code><code class="p">(</code><code class="p">(</code><code class="n">User</code> <code class="n">user</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">user</code><code class="p">.</code><code class="na">id</code><code class="p">(</code><code class="p">)</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO6-2" id="co_working_with_streams_CO6-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+                                               <code class="n">Collectors</code><code class="p">.</code><code class="na">toSet</code><code class="p">(</code><code class="p">)</code><code class="p">)</code><code class="p">;</code>
+
+<code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">UUID</code><code class="o">&gt;</code><code class="o">&gt;</code> <code class="n">lookup</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="p">)</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">:</code><code class="p">:</code><code class="n">group</code><code class="p">,</code>
+                                      <code class="n">collectIdsToSet</code><code class="p">)</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO6-3" id="co_working_with_streams_CO6-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></pre>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_working_with_streams_CO6-1" id="callout_working_with_streams_CO6-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The method reference tells the compiler which type the Stream’s elements are, so the downstream Collector knows it, too.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO6-2" id="callout_working_with_streams_CO6-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The lambda variant of <code>mapper</code> needs to know the type to work with.
+You can either provide an explicit type to the lambda argument or replace <code>var</code> with the more complicated generic <code>Collector&lt;T, A , R&gt;</code> signature.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO6-3" id="callout_working_with_streams_CO6-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The <code>collect</code> call is still expressive thanks to the variable name.
+If certain aggregation operations are commonly used, you should consider refactoring them into an auxiliary type with factory methods, similar to <code>java.util.stream.Collectors</code>.</p></dd>
+</dl>
+</div></section>
+<section data-pdf-bookmark="Reducing Elements" data-type="sect3"><div class="sect3" id="idm45115233368976">
+<h3>Reducing Elements</h3>
+<p>Sometimes, a reduction operation is needed instead of an aggregation.
+The general approach to designing a reducing downstream Collector is identical to the previous section: define your overall goal, dissect it into the necessary steps, and finally, create the downstream Collector.</p>
+<p>For this example, instead of creating a lookup Map for <code>id</code> by <code>group</code>, let’s count the <code>logEntries</code> per <code>User</code>.</p>
+<p>The overall goal is to count the log entries per <code>User</code> element.
+The required steps are getting the log count of a <code>User</code> and summing them up to the final tally.</p>
+<p>You could use the <code>Collectors.mapping</code> factory method with another downstream Collector to achieve the goal:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">summingUp</code> <code class="o">=</code> <code class="n">Collectors</code><code class="p">.</code><code class="na">reducing</code><code class="p">(</code><code class="mi">0</code><code class="p">,</code> <code class="n">Integer</code><code class="p">::</code><code class="n">sum</code><code class="p">);</code>
+
+<code class="kd">var</code> <code class="n">downstream</code> <code class="o">=</code>
+  <code class="n">Collectors</code><code class="p">.</code><code class="na">mapping</code><code class="p">((</code><code class="n">User</code> <code class="n">user</code><code class="p">)</code> <code class="o">-&gt;</code> <code class="n">user</code><code class="p">.</code><code class="na">logEntries</code><code class="p">().</code><code class="na">size</code><code class="p">(),</code>
+                     <code class="n">summingUp</code><code class="p">);</code>
+
+<code class="n">Map</code><code class="o">&lt;</code><code class="n">UUID</code><code class="p">,</code> <code class="n">Integer</code><code class="o">&gt;</code> <code class="n">logCountPerUserId</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">()</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">id</code><code class="p">,</code> <code class="n">downstream</code><code class="p">));</code></pre>
+<p>Instead of requiring a mapping and reducing downstream Collector in tandem, you could use one of the other <code>Collector.reduce</code> variants which includes a <code>mapper</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Collector</code><code class="o">&lt;</code><code class="n">T</code><code class="p">,</code> <code class="o">?</code><code class="p">,</code> <code class="n">U</code><code class="o">&gt;</code> <code class="nf">reducing</code><code class="p">(</code><code class="n">U</code> <code class="n">identity</code><code class="p">,</code>
+                            <code class="n">Function</code><code class="o">&lt;?</code> <code class="kd">super</code> <code class="n">T</code><code class="p">,</code> <code class="o">?</code> <code class="kd">extends</code> <code class="n">U</code><code class="o">&gt;</code> <code class="n">mapper</code><code class="p">,</code>
+                            <code class="n">BinaryOperator</code><code class="o">&lt;</code><code class="n">U</code><code class="o">&gt;</code> <code class="n">op</code><code class="p">)</code></pre>
+<p>This <code>reduce</code> variant needs, in addition to a seed value (<code>identity</code>) and the reduction operation (<code>op</code>), a <code>mapper</code> to transform the <code>User</code> elements into the desired value:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">downstream</code> <code class="o">=</code>
+  <code class="n">Collectors</code><code class="p">.</code><code class="na">reducing</code><code class="p">(</code><code class="mi">0</code><code class="p">,</code>                                       <code class="c1">// identity</code>
+                      <code class="p">(</code><code class="n">User</code> <code class="n">user</code><code class="p">)</code> <code class="o">-&gt;</code> <code class="n">user</code><code class="p">.</code><code class="na">logEntries</code><code class="p">().</code><code class="na">size</code><code class="p">(),</code> <code class="c1">// mapper</code>
+                      <code class="n">Integer</code><code class="p">::</code><code class="n">sum</code><code class="p">);</code>                           <code class="c1">// op</code>
+
+<code class="n">Map</code><code class="o">&lt;</code><code class="n">UUID</code><code class="p">,</code> <code class="n">Integer</code><code class="o">&gt;</code> <code class="n">logCountPerUserId</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">()</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">id</code><code class="p">,</code> <code class="n">downstream</code><code class="p">));</code></pre>
+<p>Like the <code>reduce</code> intermediate operation, using a reducing Collector for downstream operations is an incredibly flexible tool, being able to combine multiple steps into a single operation.
+Which method to choose, multi-downstream Collectors or single reduction, depends on personal preferences and the overall complexity of the collection process.
+If you only need to sum up numbers, though, the <code>java.util.stream.Collectors</code> type also gives you more specialized variants:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">downstream</code> <code class="o">=</code>
+  <code class="n">Collectors</code><code class="p">.</code><code class="na">summingInt</code><code class="p">((</code><code class="n">User</code> <code class="n">user</code><code class="p">)</code> <code class="o">-&gt;</code> <code class="n">user</code><code class="p">.</code><code class="na">logEntries</code><code class="p">().</code><code class="na">size</code><code class="p">());</code>
+
+<code class="n">Map</code><code class="o">&lt;</code><code class="n">UUID</code><code class="p">,</code> <code class="n">Integer</code><code class="o">&gt;</code> <code class="n">logCountPerUserId</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">()</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">id</code><code class="p">,</code> <code class="n">downstream</code><code class="p">));</code></pre>
+<p>The <code>summing</code> Collector is available for the usual primitive types (<code>int</code>, <code>long</code>, <code>float</code>).
+Besides summing up numbers, you can calculate averages (prefixed with <code>averaging</code>) or simply count elements with <code>Collectors.counting()</code>.</p>
+</div></section>
+<section data-pdf-bookmark="Flattening Collections" data-type="sect3"><div class="sect3" id="idm45115232849728">
+<h3>Flattening Collections</h3>
+<p>Dealing with Collection-based elements in Streams usually requires a <code>flatMap</code> intermediate operation to “flatten” the Collection back into discrete elements to work with further down the pipeline, or you’ll end up with nested Collections like <code>List&lt;List&lt;String&gt;&gt;</code>.
+The same is true for the collecting process of a Stream.</p>
+<p>Grouping all <code>logEntries</code> by their <code>group</code> would result in a <code>Map&lt;String, List&lt;List&lt;String&gt;&gt;&gt;</code>, which most likely won’t be what you want.
+Java 9 added a new pre-defined Collector with built-in flattening capabilities:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">static</code> <code class="n">Collector</code><code class="o">&lt;</code><code class="n">T</code><code class="p">,</code> <code class="o">?</code><code class="p">,</code> <code class="n">R</code><code class="o">&gt;</code> <code class="nf">flatMapping</code><code class="p">(</code><code class="n">Function</code><code class="o">&lt;</code><code class="n">T</code><code class="p">,</code> <code class="n">Stream</code><code class="o">&lt;</code><code class="n">U</code><code class="o">&gt;&gt;</code> <code class="n">mapper</code><code class="p">,</code>
+                                      <code class="n">Collector</code><code class="o">&lt;</code><code class="n">U</code><code class="p">,</code> <code class="n">A</code><code class="p">,</code> <code class="n">R</code><code class="o">&gt;</code> <code class="n">downstream</code><code class="p">)</code></pre>
+<p>Like the other added Collector, <code>Collectors.filtering(…​)</code>, which I discussed in <a data-type="xref" href="#_02-streams_collecting-streams_filtering">“Filtering Elements”</a>, it doesn’t provide any advantages over an explicit <code>flatMap</code> intermediate operation if used as the sole Collector.
+But, used in a multi-level reduction, like <code>groupingBy</code> or <code>partitionBy</code>, it gives you access to the original Stream element <em>and</em> allows for flattening the collected elements:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code> <code class="n">downstream</code> <code class="o">=</code>
+  <code class="n">Collectors</code><code class="p">.</code><code class="na">flatMapping</code><code class="p">((</code><code class="n">User</code> <code class="n">user</code><code class="p">)</code> <code class="o">-&gt;</code> <code class="n">user</code><code class="p">.</code><code class="na">logEntries</code><code class="p">().</code><code class="na">stream</code><code class="p">(),</code>
+                         <code class="n">Collectors</code><code class="p">.</code><code class="na">toList</code><code class="p">());</code>
+
+<code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">List</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;&gt;</code> <code class="n">result</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">()</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">group</code><code class="p">,</code> <code class="n">downstream</code><code class="p">));</code></pre>
+<p>Like with the transforming and reducing Collectors, you will quickly get the hang of when to use a flattening downstream Collector.
+If the result type of the Stream pipeline doesn’t match your expectations, you most likely need a downstream Collector to remedy the situation, either by using <code>Collectors.mapping</code> or <code>Collectors.flatMapping</code>.</p>
+</div></section>
+<section data-pdf-bookmark="Filtering Elements" data-type="sect3"><div class="sect3" id="_02-streams_collecting-streams_filtering">
+<h3>Filtering Elements</h3>
+<p>Filtering Stream elements is an essential part of almost any Stream pipeline, done with the help of the intermediate <code>filter</code> operation.
+Java 9 added a new pre-defined Collector with built-in filtering capabilities, moving the step of filtering elements directly before the accumulation process:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">static</code> <code class="o">&lt;</code><code class="n">T</code><code class="p">,</code> <code class="n">A</code><code class="p">,</code> <code class="n">R</code><code class="o">&gt;</code> <code class="n">Collector</code><code class="o">&lt;</code><code class="n">T</code><code class="p">,</code><code class="o">?</code><code class="p">,</code><code class="n">R</code><code class="o">&gt;</code> <code class="nf">filtering</code><code class="p">(</code><code class="n">Predicate</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="n">predicate</code><code class="p">,</code>
+                                            <code class="n">Collector</code><code class="o">&lt;</code><code class="n">T</code><code class="p">,</code> <code class="n">A</code><code class="p">,</code> <code class="n">R</code><code class="o">&gt;</code> <code class="n">downstream</code><code class="p">)</code></pre>
+<p>On its own, it’s no different from an intermediate  <code>filter</code> operation.
+As a downstream Collector, though, its behavior is quite different to <code>filter</code>, easily seen when grouping elements:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kn">import static</code> <code class="nn">java.util.stream.Collectors.*</code><code class="p">;</code>
+
+<code class="kd">var</code> <code class="n">startOfDay</code> <code class="o">=</code> <code class="n">LocalDate</code><code class="p">.</code><code class="na">now</code><code class="p">().</code><code class="na">atStartOfDay</code><code class="p">();</code>
+
+<code class="n">Predicate</code><code class="o">&lt;</code><code class="n">User</code><code class="o">&gt;</code> <code class="n">loggedInToday</code> <code class="o">=</code>
+  <code class="n">Predicate</code><code class="p">.</code><code class="na">not</code><code class="p">(</code><code class="n">user</code> <code class="o">-&gt;</code> <code class="n">user</code><code class="p">.</code><code class="na">lastLogin</code><code class="p">().</code><code class="na">isBefore</code><code class="p">(</code><code class="n">startOfDay</code><code class="p">));</code>
+
+
+<code class="c1">// WITH INTERMEDIATE FILTER</code>
+
+<code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">UUID</code><code class="o">&gt;&gt;</code> <code class="n">todaysLoginsByGroupWithFilterOp</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">()</code>
+       <code class="p">.</code><code class="na">filter</code><code class="p">(</code><code class="n">loggedInToday</code><code class="p">)</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">group</code><code class="p">,</code>
+                           <code class="n">mapping</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">id</code><code class="p">,</code> <code class="n">toSet</code><code class="p">())));</code>
+
+
+<code class="c1">// WITH COLLECT FILTER</code>
+
+<code class="n">Map</code><code class="o">&lt;</code><code class="n">String</code><code class="p">,</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">UUID</code><code class="o">&gt;&gt;</code> <code class="n">todaysLoginsByGroupWithFilteringCollector</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">()</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">groupingBy</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">group</code><code class="p">,</code>
+                           <code class="n">filtering</code><code class="p">(</code><code class="n">loggedInToday</code><code class="p">,</code>
+                                     <code class="n">mapping</code><code class="p">(</code><code class="n">User</code><code class="p">::</code><code class="n">id</code><code class="p">,</code> <code class="n">toSet</code><code class="p">()))));</code></pre>
+<p>You might expect an equivalent result, but the order of operations leads to different results:</p>
+<dl>
+<dt>Intermediate filter first, grouping second</dt>
+<dd>
+<p>Using an intermediate <code>filter</code> operation removes any undesired element before any collection occurs.
+Therefore, no groups of users that haven’t logged in today are included in the resulting <code>Map</code>, as illustrated in <a data-type="xref" href="#_02-streams_collectors_downstream-filter-first-grouping-second">Figure 7-1</a>.</p>
+</dd>
+</dl>
+<figure><div class="figure" id="_02-streams_collectors_downstream-filter-first-grouping-second">
+<img alt="Grouping elements with filter first, grouping second" height="485" src="assets/afaj_0701.png" width="310"/>
+<h6><span class="label">Figure 7-1. </span>Grouping elements with “filter first, grouping second”</h6>
+</div></figure>
+<dl>
+<dt>Group first, filter downstream</dt>
+<dd>
+<p>Without an intermediate <code>filter</code> operation, the <code>groupingBy</code> Collector will encounter all <code>User</code> elements, regardless of their last login date.
+The downstream Collector — <code>Collectors.filtering</code> — is responsible for filtering the elements, so the returned <code>Map</code> still includes all user groups, regardless of the last login.
+The flow of elements is illustrated in <a data-type="xref" href="#_02-streams_collectors_downstream-group-first-filter-downstream">Figure 7-2</a>.</p>
+</dd>
+</dl>
+<figure><div class="figure" id="_02-streams_collectors_downstream-group-first-filter-downstream">
+<img alt="Grouping elements with group first, filter downstream" height="449" src="assets/afaj_0702.png" width="310"/>
+<h6><span class="label">Figure 7-2. </span>Grouping elements with “group first, filter downstream”</h6>
+</div></figure>
+<p>Which approach is preferable depends on your requirements.
+Filtering first returns the least amount of key-value pairs possible, but grouping first grants you access to all <code>Map</code> keys and their (maybe) empty values.</p>
+</div></section>
+<section data-pdf-bookmark="Composite Collectors" data-type="sect3"><div class="sect3" id="idm45115232260208">
+<h3>Composite Collectors</h3>
+<p>The last Collector I want to discuss is <code>Collectors.teeing</code>
+Added in Java 12, it differs from the others because it accepts two downstream Collectors at once and combines both results into one.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>The name <em>teeing</em> originates from one of the most common pipe fittings — the T-fitting — which has the shape of a capital letter T.</p>
+</div>
+<p>The Stream’s elements first pass through both downstream Collectors, so a <code>BiFunction</code> can merge both results as the second step, as illustrated in <a data-type="xref" href="#_02-streams-collectors_teeing">Figure 7-3</a>.</p>
+<figure><div class="figure" id="_02-streams-collectors_teeing">
+<img alt="Teeing Collector Flow of Elements" height="462" src="assets/afaj_0703.png" width="550"/>
+<h6><span class="label">Figure 7-3. </span>Teeing Collector Flow of Elements</h6>
+</div></figure>
+<p>Imagine you want to know how many users you have and how many of them never logged in.
+Without the <code>teeing</code> operation, you would have to traverse the elements twice: once for the overall count and another time for counting the never logged-in Users.
+Both counting tasks can be represented by dedicated Collectors, <code>counting</code> and <code>filtering</code>, so you only need to traverse the elements once and let <code>teeing</code> do the two counting tasks at the end of the pipeline.
+The results are then merged with a <code>BiFunction&lt;Long, Long&gt;</code> into the new data structure <code>UserStats</code>.
+<a data-type="xref" href="#_02-streams-teeing-login-range">Example 7-5</a> shows how to implement it.</p>
+<div data-type="example" id="_02-streams-teeing-login-range">
+<h5><span class="label">Example 7-5. </span>Finding min and max login dates</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">record</code> <code class="nc">UserStats</code><code class="p">(</code><code class="kt">long</code> <code class="n">total</code><code class="p">,</code> <code class="kt">long</code> <code class="n">neverLoggedIn</code><code class="p">)</code> <code class="p">{</code> <a class="co" href="#callout_working_with_streams_CO7-1" id="co_working_with_streams_CO7-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+  <code class="c1">// NO BODY</code>
+<code class="p">}</code>
+
+<code class="n">UserStats</code> <code class="n">result</code> <code class="o">=</code>
+  <code class="n">users</code><code class="p">.</code><code class="na">stream</code><code class="p">(</code><code class="p">)</code>
+       <code class="p">.</code><code class="na">collect</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">teeing</code><code class="p">(</code><code class="n">Collectors</code><code class="p">.</code><code class="na">counting</code><code class="p">(</code><code class="p">)</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO7-2" id="co_working_with_streams_CO7-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+                <code class="n">Collectors</code><code class="p">.</code><code class="na">filtering</code><code class="p">(</code><code class="n">user</code> <code class="o">-</code><code class="o">&gt;</code> <code class="n">user</code><code class="p">.</code><code class="na">lastLogin</code><code class="p">(</code><code class="p">)</code> <code class="o">=</code><code class="o">=</code> <code class="kc">null</code><code class="p">,</code> <a class="co" href="#callout_working_with_streams_CO7-3" id="co_working_with_streams_CO7-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+                                     <code class="n">Collectors</code><code class="p">.</code><code class="na">counting</code><code class="p">(</code><code class="p">)</code><code class="p">)</code><code class="p">,</code>
+                <code class="n">UserStats</code><code class="p">:</code><code class="p">:</code><code class="k">new</code><code class="p">)</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO7-4" id="co_working_with_streams_CO7-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_working_with_streams_CO7-1" id="callout_working_with_streams_CO7-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>A local Record type is used as the result type because Java lacks dynamic tuples.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO7-2" id="callout_working_with_streams_CO7-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The first downstream Collector counts all elements.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO7-3" id="callout_working_with_streams_CO7-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The second downstream Collector filters first and uses an additional downstream Collector to count the remaining elements.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO7-4" id="callout_working_with_streams_CO7-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>A method reference to the <code>UserStats</code> constructor serves as the merge function of the two downstream Collector results.</p></dd>
+</dl>
+<p>Like many functional additions, the <code>teeing</code> Collector might initially seem strange if you’re coming from a mainly object-oriented background.
+On its own, a <code>for</code>-loop with two out-of-body variables to count could achieve the same result.
+The difference lies in how the <code>teeing</code> Collector benefits from the Stream pipeline and its overall advantages and functional possibilities, not just the terminal operation itself.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Creating Your Own Collector" data-type="sect2"><div class="sect2" id="idm45115233412992">
+<h2>Creating Your Own Collector</h2>
+<p>The auxiliary type <code>java.util.stream.Collectors</code> gives you over 44 pre-defined factory methods in the current LTS Java version 17 at the time of writing this book.
+They cover most general use cases, especially if used in tandem.
+There may be times when you need a custom, more context-specific Collector that’s more domain-specific and easier to use than a pre-defined one.
+That way, you can also share such specific Collectors in a custom auxiliary class, like <code>Collectors</code>.</p>
+<p>Recall from <a data-type="xref" href="ch06.xhtml#_02-data-processing">Chapter 6</a> that Collectors aggregate elements with the help of four methods:</p>
+<ul>
+<li>
+<p><code>Supplier&lt;A&gt; supplier()</code></p>
+</li>
+<li>
+<p><code>BiConsumer&lt;A, T&gt; accumulator()</code></p>
+</li>
+<li>
+<p><code>BinaryOperator&lt;A&gt; combiner()</code></p>
+</li>
+<li>
+<p><code>Function&lt;A, R&gt; finisher()</code></p>
+</li>
+</ul>
+<p>One method of the <code>Collector</code> interface I haven’t mentioned before is <code>Set&lt;Characteristics&gt; characteristics()</code>.
+Like Streams, Collectors have a set of characteristics that allow for different optimization techniques.
+The three currently available options are listed in <a data-type="xref" href="#_02-streams_collector-characteristics">Table 7-5</a>.</p>
+<table id="_02-streams_collector-characteristics">
+<caption><span class="label">Table 7-5. </span>Available java.util.Collector.Characteristics</caption>
+<thead>
+<tr>
+<th>Characteristic</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p><code>CONCURRENT</code></p></td>
+<td><p>Supports parallel processing</p></td>
+</tr>
+<tr>
+<td><p><code>IDENTITY_FINISH</code></p></td>
+<td><p>The finisher is the identity function, returning the accumulator itself.
+   In this case, only a cast is required instead of calling the finisher itself.</p></td>
+</tr>
+<tr>
+<td><p><code>UNORDERED</code></p></td>
+<td><p>Indicates that the order of Stream elements isn’t necessarily preserved.</p></td>
+</tr>
+</tbody>
+</table>
+<p>To better understand how these parts fit together, we’re going to recreate one of the existing Collectors, <code>Collectors.joining(CharSequence delimiter)</code>, which joins <code>CharSequence</code> elements, separated by the <code>delimiter</code> argument.
+<a data-type="xref" href="#_02-streams_collector_joinector-full">Example 7-6</a> shows how to implement the <code>Collector&lt;T, A, R&gt;</code> interface with a <code>java.util.StringJoiner</code> to achieve the required functionality.</p>
+<div data-type="example" id="_02-streams_collector_joinector-full">
+<h5><span class="label">Example 7-6. </span>Custom Collector for joining String elements</h5>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">Joinector</code> <code class="kd">implements</code> <code class="n">Collector</code><code class="o">&lt;</code><code class="n">CharSequence</code><code class="p">,</code> <code class="c1">// T</code>
+                                            <code class="n">StringJoiner</code><code class="p">,</code> <code class="c1">// A</code>
+                                            <code class="n">String</code><code class="o">&gt;</code> <code class="p">{</code>     <code class="c1">// R</code>
+
+  <code class="kd">private</code> <code class="kd">final</code> <code class="n">CharSequence</code> <code class="n">delimiter</code><code class="p">;</code>
+
+  <code class="kd">public</code> <code class="nf">Joinector</code><code class="p">(</code><code class="n">CharSequence</code> <code class="n">delimiter</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">this</code><code class="p">.</code><code class="na">delimiter</code> <code class="o">=</code> <code class="n">delimiter</code><code class="p">;</code>
+  <code class="p">}</code>
+
+  <code class="nd">@Override</code>
+  <code class="kd">public</code> <code class="n">Supplier</code><code class="o">&lt;</code><code class="n">StringJoiner</code><code class="o">&gt;</code> <code class="nf">supplier</code><code class="p">(</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">return</code> <code class="p">(</code><code class="p">)</code> <code class="o">-</code><code class="o">&gt;</code> <code class="k">new</code> <code class="n">StringJoiner</code><code class="p">(</code><code class="k">this</code><code class="p">.</code><code class="na">delimiter</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO8-1" id="co_working_with_streams_CO8-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a>
+  <code class="p">}</code>
+
+  <code class="nd">@Override</code>
+  <code class="kd">public</code> <code class="n">BiConsumer</code><code class="o">&lt;</code><code class="n">StringJoiner</code><code class="p">,</code> <code class="n">CharSequence</code><code class="o">&gt;</code> <code class="nf">accumulator</code><code class="p">(</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">return</code> <code class="n">StringJoiner</code><code class="p">:</code><code class="p">:</code><code class="n">add</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO8-2" id="co_working_with_streams_CO8-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a>
+  <code class="p">}</code>
+
+  <code class="nd">@Override</code>
+  <code class="kd">public</code> <code class="n">BinaryOperator</code><code class="o">&lt;</code><code class="n">StringJoiner</code><code class="o">&gt;</code> <code class="nf">combiner</code><code class="p">(</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">return</code> <code class="n">StringJoiner</code><code class="p">:</code><code class="p">:</code><code class="n">merge</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO8-3" id="co_working_with_streams_CO8-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a>
+  <code class="p">}</code>
+
+  <code class="nd">@Override</code>
+  <code class="kd">public</code> <code class="n">Function</code><code class="o">&lt;</code><code class="n">StringJoiner</code><code class="p">,</code> <code class="n">String</code><code class="o">&gt;</code> <code class="nf">finisher</code><code class="p">(</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">return</code> <code class="n">StringJoiner</code><code class="p">:</code><code class="p">:</code><code class="n">toString</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO8-4" id="co_working_with_streams_CO8-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a>
+  <code class="p">}</code>
+
+  <code class="nd">@Override</code>
+  <code class="kd">public</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">Characteristics</code><code class="o">&gt;</code> <code class="nf">characteristics</code><code class="p">(</code><code class="p">)</code> <code class="p">{</code>
+    <code class="k">return</code> <code class="n">Collections</code><code class="p">.</code><code class="na">emptySet</code><code class="p">(</code><code class="p">)</code><code class="p">;</code> <a class="co" href="#callout_working_with_streams_CO8-5" id="co_working_with_streams_CO8-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a>
+  <code class="p">}</code>
+<code class="p">}</code></pre></div>
+<dl class="calloutlist">
+<dt><a class="co" href="#co_working_with_streams_CO8-1" id="callout_working_with_streams_CO8-1"><img alt="1" height="12" src="assets/1.png" width="12"/></a></dt>
+<dd><p>The <code>StringJoiner</code> type is the perfect mutable results container due to its public API and delimiter support.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO8-2" id="callout_working_with_streams_CO8-2"><img alt="2" height="12" src="assets/2.png" width="12"/></a></dt>
+<dd><p>The accumulation logic for adding new elements to the container is as simple as using the proper method reference.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO8-3" id="callout_working_with_streams_CO8-3"><img alt="3" height="12" src="assets/3.png" width="12"/></a></dt>
+<dd><p>The logic for combining multiple containers is also available via method reference.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO8-4" id="callout_working_with_streams_CO8-4"><img alt="4" height="12" src="assets/4.png" width="12"/></a></dt>
+<dd><p>The last step, transforming the results container to the actual result, is done with the container’s <code>toString</code> method.</p></dd>
+<dt><a class="co" href="#co_working_with_streams_CO8-5" id="callout_working_with_streams_CO8-5"><img alt="5" height="12" src="assets/5.png" width="12"/></a></dt>
+<dd><p>The <code>Joinector</code> doesn’t have any of the available Collector characteristics, so an empty <code>Set</code> is returned.</p></dd>
+</dl>
+<p>Simple enough, but it’s still a lot of code for very little functionality consisting mostly of returning method references.
+Thankfully, there are convenience factory methods called <code>of</code> available on <code>Collector</code> to simplify the code:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Collector</code><code class="o">&lt;</code><code class="n">CharSequence</code><code class="p">,</code> <code class="n">StringJoiner</code><code class="p">,</code> <code class="n">String</code><code class="o">&gt;</code> <code class="n">joinector</code> <code class="o">=</code>
+  <code class="n">Collector</code><code class="p">.</code><code class="na">of</code><code class="p">(()</code> <code class="o">-&gt;</code> <code class="k">new</code> <code class="n">StringJoiner</code><code class="p">(</code><code class="n">delimiter</code><code class="p">),</code> <code class="c1">// supplier</code>
+               <code class="n">StringJoiner</code><code class="p">::</code><code class="n">add</code><code class="p">,</code>                 <code class="c1">// accumulator</code>
+               <code class="n">StringJoiner</code><code class="p">::</code><code class="n">merge</code><code class="p">,</code>               <code class="c1">// combiner</code>
+               <code class="n">StringJoiner</code><code class="p">::</code><code class="n">toString</code><code class="p">);</code>           <code class="c1">// finisher</code></pre>
+<p>This shorter version is equivalent to the previous full implementation of the interfaces.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>The last argument of the <code>Collector.of(…​)</code> method isn’t always visible, if not set; it’s a vararg of the Collector’s characteristics.</p>
+</div>
+<p>Creating your own Collectors should be reserved for custom result data structures or to simplify domain-specific tasks.
+Even then, you should first try to achieve the results with the available Collectors and a mix of downstream Collectors.
+The Java team has invested a lot of time and knowledge to give you safe and easy-to-use generic solutions that can be combined into quite complex and powerful solutions.
+Then, if you have a working Collectors, you can still refactor it into an auxiliary class to make it reusable and easier on the eyes.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Final Thoughts on (Sequential) Streams" data-type="sect1"><div class="sect1" id="idm45115231789584">
+<h1>Final Thoughts on (Sequential) Streams</h1>
+<p>The Java Streams API is, in my opinion, an absolute game changer, and that’s why it’s important to know about the multitude of available operations and ways to use Streams for different tasks.
+Streams give you a fluent, concise, and straightforward approach to data processing, with an option to go parallel if needed, as you’ll learn more about in <a data-type="xref" href="ch08.xhtml#_01-parallel-streams">Chapter 8</a>.
+Still, they aren’t designed to replace preexisting constructs like loops, merely complementing them.</p>
+<p>The most important skill you as a Java developer should acquire regarding Streams is finding the balance between using just enough Stream pipelines to improve the readability and reasonability of your code without sacrificing performance by ignoring traditional looping constructs.</p>
+<p>Not every loop needs to be a Stream.
+However, not every Stream would be better off being a loop, either.
+The more you get used to using Streams for data processing, the easier you will find a healthy balance between the two approaches to data processing.</p>
+</div></section>
+<section data-pdf-bookmark="Takeaways" data-type="sect1"><div class="sect1" id="idm45115231407184">
+<h1>Takeaways</h1>
+<ul>
+<li>
+<p>The Stream API provides a wide range of possibilities to create Streams, from iterative approaches that are similar to traditional looping constructs to specialized variants for certain types like file I/O or the new Date and Time API.</p>
+</li>
+<li>
+<p>Like functional interfaces, most Streams and their operations support primitive types via specialized types to reduce the amount of autoboxing.
+These specialized variants can give you a performance-wise edge if needed but will restrict the available operations.
+But you can always switch between primitive and non-primitive Streams in a pipeline to gain the benefits of both worlds.</p>
+</li>
+<li>
+<p>Downstream Collectors can affect the collection process in multiple ways, like transforming or filtering, to manipulate the result into the representation required for your task.</p>
+</li>
+<li>
+<p>If a combination of downstream Collectors cannot fulfill your task, you can fall back on creating your own Collector instead.</p>
+</li>
+</ul>
+</div></section>
+<div data-type="footnotes"><p data-type="footnote" id="idm45115235898112"><sup><a href="ch07.xhtml#idm45115235898112-marker">1</a></sup> <em>Project Valhalla</em>, as discussed in <a data-type="xref" href="ch03.xhtml#_01-functions_project-valhalla">“Project Valhalla and Specialized Generics”</a>, will allow value-based types, like primitives, to be used as generic type boundaries. Unfortunately, though, at the point of writing this book, no targeted availability date is known.</p><p data-type="footnote" id="idm45115235350064"><sup><a href="ch07.xhtml#idm45115235350064-marker">2</a></sup> For example, the <a href="https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Random.xhtml#ints()">documentation of <code>Random#ints()</code></a> states that the method is implemented to be an equivalent of <code>Random.ints(Long.MAX_VALUE)</code>.</p><p data-type="footnote" id="idm45115235120224"><sup><a href="ch07.xhtml#idm45115235120224-marker">3</a></sup> See the sidebar <a data-type="xref" href="ch03.xhtml#_01-functions_project-valhalla">“Project Valhalla and Specialized Generics”</a> for more information about <em>Project Valhalla</em>.</p><p data-type="footnote" id="idm45115233771312"><sup><a href="ch07.xhtml#idm45115233771312-marker">4</a></sup> Project Gutenberg provides multiple versions of <a href="https://www.gutenberg.org/ebooks/2600">War and Peace</a> for free.</p><p data-type="footnote" id="idm45115233615264"><sup><a href="ch07.xhtml#idm45115233615264-marker">5</a></sup> The <a href="https://openjdk.java.net/projects/threeten">Java <em>Date &amp; Time API</em> (JSR310)</a> set out to replace <code>java.util.Date</code> with a comprehensive set of types allowing for a consistent and complete way to deal with date- and time-related types in an immutable fashion.</p><p data-type="footnote" id="idm45115233447600"><sup><a href="ch07.xhtml#idm45115233447600-marker">6</a></sup> The <a href="https://docs.oracle.com/javase/8/docs/api/java/time/temporal/TemporalQueries.xhtml">official documentation of <code>java.time.temporal.TemporalQueries</code></a> lists in detail which types are supported by each pre-defined <code>TemporalQuery</code></p><p data-type="footnote" id="idm45115233431088"><sup><a href="ch07.xhtml#idm45115233431088-marker">7</a></sup> JMH is also supported for Java versions before 12, but you need to include its two dependencies manually: <a href="https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-core">JMH Core</a> and the <a href="https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-generator-annprocess">JMH Generators/Annotation Processors</a>.</p><p data-type="footnote" id="idm45115233423152"><sup><a href="ch07.xhtml#idm45115233423152-marker">8</a></sup> Evans, Benjamin J., Gough, James, Newland, Chris. 2018. “Optimizing Java.” O’Reilly Media. 978-1-492-02579-5</p><p data-type="footnote" id="idm45115233422032"><sup><a href="ch07.xhtml#idm45115233422032-marker">9</a></sup> Oaks, Scott. 2020. “Java Performance, 2nd Edition.” O’Reilly Media. ISBN 978-1-492-05611-9.</p></div></div></section></div></body></html>

@@ -1,0 +1,604 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><section data-pdf-bookmark="Chapter 3. Overview of the JVM" data-type="chapter" epub:type="chapter"><div class="chapter" id="pracjavaperf-CHP-3">
+<h1><span class="label">Chapter 3. </span>Overview of the JVM</h1>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="id103">
+<h1>A Note for Early Release Readers</h1>
+<p>With Early Release ebooks, you get books in their earliest form—the author’s raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.</p>
+<p>This will be the 3rd chapter of the final book.</p>
+<p>If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the editor at <em>rfernando@oreilly.com</em>.</p>
+</div></aside>
+<p>There is no doubt that Java is one of the largest technology platforms on the planet—​the best available estimate is of over 10+ million developers working with Java.</p>
+<p>The design of the Java system is <em>fully managed</em> --aspects such as garbage collection and execution optimization are controlled by the JVM on behalf of developers.
+The fact that Java is consciously aimed at mainstream developers, when combined with the fully-managed platform, leads to a situation in which many developers do not need to know about the low-level intricacies of the platform they work with on a daily basis.
+As a result, developers may not meet these internal aspects very frequently—​but only when an issue such as a customer complaining about a performance problem arises.</p>
+<p>For developers who are interested in performance, however, it is important to understand the basics of the JVM technology stack.
+Understanding JVM technology enables developers to write better software and provides the theoretical background required for investigating performance-related issues.</p>
+<p>This chapter introduces how the JVM executes Java in order to provide a basis for deeper exploration of these topics later in the book.
+In particular, Chapter 6 has an in-depth treatment of bytecode, which is complementary to the discussion here.</p>
+<p>We suggest that you read through this chapter, but come back to it for a second pass after you have read Chapter 6.</p>
+<section data-pdf-bookmark="Interpreting and Classloading" data-type="sect1"><div class="sect1" id="pracjavaperf-CHP-3-SECT-2">
+<h1>Interpreting and Classloading</h1>
+<p>According to the specification that defines the Java Virtual Machine (usually called the VM Spec), the JVM is a stack-based interpreted machine. This means that rather than having registers (like a physical hardware CPU), it uses an execution stack of partial results and performs calculations by operating on the top value (or values) of that stack.</p>
+<p>If you’re not familiar with how interpreters work, then you can think of the basic behavior of the JVM interpreter as essentially “a <code>switch</code> inside a <code>while</code> loop”.
+The interpreter processes each opcode of the program independently of the last, and uses the evaluation stack to hold the results of computations and as intermediate results.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>As we will see when we delve into the internals of the Oracle/OpenJDK VM (HotSpot), the situation for real production-grade Java interpreters is more complex, but <em>switch-inside-while</em> using a stack interpreter is an acceptable mental model for the moment.</p>
+</div>
+<p>When we launch our application using the <code>java HelloWorld</code> command, the operating system starts the virtual machine process (the <code>java</code> binary). This sets up the Java virtual environment and initializes the interpreter that will actually execute the user code in the <code>HelloWorld.class</code> file.</p>
+<p>The entry point into the application will be the <code>main()</code> method of <code>HelloWorld.class</code>. In order to hand over control to this class, it must be loaded by the virtual machine before execution can begin.</p>
+<p>To achieve this, the Java classloading mechanism is used. When a new Java process is initializing, a chain of classloaders is used. The initial loader is known as the Bootstrap classloader (historically also known as the “primordial classloader”) and it loads classes in the core Java runtime.
+The main point of the Bootstrap classloader is to get a minimal set of classes (which includes essentials such as <code>java.lang.Object</code>, <code>Class</code>, and <code>Classloader</code>) loaded to allow other classloaders to bring up the rest of the system.</p>
+<p>At this point it is also instructive to discuss a little bit of how the Java modules system (sometimes referred to as JPMS) has somewhat changed the picture of application startup.
+First of all, from Java 9 onwards, all JVMs are modular—​there is no “compatibility” or “classic” mode that restores the Java 8 monolithic JVM runtime.</p>
+<p>This means that during startup a module graph is always constructed—​even if the application itself is non-modular.
+This must be a Directed Acyclic Graph (DAG), and it is a fatal error if the application’s module metadata attempts to construct a module graph that contains a cycle.</p>
+<p>The module graph has various advantages, including:</p>
+<ul>
+<li>
+<p>Only required modules are loaded</p>
+</li>
+<li>
+<p>Inter-module metadata can be confirmed to be good at startup time</p>
+</li>
+</ul>
+<p>The module graph has a main module, which is where the entrypoint class lives.
+If the application has not yet been fully modularized, then it will have both a modulepath and a classpath, and the application code may be in the <code>UNNAMED</code> module.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Full details of the modules system are outside the scope of this book. An expanded treatment can be found in
+<a class="orm:hideurl" href="https://www.oreilly.com/library/view/java-in-a/9781098130992/"><em>Java in a Nutshell (8th Edition)</em></a> by Benjamin J. Evans, Jason Clark and David Flanagan (O’Reilly) or a more in-depth reference, such as <a class="orm:hideurl" href="https://www.oreilly.com/library/view/java-9-modularity/9781491954157/"><em>Java 9 Modularity</em></a> by Sander Mak and Paul Bakker (O’Reilly).</p>
+</div>
+<p>In practice, the work of the Bootstrap classloader involves loading <code>java.base</code> and some other supporting modules (including some perhaps-surprising entries—​e.g. <code>java.security.sasl</code> and <code>java.datatransfer</code>)</p>
+<p>Java models classloaders as objects within its own runtime and type system, so there needs to be some way to bring an initial set of classes into existence. Otherwise, there would be a circularity problem in defining what a classloader is.</p>
+<p>The Bootstrap classloader does not verify the classes it loads (largely to improve startup performance), and it relies on the boot classpath being secure.
+Anything loaded by the bootstrap classloader is granted full security permissions and so this group of modules is kept as restricted as possible.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Legacy versions of Java up to and including 8 used a monolithic runtime, and the Bootstrap classloader loaded the contents of <code>rt.jar</code>.</p>
+</div>
+<p>The rest of the base system (i.e. the equivalent of the rest of the old <code>rt.jar</code> used in version 8 and earlier) is loaded by the <em>platform classloader</em>, and is available via the method <code>ClassLoader::getPlatformClassLoader</code>. It has the Bootstrap classloader as its parent, as the old Extension classloader has been removed.</p>
+<p>In the new modular implementations of Java, far less code is required to bootstrap a Java process and accordingly, as much JDK code (now represented as modules) as possible has been moved out of the scope of the bootstrap loader and into the platform loader instead.</p>
+<p>Finally, the Application classloader is created; it is responsible for loading user classes from the defined classpath.
+Some texts unfortunately refer to this as the “System” classloader.
+This term should be avoided, for the simple reason that it doesn’t load the system classes (the Bootstrap and Platform classloaders do).
+The Application classloader is encountered extremely frequently, and it has the Platform loader as its parent.</p>
+<p>Java loads in dependencies on new classes when they are first encountered during the execution of the program. If a classloader fails to find a class, the behavior is usually to delegate the lookup to the parent. If the chain of lookups reaches the Bootstrap classloader and it isn’t found, a <code>ClassNotFoundException</code> will be thrown. It is important that developers use a build process that effectively compiles with the exact same classpath that will be used in production, as this helps to mitigate this potential issue.</p>
+<p>Normally, Java only loads a class once and a <code>Class</code> object is created to represent the class in the runtime environment.
+However, it is important to realize that under some circumstances the same class can be loaded twice by different classloaders.
+As a result, a class in the system is identified by the classloader used to load it as well as the fully qualified class name (which includes the package name).</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Some execution contexts, such as application servers (e.g. Tomcat or JBoss EAP) display this behavior when multiple tenant applications are present in the server.</p>
+</div>
+<p>It is also the case that some tools (e.g. Java agents) can potentially reload and retransform classes as part of bytecode weaving—​and such tools are often used in monitoring and Observability.</p>
+</div></section>
+<section data-pdf-bookmark="Executing Bytecode" data-type="sect1"><div class="sect1" id="pracjavaperf-CHP-3-SECT-3">
+<h1>Executing Bytecode</h1>
+<p>It is important to appreciate that Java source code goes through a significant number of transformations before execution. The first is the compilation step using the Java compiler <code>javac</code>, often invoked as part of a larger build process.</p>
+<p>The job of <code>javac</code> is to convert Java code into <em>.class</em> files that contain bytecode. It achieves this by doing a fairly straightforward translation of the Java source code, as shown in <a data-type="xref" href="#pracjavaperf-CHP-3-FIG-1">Figure 3-1</a>. Very  few optimizations are done during compilation by <code>javac</code>, and the resulting bytecode is still quite readable and recognizable as Java code when viewed in a disassembly tool, such as the standard <code>javap</code>.</p>
+<figure><div class="figure" id="pracjavaperf-CHP-3-FIG-1">
+<img alt="ocnj2 0301" height="830" src="assets/ocnj2_0301.png" width="1565"/>
+<h6><span class="label">Figure 3-1. </span>Java class file compilation</h6>
+</div></figure>
+<p>Bytecode is an intermediate representation that is not tied to a specific machine architecture.
+Decoupling from the machine architecture provides portability, meaning already developed (or compiled) software can run on any platform supported by the JVM and provides an abstraction from the Java language.
+This provides our first important insight into the way the JVM executes code.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>The Java language and the Java Virtual Machine are now to a degree independent, and so the J in JVM is potentially a little misleading, as the JVM can execute any JVM language that can produce a valid class file. In fact, <a data-type="xref" href="#pracjavaperf-CHP-3-FIG-1">Figure 3-1</a> could just as easily show the Kotlin compiler <code>kotlinc</code> generating bytecode for execution on the JVM.</p>
+</div>
+<p>Regardless of the source code compiler used, the resulting class file has a very well-defined structure specified by the VM spec (<a data-type="xref" href="#anatomy-of-class-file">Table 3-1</a>). Any class that is loaded by the JVM will be verified to conform to the expected format before being allowed to run.</p>
+<table id="anatomy-of-class-file">
+<caption><span class="label">Table 3-1. </span>Anatomy of a class file</caption>
+<thead>
+<tr>
+<th>Component</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p>Magic number</p></td>
+<td><p><code>0xCAFEBABE</code></p></td>
+</tr>
+<tr>
+<td><p>Version of class file format</p></td>
+<td><p>The minor and major versions of the class file</p></td>
+</tr>
+<tr>
+<td><p>Constant pool</p></td>
+<td><p>The pool of constants for the class</p></td>
+</tr>
+<tr>
+<td><p>Access flags</p></td>
+<td><p>Whether the class is abstract, static, and so on</p></td>
+</tr>
+<tr>
+<td><p>This class</p></td>
+<td><p>The name of the current class</p></td>
+</tr>
+<tr>
+<td><p>Superclass</p></td>
+<td><p>The name of the superclass</p></td>
+</tr>
+<tr>
+<td><p>Interfaces</p></td>
+<td><p>Any interfaces in the class</p></td>
+</tr>
+<tr>
+<td><p>Fields</p></td>
+<td><p>Any fields in the class</p></td>
+</tr>
+<tr>
+<td><p>Methods</p></td>
+<td><p>Any methods in the class</p></td>
+</tr>
+<tr>
+<td><p>Attributes</p></td>
+<td><p>Any attributes of the class (e.g., name of the source file, etc.)</p></td>
+</tr>
+</tbody>
+</table>
+<p>Every class file starts with the magic number <code>0xCAFEBABE</code>, the first 4 bytes in hexadecimal serving to denote conformance to the class file format.
+The following 4 bytes represent the minor and major versions used to compile the class file, and these are checked to ensure that the version of the JVM is not of a lower version than the one used to compile the class file.
+The major and minor version are checked by the classloader to ensure compatibility; if these are not compatible an <code>UnsupportedClassVersionError</code> will be thrown at runtime, indicating the runtime is a lower version than the compiled class file.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Magic numbers provide a way for Unix environments to identify the type of a file (whereas Windows will typically use the file extension). For this reason, they are difficult to change once decided upon. Unfortunately, this means that Java is stuck using the rather embarrassing and sexist <code>0xCAFEBABE</code> for the foreseeable future, although Java 9 introduced the magic number <code>0xCAFEDADA</code> for module files.</p>
+</div>
+<p>The constant pool holds constant values in code: for example, names of classes, interfaces, and fields. When the JVM executes code, the constant pool table is used to refer to values rather than having to rely on the precise layout of memory structures at runtime.</p>
+<p>Access flags are used to determine the modifiers applied to the class.
+The first part of the flag block identifies general properties, such as whether a class is public, followed by whether it is final and thus cannot be subclassed.
+The flags also determine whether the class file represents an interface or an abstract class.
+The final part of the flag block indicates whether the class file represents a synthetic class (not present in source code), an annotation type, or an enum.</p>
+<p>The <code>this</code> class, superclass, and interface entries are indexes into the constant pool to identify the type hierarchy belonging to the class. Fields and methods define a signature-like structure, including the modifiers that apply to the field or method. A set of attributes is then used to represent structured items for more complicated and non-fixed-size structures. For example, methods make use of the <code>Code</code> attribute to represent the bytecode associated with that particular method.</p>
+<p><a data-type="xref" href="#pracjavaperf-CHP-3-FIG-2">Figure 3-2</a> provides a mnemonic for remembering the structure.</p>
+<figure><div class="figure" id="pracjavaperf-CHP-3-FIG-2">
+<img alt="ocnj2 0302" height="708" src="assets/ocnj2_0302.png" width="1440"/>
+<h6><span class="label">Figure 3-2. </span>Mnemonic for class file structure</h6>
+</div></figure>
+<p>In this very simple code example, it is possible to observe the effect of running <code>javac</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">class</code> <code class="nc">HelloWorld</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="kd">static</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">main</code><code class="p">(</code><code class="n">String</code><code class="o">[]</code><code class="w"> </code><code class="n">args</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="k">for</code><code class="w"> </code><code class="p">(</code><code class="kt">int</code><code class="w"> </code><code class="n">i</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="mi">0</code><code class="p">;</code><code class="w"> </code><code class="n">i</code><code class="w"> </code><code class="o">&lt;</code><code class="w"> </code><code class="mi">10</code><code class="p">;</code><code class="w"> </code><code class="n">i</code><code class="o">++</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">            </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"Hello World"</code><code class="p">);</code><code class="w"/>
+<code class="w">        </code><code class="p">}</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>Java ships with a class file disassembler called <code>javap</code>, allowing inspection of <em>.class</em> files. Taking the <em>HelloWorld</em> class file and running <code>javap -c HelloWorld</code> gives the following output:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">class</code> <code class="nc">HelloWorld</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="kd">public</code><code class="w"> </code><code class="nf">HelloWorld</code><code class="p">();</code><code class="w"/>
+<code class="w">    </code><code class="n">Code</code><code class="p">:</code><code class="w"/>
+<code class="w">       </code><code class="mi">0</code><code class="p">:</code><code class="w"> </code><code class="n">aload_0</code><code class="w"/>
+<code class="w">       </code><code class="mi">1</code><code class="p">:</code><code class="w"> </code><code class="n">invokespecial</code><code class="w"> </code><code class="err">#</code><code class="mi">1</code><code class="w">    </code><code class="c1">// Method java/lang/Object."&lt;init&gt;":()V</code><code class="w"/>
+<code class="w">       </code><code class="mi">4</code><code class="p">:</code><code class="w"> </code><code class="k">return</code><code class="w"/>
+
+<code class="w">  </code><code class="kd">public</code><code class="w"> </code><code class="kd">static</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">main</code><code class="p">(</code><code class="n">java</code><code class="p">.</code><code class="na">lang</code><code class="p">.</code><code class="na">String</code><code class="o">[]</code><code class="p">);</code><code class="w"/>
+<code class="w">    </code><code class="n">Code</code><code class="p">:</code><code class="w"/>
+<code class="w">       </code><code class="mi">0</code><code class="p">:</code><code class="w"> </code><code class="n">iconst_0</code><code class="w"/>
+<code class="w">       </code><code class="mi">1</code><code class="p">:</code><code class="w"> </code><code class="n">istore_1</code><code class="w"/>
+<code class="w">       </code><code class="mi">2</code><code class="p">:</code><code class="w"> </code><code class="n">iload_1</code><code class="w"/>
+<code class="w">       </code><code class="mi">3</code><code class="p">:</code><code class="w"> </code><code class="n">bipush</code><code class="w">        </code><code class="mi">10</code><code class="w"/>
+<code class="w">       </code><code class="mi">5</code><code class="p">:</code><code class="w"> </code><code class="n">if_icmpge</code><code class="w">     </code><code class="mi">22</code><code class="w"/>
+<code class="w">       </code><code class="mi">8</code><code class="p">:</code><code class="w"> </code><code class="n">getstatic</code><code class="w">     </code><code class="err">#</code><code class="mi">2</code><code class="w">    </code><code class="c1">// Field java/lang/System.out ...</code><code class="w"/>
+<code class="w">      </code><code class="mi">11</code><code class="p">:</code><code class="w"> </code><code class="n">ldc</code><code class="w">           </code><code class="err">#</code><code class="mi">3</code><code class="w">    </code><code class="c1">// String Hello World</code><code class="w"/>
+<code class="w">      </code><code class="mi">13</code><code class="p">:</code><code class="w"> </code><code class="n">invokevirtual</code><code class="w"> </code><code class="err">#</code><code class="mi">4</code><code class="w">    </code><code class="c1">// Method java/io/PrintStream.println ...</code><code class="w"/>
+<code class="w">      </code><code class="mi">16</code><code class="p">:</code><code class="w"> </code><code class="n">iinc</code><code class="w">          </code><code class="mi">1</code><code class="p">,</code><code class="w"> </code><code class="mi">1</code><code class="w"/>
+<code class="w">      </code><code class="mi">19</code><code class="p">:</code><code class="w"> </code><code class="k">goto</code><code class="w">          </code><code class="mi">2</code><code class="w"/>
+<code class="w">      </code><code class="mi">22</code><code class="p">:</code><code class="w"> </code><code class="k">return</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>This layout describes the bytecode for the file <em>HelloWorld.class</em>. For more detail <code>javap</code> also has a <code>-v</code> option that provides the full class file header information and constant pool details. The class file contains two methods, although only the single <code>main()</code> method was supplied in the source file; this is the result of <code>javac</code> automatically adding a default constructor to the class.</p>
+<p>The first instruction executed in the constructor is <code>aload_0</code>, which places the <code>this</code> reference onto the first position in the stack. The <code>invokespecial</code> command is then called, which invokes an instance method that has specific handling for calling superconstructors and creating objects. In the default constructor, the invoke matches the default constructor for <code>Object</code>, as an override was not supplied.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p><a href="https://en.wikipedia.org/wiki/List_of_Java_bytecode_instructions">Opcodes in the JVM</a> are concise and represent the type, the operation, and the interaction between local variables, the constant pool, and the stack.</p>
+</div>
+<p>Moving on to the <code>main()</code> method, <code>iconst_0</code> pushes the integer constant <code>0</code> onto the evaluation stack. <code>istore_1</code> stores this constant value into the local variable at offset 1 (represented as <code>i</code> in the loop). Local variable offsets start at 0, but for instance methods, the 0th entry is always <code>this</code>. The variable at offset 1 is then loaded back onto the stack and the constant <code>10</code> is pushed for comparison using <code>if_icmpge</code> (“if integer compare greater or equal”). The test only succeeds if the current integer is &gt;= 10.</p>
+<p>For the first 10 iterations, this comparison test fails and so we continue to instruction 8. Here the static method from <code>System.out</code> is resolved, followed by the loading of the “Hello World” string from the constant pool. The next invoke, <code>invokevirtual</code>, invokes an instance method based on the class. The integer is then incremented and <code>goto</code> is called to loop back to instruction 2.</p>
+<p>This process continues until the <code>if_icmpge</code> comparison eventually succeeds (when the loop variable is &gt;= 10); on that iteration of the loop, control passes to instruction 22 and the method returns.</p>
+</div></section>
+<section data-pdf-bookmark="Introducing HotSpot" data-type="sect1"><div class="sect1" id="pracjavaperf-CHP-3-SECT-4">
+<h1>Introducing HotSpot</h1>
+<p>In April 1999 Sun introduced one of the biggest-ever changes (in terms of performance) to the dominant Java implementation.
+The HotSpot virtual machine is a key feature that has evolved to enable performance that is comparable to (or better than) languages such as C and <span class="keep-together">C++</span> (see <a data-type="xref" href="#pracjavaperf-CHP-3-FIG-3">Figure 3-3</a>).
+To explain how this is possible, let’s delve a little deeper into the design of languages intended for application development.</p>
+<figure><div class="figure" id="pracjavaperf-CHP-3-FIG-3">
+<img alt="ocnj2 0303" height="830" src="assets/ocnj2_0303.png" width="1565"/>
+<h6><span class="label">Figure 3-3. </span>The HotSpot JVM</h6>
+</div></figure>
+<p>Language and platform design frequently involves making decisions and tradeoffs between desired capabilities. In this case, the division is between languages that stay “close to the metal” and rely on ideas such as “zero-cost abstractions,” and languages that favor developer productivity and “getting things done” over strict low-level control.</p>
+<blockquote>
+<p>In general, C++ implementations obey the zero-overhead principle: What you don’t use, you don’t pay for. And further: What you do use, you couldn’t hand code any better.<sup><a data-type="noteref" href="ch03.xhtml#id104" id="id104-marker">1</a></sup></p>
+<p data-type="attribution">Bjarne Stroustrup</p>
+</blockquote>
+<p>The zero-overhead principle sounds great in theory, but it requires all users of the language to deal with the low-level reality of how operating systems and computers actually work.
+This is a significant extra cognitive burden that is placed upon developers who may not care about raw performance as a primary goal.</p>
+<p>Not only that, but it also requires the source code to be compiled to platform-specific machine code at build time—usually called <em>Ahead-of-Time</em> (AOT) compilation.
+This is because alternative execution models such as interpreters, virtual machines, and portability layers all are most definitely not zero-overhead.</p>
+<p>The phrase “what you do use, you couldn’t hand code any better” also has a sting in its tail.
+It implies a number of things, but most important for our purposes is that a developer is not able to produce better code than an automated system (such as a compiler).</p>
+<p>Java has never subscribed to the zero-overhead abstraction philosophy.
+Instead, the approach taken by the HotSpot virtual machine is to analyze the runtime behavior of your program and intelligently apply optimizations where they will benefit performance the most.
+The goal of the HotSpot VM is to allow you to write idiomatic Java and follow good design principles rather then contort your program to fit the VM.</p>
+<section data-pdf-bookmark="Introducing Just-in-Time Compilation" data-type="sect2"><div class="sect2" id="pracjavaperf-CHP-3-SECT-4.1">
+<h2>Introducing Just-in-Time Compilation</h2>
+<p>Java programs begin their execution in the bytecode interpreter, where instructions are performed on a virtualized stack machine.
+This abstraction from the CPU gives the benefit of class file portability, but to get maximum performance your program must make optimal use of its native features.</p>
+<p>HotSpot achieves this by compiling units of your program from interpreted bytecode into native code, which then executes directly, without requiring the overhead of the abstractions of the interpreter.
+The units of compilation in the HotSpot VM are the method and the loop.
+This is known as <em>Just-in-Time</em> (JIT) compilation.</p>
+<p>JIT compilation works by monitoring the application while it is running in interpreted mode and observing the parts of code that are most frequently executed.
+During this analysis process, programmatic trace information is captured that allows for more sophisticated optimization.
+Once execution of a particular method passes a threshold, the profiler will look to compile and optimize that particular section of code.</p>
+<p>There are many advantages to the JIT approach to compilation, but one of the main ones is that it bases compiler optimization decisions on trace information that is collected while methods are being interpreted.
+This information enables HotSpot to make more informed optimizations if the method is eligible for compilation.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Some JIT compilers also have the capability to re-JIT if a better optimization becomes apparent later on during execution. This includes some of HotSpot’s compilers.</p>
+</div>
+<p>Not only that, but HotSpot has had hundreds of engineering years (or more) of development attributed to it and new optimizations and benefits are added with almost every new release.
+This means that all Java applications benefit from the latest HotSpot performance optimizations in the VM without even needing to be recompiled.</p>
+<div data-type="tip"><h6>Tip</h6>
+<p>After being translated from Java source to bytecode and now going through another step of (JIT) compilation, the code actually being executed has changed very significantly from the source code as written.
+This is a key insight, and it will drive our approach to  dealing with performance-related investigations. JIT-compiled code executing on the JVM may well look nothing like the original Java source code.</p>
+</div>
+<p>The general picture is that languages like C++ (and the up-and-coming Rust) tend to have more predictable performance, but at the cost of forcing a lot of low-level complexity onto the user.</p>
+<p>Note also that “more predictable” does not necessarily mean “better.”
+AOT compilers produce code that may have to run across a broad class of processors, and usually are not able to assume that specific processor features are available.</p>
+<p>Environments that use profile-guided optimization (PGO), such as Java, have the potential to use runtime information in ways that are simply impossible to most AOT platforms.
+This can offer improvements to performance, such as dynamic inlining and optimizing away virtual calls.
+HotSpot can even detect the precise CPU type it is running on at VM startup, and can use this information to enable optimizations designed for specific processor features if available.</p>
+<div data-type="tip"><h6>Tip</h6>
+<p>The technique of detecting precise processor capabilities is known as <em>JVM intrinsics</em>, and is not to be confused with the intrinsic locks introduced by the <code>synchronized</code> keyword.</p>
+</div>
+<p>A full discussion of PGO and JIT compilation can be found in Chapters 6 and 10.</p>
+<p>The sophisticated approach that HotSpot takes is a great benefit to the majority of ordinary developers, but this tradeoff (to abandon zero-overhead abstractions) means that in the specific case of high-performance Java applications, the developer must be very careful to avoid “common sense” reasoning and overly simplistic mental models of how Java applications actually execute.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Once again, analyzing the performance of small sections of Java code (<em>micro­benchmarks</em>) is usually much harder than analyzing entire applications, and is a very specialized task that the majority of developers should not undertake.</p>
+</div>
+<p>HotSpot’s compilation subsystem is one of the two most important subsystems that the virtual machine provides.
+The other is automatic memory management, which has been one of the major selling points of Java since the early years.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="JVM Memory Management" data-type="sect1"><div class="sect1" id="pracjavaperf-CHP-3-SECT-5">
+<h1>JVM Memory Management</h1>
+<p>In languages such as C, C++, and Objective-C the programmer is responsible for managing the allocation and release of memory. The benefits of managing memory and lifetime of objects yourself are more deterministic performance and the ability to tie resource lifetime to the creation and deletion of objects.
+However, these benefits come at a huge cost—for correctness, developers must be able to accurately account for memory.</p>
+<p>Unfortunately, decades of practical experience showed that many developers have a poor understanding of idioms and patterns for memory management. Later versions of C++ and Objective-C have improved this using smart pointer idioms in the standard library. However, at the time Java was created poor memory management was a major cause of application errors. This led to concern among developers and managers about the amount of time spent dealing with language features rather than delivering value for the business.</p>
+<p>Java looked to help resolve the problem by introducing automatically managed heap memory using a process known as <em>garbage collection</em> (GC).
+Simply put, garbage collection is a nondeterministic process that triggers to recover and reuse no-longer-needed memory when the JVM requires more memory for allocation.</p>
+<p>GC comes at a cost: when it runs, it traditionally <em>stopped the world</em>, which means while GC is in progress the application pauses.
+Usually these pause times are incredibly short, but as an application is put under pressure they can increase.</p>
+<p>Having said that, the JVM’s garbage collection is best-in-class, and is far more sophisticated than the introductory algorithm that is often taught in Computer Science undergraduate courses.
+For example, stopping the world is much less necessary and intrusive in modern algorithms, as we will see later.</p>
+<p>Garbage collection is a major topic within Java performance optimization, so we will devote Chapters 4 and 5 to the details of Java GC.</p>
+</div></section>
+<section data-pdf-bookmark="Threading and the Java Memory Model" data-type="sect1"><div class="sect1" id="pracjavaperf-CHP-3-SECT-6">
+<h1>Threading and the Java Memory Model</h1>
+<p>One of the major advances that Java brought in with its first version was built-in support for multithreaded programming.
+The Java platform allows the developer to create new threads of execution. For example, in Java 8 syntax:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Thread</code><code class="w"> </code><code class="n">t</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">Thread</code><code class="p">(()</code><code class="w"> </code><code class="o">-&gt;</code><code class="w"> </code><code class="p">{</code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"Hello World!"</code><code class="p">);});</code><code class="w"/>
+<code class="n">t</code><code class="p">.</code><code class="na">start</code><code class="p">();</code><code class="w"/></pre>
+<p>Not only that, but basically all production JVMs are multithreaded—​and this means that all Java programs are inherently multithreaded, as they execute as part of a JVM process.</p>
+<p>This fact produces additional, irreducible complexity in the behavior of Java programs, and makes the work of the performance analyst harder.
+However, it allows the JVM to take advantage of all available cores, which provides all sorts of performance benefits to the Java developer.</p>
+<p>The relationship between Java’s conception of a thread (an “application thread”) and the operating system’s view of a thread (a “platform thread”) has a slightly interesting history.
+In the very earliest days of the platform, there was a sharp distinction made between the two concepts and application threads were <em>remapped</em> or <em>multiplexed</em> onto a pool of platform threads—​e.g. in the Solaris <em>M:N</em>, or the Linux <em>green threads</em> models.</p>
+<p>However, this approach proved not to provide an acceptable performance profile and added needless complexity.
+As a result, in most mainstream JVM implementations, this model was replaced with a simpler one—​each Java application thread corresponding precisely to a dedicated platform thread.</p>
+<p>This is not the end of the story, however.</p>
+<p>In the 20+ years since the “app thread == platform thread” transition, applications have grown and scaled massively—​and so has the number of threads (or, more generally, <em>execution contexts</em>) that an application might want to create.
+This has led to the “thread bottleneck” problem, and solving it has been the focus of a major research project within OpenJDK (Project Loom).</p>
+<p>The result is <em>virtual threads</em>, a new form of thread only available in Java 21+, which can be used efficiently for certain types of task—​especially those performing network I/O.</p>
+<p>Programmers must explicitly choose to create a thread as virtual—​otherwise they are platform threads and retain the same behavior as before (so the semantics of all existing Java programs are preserved when run on a JVM with virtual thread capability).</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>It is safe to assume that every platform thread (or any thread, before Java 21) is backed by a unique OS thread that is created when the <code>start()</code> method is called on the corresponding <code>Thread</code> object.</p>
+</div>
+<p>Virtual threads are Java’s take on an idea that can be found in various other modern languages—​for example, Go programmers may regard a Java virtual thread as being broadly similar to a goroutine.
+We will discuss virtual threads in more detail in Chapter 14.</p>
+<p>We should also briefly discuss Java’s approach to handling data in a multithreaded program.
+It dates from the late 1990s and has these fundamental design principles:</p>
+<ul>
+<li>
+<p>All threads in a Java process share a single, common garbage-collected heap.</p>
+</li>
+<li>
+<p>Any object created by one thread can be accessed by any other thread that has a reference to the object.</p>
+</li>
+<li>
+<p>Objects are mutable by default; that is, the values held in object fields can be changed unless the programmer explicitly uses the <code>final</code> keyword to mark them as immutable.</p>
+</li>
+</ul>
+<p>The Java Memory Model (JMM) is a formal model of memory that explains how different threads of execution see the changing values held in objects.
+That is, if threads A and B both have references to object <code>obj</code>, and thread A alters it, what happens to the value observed in thread B?</p>
+<p>This seemingly simple question is actually more complicated than it seems, because the operating system scheduler (which we will meet in Chapter 7) can forcibly evict platform threads from CPU cores.
+This can lead to another thread starting to execute and accessing an object before the original thread had finished processing it, and potentially seeing the object in a prior or even invalid state.</p>
+<p>The only defense the core of Java provides against this potential object damage during concurrent code execution is the mutual exclusion lock, and this can be very complex to use in real applications. Chapter 13 contains a detailed look at how the JMM works, and the practicalities of working with threads and locks.</p>
+</div></section>
+<section data-pdf-bookmark="Lifecycle of a traditional Java application" data-type="sect1"><div class="sect1" id="pracjavaperf-CHP-3-SECT-7">
+<h1>Lifecycle of a traditional Java application</h1>
+<p>Earlier in the chapter we introduced Java program execution via classloading and bytecode interpretation—​but let’s dive a little deeper into what actually happens when you type: <code>java HelloWorld</code>.</p>
+<p>At a low level, standard Unix-like process execution occurs in order to set up the JVM process.
+The shell locates the JVM binary (e.g. possibly in <code>$JAVA_HOME/bin/java</code>) and starts a process corresponding to that binary, passing the arguments (including the entrypoint class name).</p>
+<p>The newly started process analyzes the command line flags and prepares for VM initialization, which will be customized via the flags (for heap size, GC, etc).
+At this time the process probes the machine it is running on, and examines various system parameters, such as how many CPU cores the machine has; how much memory; what precise set of CPU instructions are available.</p>
+<p>This very detailed information is used to customize and optimize how the JVM configures itself.
+For example, the JVM will use the number of cores to determine how many threads to use when garbage collection runs, and to size the <em>common pool</em> of threads.</p>
+<p>One key early step is to reserve an area of userspace memory (from the C heap) equal to <code>Xmx</code> (or the default value) for the Java heap.
+Another vital step is to initialize a repository to store Java classes and associated metadata in (known as  <em>Metaspace</em> in HotSpot).</p>
+<p>Then the VM itself is created, usually via the function <code>JNI_CreateJavaVM</code>, on a new thread for HotSpot.
+The VM’s own threads—​such as the GC threads and the threads that perform JIT compilation—​also need to be started up.</p>
+<p>As discussed earlier, the bootstrapping classes are prepared and then initialized.
+The first bytecodes are run and first objects are created as soon as classes are loaded—​e.g. in the class initializer (<code>static {}</code> blocks aka <code>clinit</code> methods) for the bootstrapping classes.</p>
+<p>The significance of this is that the JVMs basic processes—​such as JIT compilation and GC—​are running from very early in the lifecycle of the application.
+As the VM starts up, there may be some GC and JIT activity even before control reaches the entrypoint class.
+Once it does, then further classloading will happen as the application begins to execute and needs to run code from classes that are not present in the class metadata cache.</p>
+<p>For most typical production applications, therefore, the startup phase is characterized by a spike in classloading, JIT and GC activity while the application reaches a steady state.
+Once this has occurred, the amount of JIT and classloading usually drops sharply because:</p>
+<ul>
+<li>
+<p>The entire “world” of classes that the application needs has been loaded</p>
+</li>
+<li>
+<p>The set of methods that are called often have already been converted to machine code by the JIT compiler</p>
+</li>
+</ul>
+<p>However, it is important to recognize that “steady state” does not mean “zero change”.
+It is perfectly normal for applications to experience further classloading and JIT activity—​such as <em>deoptimization</em> and <em>reoptimization</em>.
+This can be caused when a rarely-executed code path is encountered and causes a new class to be loaded.</p>
+<p>One other important special case of the startup-steady-state model is sometimes referred to as “2-phase classloading”.
+This occurs in applications that use Spring, and other similar dependency injection techniques.</p>
+<p>In this case, the core framework classes are loaded first.
+After that, the framework examines the main application code and config to determine a graph of objects that need to be instantiated to activate the application.
+This triggers a second phase of classloading where the application code and its other dependencies are loaded.</p>
+<p>The case of GC behavior is a little bit different.
+In an application which is not suffering any particular performance problem, the pattern of GC is also likely to change when the steady state is reached—​but GC events will still occur.
+This is because in any Java application, objects are created, live for some time and then are automatically collected—​this is the entire point of automatic memory management.
+However, the pattern of steady state GC may well look very different to that of the startup phase.</p>
+<p>The overall impression that you should be building up from this description is one of a highly dynamic runtime.
+Applications that are deployed on it display the runtime characteristics of a well-defined startup phase, followed by a steady state where minimal change occurs.</p>
+<p>This is the standard mental model for the behavior of Java applications, and has been for as long as Java has had JIT compilation, etc.
+However, it does have certain drawbacks—​the major one being that execution time can be slower while the application transitions into steady state (often called “JVM warmup”).</p>
+<p>This transition time can easily run into the 10s of seconds after application start.
+For long-running applications this is not usually a problem—​a process that is running continuously for hours (or days or weeks) receives far more benefit from the JIT compiled code than the one-off effort expended to create it at startup.</p>
+<p>In the cloud native world, however, processes may be much shorter-lived.
+This raises the question: whether the amortized cost of Java startup and JIT is actually worth it, and if not, what could be done to make Java applications start up faster?</p>
+<p>In turn, this has fueled interest in new operational and deployment modes for Java—​including AOT compilation (but not limited to it, as we will see).
+The community has adopted the term <em>dynamic VM mode</em> for the traditional lifecycle we have just discussed.
+We will have a good amount to say about the emerging alternatives to it throughout the rest of the book.</p>
+</div></section>
+<section data-pdf-bookmark="Monitoring and Tooling for the JVM" data-type="sect1"><div class="sect1" id="pracjavaperf-CHP-3-SECT-8">
+<h1>Monitoring and Tooling for the JVM</h1>
+<p>The JVM is a mature execution platform, and it provides a number of technology alternatives for instrumentation, monitoring, and Observability of running applications.
+The main technologies available for these types of tools for JVM applications are:</p>
+<ul>
+<li>
+<p>Java Management Extensions (JMX)</p>
+</li>
+<li>
+<p>Java agents</p>
+</li>
+<li>
+<p>The JVM Tool Interface (JVMTI)</p>
+</li>
+<li>
+<p>The Serviceability Agent (SA)</p>
+</li>
+</ul>
+<p>JMX is a general-purpose technology for controlling and monitoring JVMs and the applications running on them.
+It provides the ability to change parameters and call methods in a general way from a client application.
+A full treatment of how this is implemented is, unfortunately, outside the scope of this book.
+However, JMX (and its associated network transport, <em>remote method invocation</em> or RMI) is a fundamental aspect of the management capabilities of the JVM.</p>
+<p>A Java agent is a tooling component, written in Java (hence the name), that makes use of the interfaces in <code>java.lang.instrument</code> to modify the bytecode of methods as classes are loaded.
+The modification of bytecode allows instrumentation logic, such as method timing or distributed tracing (see Chapter 10 for more details), to be added to any application, even one that has not been written with any support for those concerns.</p>
+<p>This is an extremely powerful technique, and installing an agent changes the standard application lifecycle that we met in the last section.
+To install an agent, it must be packaged as a JAR and provided via a startup flag to the JVM:</p>
+<pre data-type="programlisting">-javaagent:&lt;path-to-agent-jar&gt;=&lt;options&gt;</pre>
+<p>The agent JAR must contain a manifest file, <code>META-INF/MANIFEST.MF</code>, and it must include the attribute <code>Premain-Class</code>.</p>
+<p>This attribute contains the name of the agent class, which must implement a public static <code>premain()</code> method that acts as the registration hook for the Java agent.
+This method will run on the main application thread <em>before</em> the <code>main()</code> method of the application (hence the name).
+Note that the premain method must exit, or the main application will not start.</p>
+<p>Bytecode transformation is the usual intent of an agent, and this is done by creating and registering bytecode transformers—​objects that implement the <code>ClassFileTransformer</code> interface.
+However, a Java agent is just Java code, and so it can do anything that any other Java program can, i.e. it can contain arbitrary code to execute.
+This flexibility means that, for example, an agent can start additional threads that can persist for the entire life of the application, and collect data for sending out of the application and into an external monitoring system.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>We will have a little more to say about JMX and agents in Chapter 11 where we discuss their use in cloud Observability tools.</p>
+</div>
+<p>If the Java instrumentation API is not sufficient, then the JVMTI may be used instead.
+This is a native interface of the JVM, so agents that make use of it must be written in a native compiled language—essentially, C or C++.
+It can be thought of as a communication interface that allows a native agent to monitor and be informed of events by the JVM.
+To install a native agent, provide a slightly different flag:</p>
+<pre data-type="programlisting">-agentlib:&lt;agent-lib-name&gt;=&lt;options&gt;</pre>
+<p>or:</p>
+<pre data-type="programlisting">-agentpath:&lt;path-to-agent&gt;=&lt;options&gt;</pre>
+<p>The requirement that JVMTI agents be written in native code means that these agents can be more difficult to write and debug.
+Programming errors in JVMTI agents can damage running applications and even crash the JVM.</p>
+<p>Therefore, where possible, it is usually preferable to write a Java agent over JVMTI code.
+Agents are much easier to write, but some information is not available through the Java API, and to access that data JVMTI may be the only possibility available.</p>
+<p>The final approach is the Serviceability Agent.
+This is a set of APIs and tools that can expose both Java objects and HotSpot data structures.</p>
+<p>The SA does not require any code to be run in the target VM.
+Instead, the HotSpot SA uses primitives like symbol lookup and reading of process memory to implement debugging capability.
+The SA has the ability to debug live Java processes as well as core files (also called <em>crash dump files</em>).</p>
+<section data-pdf-bookmark="VisualVM" data-type="sect2"><div class="sect2" id="pracjavaperf-CHP-3-SECT-8.1">
+<h2>VisualVM</h2>
+<p>The JDK ships with a number of useful additional tools along with the well-known binaries such as <code>javac</code> and <code>java</code>.</p>
+<p>One tool that is often overlooked is VisualVM, which is a graphical tool based on the NetBeans platform.
+VisualVM used to ship as part of the JDK but has been moved out of the main distribution, so developers will have to download the binary separately from <a href="https://visualvm.github.io/">the VisualVM website</a>.
+After downloading, you will have to ensure that the <code>visualvm</code> binary is added to your path or you may get an obselete version from an old Java version.</p>
+<div data-type="tip"><h6>Tip</h6>
+<p><code>jvisualvm</code> is a replacement for the now obsolete <code>jconsole</code> tool from earlier Java versions.
+If you are still using <code>jconsole</code>, you should move to VisualVM (there is a compatibility plug-in to allow <code>jconsole</code> plug-ins to run inside VisualVM).</p>
+</div>
+<p>When VisualVM is started for the first time it will calibrate the machine it is running on, so there should be no other applications running that might affect the performance calibration.
+After calibration, VisualVM will finish starting up and show a splash screen.
+The most familiar view of VisualVM is the Monitor screen, which is similar to that shown in <a data-type="xref" href="#pracjavaperf-CHP-3-FIG-4">Figure 3-4</a>.</p>
+<figure><div class="figure" id="pracjavaperf-CHP-3-FIG-4">
+<img alt="ocnj2 0304" height="929" src="assets/ocnj2_0304.png" width="1440"/>
+<h6><span class="label">Figure 3-4. </span>VisualVM Monitor screen</h6>
+</div></figure>
+<p>VisualVM is used for live monitoring of a running process, and it uses the JVM’s <em>attach mechanism</em>.
+This works slightly differently depending on whether the process is local or remote.</p>
+<p>Local processes are fairly straightforward.
+VisualVM lists them down the lefthand side of the screen. Double-clicking on one of them causes it to appear as a new tab in the righthand pane.</p>
+<p>To connect to a remote process, the remote side must accept inbound connections (over JMX). For standard Java processes, this means <code>jstatd</code> must be running on the remote host (see the manual page  for <code>jstatd</code> for more details).</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Many application servers and execution containers provide an equivalent capability to <code>jstatd</code> directly in the server. Such processes do not need a separate <code>jstatd</code> process so long as they are capable of port-forwarding JMX and RMI traffic.</p>
+</div>
+<p>To connect to a remote process, enter the hostname and a display name that will be used on the tab. The default port to connect to is 1099, but this can be changed easily.</p>
+<p>Out of the box, VisualVM presents the user with five tabs:</p>
+<dl>
+<dt>Overview</dt>
+<dd>
+<p>Provides a summary of information about your Java process. This includes the full flags that were passed in and all system properties. It also displays the exact Java version executing.</p>
+</dd>
+<dt>Monitor</dt>
+<dd>
+<p>This is the tab that is the most similar to the legacy <code>jconsole</code> view. It shows high-level telemetry for the JVM, including CPU and heap usage. It also shows the number of classes loaded and unloaded, and an overview of the numbers of threads running.</p>
+</dd>
+<dt>Threads</dt>
+<dd>
+<p>Each thread in the running application is displayed with a timeline. This includes both application threads and VM threads. The state of each thread can be seen, with a small amount of history. Thread dumps can also be generated if needed.</p>
+</dd>
+<dt>Sampler and Profiler</dt>
+<dd>
+<p>In these views, simplified sampling of CPU and memory utilization can be accessed. This will be discussed more fully in Chapter 11.</p>
+</dd>
+</dl>
+<p>The plug-in architecture of VisualVM allows additional tools to be easily added to the core platform to augment the core functionality.
+These include plug-ins that allow interaction with JMX consoles and bridging to legacy JConsole, and a very useful garbage collection plug-in, VisualGC.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Java implementations, distributions and releases" data-type="sect1"><div class="sect1" id="pracjavaperf-CHP-3-SECT-9">
+<h1>Java implementations, distributions and releases</h1>
+<p>In this section we will briefly discuss the landscape of Java implementations and distributions, as well as the Java release cycle.</p>
+<p>This is an area that changes a lot over time—​so this description is correct at time of writing only.
+Since then, for example, vendors may have entered (or exited) the business of making a Java distribution or the release cycle may have changed.
+Caveat lector!</p>
+<p>Many developers may only be familiar with the Java binaries produced by Oracle (Oracle JDK).
+However, as of 2023, we have quite a complex landscape, and it’s important to understand the basic components of what makes up “Java”.</p>
+<p>First, there’s the source code that will be built into a binary.
+The source code required to build a Java implementation comes in two parts:</p>
+<ul>
+<li>
+<p>Virtual machine source code</p>
+</li>
+<li>
+<p>Class library source code</p>
+</li>
+</ul>
+<p>The OpenJDK project, which can be found at <a href="https://openjdk.org/">the OpenJDK website</a> is the project to develop the open source reference implementation of Java—​which is licensed under the GNU Public License version 2, with Classpath Exemption (GPLv2+CE).<sup><a data-type="noteref" href="ch03.xhtml#id105" id="id105-marker">2</a></sup>
+The project is led and supported by Oracle—​who provide a majority of the engineers who work on the OpenJDK codebase.</p>
+<p>The critical point to understand about OpenJDK is that it provides <em>source code only</em>. This is true both for the VM (HotSpot) and for the class libraries.</p>
+<p>The combination of HotSpot and the OpenJDK class libraries forms the basis of the vast majority of Java distributions used in today’s production environments (including Oracle’s).
+However, there are several other Java VMs that we will meet—​and discuss briefly in this book—​including Eclipse OpenJ9 and GraalVM.
+These VMs can also be combined with the OpenJDK class libraries to produce a complete Java implementation.</p>
+<p>However, source code, by itself, is not all that useful to developers—​it needs to be built into a binary distribution, tested and optionally certified.</p>
+<p>This is somewhat similar to the situation with Linux—​the source code exists and is freely available, but in practice virtually no-one except those folks developing the next version work directly with source.
+Instead, developers consume a binary Linux distribution.</p>
+<p>In the Java world there are a number of vendors who make distributions available, just as there are for Linux.
+Let’s meet the vendors and take a quick look at their various offerings.</p>
+<section data-pdf-bookmark="Choosing a distribution" data-type="sect2"><div class="sect2" id="pracjavaperf-CHP-3-SECT-9.1">
+<h2>Choosing a distribution</h2>
+<p>Developers and architects should consider carefully their choice of JVM vendor.
+Some large organizations—​notably Twitter (as of 2022) and Alibaba—​even choose to maintain their own private (or semi-public) builds of OpenJDK, although the engineering effort required for this is beyond the reach of many companies.</p>
+<p>With this in mind, the main factors that organizations typically care about are:</p>
+<ol>
+<li>
+<p>Do I have to pay money to use this in production?</p>
+</li>
+<li>
+<p>How can I get any bugs I discover fixed?</p>
+</li>
+<li>
+<p>How do I get security patches?</p>
+</li>
+</ol>
+<p>To take these in turn:</p>
+<p>A binary that has been built from OpenJDK source (which is GPLv2+CE-licensed) is free to use in production.
+This includes all binaries from Eclipse Adoptium, Red Hat, Amazon, and Microsoft; as well as binaries from lesser-known suppliers such as BellSoft.
+Some, but not all, of Oracle’s binaries also fall into this category.</p>
+<p>Next up, to get a bug fixed in OpenJDK the discoverer may do one of two things: either buy a support contract and get the vendor to fix it; or ask an OpenJDK author to file a bug against the OpenJDK repo and then hope that (or ask nicely) someone fixes it for you.
+Or there’s always the inevitable third option that all open-source software provides—​fix it yourself and then submit a patch.</p>
+<p>The final point—​about security updates—​is slightly more subtle.
+First off, note that almost all changes to Java start off as commits to a public OpenJDK repository on GitHub.
+The exception to this is certain security fixes that have not yet been publicly disclosed.</p>
+<p>When a fix is released and made public, there is a process by which the patch flows back into the various OpenJDK repos.
+The vendors will then be able to take that source code fix and build and release a binary which contains it.
+However, there are some subtleties to this process, which is one reason why most Java shops prefer to remain on a long-term support (or LTS) version—​we will have more to say about this in the section about Java versions.</p>
+<p>Now that we’ve discussed the main criteria for choosing a distribution, let’s meet some of the main offerings that are available:</p>
+<dl>
+<dt>Oracle</dt>
+<dd>
+<p>Oracle’s Java (Oracle JDK) is perhaps the most widely known implementation. It is essentially the OpenJDK codebase, relicensed under Oracle’s proprietary licenses with a few extremely minor differences (such as the inclusion of some additional components that are not available under an open-source license). Oracle achieves this by having all contributors to OpenJDK sign a license agreement that permits dual licensing of their contribution to both the GPLv2+CE of OpenJDK and Oracle’s proprietary license.<sup><a data-type="noteref" href="ch03.xhtml#id106" id="id106-marker">3</a></sup></p>
+</dd>
+<dt>Eclipse Adoptium</dt>
+<dd>
+<p>This community-led project started life as AdoptOpenJDK, changing name when it transitioned into the Eclipse Foundation. The Members of the Adoptium project (from companies such as Red Hat, Google, Microsoft, and Azul) consist mostly of build and test engineers, rather than development engineers (who implement new features and fix bugs). This is by design—​many of Adoptium’s member companies also make major contributions to upstream OpenJDK development, but do so under their own company names, rather than Adoptium. The Adoptium project takes the OpenJDK source and builds fully-tested binaries on multiple platforms. As a community project, Adoptium does not offer paid support, although member companies may choose to do so—​for example Red Hat does for some operating systems.</p>
+</dd>
+<dt>Red Hat</dt>
+<dd>
+<p>Red Hat is the longest-standing non-Oracle producer of Java binaries—​as well as the second-largest contributor to OpenJDK (behind Oracle). They produce builds and provide support for their operating systems—​RHEL and Fedora—​and Windows (for historical reasons). Red Hat also releases freely-available container images based on their Universal Base Image (UBI) Linux system.</p>
+</dd>
+<dt>Amazon Corretto</dt>
+<dd>
+<p>Corretto is Amazon’s distribution of OpenJDK, and it is intended to run primarily on AWS cloud infrastructure. Amazon also provides builds for Mac, Windows and Linux in order to provide a consistent developer experience, and to encourage developers to use their builds across all environments.</p>
+</dd>
+<dt>Microsoft OpenJDK</dt>
+<dd>
+<p>Microsoft has been producing binaries since May 2021 (OpenJDK 11.0.11) for Mac, Windows and Linux. Just as for AWS, Microsoft’s distribution is largely intended to provide an easy on-ramp for developers who will be deploying on their Azure cloud infrastructure.</p>
+</dd>
+<dt>Azul Systems</dt>
+<dd>
+<p>Zulu is a free OpenJDK implementation provided by Azul Systems—​who also offer paid support for their OpenJDK binaries. Azul also offer a high-performance proprietary JVM called “Azul Platform Prime” (previously known as Zing). Prime is not an OpenJDK distribution.</p>
+</dd>
+<dt>GraalVM</dt>
+<dd>
+<p>GraalVM is a relatively new addition to this list. Originally a research project at Oracle Labs, it has graduated to a fully productionized Java implementation (and much more besides). GraalVM can operate in dynamic VM mode and includes an OpenJDK-based runtime—​augmented with a JIT compiler that is written in Java. However, GraalVM is also capable of <em>native compilation</em> of Java—​essentially AOT compilation. We will have more to say on this subject later in the book.</p>
+</dd>
+<dt>OpenJ9</dt>
+<dd>
+<p>OpenJ9 started life as IBM’s proprietary JVM (when it was just called J9) but was open-sourced in 2017 partway through its life (just like HotSpot). It is now built on top of an Eclipse open runtime project (OMR). It is fully compliant with Java certification. IBM Semeru Runtimes are zero-cost runtimes built with the OpenJDK class libraries and the Eclipse OpenJ9 JVM (which is Eclipse-licensed).</p>
+</dd>
+<dt>Android</dt>
+<dd>
+<p>Google’s Android project is sometimes thought of as being “based on Java.” However, the picture is actually a little more complicated. Android uses a cross compiler to convert class files to a different (<em>.dex</em>) file format. These <code>.dex</code> files are then executed by the Android Runtime (ART), which is not a JVM. In fact, Google now recommends the Kotlin language over Java for developing Android apps. As this technology stack is so far from the other examples, we won’t consider Android any further in this book.</p>
+</dd>
+</dl>
+<p>Note that this list is not intended to be comprehensive—​there are other distributions available as well.</p>
+<p>The vast majority of the rest of this book focuses on the technology found in HotSpot.
+This means the material applies equally to Oracle’s Java and the distributions provided by Adoptium, Red Hat, Amazon, Microsoft, Azul Zulu, and all other OpenJDK-derived JVMs.</p>
+<p>We also include some material related to Eclipse Open J9 . This is intended to provide an awareness of alternatives rather than a definitive guide. Some readers may wish to explore these technologies more deeply, and they are encouraged to proceed by setting performance goals, and then measuring and comparing, in the usual manner.</p>
+<p>Finally, before we discuss the Java release cycle, a word about the performance characteristics of the various OpenJDK distributions.</p>
+<p>Teams occasionally ask questions about performance—​sometimes because they mistakenly believe that certain distributions include different JIT or GC components that are not available in other OpenJDK-based distributions.</p>
+<p>So let’s clear that up right now: All the OpenJDK distributions build from the same source, and there should be <em>no</em> systematic performance-related differences between the various HotSpot-based implementations, when comparing like-for-like versions and build flag configurations.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Some vendors choose very specific build flag combinations that are highly specific to their cloud environments, and some research indicates that these combinations <em>may</em> help for some subset of workloads, but this is far from clear-cut.</p>
+</div>
+<p>Once in a while, social media excitedly reports that significant performances differences have been found between some of the distributions.
+However, carrying out such tests in a sufficiently controlled environment is notoriously difficult—​so any results should be treated with healthy skepticism unless they can be independently verified as statistically rigorous.</p>
+</div></section>
+<section data-pdf-bookmark="The Java release cycle" data-type="sect2"><div class="sect2" id="pracjavaperf-CHP-3-SECT-9.2">
+<h2>The Java release cycle</h2>
+<p>We can now complete the picture by briefly discussing the Java release cycle.</p>
+<p>New feature development happens in the open—​at a collection of GitHub repositories.
+Small to medium features and bug fixes are accepted as pull requests directly against the main branch in the main OpenJDK repository.<sup><a data-type="noteref" href="ch03.xhtml#id107" id="id107-marker">4</a></sup>
+Larger features and major projects are frequently developed in forked repos and then migrated into mainline when ready.</p>
+<p>Every 6 months, a new release of Java is cut from whatever is in main.
+Features that “miss the train” must wait for the next release—​the 6-month cadence and strict timescale has been maintained since September 2017.
+These releases are known as “feature releases”, and they are run by Oracle, in their role as stewards of Java.</p>
+<p>Oracle ceases to work on any given feature release as soon as the next feature release appears.
+However, an OpenJDK member of suitable standing and capability can offer to continue running the release after Oracle steps down.
+To date, this has only happened for certain releases—​in practice Java 8, 11, 17 and 21, which are known as <em>update releases</em>.</p>
+<p>The significance of these releases is that they match Oracle’s Long-Term Support release concept.
+Technically, this is purely a construct of Oracle’s sales process—​whereby Oracle customers who do not want to upgrade Java every 6 months have certain stable versions that Oracle will support them on.</p>
+<p>In practice, the Java ecosystem has overwhelmingly rejected the official Oracle dogma of “upgrade your JDK every 6 months"--project teams and engineering managers simply have no appetite for it.
+Instead, teams upgrade from one LTS version to the next, and the update release projects (8u, 11u, 17u and 21u) remain active, delivering security patches and a small number of bug fixes and backports.
+Oracle and the community work together to keep all these maintained code streams secure.</p>
+<p>This is the final piece we need to answer the question of how to pick a Java distribution.
+If you want a zero-cost Java distribution that receives security patches and has a non-zero chance of security (and possibly bug) fixes, select your choice of OpenJDK vendor and stick to the LTS versions.
+Any of: Adoptium, Red Hat, Amazon, Microsoft and Azul is a fine choice—​and so are some of the others.
+Depending on how and where you’re deploying your software (e.g. applications deployin in AWS may prefer Amazon’s Corretto distribution) you may have a reason to pick one of those over the others.</p>
+<p>For a more in-depth guide to the various options and some of the licensing complexities, you can consult <a href="https://medium.com/@javachampions/java-is-still-free-3-0-0-ocrt-2021-bca75c88d23b">Java Is Still Free</a> This document was written by the <a href="https://dev.java/community/jcs/">Java Champions</a>, an independent body of Java experts and leaders.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Summary" data-type="sect1"><div class="sect1" id="pracjavaperf-CHP-3-SECT-10">
+<h1>Summary</h1>
+<p>In this chapter we have taken a quick tour through the overall anatomy of the JVM, including: compilation of byte code, interpretation, JIT compilation to native code, memory management, threading, the lifecycle of a Java process monitoring, and finally, how Java is built and distributed.</p>
+<p>It has only been possible to touch on some of the most important subjects, and virtually every topic mentioned here has a rich, full story behind it that will reward further investigation.</p>
+<p>In Chapter 4 we will begin our journey into garbage collection, starting with the basic concepts of mark-and-sweep and diving into the specifics, including some of the internal details of how HotSpot implements GC.</p>
+</div></section>
+<div data-type="footnotes"><p data-type="footnote" id="id104"><sup><a href="ch03.xhtml#id104-marker">1</a></sup> B. Stroustrup, “Abstraction and the C++ Machine Model,” <em>Lecture Notes in Computer Science</em>, vol. 3605 (Springer 2005)</p><p data-type="footnote" id="id105"><sup><a href="ch03.xhtml#id105-marker">2</a></sup> <a class="bare" href="https://openjdk.org/legal/gplv2+ce.xhtml"><em class="hyperlink">https://openjdk.org/legal/gplv2+ce.xhtml</em></a></p><p data-type="footnote" id="id106"><sup><a href="ch03.xhtml#id106-marker">3</a></sup> The latter has changed multiple times, so linking to the currently latest version might not be helpful—​it could be out-of-date by the time you read this.</p><p data-type="footnote" id="id107"><sup><a href="ch03.xhtml#id107-marker">4</a></sup> <a class="bare" href="https://github.com/openjdk/jdk"><em class="hyperlink">https://github.com/openjdk/jdk</em></a></p></div></div></section></div></body></html>

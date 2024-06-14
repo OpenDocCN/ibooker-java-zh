@@ -1,0 +1,926 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><section data-nutshell-tab="Classloading and Reflection" data-pdf-bookmark="Chapter 11. Classloading, Reflection, and Method Handles" data-type="chapter" epub:type="chapter"><div class="chapter" id="javanut8-CHP-11">
+<h1><span class="label">Chapter 11. </span>Classloading, Reflection, and Method Handles</h1>
+<p>In <a data-type="xref" href="ch03.xhtml#javanut8-CHP-3">Chapter 3</a>, we met Java’s <code>Class</code> objects, a
+way of representing a live type in a running Java process. In this
+chapter, we will build on this foundation to discuss how the Java
+environment loads and makes new types available. In the second half of
+the chapter, we will introduce Java’s introspection capabilities—both
+the original Reflection API and the newer Method Handles capabilities.</p>
+<section data-pdf-bookmark="Class Files, Class Objects, and Metadata" data-type="sect1"><div class="sect1" id="idm45927709622384">
+<h1>Class Files, Class Objects, and Metadata</h1>
+<p><a data-primary="class objects" data-seealso="classloading" data-type="indexterm" id="ix_ch11-asciidoc0"/>Class files, as we saw in <a data-type="xref" href="ch01.xhtml#javanut8-CHP-1">Chapter 1</a>, are the
+result of compiling Java source files (or, potentially, other languages)
+into the intermediate form used by the JVM. These are binary files that
+are not designed to be human readable.</p>
+<p>The runtime representation of these class files are the class objects
+that contain metadata, which represents the Java type that the class
+file was created from.</p>
+<section data-pdf-bookmark="Examples of Class Objects" data-type="sect2"><div class="sect2" id="idm45927709618288">
+<h2>Examples of Class Objects</h2>
+<p><a data-primary="class objects" data-secondary="examples of" data-type="indexterm" id="idm45927709616448"/>You can obtain a class object in Java in several ways. The simplest
+is:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">myClass</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">getClass</code><code class="p">();</code><code class="w"/></pre>
+<p><a data-primary="getClass()" data-type="indexterm" id="idm45927709609488"/>This returns the class object of the instance that it is called from.
+However, as we know from our survey of the public methods of <code>Object</code>,
+the <code>getClass()</code> method on <code>Object</code> is public, so we can also obtain the
+class of an arbitrary object <code>o</code>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">o</code><code class="p">.</code><code class="na">getClass</code><code class="p">();</code><code class="w"/></pre>
+<p>Class objects for known types can also be written as “class literals”:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// Express a class literal as a type name followed by ".class"</code><code class="w"/>
+<code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">String</code><code class="p">.</code><code class="na">class</code><code class="p">;</code><code class="w"> </code><code class="c1">// Same as "a string".getClass()</code><code class="w"/>
+<code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="kt">byte</code><code class="o">[]</code><code class="p">.</code><code class="na">class</code><code class="p">;</code><code class="w"> </code><code class="c1">// Type of byte arrays</code><code class="w"/></pre>
+<p>For primitive types and <code>void</code>, we also have class objects that are represented as literals:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// Obtain a Class object for primitive types with various</code><code class="w"/>
+<code class="c1">// predefined constants</code><code class="w"/>
+<code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Void</code><code class="p">.</code><code class="na">TYPE</code><code class="p">;</code><code class="w"> </code><code class="c1">// The special "no-return-value" type</code><code class="w"/>
+<code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Byte</code><code class="p">.</code><code class="na">TYPE</code><code class="p">;</code><code class="w"> </code><code class="c1">// Class object that represents a byte</code><code class="w"/>
+<code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Integer</code><code class="p">.</code><code class="na">TYPE</code><code class="p">;</code><code class="w"> </code><code class="c1">// Class object that represents an int</code><code class="w"/>
+<code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Double</code><code class="p">.</code><code class="na">TYPE</code><code class="p">;</code><code class="w"> </code><code class="c1">// etc.; see also Short, Character, Long, Float</code><code class="w"/></pre>
+<p>There is also the possibility of using the <code>.class</code> syntax directly on a primitive type, like this:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="kt">int</code><code class="p">.</code><code class="na">class</code><code class="p">;</code><code class="w"> </code><code class="c1">// Same as Integer.TYPE</code><code class="w"/></pre>
+<p>The relationship between <code>.class</code> and <code>.TYPE</code> can be seen with some simple tests:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// outputs true</code><code class="w"/>
+<code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">printf</code><code class="p">(</code><code class="s">"%b%n"</code><code class="p">,</code><code class="w"> </code><code class="n">Integer</code><code class="p">.</code><code class="na">TYPE</code><code class="w"> </code><code class="o">==</code><code class="w"> </code><code class="kt">int</code><code class="p">.</code><code class="na">class</code><code class="p">);</code><code class="w"/>
+
+<code class="c1">// outputs false</code><code class="w"/>
+<code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">printf</code><code class="p">(</code><code class="s">"%b%n"</code><code class="p">,</code><code class="w"> </code><code class="n">Integer</code><code class="p">.</code><code class="na">class</code><code class="w"> </code><code class="o">==</code><code class="w"> </code><code class="kt">int</code><code class="p">.</code><code class="na">class</code><code class="p">);</code><code class="w"/>
+
+<code class="c1">// outputs false</code><code class="w"/>
+<code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">printf</code><code class="p">(</code><code class="s">"%b%n"</code><code class="p">,</code><code class="w"> </code><code class="n">Integer</code><code class="p">.</code><code class="na">class</code><code class="w"> </code><code class="o">==</code><code class="w"> </code><code class="n">Integer</code><code class="p">.</code><code class="na">TYPE</code><code class="p">);</code><code class="w"/></pre>
+<p>Note that the wrapper types (<code>Integer</code>, etc) have a <code>.TYPE</code> property, but in general classes do not.
+Also, all of this works only for types that are known at compile time; for unknown types, we will have to use more sophisticated methods.</p>
+</div></section>
+<section data-pdf-bookmark="Class Objects and Metadata" data-type="sect2"><div class="sect2" id="idm45927709617664">
+<h2>Class Objects and Metadata</h2>
+<p><a data-primary="class objects" data-secondary="metadata with" data-type="indexterm" id="ix_ch11-asciidoc1"/><a data-primary="metadata, class objects and" data-type="indexterm" id="ix_ch11-asciidoc2"/>The class objects contain metadata about the given type. This includes
+the methods, fields, constructors, and the like that are defined on the class in
+question. This metadata can be accessed by the programmer to investigate
+the class, even if nothing is known about the class when it is loaded.</p>
+<p>For example, we can find all the deprecated methods in the class file
+(they will be marked with the <code>@Deprecated</code> annotation):</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">clz</code><code class="w"> </code><code class="o">=</code><code class="w">  </code><code class="p">...</code><code class="w"> </code><code class="c1">// Get class from somewhere, e.g. loaded from disk</code><code class="w"/>
+<code class="k">for</code><code class="w"> </code><code class="p">(</code><code class="n">Method</code><code class="w"> </code><code class="n">m</code><code class="w"> </code><code class="p">:</code><code class="w"> </code><code class="n">clz</code><code class="p">.</code><code class="na">getMethods</code><code class="p">())</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="k">for</code><code class="w"> </code><code class="p">(</code><code class="n">Annotation</code><code class="w"> </code><code class="n">a</code><code class="w"> </code><code class="p">:</code><code class="w"> </code><code class="n">m</code><code class="p">.</code><code class="na">getAnnotations</code><code class="p">())</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="k">if</code><code class="w"> </code><code class="p">(</code><code class="n">a</code><code class="p">.</code><code class="na">annotationType</code><code class="p">()</code><code class="w"> </code><code class="o">==</code><code class="w"> </code><code class="n">Deprecated</code><code class="p">.</code><code class="na">class</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">      </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="n">m</code><code class="p">.</code><code class="na">getName</code><code class="p">());</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>We could also find the common ancestor class of a pair of class files.
+This simple form will work when both classes have been loaded by the
+same classloader:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">static</code><code class="w"> </code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">commonAncestor</code><code class="p">(</code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">cl1</code><code class="p">,</code><code class="w"> </code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">cl2</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="k">if</code><code class="w"> </code><code class="p">(</code><code class="n">cl1</code><code class="w"> </code><code class="o">==</code><code class="w"> </code><code class="kc">null</code><code class="w"> </code><code class="o">||</code><code class="w"> </code><code class="n">cl2</code><code class="w"> </code><code class="o">==</code><code class="w"> </code><code class="kc">null</code><code class="p">)</code><code class="w"> </code><code class="k">return</code><code class="w"> </code><code class="kc">null</code><code class="p">;</code><code class="w"/>
+<code class="w">  </code><code class="k">if</code><code class="w"> </code><code class="p">(</code><code class="n">cl1</code><code class="p">.</code><code class="na">equals</code><code class="p">(</code><code class="n">cl2</code><code class="p">))</code><code class="w"> </code><code class="k">return</code><code class="w"> </code><code class="n">cl1</code><code class="p">;</code><code class="w"/>
+<code class="w">  </code><code class="k">if</code><code class="w"> </code><code class="p">(</code><code class="n">cl1</code><code class="p">.</code><code class="na">isPrimitive</code><code class="p">()</code><code class="w"> </code><code class="o">||</code><code class="w"> </code><code class="n">cl2</code><code class="p">.</code><code class="na">isPrimitive</code><code class="p">())</code><code class="w"> </code><code class="k">return</code><code class="w"> </code><code class="kc">null</code><code class="p">;</code><code class="w"/>
+
+<code class="w">  </code><code class="n">List</code><code class="o">&lt;</code><code class="n">Class</code><code class="o">&lt;?&gt;&gt;</code><code class="w"> </code><code class="n">ancestors</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">ArrayList</code><code class="o">&lt;&gt;</code><code class="p">();</code><code class="w"/>
+<code class="w">  </code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">cl1</code><code class="p">;</code><code class="w"/>
+<code class="w">  </code><code class="k">while</code><code class="w"> </code><code class="p">(</code><code class="o">!</code><code class="n">c</code><code class="p">.</code><code class="na">equals</code><code class="p">(</code><code class="n">Object</code><code class="p">.</code><code class="na">class</code><code class="p">))</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="k">if</code><code class="w"> </code><code class="p">(</code><code class="n">c</code><code class="p">.</code><code class="na">equals</code><code class="p">(</code><code class="n">cl2</code><code class="p">))</code><code class="w"> </code><code class="k">return</code><code class="w"> </code><code class="n">c</code><code class="p">;</code><code class="w"/>
+<code class="w">    </code><code class="n">ancestors</code><code class="p">.</code><code class="na">add</code><code class="p">(</code><code class="n">c</code><code class="p">);</code><code class="w"/>
+<code class="w">    </code><code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">c</code><code class="p">.</code><code class="na">getSuperclass</code><code class="p">();</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+<code class="w">  </code><code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">cl2</code><code class="p">;</code><code class="w"/>
+<code class="w">  </code><code class="k">while</code><code class="w"> </code><code class="p">(</code><code class="o">!</code><code class="n">c</code><code class="p">.</code><code class="na">equals</code><code class="p">(</code><code class="n">Object</code><code class="p">.</code><code class="na">class</code><code class="p">))</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="k">for</code><code class="w"> </code><code class="p">(</code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">k</code><code class="w"> </code><code class="p">:</code><code class="w"> </code><code class="n">ancestors</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">      </code><code class="k">if</code><code class="w"> </code><code class="p">(</code><code class="n">c</code><code class="p">.</code><code class="na">equals</code><code class="p">(</code><code class="n">k</code><code class="p">))</code><code class="w"> </code><code class="k">return</code><code class="w"> </code><code class="n">c</code><code class="p">;</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+<code class="w">    </code><code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">c</code><code class="p">.</code><code class="na">getSuperclass</code><code class="p">();</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+
+<code class="w">  </code><code class="k">return</code><code class="w"> </code><code class="n">Object</code><code class="p">.</code><code class="na">class</code><code class="p">;</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>Class files have a very specific layout they must conform to if
+they are to be legal and loadable by the JVM. The sections of the class
+file are (in order):</p>
+<ul>
+<li>
+<p>Magic number (all class files starting with the four bytes <code>CA FE BA BE</code>
+in <span class="keep-together">hexadecimal</span>)</p>
+</li>
+<li>
+<p>Version of class file standard in use</p>
+</li>
+<li>
+<p>Constant pool for this class</p>
+</li>
+<li>
+<p>Access flags (<code>abstract</code>, <code>public</code>, etc.)</p>
+</li>
+<li>
+<p>Name of this class</p>
+</li>
+<li>
+<p>Inheritance info (e.g., name of superclass)</p>
+</li>
+<li>
+<p>Implemented interfaces</p>
+</li>
+<li>
+<p>Fields</p>
+</li>
+<li>
+<p>Methods</p>
+</li>
+<li>
+<p>Attributes</p>
+</li>
+</ul>
+<p>The class file is a simple binary format, but it is not human readable.
+Instead, tools like <code>javap</code> (see <a data-type="xref" href="ch13.xhtml#javanut8-CHP-13">Chapter 13</a>)
+should be used to comprehend the contents.</p>
+<p><a data-primary="constant pool" data-type="indexterm" id="idm45927708751072"/>One of the most frequently used sections in the class file is the <em>constant pool</em>, which contains representations of all the methods, classes, fields,
+and constants that the class needs to refer to (whether they are in this
+class or another). It is designed so that bytecodes can simply refer to
+a constant pool entry by its index number—which saves space in the
+bytecode representation.</p>
+<p>A number of different class file versions are created by various
+Java versions. However, one of Java’s backward compatibility rules is
+that JVMs (and tools) from newer versions can always use older class
+files<a data-startref="ix_ch11-asciidoc2" data-type="indexterm" id="idm45927708749440"/><a data-startref="ix_ch11-asciidoc1" data-type="indexterm" id="idm45927708748736"/>.<a data-startref="ix_ch11-asciidoc0" data-type="indexterm" id="idm45927708747936"/></p>
+<p>Let’s look at how the classloading process takes a collection of bytes
+on disk and turns it into a new class object.</p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Phases of Classloading" data-type="sect1"><div class="sect1" id="idm45927708746592">
+<h1>Phases of Classloading</h1>
+<p><a data-primary="classloading" data-type="indexterm" id="ix_ch11-asciidoc3"/>Classloading <a data-primary="classloading" data-secondary="phases of" data-type="indexterm" id="ix_ch11-asciidoc4"/>is the process by which a new type is added to a running
+JVM process. This is the only way that new code can enter the system
+and the only way to turn data into code in the Java platform. There are
+several phases to the process of classloading, so let’s examine them in
+turn.</p>
+<section data-pdf-bookmark="Loading" data-type="sect2"><div class="sect2" id="idm45927708742544">
+<h2>Loading</h2>
+<p><a data-primary="classloading" data-secondary="loading phase" data-type="indexterm" id="idm45927708741136"/><a data-primary="loading (classloading phase)" data-type="indexterm" id="idm45927708708272"/>The classloading process starts with loading a byte array. This is
+usually read in from a filesystem, but it also can be read from a URL or other
+location (often represented as a <code>Path</code> object).</p>
+<p><a data-primary="defineClass()" data-type="indexterm" id="idm45927708706896"/>The <code>ClassLoader::defineClass()</code> method is responsible for turning a
+class file (represented as a byte array) into a class object. It is a
+protected method and so is not accessible without subclassing.</p>
+<p>The first job of <code>defineClass()</code> is loading. This produces the skeleton
+of a class object, corresponding to the class you’re attempting to load.
+By this stage, some basic checks have been performed on the class (e.g.,
+the constants in the constant pool have been checked to ensure that
+they’re self-consistent).</p>
+<p>However, loading doesn’t produce a complete class object by itself, and
+the class isn’t yet usable. Instead, after loading, the class must be
+linked. This step breaks down into separate subphases:</p>
+<ul>
+<li>
+<p>Verification</p>
+</li>
+<li>
+<p>Preparation and resolution</p>
+</li>
+<li>
+<p>Initialization</p>
+</li>
+</ul>
+</div></section>
+<section data-pdf-bookmark="Verification" data-type="sect2"><div class="sect2" id="idm45927708701616">
+<h2>Verification</h2>
+<p><a data-primary="classloading" data-secondary="verification phase" data-type="indexterm" id="idm45927708700240"/><a data-primary="Java Virtual Machine (JVM)" data-secondary="verification of class file" data-type="indexterm" id="idm45927708699264"/><a data-primary="verification (classloading phase)" data-type="indexterm" id="idm45927708698384"/>Verification confirms that the class file conforms to expectations,
+and that it doesn’t try to violate the JVM’s security model (see
+<a data-type="xref" href="#javanut8-CHP-11-SECT-3">“Secure Programming and Classloading”</a> for details).</p>
+<p>JVM bytecode is designed so that it can be (mostly) checked statically.
+This has the effect of slowing down the classloading process but
+speeding up runtime (as checks can be omitted).</p>
+<p>The verification step is designed to prevent the JVM from executing
+bytecodes that might crash it or put it into an undefined and untested
+state where it might be vulnerable to other attacks by malicious code.
+Bytecode verification is a defense against malicious hand-crafted Java
+bytecodes and untrusted Java compilers that might output invalid
+bytecodes.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>The default methods mechanism works via classloading. When an
+implementation of an interface is being loaded, the class file is
+examined to see if implementations for default methods are present. If
+they are, classloading continues normally. If some are missing, the
+implementation is patched to add in the default implementation of the
+missing methods.</p>
+</div>
+</div></section>
+<section data-pdf-bookmark="Preparation and Resolution" data-type="sect2"><div class="sect2" id="idm45927708694720">
+<h2>Preparation and Resolution</h2>
+<p><a data-primary="classloading" data-secondary="preparation and resolution" data-type="indexterm" id="idm45927708693376"/>After successful verification, the class is prepared for use. Memory is
+allocated and static variables in the class are readied for
+initialization.</p>
+<p>At this stage, variables aren’t initialized, and no bytecode from the
+new class has been executed. Before we run any code, the JVM checks
+that every type referred to by the new class file is known to the
+runtime. If the types aren’t known, they may also need to be
+loaded—which can kick off the classloading process again, as the JVM
+loads the new types.</p>
+<p>This process of loading and discovery can execute iteratively until a
+stable set of types is reached. <a data-primary="transitive closure" data-type="indexterm" id="idm45927708691344"/>This is called the “transitive closure”
+of the original type that was loaded.<sup><a data-type="noteref" href="ch11.xhtml#idm45927708690512" id="idm45927708690512-marker">1</a></sup></p>
+<p>Let’s look at a quick example by examining the dependencies of
+<code>java.lang.Object</code>. <a data-type="xref" href="#javanut8-CHP-11-FIG-1">Figure 11-1</a> shows a
+simplified dependency graph for <code>Object</code>. It shows only the direct
+dependencies of <code>Object</code> that are visible in the public API of <code>Object</code>
+and the direct, API-visible dependencies of those dependencies. In
+addition, the dependencies of <code>Class</code> on the reflection subsystem, and
+of <code>PrintStream</code> and <code>PrintWriter</code> on the I/O subsystems, are shown in
+very simplified form.</p>
+<p>In <a data-type="xref" href="#javanut8-CHP-11-FIG-1">Figure 11-1</a>, we can see part of the
+transitive closure of <code>Object</code>.</p>
+<figure><div class="figure" id="javanut8-CHP-11-FIG-1">
+<img alt="JN7 1101" height="519" src="assets/jns8_1101.png" width="600"/>
+<h6><span class="label">Figure 11-1. </span>Transitive closure of types</h6>
+</div></figure>
+</div></section>
+<section data-pdf-bookmark="Initialization" data-type="sect2"><div class="sect2" id="idm45927708680496">
+<h2>Initialization</h2>
+<p><a data-primary="classloading" data-secondary="initialization phase" data-type="indexterm" id="idm45927708679488"/><a data-primary="initialization, classloading and" data-type="indexterm" id="idm45927708678640"/>Once resolved, the JVM can finally initialize the class. Static
+variables can be initialized and static initialization blocks are run.</p>
+<p>This is the first time that the JVM is executing bytecode from the newly
+loaded class. When the static blocks complete, the class is fully loaded
+and ready to go.<a data-startref="ix_ch11-asciidoc4" data-type="indexterm" id="idm45927708677520"/></p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Secure Programming and Classloading" data-type="sect1"><div class="sect1" id="javanut8-CHP-11-SECT-3">
+<h1>Secure Programming and Classloading</h1>
+<p><a data-primary="classloading" data-secondary="secure programming" data-type="indexterm" id="ix_ch11-asciidoc5"/><a data-primary="safety" data-secondary="classloading and secure programming" data-type="indexterm" id="ix_ch11-asciidoc6"/><a data-primary="secure programming, classloading and" data-type="indexterm" id="ix_ch11-asciidoc7"/>Java programs can dynamically load Java classes from a variety of
+sources, including untrusted sources, such as websites reached across an
+insecure network. The ability to create and work with such dynamic
+sources of code is one of the great strengths and features of Java. To
+make it work successfully, however, Java puts great emphasis on a
+security architecture that allows untrusted code to run safely, without
+fear of damage to the host system.</p>
+<p>Java’s classloading subsystem is where a lot of safety features are
+implemented. The central idea of the security aspects of the
+classloading architecture is that there is only one way to get new
+executable code into the process: a class.</p>
+<p>This provides a “pinch point”—the only way to create a new class is to
+use the functionality provided by <code>ClassLoader</code> to load a class from a
+stream of bytes. By concentrating on making classloading secure, we can
+constrain the attack surface that needs to be protected.</p>
+<p>One extremely helpful aspect of the JVM’s design is that the
+JVM is a stack machine, so all operations are evaluated on a stack,
+rather than in registers. The stack state can be deduced at every point
+in a method, and this can be used to ensure that the bytecode doesn’t
+attempt to violate the security model.</p>
+<p>Some of the security checks implemented by the JVM are:</p>
+<ul>
+<li>
+<p>All the bytecode of the class has valid parameters.</p>
+</li>
+<li>
+<p>All methods are called with the right number of parameters of the
+correct static types.</p>
+</li>
+<li>
+<p>Bytecode never tries to underflow or overflow the JVM stack.</p>
+</li>
+<li>
+<p>Local variables are not used before they are initialized.</p>
+</li>
+<li>
+<p>Variables are only assigned suitably typed values.</p>
+</li>
+<li>
+<p>Field, method, and class access control modifiers must be respected.</p>
+</li>
+<li>
+<p>No unsafe casts (e.g., attempts to convert an <code>int</code> to a pointer).</p>
+</li>
+<li>
+<p>All branch instructions are to legal points within the same method.</p>
+</li>
+</ul>
+<p>Of fundamental importance is the approach to memory, and pointers. <a data-primary="C/C++" data-secondary="interchangeability of integers/pointers" data-type="indexterm" id="idm45927708659936"/>In
+assembly and C/C++, integers and pointers are interchangeable, so an
+integer can be used as a memory address. We can write it in assembly
+like this:</p>
+<pre data-code-language="jasmin" data-type="programlisting"><code class="sx">mov</code><code class="w"> </code><code class="sx">eax,</code><code class="w"> </code><code class="sx">[STAT]</code><code class="w"> </code><code class="c1">; Move 4 bytes from addr STAT into eax</code><code class="w"/></pre>
+<p><a data-primary="Java Virtual Machine (JVM)" data-secondary="security checks implemented by" data-type="indexterm" id="idm45927727847424"/>The lowest level of the Java security architecture involves the design
+of the Java Virtual Machine and the bytecodes it executes. The JVM does
+not allow any kind of direct access to individual memory addresses of
+the underlying system, which prevents Java code from interfering with
+the native hardware and operating system. These intentional restrictions
+on the JVM are reflected in the Java language itself, which does not
+support pointers or pointer arithmetic.</p>
+<p>Neither the language nor the JVM allow an integer to be cast to an
+object reference or vice versa, and there is no way whatsoever to obtain
+an object’s address in memory. Without capabilities like these,
+malicious code simply cannot gain a foothold.</p>
+<p>Recall from <a data-type="xref" href="ch02.xhtml#javanut8-CHP-2">Chapter 2</a> that Java has two types of
+values—primitives and object references. These are the only things
+that can be put into variables. Note that “object contents” cannot be
+put into variables. Java has no equivalent of C’s <code>struct</code> and always
+has pass-by-value semantics. For reference types, what is passed is a
+copy of the reference—which is a value.</p>
+<p>References are represented in the JVM as pointers, but they are not
+directly manipulated by the bytecode. In fact, bytecode does not have
+opcodes for “access memory at location X.”</p>
+<p>Instead, all we can do is access fields and methods; bytecode cannot call
+an arbitrary memory location. This means that the JVM always knows the
+difference between code and data. In turn, this prevents a whole class
+of stack overflow and other attacks.<a data-startref="ix_ch11-asciidoc7" data-type="indexterm" id="idm45927705800736"/><a data-startref="ix_ch11-asciidoc6" data-type="indexterm" id="idm45927705621776"/><a data-startref="ix_ch11-asciidoc5" data-type="indexterm" id="idm45927704244512"/></p>
+</div></section>
+<section data-pdf-bookmark="Applied Classloading" data-type="sect1"><div class="sect1" id="javanut8-CHP-11-SECT-4">
+<h1>Applied Classloading</h1>
+<p><a data-primary="classloading" data-secondary="applied" data-type="indexterm" id="ix_ch11-asciidoc8"/><a data-primary="java.lang.ClassLoader" data-type="indexterm" id="ix_ch11-asciidoc9"/>To apply knowledge of classloading, it’s important to fully understand
+<code>java.lang.ClassLoader</code>.</p>
+<p>This is an abstract class that is fully functional and has no abstract
+methods. The <code>abstract</code> modifier exists only to ensure that users must
+subclass <code>ClassLoader</code> if they want to use it.</p>
+<p><a data-primary="loadClass()" data-type="indexterm" id="idm45927728355184"/>In addition to the aforementioned <code>defineClass()</code> method, we can load
+classes via a public <code>loadClass()</code> method. <a data-primary="URLClassLoader" data-type="indexterm" id="idm45927707516864"/>This is commonly used by
+the <code>URLClassLoader</code> subclass, which can load classes from a URL or file
+path.</p>
+<p>We can use <code>URLClassLoader</code> to load classes from the local disk like
+this:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code><code class="w"> </code><code class="n">current</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">File</code><code class="p">(</code><code class="w"> </code><code class="s">"."</code><code class="w"> </code><code class="p">).</code><code class="na">getCanonicalPath</code><code class="p">();</code><code class="w"/>
+<code class="kd">var</code><code class="w"> </code><code class="n">urls</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">URL</code><code class="o">[]</code><code class="w"> </code><code class="p">{</code><code class="k">new</code><code class="w"> </code><code class="n">URL</code><code class="p">(</code><code class="s">"file://"</code><code class="o">+</code><code class="w"> </code><code class="n">current</code><code class="w"> </code><code class="o">+</code><code class="w"> </code><code class="s">"/"</code><code class="p">)};</code><code class="w"/>
+<code class="k">try</code><code class="w"> </code><code class="p">(</code><code class="n">URLClassLoader</code><code class="w"> </code><code class="n">loader</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">URLClassLoader</code><code class="p">(</code><code class="n">urls</code><code class="p">))</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">clz</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">loader</code><code class="p">.</code><code class="na">loadClass</code><code class="p">(</code><code class="s">"com.example.DFACaller"</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="n">clz</code><code class="p">.</code><code class="na">getName</code><code class="p">());</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>The argument to <code>loadClass()</code> is the binary name of the class file. Note
+that for the <code>URLClassLoader</code> to find the classes correctly,
+they need to be in the expected place on the filesystem. In this
+example, the class <code>com.example.DFACaller</code> would need to be found in the
+file <em>com/example/DFACaller.class</em> relative to the working directory.</p>
+<p><a data-primary="Class.forName()" data-type="indexterm" id="idm45927703747760"/>Alternatively, <code>Class</code> provides <code>Class.forName()</code>, a static method that
+can load classes that are present on the classpath but that haven’t been
+referred to yet.</p>
+<p>This method takes a fully qualified class name. For example:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">jdbcClz</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Class</code><code class="p">.</code><code class="na">forName</code><code class="p">(</code><code class="s">"oracle.jdbc.driver.OracleDriver"</code><code class="p">);</code><code class="w"/></pre>
+<p><a data-primary="ClassNotFoundException" data-type="indexterm" id="idm45927703740432"/>It throws a <code>ClassNotFoundException</code> if the class
+can’t be found. As the example indicates, this was commonly used in older
+versions of Java Database Connectivity (JDBC) to ensure that the correct driver was loaded, while avoiding a
+direct <code>import</code> dependency on the driver classes. With the advent of JDBC 4.0,
+this initialization step is no longer required.</p>
+<p><code>Class.forName()</code> has an alternative, three-argument form, which is
+sometimes used in conjunction with alternative classloaders:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Class</code><code class="p">.</code><code class="na">forName</code><code class="p">(</code><code class="n">String</code><code class="w"> </code><code class="n">name</code><code class="p">,</code><code class="w"> </code><code class="kt">boolean</code><code class="w"> </code><code class="n">inited</code><code class="p">,</code><code class="w"> </code><code class="n">ClassLoader</code><code class="w"> </code><code class="n">classloader</code><code class="p">);</code><code class="w"/></pre>
+<p>There are a host of subclasses of <code>ClassLoader</code> that deal with
+individual special cases of classloading—which fit into the classloader
+hierarchy.</p>
+<section data-pdf-bookmark="Classloader Hierarchy" data-type="sect2"><div class="sect2" id="idm45927703663136">
+<h2>Classloader Hierarchy</h2>
+<p><a data-primary="classloading" data-secondary="hierarchy of classloaders" data-type="indexterm" id="ix_ch11-asciidoc10"/><a data-primary="Java Virtual Machine (JVM)" data-secondary="classloader hierarchy" data-type="indexterm" id="ix_ch11-asciidoc11"/>The JVM has a hierarchy of classloaders; each classloader in the system
+(apart from the initial, “bootstrap” classloader) has a parent that it can delegate to.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>The arrival of modules in Java 9 has affected the details of the way that classloading operates.
+In particular, the classloaders that load the JRE classes are now <em>modular classloaders</em>.</p>
+</div>
+<p>The convention is that a classloader will ask its parent to resolve and
+load a class, and it will perform the job itself if only the parent
+classloader is unable to comply. Some common classloaders are shown in
+<a data-type="xref" href="#javanut8-CHP-11-FIG-2">Figure 11-2</a>.</p>
+<figure><div class="figure" id="javanut8-CHP-11-FIG-2">
+<img alt="JN7 1102" height="447" src="assets/jns8_1102.png" width="600"/>
+<h6><span class="label">Figure 11-2. </span>Classloader hierarchy</h6>
+</div></figure>
+<section data-pdf-bookmark="Bootstrap classloader" data-type="sect3"><div class="sect3" id="idm45927703635824">
+<h3>Bootstrap classloader</h3>
+<p><a data-primary="bootstrap classloader" data-type="indexterm" id="idm45927703634816"/><a data-primary="classloading" data-secondary="bootstrap classloader" data-type="indexterm" id="idm45927703634208"/>This is the first classloader to appear in any JVM process and is only used to load the core system classes.
+In older texts, it is sometimes referred to as the <em>primordial classloader</em>, but modern usage favors the bootstrap name.</p>
+<p>For performance reasons, the bootstrap classloader does no verification and relies on the boot classpath being secure.
+Types loaded by the bootstrap classloader are implicitly granted all security permissions, and so this group of modules is kept as restricted as possible.</p>
+</div></section>
+<section data-pdf-bookmark="Platform classloader" data-type="sect3"><div class="sect3" id="idm45927703632208">
+<h3>Platform classloader</h3>
+<p><a data-primary="classloading" data-secondary="platform classloader" data-type="indexterm" id="idm45927703631200"/><a data-primary="extension classloader" data-type="indexterm" id="idm45927703630352"/><a data-primary="platform classloader" data-type="indexterm" id="idm45927703629744"/>This level of the classloader hierarchy was originally used as the <em>extension classloader</em>, but this mechanism has now been removed.</p>
+<p>In its new role, this classloader (which has the bootstrap classloader as its parent) is now known as the <em>platform classloader</em>. It is available via the method <code>ClassLoader::getPlatformClassLoader</code> and appears in (and is required by) the Java specification from version 9 onward.
+It loads the remaining modules from the base system (the equivalent of the old <code>rt.jar</code> used in version 8 and earlier).</p>
+<p>In the new modular implementations of Java, far less code is required to bootstrap a Java process; accordingly, as much JDK code (now represented as modules) as possible has been moved out of the scope of the bootstrap loader and into the platform loader instead.</p>
+</div></section>
+<section data-pdf-bookmark="Application classloader" data-type="sect3"><div class="sect3" id="idm45927703626320">
+<h3>Application classloader</h3>
+<p><a data-primary="application classloader" data-type="indexterm" id="idm45927703625312"/><a data-primary="classloading" data-secondary="application classloader" data-type="indexterm" id="idm45927703624704"/><a data-primary="system (application) classloader" data-type="indexterm" id="idm45927703623856"/>Historically, this was sometimes called the system classloader, but
+this is a bad name, as it doesn’t load the system (the bootstrap and platform classloaders do).
+Instead, it is the classloader that loads application code from either the module path or the classpath.
+It is the most commonly encountered classloader, and it has the platform classloader as its parent.</p>
+<p>To perform classloading, the application classloader first searches the named modules on the module path (the modules known to any of the three built-in classloaders).
+If the requested class is found in a module known to one of these classloaders then that classloader will load the class.
+If the class is not found in any known named module, the application classloader delegates to its parent (the platform classloader).
+If the parent fails to find the class, the application classloader
+searches the classpath.
+If the class is found on the classpath, it is loaded as a member of the application classloader’s unnamed module.</p>
+<p>The application classloader is very widely used, but many advanced Java
+frameworks require functionality that the main classloaders do not
+supply. Instead, extensions to the standard classloaders are required.
+This forms the basis of “custom classloading”—which relies on
+implementing a new subclass of <code>ClassLoader</code>.</p>
+</div></section>
+<section data-pdf-bookmark="Custom classloader" data-type="sect3"><div class="sect3" id="idm45927703621712">
+<h3>Custom classloader</h3>
+<p><a data-primary="classloading" data-secondary="custom classloader" data-type="indexterm" id="idm45927703620352"/><a data-primary="custom classloader" data-type="indexterm" id="idm45927703619504"/>When performing classloading, sooner or later we have to turn data
+into code. As noted earlier, the <code>defineClass()</code> (actually a group of
+related methods) is responsible for converting a <code>byte[]</code> into a class
+object.</p>
+<p>This method is usually called from a subclass—for example, this simple
+custom classloader that creates a class object from a file on disk:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">static</code><code class="w"> </code><code class="kd">class</code> <code class="nc">DiskLoader</code><code class="w"> </code><code class="kd">extends</code><code class="w"> </code><code class="n">ClassLoader</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="kd">public</code><code class="w"> </code><code class="nf">DiskLoader</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="kd">super</code><code class="p">(</code><code class="n">DiskLoader</code><code class="p">.</code><code class="na">class</code><code class="p">.</code><code class="na">getClassLoader</code><code class="p">());</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+
+<code class="w">  </code><code class="kd">public</code><code class="w"> </code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">loadFromDisk</code><code class="p">(</code><code class="n">String</code><code class="w"> </code><code class="n">clzPath</code><code class="p">)</code><code class="w"> </code><code class="kd">throws</code><code class="w"> </code><code class="n">IOException</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="kt">byte</code><code class="o">[]</code><code class="w"> </code><code class="n">b</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Files</code><code class="p">.</code><code class="na">readAllBytes</code><code class="p">(</code><code class="n">Paths</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="n">clzPath</code><code class="p">));</code><code class="w"/>
+
+<code class="w">    </code><code class="k">return</code><code class="w"> </code><code class="n">defineClass</code><code class="p">(</code><code class="kc">null</code><code class="p">,</code><code class="w"> </code><code class="n">b</code><code class="p">,</code><code class="w"> </code><code class="mi">0</code><code class="p">,</code><code class="w"> </code><code class="n">b</code><code class="p">.</code><code class="na">length</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>Notice that in the preceding example we didn’t need to have the class
+file in the “correct” location on disk, as we did for the
+<code>URLClassLoader</code> example.</p>
+<p>We need to provide a classloader to act as parent for any custom
+classloader. In this example, we provided the classloader that loaded
+the <code>DiskLoader</code> class (which would usually be the application
+classloader).</p>
+<p>Custom classloading is a very common technique in Java EE and advanced
+SE environments, and it provides very sophisticated capabilities to the
+Java platform. We’ll see an example of custom classloading later in
+this chapter.</p>
+<p>One drawback of dynamic classloading is that when working with a class
+object that we loaded dynamically, we typically have little or no
+information about the class.<a data-startref="ix_ch11-asciidoc11" data-type="indexterm" id="idm45927703551776"/><a data-startref="ix_ch11-asciidoc10" data-type="indexterm" id="idm45927703551072"/> To work effectively with this class, we
+will therefore have to use a set of dynamic programming
+techniques known as reflection<a data-startref="ix_ch11-asciidoc9" data-type="indexterm" id="idm45927703550272"/><a data-startref="ix_ch11-asciidoc8" data-type="indexterm" id="idm45927703549600"/>.<a data-startref="ix_ch11-asciidoc3" data-type="indexterm" id="idm45927703548800"/></p>
+</div></section>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Reflection" data-type="sect1"><div class="sect1" id="idm45927708020816">
+<h1>Reflection</h1>
+<p><a data-primary="Class object" data-secondary="reflection" data-type="indexterm" id="ix_ch11-asciidoc12"/><a data-primary="reflection" data-type="indexterm" id="ix_ch11-asciidoc13"/>Reflection is the capability of examining, operating on, and modifying
+objects at runtime. This includes modifying their structure and
+behavior—even self-modification.</p>
+<div data-type="warning" epub:type="warning"><h6>Warning</h6>
+<p>The Java modules system introduces major changes to how reflection
+works on the platform. It is important to reread this section after you have
+gained an understanding of how modules work and how the two capabilities
+interact. More details on how modules restrict reflection are available in
+<a data-type="xref" href="ch12.xhtml#javanut8-CHP-12-SECT-2-5">“Open Modules”</a>.</p>
+</div>
+<p>Reflection is capable of working even when type and method names are not
+known at compile time. It uses the essential metadata provided by class
+objects and can discover method or field names from the class
+object—and then acquire an object representing the method or field.</p>
+<p>Instances can also be constructed reflectively (by using
+<code>Class::newInstance()</code> or another constructor). With a reflectively
+constructed object and a <code>Method</code> object, we can call any method
+on an object of a previously unknown type.</p>
+<p>This makes reflection a very powerful technique, so it’s important to
+understand when we should use it, and when it’s overkill.</p>
+<section data-pdf-bookmark="When to Use Reflection" data-type="sect2"><div class="sect2" id="idm45927703466272">
+<h2>When to Use Reflection</h2>
+<p><a data-primary="reflection" data-secondary="when to use" data-type="indexterm" id="idm45927703465024"/>Many, if not most, Java frameworks use reflection in some capacity.
+Writing architectures that are flexible enough to cope with code that is
+unknown until runtime usually requires reflection. For example, plug-in
+architectures, debuggers, code browsers, and read-evaluate-print loop (REPL)-like environments are
+usually implemented on top of reflection.</p>
+<p>Reflection is also widely used in testing (e.g., by the JUnit and TestNG libraries) and for mock object creation. If you’ve used any kind
+of Java framework you have almost certainly been using reflective
+code, even if you didn’t realize it.</p>
+<p>To start using the Reflection API in your own code, the most important
+thing to realize is that it is about accessing objects where virtually
+no information is known, and that the interactions can be cumbersome
+because of this.</p>
+<p>If some static information is known about dynamically
+loaded classes (e.g., that the classes loaded all implement a known
+interface), this can greatly simplify the interaction with the
+classes and reduce the burden of operating reflectively.</p>
+<p>It is a common mistake to try to create a reflective framework that
+attempts to account for all possible circumstances, instead of dealing only
+with the cases that are immediately applicable to the problem domain.</p>
+</div></section>
+<section data-pdf-bookmark="How to Use Reflection" data-type="sect2"><div class="sect2" id="idm45927703462384">
+<h2>How to Use Reflection</h2>
+<p><a data-primary="reflection" data-secondary="how to use" data-type="indexterm" id="ix_ch11-asciidoc14"/>The first step in any reflective operation is to get a <code>Class</code> object
+representing the type to be operated on. From this, other objects,
+representing fields, methods, or constructors, can be accessed and
+applied to instances of the unknown type.</p>
+<p>If we already have an instance of an unknown type, we can retrieve its class
+via the <code>Object::getClass()</code> method. Alternatively, the static <code>Class.forName()</code>
+method demonstrated in <a data-type="xref" href="#javanut8-CHP-11-SECT-4">“Applied Classloading”</a> for classloading can
+also perform lookup of a <code>Class</code> object by name:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code><code class="w"> </code><code class="n">clzForInstance</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="s">"Hi"</code><code class="p">.</code><code class="na">getClass</code><code class="p">();</code><code class="w"/>
+<code class="kd">var</code><code class="w"> </code><code class="n">clzForName</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Class</code><code class="p">.</code><code class="na">forName</code><code class="p">(</code><code class="s">"java.lang.String"</code><code class="p">);</code><code class="w"/></pre>
+<p>Once we have an instance of a <code>Class</code> object, the next reasonable step is
+calling a method reflectively. The <code>Method</code> objects are some of the most commonly
+used objects provided by the Reflection API. We’ll discuss them in detail—the
+
+<span class="keep-together"><code>Constructor</code></span> and <code>Field</code> objects are similar in many respects.</p>
+<section data-pdf-bookmark="Method objects" data-type="sect3"><div class="sect3" id="idm45927703402192">
+<h3>Method objects</h3>
+<p><a data-primary="Method objects, Reflection and" data-type="indexterm" id="ix_ch11-asciidoc15"/><a data-primary="reflection" data-secondary="Method objects" data-type="indexterm" id="ix_ch11-asciidoc16"/>A class object contains a <code>Method</code> object for each method on the class.
+These are lazily created after classloading, and so they aren’t immediately
+visible in an IDE’s <span class="keep-together">debugger</span>.</p>
+<p class="pagebreak-before">Methods on <code>Class</code> allow us to retrieve (and if necessary lazily initialize)
+these <code>Method</code> objects:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code><code class="w"> </code><code class="n">clz</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Class</code><code class="p">.</code><code class="na">forName</code><code class="p">(</code><code class="s">"java.lang.String"</code><code class="p">);</code><code class="w"/>
+
+<code class="c1">// Returns list of all publicly visible methods on clz</code><code class="w"/>
+<code class="kd">var</code><code class="w"> </code><code class="n">publicMethods</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">clz</code><code class="p">.</code><code class="na">getMethods</code><code class="p">();</code><code class="w"/>
+
+<code class="c1">// Returns named method from clz, or throws</code><code class="w"/>
+<code class="kd">var</code><code class="w"> </code><code class="n">toString</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">clz</code><code class="p">.</code><code class="na">getMethod</code><code class="p">(</code><code class="s">"toString"</code><code class="p">,</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">Class</code><code class="o">[]</code><code class="w"> </code><code class="p">{});</code><code class="w"/></pre>
+<p>The second parameter to <code>getMethod()</code> takes an array of <code>Class</code> objects
+representing the method’s parameters to distinguish between method overrides.</p>
+<p>The code demonstrated here will only list and find public methods on our <code>Class</code>
+objects. There are alternative methods of the form <code>getDeclaredMethod</code> that
+parallel what we’ve shown that allow access to protected and private methods.
+We’ll have more to say shortly about using these mechanisms to circumvent Java’s
+access model, though.</p>
+<p>Like any good Java object, <code>Method</code> provides accessors for all the relevant
+information about the method. Let’s look at the most critical metadata about a
+method that we can retrieve:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">var</code><code class="w"> </code><code class="n">clz</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Class</code><code class="p">.</code><code class="na">forName</code><code class="p">(</code><code class="s">"java.lang.String"</code><code class="p">);</code><code class="w"/>
+<code class="kd">var</code><code class="w"> </code><code class="n">toString</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">clz</code><code class="p">.</code><code class="na">getMethod</code><code class="p">(</code><code class="s">"toString"</code><code class="p">,</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">Class</code><code class="o">[]</code><code class="w"> </code><code class="p">{});</code><code class="w"/>
+
+<code class="c1">// The method's name</code><code class="w"/>
+<code class="n">String</code><code class="w"> </code><code class="n">name</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">toString</code><code class="p">.</code><code class="na">getName</code><code class="p">();</code><code class="w"/>
+
+<code class="c1">// Generic type information for the method</code><code class="w"/>
+<code class="n">TypeVariable</code><code class="o">[]</code><code class="w"> </code><code class="n">typeParams</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">toString</code><code class="p">.</code><code class="na">getTypeParameters</code><code class="p">();</code><code class="w"/>
+
+<code class="c1">// List of method annotations with RUNTIME retention</code><code class="w"/>
+<code class="n">Annotation</code><code class="o">[]</code><code class="w"> </code><code class="n">ann</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">toString</code><code class="p">.</code><code class="na">getAnnotations</code><code class="p">();</code><code class="w"/>
+
+<code class="c1">// List of checked exception types declared by method</code><code class="w"/>
+<code class="n">Class</code><code class="o">[]</code><code class="w"> </code><code class="n">exceptions</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">toString</code><code class="p">.</code><code class="na">getExceptionTypes</code><code class="p">();</code><code class="w"/>
+
+<code class="c1">// List of Parameter objects for callling the method</code><code class="w"/>
+<code class="n">Parameter</code><code class="o">[]</code><code class="w"> </code><code class="n">params</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">toString</code><code class="p">.</code><code class="na">getParameters</code><code class="p">();</code><code class="w"/>
+
+<code class="c1">// List of just the `Class` for each parameter to the method</code><code class="w"/>
+<code class="n">Class</code><code class="o">[]</code><code class="w"> </code><code class="n">paramTypes</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">toString</code><code class="p">.</code><code class="na">getParameterTypes</code><code class="p">();</code><code class="w"/>
+
+<code class="c1">// Class of the method's return type</code><code class="w"/>
+<code class="n">Class</code><code class="w"> </code><code class="n">ret</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">toString</code><code class="p">.</code><code class="na">getReturnType</code><code class="p">();</code><code class="w"/></pre>
+<p>We can explore the metadata of a <code>Method</code> object by calling accessor methods,
+but by far the single biggest use case for <code>Method</code> is reflective invocation.</p>
+<p>The methods represented by these objects can be executed by reflection
+using the <code>invoke()</code> method on <code>Method</code>.</p>
+<p>An example of invoking <code>hashCode()</code> on a <code>String</code> object follows:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Object</code><code class="w"> </code><code class="n">rcvr</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="s">"a"</code><code class="p">;</code><code class="w"/>
+<code class="k">try</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">Class</code><code class="o">&lt;?&gt;[]</code><code class="w"> </code><code class="n">argTypes</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">Class</code><code class="o">[]</code><code class="w"> </code><code class="p">{</code><code class="w"> </code><code class="p">};</code><code class="w"/>
+<code class="w">  </code><code class="n">Object</code><code class="o">[]</code><code class="w"> </code><code class="n">args</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="kc">null</code><code class="p">;</code><code class="w"/>
+
+<code class="w">  </code><code class="n">Method</code><code class="w"> </code><code class="n">meth</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">rcvr</code><code class="p">.</code><code class="na">getClass</code><code class="p">().</code><code class="na">getMethod</code><code class="p">(</code><code class="s">"hashCode"</code><code class="p">,</code><code class="w"> </code><code class="n">argTypes</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="n">Object</code><code class="w"> </code><code class="n">ret</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">meth</code><code class="p">.</code><code class="na">invoke</code><code class="p">(</code><code class="n">rcvr</code><code class="p">,</code><code class="w"> </code><code class="n">args</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="n">ret</code><code class="p">);</code><code class="w"/>
+
+<code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">IllegalArgumentException</code><code class="w"> </code><code class="o">|</code><code class="w"> </code><code class="n">NoSuchMethodException</code><code class="w"> </code><code class="o">|</code><code class="w"/>
+<code class="w">         </code><code class="n">SecurityException</code><code class="w"> </code><code class="n">e</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">e</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">IllegalAccessException</code><code class="w"> </code><code class="o">|</code><code class="w"> </code><code class="n">InvocationTargetException</code><code class="w"> </code><code class="n">x</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">x</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>Note that the static type of <code>rcvr</code> was declared to be <code>Object</code>. No
+static type information was used during the reflective invocation. The
+<code>invoke()</code> method also returns <code>Object</code>, so the actual return type of
+<code>hashCode()</code> has been autoboxed to <code>Integer</code>.</p>
+<p>This autoboxing is one of the aspects of Reflection where you can see some of the
+slight awkwardness of the API—which we’ll discuss in an upcoming section.<a data-startref="ix_ch11-asciidoc16" data-type="indexterm" id="idm45927703057104"/><a data-startref="ix_ch11-asciidoc15" data-type="indexterm" id="idm45927703056400"/></p>
+</div></section>
+<section data-pdf-bookmark="Creating instances with Reflection" data-type="sect3"><div class="sect3" id="idm45927703401568">
+<h3>Creating instances with Reflection</h3>
+<p><a data-primary="reflection" data-secondary="creating instances with" data-type="indexterm" id="idm45927703054240"/>If you’re looking to create new instances of a <code>Class</code> object, you’ll find that the method lookups don’t help.
+Our constructors don’t have names that those APIs are able to find.</p>
+<p>In the simplest case of a no-argument constructor, a helper is available via the <code>Class</code> object:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">clz</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="p">...</code><code class="w"> </code><code class="c1">// Get some class object</code><code class="w"/>
+<code class="n">Object</code><code class="w"> </code><code class="n">rcvr</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">clz</code><code class="p">.</code><code class="na">getDeclaredConstructor</code><code class="p">().</code><code class="na">newInstance</code><code class="p">();</code><code class="w"/></pre>
+<p>For constructors that take arguments, <code>Class</code> has methods like <code>getConstructor</code>
+that allow for finding the override you’re after. While they return a
+separate 
+<span class="keep-together"><code>Constructor</code></span> type, using these is very similar to what we’ve already
+seen for interacting with <code>Method</code> objects.</p>
+<p>Let’s look at an extended example and see how to combine reflection with custom classloading to inspect a class file on disk for any deprecated methods (these should be marked with <code>@Deprecated</code>):</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">class</code> <code class="nc">CustomClassloadingExamples</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="kd">static</code><code class="w"> </code><code class="kd">class</code> <code class="nc">DiskLoader</code><code class="w"> </code><code class="kd">extends</code><code class="w"> </code><code class="n">ClassLoader</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+
+<code class="w">        </code><code class="kd">public</code><code class="w"> </code><code class="nf">DiskLoader</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">            </code><code class="kd">super</code><code class="p">(</code><code class="n">DiskLoader</code><code class="p">.</code><code class="na">class</code><code class="p">.</code><code class="na">getClassLoader</code><code class="p">());</code><code class="w"/>
+<code class="w">        </code><code class="p">}</code><code class="w"/>
+
+<code class="w">        </code><code class="kd">public</code><code class="w"> </code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">loadFromDisk</code><code class="p">(</code><code class="n">String</code><code class="w"> </code><code class="n">clzName</code><code class="p">)</code><code class="w"/>
+<code class="w">          </code><code class="kd">throws</code><code class="w"> </code><code class="n">IOException</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">            </code><code class="kt">byte</code><code class="o">[]</code><code class="w"> </code><code class="n">b</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">Files</code><code class="p">.</code><code class="na">readAllBytes</code><code class="p">(</code><code class="n">Paths</code><code class="p">.</code><code class="na">get</code><code class="p">(</code><code class="n">clzName</code><code class="p">));</code><code class="w"/>
+
+<code class="w">            </code><code class="k">return</code><code class="w"> </code><code class="n">defineClass</code><code class="p">(</code><code class="kc">null</code><code class="p">,</code><code class="w"> </code><code class="n">b</code><code class="p">,</code><code class="w"> </code><code class="mi">0</code><code class="p">,</code><code class="w"> </code><code class="n">b</code><code class="p">.</code><code class="na">length</code><code class="p">);</code><code class="w"/>
+<code class="w">        </code><code class="p">}</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">findDeprecatedMethods</code><code class="p">(</code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">clz</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="k">for</code><code class="w"> </code><code class="p">(</code><code class="n">Method</code><code class="w"> </code><code class="n">m</code><code class="w"> </code><code class="p">:</code><code class="w"> </code><code class="n">clz</code><code class="p">.</code><code class="na">getMethods</code><code class="p">())</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">            </code><code class="k">for</code><code class="w"> </code><code class="p">(</code><code class="n">Annotation</code><code class="w"> </code><code class="n">a</code><code class="w"> </code><code class="p">:</code><code class="w"> </code><code class="n">m</code><code class="p">.</code><code class="na">getAnnotations</code><code class="p">())</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">                </code><code class="k">if</code><code class="w"> </code><code class="p">(</code><code class="n">a</code><code class="p">.</code><code class="na">annotationType</code><code class="p">()</code><code class="w"> </code><code class="o">==</code><code class="w"> </code><code class="n">Deprecated</code><code class="p">.</code><code class="na">class</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">                    </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="n">m</code><code class="p">.</code><code class="na">getName</code><code class="p">());</code><code class="w"/>
+<code class="w">                </code><code class="p">}</code><code class="w"/>
+<code class="w">            </code><code class="p">}</code><code class="w"/>
+<code class="w">        </code><code class="p">}</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+
+<code class="w">    </code><code class="kd">public</code><code class="w"> </code><code class="kd">static</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">main</code><code class="p">(</code><code class="n">String</code><code class="o">[]</code><code class="w"> </code><code class="n">args</code><code class="p">)</code><code class="w"/>
+<code class="w">      </code><code class="kd">throws</code><code class="w"> </code><code class="n">IOException</code><code class="p">,</code><code class="w"> </code><code class="n">ClassNotFoundException</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="kd">var</code><code class="w"> </code><code class="n">rfx</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">CustomClassloadingExamples</code><code class="p">();</code><code class="w"/>
+
+<code class="w">        </code><code class="k">if</code><code class="w"> </code><code class="p">(</code><code class="n">args</code><code class="p">.</code><code class="na">length</code><code class="w"> </code><code class="o">&gt;</code><code class="w"> </code><code class="mi">0</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">            </code><code class="n">DiskLoader</code><code class="w"> </code><code class="n">dlr</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">DiskLoader</code><code class="p">();</code><code class="w"/>
+<code class="w">            </code><code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">clzToTest</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">dlr</code><code class="p">.</code><code class="na">loadFromDisk</code><code class="p">(</code><code class="n">args</code><code class="o">[</code><code class="mi">0</code><code class="o">]</code><code class="p">);</code><code class="w"/>
+<code class="w">            </code><code class="n">rfx</code><code class="p">.</code><code class="na">findDeprecatedMethods</code><code class="p">(</code><code class="n">clzToTest</code><code class="p">);</code><code class="w"/>
+<code class="w">        </code><code class="p">}</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>This showcases some of the power of reflective techniques, but there are also problems that come with using the API.</p>
+</div></section>
+<section data-pdf-bookmark="Problems with Reflection" data-type="sect3"><div class="sect3" id="idm45927702762240">
+<h3>Problems with Reflection</h3>
+<p><a data-primary="reflection" data-secondary="problems with" data-type="indexterm" id="idm45927702760992"/><a data-primary="Reflection API" data-type="indexterm" id="idm45927702760016"/>Java’s Reflection API is often the only way to deal with dynamically
+loaded code, but a number of annoyances in the API can make it slightly awkward to deal with:</p>
+<ul>
+<li>
+<p>Heavy use of <code>Object[]</code> to represent call arguments and other
+instances.</p>
+</li>
+<li>
+<p>Also uses <code>Class[]</code> when talking about types.</p>
+</li>
+<li>
+<p>Methods can be overloaded on name, so we need an array of types to
+distinguish between methods.</p>
+</li>
+<li>
+<p>Representing primitive types can be problematic—we have to manually
+box and unbox.</p>
+</li>
+</ul>
+<p><a data-primary="void keyword" data-type="indexterm" id="idm45927702526704"/><code>void</code> is a particular problem—there is a <code>void.class</code>, but it’s not
+used consistently. Java doesn’t really know whether <code>void</code> is a type or
+not, and some methods in the Reflection API use <code>null</code> instead.</p>
+<p>This is cumbersome, and can be error prone—in particular, the slight
+verbosity of Java’s array syntax can lead to errors.</p>
+<p>One further problem is the treatment of non-<code>public</code> methods. As mentioned
+before, instead of using <code>getMethod()</code>, we must use <code>getDeclaredMethod()</code> to get
+a reference to a non-<code>public</code> method. Additionally, to call non-<code>public</code>
+methods, we must override the Java access control
+subsystem, calling <code>setAccessible()</code> to allow it to be executed:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">class</code> <code class="nc">MyCache</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="kd">private</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">flush</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="c1">// Flush the cache...</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/>
+
+<code class="n">Class</code><code class="o">&lt;?&gt;</code><code class="w"> </code><code class="n">clz</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">MyCache</code><code class="p">.</code><code class="na">class</code><code class="p">;</code><code class="w"/>
+<code class="k">try</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">Object</code><code class="w"> </code><code class="n">rcvr</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">clz</code><code class="p">.</code><code class="na">newInstance</code><code class="p">();</code><code class="w"/>
+<code class="w">  </code><code class="n">Class</code><code class="o">&lt;?&gt;[]</code><code class="w"> </code><code class="n">argTypes</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">Class</code><code class="o">[]</code><code class="w"> </code><code class="p">{</code><code class="w"> </code><code class="p">};</code><code class="w"/>
+<code class="w">  </code><code class="n">Object</code><code class="o">[]</code><code class="w"> </code><code class="n">args</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="kc">null</code><code class="p">;</code><code class="w"/>
+
+<code class="w">  </code><code class="n">Method</code><code class="w"> </code><code class="n">meth</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">clz</code><code class="p">.</code><code class="na">getDeclaredMethod</code><code class="p">(</code><code class="s">"flush"</code><code class="p">,</code><code class="w"> </code><code class="n">argTypes</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="n">meth</code><code class="p">.</code><code class="na">setAccessible</code><code class="p">(</code><code class="kc">true</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="n">meth</code><code class="p">.</code><code class="na">invoke</code><code class="p">(</code><code class="n">rcvr</code><code class="p">,</code><code class="w"> </code><code class="n">args</code><code class="p">);</code><code class="w"/>
+<code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">IllegalArgumentException</code><code class="w"> </code><code class="o">|</code><code class="w"> </code><code class="n">NoSuchMethodException</code><code class="w"> </code><code class="o">|</code><code class="w"/>
+<code class="w">         </code><code class="n">InstantiationException</code><code class="w"> </code><code class="o">|</code><code class="w"> </code><code class="n">SecurityException</code><code class="w"> </code><code class="n">e</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">e</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">IllegalAccessException</code><code class="w"> </code><code class="o">|</code><code class="w"> </code><code class="n">InvocationTargetException</code><code class="w"> </code><code class="n">x</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">x</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>Because reflection always involves unknown information, we just have to live
+with some of this verbosity. It’s the price of using the dynamic, runtime power
+of reflective invocation.<a data-startref="ix_ch11-asciidoc14" data-type="indexterm" id="idm45927702472016"/></p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Dynamic Proxies" data-type="sect2"><div class="sect2" id="idm45927702471280">
+<h2>Dynamic Proxies</h2>
+<p><a data-primary="dynamic proxies" data-type="indexterm" id="ix_ch11-asciidoc17"/><a data-primary="reflection" data-secondary="dynamic proxies" data-type="indexterm" id="ix_ch11-asciidoc18"/>One last piece of the Java Reflection story is the creation of
+dynamic proxies. These are classes (which extend
+<code>java.lang.reflect.Proxy</code>) that implement a number of interfaces. The
+implementing class is constructed dynamically at runtime and forwards
+all calls to an invocation handler object:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">InvocationHandler</code><code class="w"> </code><code class="n">handler</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="p">(</code><code class="n">proxy</code><code class="p">,</code><code class="w"> </code><code class="n">method</code><code class="p">,</code><code class="w"> </code><code class="n">args</code><code class="p">)</code><code class="w"> </code><code class="o">-&gt;</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">String</code><code class="w"> </code><code class="n">name</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">method</code><code class="p">.</code><code class="na">getName</code><code class="p">();</code><code class="w"/>
+<code class="w">    </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"Called as: "</code><code class="o">+</code><code class="w"> </code><code class="n">name</code><code class="p">);</code><code class="w"/>
+<code class="w">    </code><code class="k">return</code><code class="w"> </code><code class="k">switch</code><code class="w"> </code><code class="p">(</code><code class="n">name</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">        </code><code class="k">case</code><code class="w"> </code><code class="s">"isOpen"</code><code class="w"> </code><code class="o">-&gt;</code><code class="w"> </code><code class="n">Boolean</code><code class="p">.</code><code class="na">TRUE</code><code class="p">;</code><code class="w"/>
+<code class="w">        </code><code class="k">case</code><code class="w"> </code><code class="s">"close"</code><code class="w"> </code><code class="o">-&gt;</code><code class="w"> </code><code class="kc">null</code><code class="p">;</code><code class="w"/>
+<code class="w">        </code><code class="k">default</code><code class="w"> </code><code class="o">-&gt;</code><code class="w"> </code><code class="kc">null</code><code class="p">;</code><code class="w"/>
+<code class="w">    </code><code class="p">};</code><code class="w"/>
+<code class="p">};</code><code class="w"/>
+
+<code class="n">Channel</code><code class="w"> </code><code class="n">c</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="p">(</code><code class="n">Channel</code><code class="p">)</code><code class="w"> </code><code class="n">Proxy</code><code class="p">.</code><code class="na">newProxyInstance</code><code class="p">(</code><code class="w"/>
+<code class="w">        </code><code class="n">Channel</code><code class="p">.</code><code class="na">class</code><code class="p">.</code><code class="na">getClassLoader</code><code class="p">(),</code><code class="w"/>
+<code class="w">        </code><code class="k">new</code><code class="w"> </code><code class="n">Class</code><code class="o">[]</code><code class="w"> </code><code class="p">{</code><code class="w"> </code><code class="n">Channel</code><code class="p">.</code><code class="na">class</code><code class="w"> </code><code class="p">},</code><code class="w"/>
+<code class="w">        </code><code class="n">handler</code><code class="p">);</code><code class="w"/>
+<code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="s">"Open? "</code><code class="o">+</code><code class="w"> </code><code class="n">c</code><code class="p">.</code><code class="na">isOpen</code><code class="p">());</code><code class="w"/>
+<code class="n">c</code><code class="p">.</code><code class="na">close</code><code class="p">();</code><code class="w"/></pre>
+<p>Proxies can be used as stand-in objects for testing (especially in test
+mocking approaches).</p>
+<p>Another use case is to provide partial implementations of interfaces,
+or to decorate or otherwise control some aspect of delegation:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">class</code> <code class="nc">RememberingList</code><code class="w"> </code><code class="kd">implements</code><code class="w"> </code><code class="n">InvocationHandler</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="kd">private</code><code class="w"> </code><code class="kd">final</code><code class="w"> </code><code class="n">List</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code><code class="w"> </code><code class="n">proxied</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">ArrayList</code><code class="o">&lt;&gt;</code><code class="p">();</code><code class="w"/>
+
+<code class="w">  </code><code class="nd">@Override</code><code class="w"/>
+<code class="w">  </code><code class="kd">public</code><code class="w"> </code><code class="n">Object</code><code class="w"> </code><code class="nf">invoke</code><code class="p">(</code><code class="n">Object</code><code class="w"> </code><code class="n">proxy</code><code class="p">,</code><code class="w"> </code><code class="n">Method</code><code class="w"> </code><code class="n">method</code><code class="p">,</code><code class="w"> </code><code class="n">Object</code><code class="o">[]</code><code class="w"> </code><code class="n">args</code><code class="p">)</code><code class="w"/>
+<code class="w">                         </code><code class="kd">throws</code><code class="w"> </code><code class="n">Throwable</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">String</code><code class="w"> </code><code class="n">name</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">method</code><code class="p">.</code><code class="na">getName</code><code class="p">();</code><code class="w"/>
+<code class="w">    </code><code class="k">switch</code><code class="w"> </code><code class="p">(</code><code class="n">name</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">      </code><code class="k">case</code><code class="w"> </code><code class="s">"clear"</code><code class="p">:</code><code class="w"/>
+<code class="w">        </code><code class="k">return</code><code class="w"> </code><code class="kc">null</code><code class="p">;</code><code class="w"/>
+<code class="w">      </code><code class="k">case</code><code class="w"> </code><code class="s">"remove"</code><code class="p">:</code><code class="w"/>
+<code class="w">      </code><code class="k">case</code><code class="w"> </code><code class="s">"removeAll"</code><code class="p">:</code><code class="w"/>
+<code class="w">        </code><code class="k">return</code><code class="w"> </code><code class="kc">false</code><code class="p">;</code><code class="w"/>
+<code class="w">    </code><code class="p">}</code><code class="w"/>
+
+<code class="w">    </code><code class="k">return</code><code class="w"> </code><code class="n">method</code><code class="p">.</code><code class="na">invoke</code><code class="p">(</code><code class="n">proxied</code><code class="p">,</code><code class="w"> </code><code class="n">args</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/>
+
+<code class="n">RememberingList</code><code class="w"> </code><code class="n">hList</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">RememberingList</code><code class="p">();</code><code class="w"/>
+
+<code class="kd">var</code><code class="w"> </code><code class="n">l</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="p">(</code><code class="n">List</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code><code class="p">)</code><code class="w"> </code><code class="n">Proxy</code><code class="p">.</code><code class="na">newProxyInstance</code><code class="p">(</code><code class="w"/>
+<code class="w">                                </code><code class="n">List</code><code class="p">.</code><code class="na">class</code><code class="p">.</code><code class="na">getClassLoader</code><code class="p">(),</code><code class="w"/>
+<code class="w">                                </code><code class="k">new</code><code class="w"> </code><code class="n">Class</code><code class="o">[]</code><code class="w"> </code><code class="p">{</code><code class="w"> </code><code class="n">List</code><code class="p">.</code><code class="na">class</code><code class="w"> </code><code class="p">},</code><code class="w"/>
+<code class="w">                                </code><code class="n">hList</code><code class="p">);</code><code class="w"/>
+<code class="n">l</code><code class="p">.</code><code class="na">add</code><code class="p">(</code><code class="s">"cat"</code><code class="p">);</code><code class="w"/>
+<code class="n">l</code><code class="p">.</code><code class="na">add</code><code class="p">(</code><code class="s">"bunny"</code><code class="p">);</code><code class="w"/>
+<code class="n">l</code><code class="p">.</code><code class="na">clear</code><code class="p">();</code><code class="w"/>
+<code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="n">l</code><code class="p">);</code><code class="w"/></pre>
+<p>Proxies are an extremely powerful and flexible capability used
+within many Java frameworks<a data-startref="ix_ch11-asciidoc18" data-type="indexterm" id="idm45927701774224"/><a data-startref="ix_ch11-asciidoc17" data-type="indexterm" id="idm45927701773616"/>.<a data-startref="ix_ch11-asciidoc13" data-type="indexterm" id="idm45927701772880"/><a data-startref="ix_ch11-asciidoc12" data-type="indexterm" id="idm45927701772176"/></p>
+</div></section>
+</div></section>
+<section data-pdf-bookmark="Method Handles" data-type="sect1"><div class="sect1" id="idm45927701813664">
+<h1>Method Handles</h1>
+<p><a data-primary="Method Handles" data-type="indexterm" id="ix_ch11-asciidoc19"/>In Java 7, a brand new mechanism for introspection and method access
+was introduced. This was originally designed for use with dynamic
+languages, which may need to participate in method dispatch decisions at
+runtime. <a data-primary="invokedynamic bytecode" data-type="indexterm" id="idm45927701811152"/>To support this at the JVM level, the new <code>invokedynamic</code>
+bytecode was introduced. This bytecode was not used by Java 7 itself,
+but with the advent of Java 8, it was extensively used in both lambda
+expressions and the Nashorn JavaScript implementation.</p>
+<p>Even without <code>invokedynamic</code>, the new Method Handles API is comparable
+in power to many aspects of the Reflection API—and can be cleaner and
+conceptually simpler to use, even standalone. It can be thought of as
+Reflection done in a safer, more modern way.</p>
+<section data-pdf-bookmark="MethodType" data-type="sect2"><div class="sect2" id="idm45927701808976">
+<h2>MethodType</h2>
+<p><a data-primary="Method Handles" data-secondary="MethodType objects" data-type="indexterm" id="idm45927701807536"/><a data-primary="MethodType objects" data-type="indexterm" id="idm45927701806560"/>In Reflection, method signatures are represented as <code>Class[]</code>.
+This is quite cumbersome.
+By contrast, method handles rely on <code>MethodType</code> objects. These are a typesafe and object-oriented way to represent the type signature of a method.</p>
+<p>They include the return type and argument types but not the receiver
+type or name of the method. The name is not present, as this allows any
+method of the correct signature to be bound to any name (as per the
+functional interface behavior of lambda expressions).</p>
+<p>A type signature for a method is represented as an immutable instance of <code>MethodType</code>, as acquired from the factory method <code>MethodType.methodType()</code>.
+The zeroth argument to <code>methodType()</code> is the return type of the method, with the types of the method arguments following it.</p>
+<p>For <span class="keep-together">example</span>:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// Matching method type for toString()</code><code class="w"/>
+<code class="n">MethodType</code><code class="w"> </code><code class="n">m2Str</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">MethodType</code><code class="p">.</code><code class="na">methodType</code><code class="p">(</code><code class="n">String</code><code class="p">.</code><code class="na">class</code><code class="p">);</code><code class="w"/>
+
+<code class="c1">// Matching method type for Integer.parseInt()</code><code class="w"/>
+<code class="n">MethodType</code><code class="w"> </code><code class="n">mtParseInt</code><code class="w"> </code><code class="o">=</code><code class="w"/>
+<code class="w">  </code><code class="n">MethodType</code><code class="p">.</code><code class="na">methodType</code><code class="p">(</code><code class="n">Integer</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"> </code><code class="n">String</code><code class="p">.</code><code class="na">class</code><code class="p">);</code><code class="w"/>
+
+<code class="c1">// Matching method type for defineClass() from ClassLoader</code><code class="w"/>
+<code class="n">MethodType</code><code class="w"> </code><code class="n">mtdefClz</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">MethodType</code><code class="p">.</code><code class="na">methodType</code><code class="p">(</code><code class="n">Class</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"> </code><code class="n">String</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"/>
+<code class="w">                                            </code><code class="kt">byte</code><code class="o">[]</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"> </code><code class="kt">int</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"/>
+<code class="w">                                            </code><code class="kt">int</code><code class="p">.</code><code class="na">class</code><code class="p">);</code><code class="w"/></pre>
+<p>This single piece of the puzzle provides significant gains over
+Reflection, as it makes method signatures significantly easier to
+represent and discuss. The next step is to acquire a handle on a method.
+This is achieved by a lookup process.</p>
+</div></section>
+<section data-pdf-bookmark="Method Lookup" data-type="sect2"><div class="sect2" id="idm45927701750256">
+<h2>Method Lookup</h2>
+<p><a data-primary="lookup queries" data-type="indexterm" id="ix_ch11-asciidoc20"/><a data-primary="Method Handles" data-secondary="lookup queries" data-type="indexterm" id="ix_ch11-asciidoc21"/>Method lookup queries are performed on the class where a method is
+defined and are dependent on the context that they are executed from:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="c1">// String.toString only has return type with no parameter</code><code class="w"/>
+<code class="n">MethodType</code><code class="w"> </code><code class="n">mtToString</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">MethodType</code><code class="p">.</code><code class="na">methodType</code><code class="p">(</code><code class="n">String</code><code class="p">.</code><code class="na">class</code><code class="p">);</code><code class="w"/>
+
+<code class="k">try</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">Lookup</code><code class="w"> </code><code class="n">l</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">MethodHandles</code><code class="p">.</code><code class="na">lookup</code><code class="p">();</code><code class="w"/>
+<code class="w">  </code><code class="n">MethodHandle</code><code class="w"> </code><code class="n">mh</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">l</code><code class="p">.</code><code class="na">findVirtual</code><code class="p">(</code><code class="n">String</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"> </code><code class="s">"toString"</code><code class="p">,</code><code class="w"/>
+<code class="w">                                  </code><code class="n">mtToString</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="n">mh</code><code class="p">);</code><code class="w"/>
+<code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">NoSuchMethodException</code><code class="w"> </code><code class="o">|</code><code class="w"> </code><code class="n">IllegalAccessException</code><code class="w"> </code><code class="n">e</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">e</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p><a data-primary="MethodHandles.lookup()" data-type="indexterm" id="idm45927701616624"/>We always need to call <code>MethodHandles.lookup()</code>—this gives us a lookup
+context object based on the currently executing method.</p>
+<p><a data-primary="Lookup object" data-type="indexterm" id="idm45927701530656"/>Lookup objects have several methods (which all start with <code>find</code>)
+declared on them for method resolution. These include <code>findVirtual()</code>,
+<code>findConstructor()</code>, and <code>findStatic()</code>.</p>
+<p>One big difference between the Reflection and Method Handles APIs is
+access control. A <code>Lookup</code> object will only return methods that are
+accessible to the context where the lookup was created—and there is no
+way to subvert this (no equivalent of Reflection’s <code>setAccessible()</code>
+hack).</p>
+<p>For example, we can see that when we attempt to look up the protected
+<code>ClassLoader::defineClass()</code> method from a general lookup context, we fail to
+resolve it with an <code>IllegalAccessException</code>, as the protected method is
+not accessible:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">static</code><code class="w"> </code><code class="kt">void</code><code class="w"> </code><code class="nf">lookupDefineClass</code><code class="p">(</code><code class="n">Lookup</code><code class="w"> </code><code class="n">l</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">MethodType</code><code class="w"> </code><code class="n">mt</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">MethodType</code><code class="p">.</code><code class="na">methodType</code><code class="p">(</code><code class="n">Class</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"> </code><code class="n">String</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"/>
+<code class="w">                                        </code><code class="kt">byte</code><code class="o">[]</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"> </code><code class="kt">int</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"/>
+<code class="w">                                        </code><code class="kt">int</code><code class="p">.</code><code class="na">class</code><code class="p">);</code><code class="w"/>
+
+<code class="w">  </code><code class="k">try</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">MethodHandle</code><code class="w"> </code><code class="n">mh</code><code class="w"> </code><code class="o">=</code><code class="w"/>
+<code class="w">      </code><code class="n">l</code><code class="p">.</code><code class="na">findVirtual</code><code class="p">(</code><code class="n">ClassLoader</code><code class="p">.</code><code class="na">class</code><code class="p">,</code><code class="w"> </code><code class="s">"defineClass"</code><code class="p">,</code><code class="w"> </code><code class="n">mt</code><code class="p">);</code><code class="w"/>
+<code class="w">    </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="n">mh</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">NoSuchMethodException</code><code class="w"> </code><code class="o">|</code><code class="w"> </code><code class="n">IllegalAccessException</code><code class="w"> </code><code class="n">e</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">e</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/>
+
+<code class="n">Lookup</code><code class="w"> </code><code class="n">l</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">MethodHandles</code><code class="p">.</code><code class="na">lookup</code><code class="p">();</code><code class="w"/>
+<code class="n">lookupDefineClass</code><code class="p">(</code><code class="n">l</code><code class="p">);</code><code class="w"/></pre>
+<p class="pagebreak-before">Method handles therefore always comply with the security manager, even
+when the equivalent reflective code does not. They are access-checked at
+the point where the lookup context is constructed—the lookup object will
+not return handles to any methods to which it does not have proper
+access.</p>
+<p>The lookup object, or method handles derived from it, can be returned to
+other contexts, including ones where access to the method would no
+longer be possible. Under those circumstances, the handle is still
+executable—access control is checked at lookup time, as we can see in
+this example:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="kd">public</code><code class="w"> </code><code class="kd">class</code> <code class="nc">SneakyLoader</code><code class="w"> </code><code class="kd">extends</code><code class="w"> </code><code class="n">ClassLoader</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="kd">public</code><code class="w"> </code><code class="nf">SneakyLoader</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="kd">super</code><code class="p">(</code><code class="n">SneakyLoader</code><code class="p">.</code><code class="na">class</code><code class="p">.</code><code class="na">getClassLoader</code><code class="p">());</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+
+<code class="w">  </code><code class="kd">public</code><code class="w"> </code><code class="n">Lookup</code><code class="w"> </code><code class="nf">getLookup</code><code class="p">()</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="k">return</code><code class="w"> </code><code class="n">MethodHandles</code><code class="p">.</code><code class="na">lookup</code><code class="p">();</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"/>
+
+<code class="n">SneakyLoader</code><code class="w"> </code><code class="n">snLdr</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="k">new</code><code class="w"> </code><code class="n">SneakyLoader</code><code class="p">();</code><code class="w"/>
+<code class="n">l</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">snLdr</code><code class="p">.</code><code class="na">getLookup</code><code class="p">();</code><code class="w"/>
+<code class="n">lookupDefineClass</code><code class="p">(</code><code class="n">l</code><code class="p">);</code><code class="w"/></pre>
+<p>With a <code>Lookup</code> object, we’re able to produce method handles to any
+method we have access to. We can also produce a way of accessing fields
+that may not have a method that gives access. The <code>findGetter()</code> and
+<code>findSetter()</code> methods on <code>Lookup</code> produce method handles that can read
+or update fields as needed.<a data-startref="ix_ch11-asciidoc21" data-type="indexterm" id="idm45927701284880"/><a data-startref="ix_ch11-asciidoc20" data-type="indexterm" id="idm45927701284176"/></p>
+</div></section>
+<section data-pdf-bookmark="Invoking Method Handles" data-type="sect2"><div class="sect2" id="idm45927701749664">
+<h2>Invoking Method Handles</h2>
+<p><a data-primary="Method Handles" data-secondary="invoking" data-type="indexterm" id="idm45927701282224"/>A method handle represents the ability to call a method. They are
+strongly typed and as typesafe as possible. Instances are all of some
+subclass of <code>java.lang.invoke.MethodHandle</code>, which is a class that needs
+special treatment from the JVM.</p>
+<p><a data-primary="invoke()" data-type="indexterm" id="idm45927701280480"/><a data-primary="invokeExact()" data-type="indexterm" id="idm45927701223552"/>There are two ways to invoke a method handle—<code>invoke()</code> and
+<code>invokeExact()</code>. Both of these take the receiver and call arguments as
+parameters. <code>invokeExact()</code> tries to call the method handle directly as
+is, whereas <code>invoke()</code> will massage call arguments if needed.</p>
+<p>In general, <code>invoke()</code> performs an <code>asType()</code> conversion if
+necessary—this converts arguments according to these rules:</p>
+<ul>
+<li>
+<p>A primitive argument will be boxed if required.</p>
+</li>
+<li>
+<p>A boxed primitive will be unboxed if required.</p>
+</li>
+<li>
+<p>Primitives will be widened if necessary.</p>
+</li>
+</ul>
+<ul class="pagebreak-before">
+<li>
+<p><a data-primary="void keyword" data-type="indexterm" id="idm45927701216080"/>A <code>void</code> return type will be massaged to 0 or <code>null</code>, depending on
+whether the expected return was primitive or of reference type.</p>
+</li>
+<li>
+<p><code>null</code> values are passed through, regardless of static type.</p>
+</li>
+</ul>
+<p>With these potential conversions in place, invocation looks like this:</p>
+<pre data-code-language="java" data-type="programlisting"><code class="n">Object</code><code class="w"> </code><code class="n">rcvr</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="s">"a"</code><code class="p">;</code><code class="w"/>
+<code class="k">try</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">MethodType</code><code class="w"> </code><code class="n">mt</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">MethodType</code><code class="p">.</code><code class="na">methodType</code><code class="p">(</code><code class="kt">int</code><code class="p">.</code><code class="na">class</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="n">MethodHandles</code><code class="p">.</code><code class="na">Lookup</code><code class="w"> </code><code class="n">l</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">MethodHandles</code><code class="p">.</code><code class="na">lookup</code><code class="p">();</code><code class="w"/>
+<code class="w">  </code><code class="n">MethodHandle</code><code class="w"> </code><code class="n">mh</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="n">l</code><code class="p">.</code><code class="na">findVirtual</code><code class="p">(</code><code class="n">rcvr</code><code class="p">.</code><code class="na">getClass</code><code class="p">(),</code><code class="w"> </code><code class="s">"hashCode"</code><code class="p">,</code><code class="w"> </code><code class="n">mt</code><code class="p">);</code><code class="w"/>
+
+<code class="w">  </code><code class="kt">int</code><code class="w"> </code><code class="n">ret</code><code class="p">;</code><code class="w"/>
+<code class="w">  </code><code class="k">try</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">ret</code><code class="w"> </code><code class="o">=</code><code class="w"> </code><code class="p">(</code><code class="kt">int</code><code class="p">)</code><code class="n">mh</code><code class="p">.</code><code class="na">invoke</code><code class="p">(</code><code class="n">rcvr</code><code class="p">);</code><code class="w"/>
+<code class="w">    </code><code class="n">System</code><code class="p">.</code><code class="na">out</code><code class="p">.</code><code class="na">println</code><code class="p">(</code><code class="n">ret</code><code class="p">);</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">Throwable</code><code class="w"> </code><code class="n">t</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">    </code><code class="n">t</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="w">  </code><code class="p">}</code><code class="w"/>
+<code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">IllegalArgumentException</code><code class="w"> </code><code class="o">|</code><code class="w"/>
+<code class="w">  </code><code class="n">NoSuchMethodException</code><code class="w"> </code><code class="o">|</code><code class="w"> </code><code class="n">SecurityException</code><code class="w"> </code><code class="n">e</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">e</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="p">}</code><code class="w"> </code><code class="k">catch</code><code class="w"> </code><code class="p">(</code><code class="n">IllegalAccessException</code><code class="w"> </code><code class="n">x</code><code class="p">)</code><code class="w"> </code><code class="p">{</code><code class="w"/>
+<code class="w">  </code><code class="n">x</code><code class="p">.</code><code class="na">printStackTrace</code><code class="p">();</code><code class="w"/>
+<code class="p">}</code><code class="w"/></pre>
+<p>Method handles provide a clearer and more coherent way to access the
+same dynamic programming capabilities as Reflection. In addition, they
+are designed to work well with the low-level execution model of the JVM
+and thus hold out the promise of much better performance than Reflection
+can provide.<a data-startref="ix_ch11-asciidoc19" data-type="indexterm" id="idm45927700982016"/></p>
+</div></section>
+</div></section>
+<div data-type="footnotes"><p data-type="footnote" id="idm45927708690512"><sup><a href="ch11.xhtml#idm45927708690512-marker">1</a></sup> As in <a data-type="xref" href="ch06.xhtml#javanut8-CHP-6">Chapter 6</a>, we’re borrowing the expression <em>transitive closure</em> from the branch of mathematics called graph theory.</p></div></div></section></div></body></html>
