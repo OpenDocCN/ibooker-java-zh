@@ -215,11 +215,13 @@
   id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些暂停有时会让开发人员担心，但对于大多数主流用途来说，Java运行在一个不断在处理器核心上交换进程的操作系统（可能还有多个虚拟化层）上，因此这种轻微的额外停顿通常不是一个问题。在HotSpot情况下，已经做了大量工作来优化GC并减少STW时间，对于那些对应用程序工作负载重要的情况。我们将在下一节讨论其中的一些优化。
 - en: How the JVM Optimizes Garbage Collection
   id: totrans-28
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: JVM 如何优化垃圾收集
 - en: The *weak generational hypothesis* (WGH) is a great example of one of the runtime
     facts about software that we introduced in [Chapter 1](ch01.xhtml#javanut8-CHP-1).
     Simply put, it is that objects tend to have one of a small number of possible
@@ -227,6 +229,7 @@
   id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: '*弱分代假设*（WGH）是我们在[第1章](ch01.xhtml#javanut8-CHP-1)中介绍的关于软件的运行时事实的一个很好的例子。简单来说，对象倾向于具有少数几种可能的寿命期望（称为*代*）。'
 - en: Usually objects are alive for only a very short amount of time (sometimes called
     transient objects) and then become eligible for garbage collection. However, some
     small fraction of objects live longer and are destined to become part of the longer-term
@@ -236,21 +239,25 @@
   id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常对象只存活了很短的时间（有时称为瞬态对象），然后就变得符合垃圾回收的条件。然而，有一小部分对象存活时间较长，注定成为程序长期状态的一部分（有时称为*工作集*）。这可以在[图 6-2](#javanut8-CHP-6-FIG-2)中看到，我们看到内存量（或创建的对象数）根据预期生命周期进行了绘制。
 - en: '![JN7 0602](assets/jns8_0602.png)'
   id: totrans-31
   prefs: []
   type: TYPE_IMG
+  zh: '![JN7 0602](assets/jns8_0602.png)'
 - en: Figure 6-2\. Weak generational hypothesis
   id: totrans-32
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-2\. 弱分代假设
 - en: This fact is not deducible from static analysis of programs, and yet when we
     measure the runtime behavior of software, we see that it is broadly true across
     a wide range of workloads.
   id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个事实无法从程序的静态分析中推断出来，然而当我们测量软件的运行时行为时，我们看到这在广泛的工作负载范围内都是正确的。
 - en: The HotSpot JVM has a garbage collection subsystem that is designed specifically
     to take advantage of the weak generational hypothesis, and in this section, we
     will discuss how these techniques apply to short-lived objects (which is the majority
@@ -259,6 +266,7 @@
   id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: HotSpot JVM有一个专门设计用于利用弱分代假设的垃圾收集子系统，在本节中，我们将讨论这些技术如何适用于短寿命对象（这是主要情况）。这个讨论直接适用于HotSpot，但其他JVM通常也采用类似或相关的技术。
 - en: In its simplest form, a *generational garbage collector* is one that takes notice
     of the WGH. They take the position that some extra bookkeeping to monitor memory
     will be more than paid for by gains obtained by being friendly to the WGH. In
@@ -267,11 +275,13 @@
   id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 在其最简单的形式中，*分代垃圾收集器*是一种注意到**WGH**的收集器。他们认为，通过监视内存的一些额外记录，将会比通过友好对待**WGH**而获得的收益更加有利。在最简单的分代收集器中，通常只有两代——通常被称为年轻代和老年代。
 - en: Evacuation
   id: totrans-36
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 疏散
 - en: In our original formulation of mark-and-sweep, during the cleanup phase, the
     GC reclaimed individual objects for reuse. This is fine, as far as it goes, but
     it leads to issues such as memory fragmentation and the GC needing to maintain
@@ -281,6 +291,7 @@
   id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们最初的标记-清除方法中，在清理阶段，GC回收了个别对象以便重用。这在某种程度上是可以接受的，但会导致内存碎片化以及GC需要维护一个可用的“空闲列表”内存块。然而，如果WGH成立，并且在任何给定的GC周期中大多数对象都是死的，那么使用替代方法来回收空间可能是有意义的。
 - en: This works by dividing the heap up into separate memory spaces; new objects
     are created in a space called *Eden*. Then, on each GC run, we locate only the
     live objects and move them to a different space, in a process called *evacuation*.
@@ -290,21 +301,26 @@
   id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种方法通过将堆划分为不同的内存空间来实现；新对象在*Eden*空间创建。然后，在每次GC运行时，我们仅定位活动对象并将它们移动到不同的空间，这个过程称为*evacuation*。执行这种操作的收集器称为*evacuating
+    collectors*，它们的特性是在收集结束时可以清空整个内存空间，以便重复使用。
 - en: '[Figure 6-3](#javanut8-CHP-6-FIG-3) shows an evacuating collector in action,
     with solid blocks representing surviving objects, and hatched boxes representing
     allocated but now dead (and unreachable) objects.'
   id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: '[图 6-3](#javanut8-CHP-6-FIG-3)展示了一个正在运行的evacuating collector，实心块表示存活对象，而斜线框表示已分配但已经死亡（且不可达）的对象。'
 - en: '![JN7 0603](assets/jns8_0603.png)'
   id: totrans-40
   prefs: []
   type: TYPE_IMG
+  zh: '![JN7 0603](assets/jns8_0603.png)'
 - en: Figure 6-3\. Evacuating collectors
   id: totrans-41
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图6-3\. 疏散收集器
 - en: This is potentially much more efficient than the naive collection approach,
     because the dead objects are never touched. This means that the GC time is proportional
     to the number of live objects, rather than the number of allocated objects. The
@@ -314,6 +330,7 @@
   id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 这比朴素的收集方法潜在地更高效，因为不会触及死亡对象。这意味着GC时间与活动对象的数量成正比，而不是已分配对象的数量。唯一的缺点是略微增加的簿记成本——我们必须支付复制活动对象的成本，但这几乎总是与通过疏散策略实现的巨大收益相比微不足道。
 - en: The use of an evacuating collector also allows the use of per-thread allocation.
     This means that each application thread can be given a contiguous chunk of memory
     (called a *thread-local allocation buffer* or TLAB) for its exclusive use when
@@ -322,6 +339,7 @@
   id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用疏散收集器还允许使用每线程分配。这意味着每个应用程序线程可以被分配一个连续的内存块（称为*thread-local allocation buffer*或TLAB），用于分配新对象时的独占使用。当分配新对象时，只需在分配缓冲区中递增指针，这是一个极其廉价的操作。
 - en: If an object is created just before a collection starts, then it will not have
     time to fulfill its purpose and die before the GC cycle starts. In a collector
     with only two generations, this short-lived object will be moved into the long-lived
@@ -331,6 +349,7 @@
   id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果一个对象在收集开始前刚创建，那么它将没有时间完成其目的并在GC周期开始之前死亡。在只有两个代的收集器中，这种短寿命对象将被移动到长寿命区域，几乎立即死亡，并在下一次完全收集之前一直保留在那里。由于这些收集事件较少（通常也更昂贵），这显得相当浪费。
 - en: To mitigate this, HotSpot has a concept of a *survivor space*, an area used
     to house objects that have survived previous collections of young objects. A surviving
     object is copied by the evacuating collector between survivor spaces until a *tenuring
@@ -340,11 +359,14 @@
   id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了缓解这个问题，HotSpot引入了*survivor space*的概念，用于存放已经经历过前几次年轻对象收集的对象。存活的对象在*tenuring
+    threshold*达到之前会在survivor spaces之间被疏散收集器复制，当对象被*promoted*到老年代时，称为*Tenured*或*OldGen*。这解决了短寿命对象堆积在老年代的问题，但也增加了GC子系统的复杂性。
 - en: Compaction
   id: totrans-46
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 压缩
 - en: A different form of collection algorithm is known as a *compacting collector*.
     The main feature of these collectors is that, at the end of the collection cycle,
     allocated memory (i.e., surviving objects) is arranged as a single contiguous
@@ -352,6 +374,7 @@
   id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一种收集算法形式称为*compacting collector*。这些收集器的主要特点是，在收集周期结束时，分配的内存（即存活对象）被安排在收集区域内的单一连续区域中。
 - en: The normal case is that all the surviving objects have been “shuffled up” within
     the memory pool (or region) usually to the start of the memory range, and there
     is now a pointer indicating the start of empty space available for objects to
@@ -1152,35 +1175,42 @@
   id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程不在运行，因为它已调用`Thread.sleep()`或已调用`Object.wait()`或`Thread.join()`并带有超时值。
 - en: '`TERMINATED`'
   id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: '`TERMINATED`'
 - en: The thread has completed execution. Its `run()` method has exited normally or
     by throwing an exception.
   id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程已完成执行。它的`run()`方法已正常退出或通过抛出异常退出。
 - en: These states represent the view of a thread that is common (at least across
     mainstream operating systems), leading to a view like [Figure 6-4](#javanut8-CHP-6-FIG-4).
   id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些状态代表了一个线程的视图，这在至少主流操作系统中是通用的，导致一个像图[6-4](#javanut8-CHP-6-FIG-4)那样的视图。
 - en: '![JN7 0604](assets/jns8_0604.png)'
   id: totrans-163
   prefs: []
   type: TYPE_IMG
+  zh: '![JN7 0604](assets/jns8_0604.png)'
 - en: Figure 6-4\. Thread lifecycle
   id: totrans-164
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-4\. 线程生命周期
 - en: 'Threads can also be made to sleep, by using the `Thread.sleep()` method. This
     takes an argument in milliseconds, which indicates how long the thread would like
     to sleep like this:'
   id: totrans-165
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程也可以使用`Thread.sleep()`方法使其休眠。这需要一个以毫秒为单位的参数，表示线程希望休眠的时间，如下所示：
 - en: '[PRE4]'
   id: totrans-166
   prefs: []
@@ -1191,12 +1221,14 @@
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 注
 - en: The argument to sleep is a request to the operating system, not a demand. For
     example, your program may sleep for longer than requested, depending on load and
     other factors specific to the runtime environment.
   id: totrans-168
   prefs: []
   type: TYPE_NORMAL
+  zh: '`sleep`方法的参数是对操作系统的请求，而不是一个要求。例如，您的程序可能因负载和其他特定于运行时环境的因素而睡眠时间超过请求的时间。'
 - en: We will discuss the other methods of `Thread` later in this chapter, but first
     we need to cover some important theory that deals with how threads access memory
     and that is fundamental to understanding why multithreaded programming is hard
@@ -1204,11 +1236,13 @@
   id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将在本章稍后讨论`Thread`的其他方法，但首先我们需要涵盖一些重要的理论，这些理论涉及线程如何访问内存，并且对理解为何多线程编程困难且可能给开发者带来许多问题至关重要。
 - en: Visibility and Mutability
   id: totrans-170
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 可见性和可变性
 - en: In mainstream Java implementations, all Java application threads in a process
     have their own call stacks (and local variables) but share a single heap. This
     makes it very easy to share objects between threads, as all that is required is
@@ -1216,6 +1250,7 @@
   id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 在主流的 Java 实现中，一个进程中所有 Java 应用程序线程都有自己的调用堆栈（和本地变量），但共享一个单一的堆。这使得在线程之间共享对象非常容易，因为只需从一个线程传递一个引用到另一个线程即可。这在图[6-5](#javanut8-CHP-6-FIG-5)中有所说明。
 - en: This leads to a general design principle of Java—that objects are *visible by
     default*. If I have a reference to an object, I can copy it and hand it off to
     another thread with no restrictions. A Java reference is essentially a typed pointer
@@ -1224,6 +1259,7 @@
   id: totrans-172
   prefs: []
   type: TYPE_NORMAL
+  zh: 这导致了 Java 的一个通用设计原则——对象*默认是可见的*。如果我有一个对象的引用，我可以复制它并将其交给另一个线程，没有任何限制。Java 的引用实质上是指向堆中某个位置的类型化指针——线程共享同一个堆，因此默认可见是一种自然的模型。
 - en: 'In addition to visible by default, Java has another property that is important
     to fully understand concurrency, which is that objects are *mutable*: the contents
     of an object instance’s fields can usually be changed. We can make individual
@@ -1232,31 +1268,37 @@
   id: totrans-173
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了默认可见性，Java 还有另一个对完全理解并发性非常重要的属性，即对象是*可变的*：对象实例字段的内容通常可以更改。我们可以通过使用`final`关键字使个别变量或引用常量化，但这并不适用于对象的内容。
 - en: As we will see throughout the rest of this chapter, the combination of these
     two properties—visibility across threads and object mutability—gives rise to a
     great many complexities when trying to reason about concurrent Java programs.
   id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如我们将在本章的其余部分看到的那样，这两个属性的结合——跨线程的可见性和对象的可变性——在尝试推理并发 Java 程序时引发了许多复杂性。
 - en: '![JN7 0605](assets/jns8_0605.png)'
   id: totrans-175
   prefs: []
   type: TYPE_IMG
+  zh: '![JN7 0605](assets/jns8_0605.png)'
 - en: Figure 6-5\. Shared memory between threads
   id: totrans-176
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-5\. 线程之间共享的内存
 - en: Concurrent safety
   id: totrans-177
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 并发安全性
 - en: If we’re to write correct multithreaded code, then we want our programs to satisfy
     a certain important property.
   id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们要编写正确的多线程代码，那么我们希望我们的程序满足某个重要的属性。
 - en: In [Chapter 5](ch05.xhtml#javanut8-CHP-5), we defined a safe object-oriented
     program to be one where we move objects from legal state to legal state by calling
     their accessible methods. This definition works well for single-threaded code.
@@ -1705,6 +1747,7 @@
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: setDaemon()
 - en: A *user thread* is a thread that will prevent the process from exiting if it
     is still alive—this is the default for threads. Sometimes, programmers want threads
     that will not prevent an exit from occurring—these are called *daemon threads*.
@@ -1713,11 +1756,13 @@
   id: totrans-241
   prefs: []
   type: TYPE_NORMAL
+  zh: '*用户线程*是一种线程，如果它仍然活动，将阻止进程退出 — 这是线程的默认行为。有时，程序员希望线程不阻止退出的发生 — 这些称为*守护线程*。线程作为守护线程或用户线程的状态可以通过`setDaemon()`方法来控制，并可以使用`isDaemon()`来检查。'
 - en: setUncaughtExceptionHandler()
   id: totrans-242
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: setUncaughtExceptionHandler()
 - en: 'When a thread exits by throwing an exception (i.e., one that the program did
     not catch), the default behavior is to print the name of the thread, the type
     of the exception, the exception message, and a stack trace. If this isn’t sufficient,
@@ -1725,6 +1770,7 @@
   id: totrans-243
   prefs: []
   type: TYPE_NORMAL
+  zh: 当线程通过抛出异常（即程序没有捕获的异常）退出时，默认行为是打印线程的名称、异常类型、异常消息和堆栈跟踪。如果这不足够，您可以为线程安装自定义的未捕获异常处理程序。例如：
 - en: '[PRE9]'
   id: totrans-244
   prefs: []
@@ -1736,16 +1782,19 @@
   id: totrans-245
   prefs: []
   type: TYPE_NORMAL
+  zh: 在某些情况下，这可能很有用；例如，如果一个线程正在监督一组其他工作线程，那么这种模式可以用来重新启动任何死掉的线程。
 - en: There is also `setDefaultUncaughtExceptionHandler()`, a `static` method that
     sets a backup handler for catching any thread’s uncaught exceptions.
   id: totrans-246
   prefs: []
   type: TYPE_NORMAL
+  zh: 还有`setDefaultUncaughtExceptionHandler()`，一个`static`方法，设置一个备用处理程序来捕获任何线程的未捕获异常。
 - en: Deprecated Methods of Thread
   id: totrans-247
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 线程的弃用方法
 - en: In addition to the useful methods of `Thread`, there are a number of dangerous
     methods you should not use. These methods form part of the original Java thread
     API but were quickly found to be unsuitable for developer use. Unfortunately,
@@ -1755,11 +1804,13 @@
   id: totrans-248
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了`Thread`的有用方法外，还有一些危险的方法不应使用。这些方法是原始Java线程API的一部分，但很快就被发现不适合开发者使用。不幸的是，由于Java的向后兼容性要求，无法将它们从API中移除。开发者需要意识到它们，并在*所有*情况下都避免使用。
 - en: stop()
   id: totrans-249
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: stop()
 - en: '`Thread.stop()` is almost impossible to use correctly without violating concurrent
     safety, as `stop()` kills the thread immediately, without giving it any opportunity
     to recover objects to legal states. This is in direct opposition to principles
@@ -1767,11 +1818,13 @@
   id: totrans-250
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Thread.stop()` 几乎不可能正确使用，因为`stop()`会立即终止线程，而不给它恢复对象到合法状态的机会。这与并发安全等原则直接相反，因此永远不应使用。'
 - en: suspend(), resume(), and countStackFrames()
   id: totrans-251
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: suspend()、resume()和countStackFrames()
 - en: The `suspend()` mechanism does not release any monitors it holds when it suspends,
     so any other thread that attempts to access those monitors will deadlock. In practice,
     this mechanism produces race conditions between these deadlocks and `resume()`
@@ -1781,16 +1834,19 @@
   id: totrans-252
   prefs: []
   type: TYPE_NORMAL
+  zh: 当`suspend()`机制挂起时，不会释放它所持有的任何监视器，因此任何试图访问这些监视器的其他线程都将导致死锁。在实践中，这种机制在这些死锁和`resume()`之间产生竞态条件，使得这组方法无法使用。方法`countStackFrames()`仅在对挂起线程调用时才起作用，因此也被此限制禁用。
 - en: destroy()
   id: totrans-253
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: destroy()
 - en: This method was never implemented—it would have suffered from the same race
     condition issues as `suspend()` if it had been.
   id: totrans-254
   prefs: []
   type: TYPE_NORMAL
+  zh: 此方法从未被实现 — 如果实现了，它将会遇到与`suspend()`相同的竞态条件问题。
 - en: All of these deprecated methods should always be avoided. A set of safe alternative
     patterns that achieve the same intended aims as the preceding methods have been
     developed. A good example of one of these patterns is the run-until-shutdown pattern
@@ -1798,67 +1854,79 @@
   id: totrans-255
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有这些已弃用的方法都应该被始终避免使用。已开发出一组安全替代模式，这些模式实现了与前述方法相同的预期目标。其中一个良好的示例是我们已经见过的运行至关闭模式。
 - en: Working with Threads
   id: totrans-256
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 多线程处理
 - en: 'To work effectively with multithreaded code, you need the basic facts about
     monitors and locks at your command. This checklist contains the main facts you
     should know:'
   id: totrans-257
   prefs: []
   type: TYPE_NORMAL
+  zh: 要有效地处理多线程代码，您需要掌握关于监视器和锁的基本事实。这份清单包含了您应该了解的主要事实：
 - en: Synchronization is about protecting object state and memory, not code.
   id: totrans-258
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 同步是保护对象状态和内存，而不是代码。
 - en: Synchronization is a cooperative mechanism between threads. One bug can break
     the cooperative model and have far-reaching consequences.
   id: totrans-259
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 同步是线程之间的一种合作机制。一个 bug 可能会破坏这种合作模型，并产生深远的后果。
 - en: Acquiring a monitor only prevents other threads from acquiring the monitor—it
     does not protect the object.
   id: totrans-260
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 获取监视器只会防止其他线程获取监视器 —— 它并不会保护对象本身。
 - en: Unsynchronized methods can see (and modify) inconsistent state, even while the
     object’s monitor is locked.
   id: totrans-261
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 非同步方法在锁定对象的监视器时可能会看到（并修改）不一致的状态。
 - en: Locking an `Object[]` doesn’t lock the individual objects.
   id: totrans-262
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 锁定 `Object[]` 不会锁定各个对象。
 - en: Primitives are not mutable, so they can’t (and don’t need to) be locked.
   id: totrans-263
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 基本类型是不可变的，因此它们不能（也不需要）被锁定。
 - en: '`synchronized` can’t appear on a method declaration in an interface.'
   id: totrans-264
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在接口方法声明中不能出现 `synchronized`。
 - en: Inner classes are just syntactic sugar, so locks on inner classes have no effect
     on the enclosing class (and vice versa).
   id: totrans-265
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 内部类只是语法糖，因此对内部类的锁定对外部类没有影响（反之亦然）。
 - en: Java’s locks are *reentrant*. This means that if a thread holding a monitor
     encounters a synchronized block for the same monitor, it can enter the block.^([1](ch06.xhtml#idm45927729626048))
   id: totrans-266
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Java 的锁是 *可重入* 的。这意味着如果持有监视器的线程遇到同一监视器的同步块，它可以进入该块。^([1](ch06.xhtml#idm45927729626048))
 - en: We’ve also seen that threads can be asked to sleep for a period of time. It
     is also useful to go to sleep for an unspecified amount of time and wait until
     a condition is met. In Java, this is handled by the `wait()` and `notify()` methods
@@ -1866,6 +1934,8 @@
   id: totrans-267
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们还看到线程可以被要求睡眠一段时间。同样有用的是无限期地睡眠，直到满足条件。在 Java 中，这通过 `Object` 上存在的 `wait()` 和
+    `notify()` 方法来处理。
 - en: Just as every Java object has a lock associated with it, every object maintains
     a list of waiting threads. When a thread calls the `wait()` method of an object,
     any locks the thread holds are temporarily released, and the thread is added to
@@ -1875,11 +1945,14 @@
   id: totrans-268
   prefs: []
   type: TYPE_NORMAL
+  zh: 就像每个 Java 对象都有一个关联的锁一样，每个对象都维护着一个等待线程的列表。当线程调用对象的 `wait()` 方法时，线程持有的任何锁都会被临时释放，并且该线程会被添加到该对象的等待线程列表中，并停止运行。当另一个线程调用相同对象的
+    `notifyAll()` 方法时，对象会唤醒等待的线程，并允许它们继续运行。
 - en: 'For example, let’s look at a simplified version of a queue that is safe for
     multithreaded use:'
   id: totrans-269
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，让我们看一个简化版本的队列，它对多线程使用是安全的：
 - en: '[PRE10]'
   id: totrans-270
   prefs: []
@@ -1893,32 +1966,39 @@
   id: totrans-271
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果队列为空（导致 `pop()` 失败），这个类会在 `WaitingQueue` 的实例上使用 `wait()`。等待的线程会暂时释放其监视器，允许另一个线程来获取它
+    —— 一个可能会在队列上 `push()` 新内容的线程。当原始线程再次被唤醒时，它会从最初等待的位置重新开始运行，并重新获取它的监视器。
 - en: Note
   id: totrans-272
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 注意
 - en: '`wait()` and `notify()` must be used inside a `synchronized` method or block,
     because of the temporary relinquishing of locks required for them to work properly.'
   id: totrans-273
   prefs: []
   type: TYPE_NORMAL
+  zh: '`wait()` 和 `notify()` 必须在 `synchronized` 方法或块中使用，因为它们需要临时放弃锁才能正常工作。'
 - en: In general, most developers shouldn’t roll their own classes like the one in
     this example—instead, use the libraries and components that the Java platform
     provides for you.
   id: totrans-274
   prefs: []
   type: TYPE_NORMAL
+  zh: 一般情况下，大多数开发者不应该像本例中这样自己编写类——而是应该使用 Java 平台为你提供的库和组件。
 - en: Summary
   id: totrans-275
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 总结
 - en: In this chapter, we’ve discussed Java’s view of memory and concurrency and seen
     how these topics are intrinsically linked.
   id: totrans-276
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们讨论了 Java 对内存和并发的视图，以及这些主题如何密切相关。
 - en: Java’s garbage collection is one of the major aspects of the platform that simplifies
     development by removing the need for programmers to manually manage memory. We
     have seen how Java provides advanced GC capabilities and how modern versions of
@@ -1926,50 +2006,62 @@
   id: totrans-277
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 的垃圾回收是简化开发的重要方面之一，因为它消除了程序员手动管理内存的需要。我们已经看到 Java 提供了先进的 GC 能力，以及现代版本默认使用部分并发的
+    G1 收集器。
 - en: We have also discussed how, as processors develop more and more cores, we will
     need to use concurrent programming techniques to use those cores effectively.
     In other words, concurrency is key to the future of well-performing applications.
   id: totrans-278
   prefs: []
   type: TYPE_NORMAL
+  zh: 此外，随着处理器开发出越来越多的核心，我们将需要使用并发编程技术来有效地利用这些核心。换句话说，并发性是未来高性能应用的关键。
 - en: 'Java’s threading model is based on three fundamental concepts:'
   id: totrans-279
   prefs: []
   type: TYPE_NORMAL
+  zh: Java的线程模型基于三个基本概念：
 - en: Shared, visible-by-default mutable state
   id: totrans-280
   prefs: []
   type: TYPE_NORMAL
+  zh: 共享的、默认可见的可变状态
 - en: Objects are easily shared between different threads in a process, and they can
     be changed (“mutated”) by any thread holding a reference to them.
   id: totrans-281
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象可以在进程中的不同线程之间轻松共享，并且任何持有它们引用的线程都可以对它们进行改变（“突变”）。
 - en: Preemptive thread scheduling
   id: totrans-282
   prefs: []
   type: TYPE_NORMAL
+  zh: 抢占式线程调度
 - en: The OS thread scheduler can swap threads on and off cores at more or less any
     time.
   id: totrans-283
   prefs: []
   type: TYPE_NORMAL
+  zh: 操作系统线程调度程序可以随时在核心上切换线程。
 - en: Object state can only be protected by locks
   id: totrans-284
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象状态只能由锁来保护
 - en: Locks can be hard to use correctly, and state is quite vulnerable—even in unexpected
     places such as read operations.
   id: totrans-285
   prefs: []
   type: TYPE_NORMAL
+  zh: 锁可能难以正确使用，状态在意想不到的地方（如读操作）也很容易受到影响。
 - en: Taken together, these three aspects of Java’s approach to concurrency explain
     why multithreaded programming can cause so many headaches for developers.
   id: totrans-286
   prefs: []
   type: TYPE_NORMAL
+  zh: 综上所述，Java在并发处理方面的这三个方面解释了为什么多线程编程会给开发者带来这么多头痛。
 - en: ^([1](ch06.xhtml#idm45927729626048-marker)) Outside of Java, not all implementations
     of locks have this property.
   id: totrans-287
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch06.xhtml#idm45927729626048-marker)) 除了Java之外，不是所有的锁实现都具有这种属性。
