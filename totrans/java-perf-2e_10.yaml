@@ -1,15 +1,20 @@
 - en: Chapter 10\. Java Servers
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第 10 章。Java 服务器
 - en: 'This chapter explores topics around Java server technologies. At their core,
     these technologies are all about how to transmit data, usually over HTTP, between
     clients and servers. Hence, this chapter’s primary focus is on topics common to
     general server technology: how to scale servers using different thread models,
     asynchronous responses, asynchronous requests, and efficient handling of JSON
     data.'
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章探讨了围绕 Java 服务器技术的主题。在它们的核心，这些技术都是关于如何在客户端和服务器之间传输数据，通常是通过 HTTP。因此，本章的主要重点是通用服务器技术中的常见主题：如何使用不同的线程模型扩展服务器，异步响应，异步请求以及高效处理
+    JSON 数据。
 - en: Scaling servers is mostly about effective use of threads, and that use requires
     event-driven, nonblocking I/O. Traditional Java/Jakarta EE servers like Apache
     Tomcat, IBM WebSphere Application Server, and Oracle WebLogic Server have used
@@ -18,25 +23,37 @@
     building blocks for building smaller-footprint servers, and servers like Spring
     WebFlux and Helidon are built on those frameworks (both use the Netty framework)
     to provide scalable Java servers.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 扩展服务器主要涉及线程的有效使用，并且该使用要求事件驱动、非阻塞 I/O。传统的 Java/Jakarta EE 服务器，如 Apache Tomcat、IBM
+    WebSphere 应用服务器和 Oracle WebLogic 服务器，已经使用 Java NIO API 长时间实现了这一点。当前的服务器框架如 Netty
+    和 Eclipse Vert.x 将 Java NIO API 的复杂性隔离开来，以提供易于使用的构建模块，用于构建更小的占用空间的服务器，而像 Spring
+    WebFlux 和 Helidon 这样的服务器则是基于这些框架构建的（两者都使用 Netty 框架），以提供可扩展的 Java 服务器。
 - en: 'These newer frameworks offer programming models based on reactive programming.
     At its core, *reactive programming* is based on handling asynchronous data streams
     using an event-based paradigm. Though reactive programming is a different way
     of looking at the events, for our purposes both reactive programming and asynchronous
     programming offer the same performance benefit: the ability to scale programs
     (and in particular, to scale I/O) to many connections or data sources.'
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些较新的框架提供基于响应式编程的编程模型。在其核心，*响应式编程* 是基于使用事件驱动范式处理异步数据流。尽管响应式编程是一种看待事件的不同方式，但对于我们的目的来说，无论是响应式编程还是异步编程都提供了相同的性能优势：能够将程序（特别是
+    I/O）扩展到许多连接或数据源。
 - en: Java NIO Overview
+  id: totrans-4
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: Java NIO 概述
 - en: If you’re familiar with the way nonblocking I/O works, you can skip to the next
     section. If not, here’s a brief overview of how it works and why it is important
     as the basis of this chapter.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您熟悉非阻塞 I/O 的工作原理，可以跳过到下一节。如果不熟悉，这里是它如何工作及其作为本章基础的重要性的简要概述。
 - en: In early versions of Java, all I/O was blocking. A thread that attempted to
     read data from a socket would wait (block) until at least some data was available
     or the read timed out. More importantly, there is no way to know if data is available
@@ -45,15 +62,22 @@
     the data, block until data is available, process the request and send back the
     response, and then return to the blocking read on the socket. This leads to the
     situation outlined in [Figure 10-1](#FigureBlockingRead).
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 Java 的早期版本中，所有 I/O 都是阻塞的。试图从套接字读取数据的线程会等待（阻塞），直到至少有一些数据可用或读取超时。更重要的是，没有办法知道套接字上是否有数据可用，而不试图从套接字读取数据。因此，希望处理客户端连接上的数据的线程必须发出读取数据的请求，阻塞直到数据可用，处理请求并发送回响应，然后返回到套接字上的阻塞读取。这导致了
+    [图 10-1](#FigureBlockingRead) 中描述的情况。
 - en: '![Threads blocking on I/O reads from clients](assets/jp2e_1001.png)'
+  id: totrans-7
   prefs: []
   type: TYPE_IMG
+  zh: '![线程在从客户端进行 I/O 读取时阻塞](assets/jp2e_1001.png)'
 - en: Figure 10-1\. Threads blocking on I/O reads from clients
+  id: totrans-8
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 第 10-1 图。线程在从客户端进行 I/O 读取时阻塞。
 - en: Blocking I/O requires that the server has a one-to-one correspondence between
     client connections and server threads; each thread can handle only a single connection.
     This is particularly an issue for clients that want to use HTTP keepalive to avoid
@@ -62,20 +86,28 @@
     and it takes the server 500 milliseconds to process a request. In that case, an
     average of fewer than two requests will be in progress at any point, yet the server
     will need 100 threads to process all the clients. This is highly inefficient.
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 阻塞I/O要求服务器在客户端连接和服务器线程之间有一对一的对应关系；每个线程只能处理单个连接。这对于希望使用HTTP keepalive避免每个请求创建新套接字的客户端尤为重要。假设有100个客户端发送请求，请求之间平均有30秒的思考时间，并且服务器处理一个请求需要500毫秒。在这种情况下，任何时候进行中的请求平均少于两个，但服务器需要100个线程来处理所有客户端。这是非常低效的。
 - en: Hence, when Java introduced NIO APIs that were nonblocking, server frameworks
     migrated to that model for their client handling. This leads to the situation
     shown in [Figure 10-2](#FigureNonBlockingRead).
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，当Java引入了非阻塞的NIO API时，服务器框架迁移到了该模型来处理其客户端。这导致了图10-2所示的情况。
 - en: '![Threads handling nonblocking I/O](assets/jp2e_1002.png)'
+  id: totrans-11
   prefs: []
   type: TYPE_IMG
+  zh: '![处理非阻塞I/O的线程](assets/jp2e_1002.png)'
 - en: Figure 10-2\. Threads with event notification for reads
+  id: totrans-12
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 10-2\. 具有读取事件通知的线程
 - en: Now the socket associated with each client is registered with a selector in
     the server (the selector here is an instance of the `Selector` class and handles
     the interface to the operating system that provides notifications when data is
@@ -85,8 +117,11 @@
     the data from the client, process the request, send the response back, and then
     go back to waiting for the next request.^([1](ch10.html#idm45775547323624)) And
     while we still have *N* clients in the diagram, they are processed using *M* threads.
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，与每个客户端相关联的套接字在服务器中被注册到选择器中（这里的选择器是`Selector`类的一个实例，并处理与操作系统的接口，当套接字上有数据可读时会收到通知）。当客户端发送请求时，选择器从操作系统获取事件，然后通知服务器线程池中的一个线程，说明特定客户端的I/O可以被读取。该线程将从客户端读取数据，处理请求，发送响应，然后回到等待下一个请求的状态。^([1](ch10.html#idm45775547323624))
+    虽然图中仍然有*N*个客户端，但它们使用*M*个线程进行处理。
 - en: Now that the clients are no longer coupled to a particular server thread, the
     server thread pool can be tuned to handle the number of simultaneous requests
     we expect the server to handle. In the example we used before, a thread pool with
@@ -95,68 +130,90 @@
     of a 30-second think time, we might need five or six threads to handle the number
     of simultaneous requests. The use of nonblocking I/O allows us to use many fewer
     threads than we have clients, which is a huge efficiency gain.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在客户端不再与特定的服务器线程绑定，服务器线程池可以调整以处理我们期望服务器处理的并发请求数量。在前面的示例中，具有大小为两个的线程池就足以处理所有100个客户端的负载。如果请求可能以非均匀的方式到达，但仍在30秒的一般参数内思考，我们可能需要五到六个线程来处理同时请求的数量。非阻塞I/O的使用使得我们可以使用比客户端数量少得多的线程，这是巨大的效率收益。
 - en: Server Containers
+  id: totrans-15
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 服务器容器
 - en: Scaling server connections over multiple clients is the first hurdle in server
     performance, which depends on the server using nonblocking I/O for basic connection
     handling. Whether servers use nonblocking APIs for other operations is also important
     and is discussed later in this chapter, but for now we’ll look at tuning the basic
     connection handling.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 在服务器性能中，跨多个客户端扩展服务器连接是第一个障碍，这取决于服务器使用非阻塞I/O来处理基本连接。服务器是否在其他操作中使用非阻塞API也很重要，这将在本章后面讨论，但现在我们将专注于调优基本连接处理。
 - en: Tuning Server Thread Pools
+  id: totrans-17
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 调优服务器线程池
 - en: In current servers, then, the requests that come from clients are handled by
     an arbitrary thread in the server thread pool. Tuning that thread pool hence becomes
     quite important.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，在当前的服务器中，来自客户端的请求由服务器线程池中的任意线程处理。因此，调优该线程池变得非常重要。
 - en: 'As mentioned in the previous section, server frameworks vary in the way they
     manage connections and associated thread pool(s). The basic model described there
     was to have one or more threads that act as selectors: these threads notify the
     system call when I/O is available and are called *selector threads*. Then a separate
     thread pool of *worker threads* handles the actual request/response to a client
     after the selector notifies them that I/O is pending for the client.'
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 如前一节所述，服务器框架在管理连接和相关线程池的方式上各不相同。在那里描述的基本模型是有一个或多个充当选择器的线程：这些线程在I/O可用时通知系统调用，并称为*选择器线程*。然后，一个单独的*工作线程池*处理选择器通知他们客户端的I/O挂起后的实际请求/响应。
 - en: 'The selector and worker threads can be set up in various ways:'
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 选择器和工作线程可以以各种方式设置：
 - en: Selector and worker thread pools can be separate. The selectors wait for notification
     on all sockets and hand off requests to the worker thread pool.
+  id: totrans-21
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 选择器和工作线程池可以是分开的。选择器等待所有套接字的通知并将请求交给工作线程池。
 - en: Alternately, when the selector is notified about I/O, it reads (perhaps only
     part of) the I/O to determine information about the request. Then the selector
     forwards the request to different server thread pools, depending on the type of
     request.
+  id: totrans-22
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 或者，当选择器通知有关I/O时，它会读取（也许只是部分）I/O以确定有关请求的信息。然后，根据请求类型，选择器将请求转发到不同的服务器线程池。
 - en: A selector pool accepts new connections on a `ServerSocket`, but after the connections
     are made, all work is handled in the worker thread pool. A thread in the worker
     thread pool will sometimes use the `Selector` class to wait for pending I/O about
     an existing connection, and it will sometimes be handling the notification from
     a worker thread that I/O for a client is pending (e.g., it will perform the request/response
     for the client).
+  id: totrans-23
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 选择器池在`ServerSocket`上接受新连接，但在连接建立后，所有工作都在工作线程池中处理。工作线程池中的线程有时会使用`Selector`类等待现有连接的挂起I/O，并且有时会处理来自工作线程的客户端I/O挂起的通知（例如，执行客户端的请求/响应）。
 - en: There needn’t be a distinction at all between threads that act as selectors
     and threads that handle requests. A thread that is notified about I/O available
     on a socket can process the entire request. Meanwhile, the other threads in the
     pool are notified about I/O on other sockets and handle the requests on those
     other sockets.
+  id: totrans-24
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 根本不需要区分充当选择器的线程和处理请求的线程。通知套接字上的I/O可用的线程可以处理整个请求。同时，池中的其他线程收到其他套接字上的I/O通知，并处理这些其他套接字上的请求。
 - en: Despite these differences, we should keep two basic things in mind when tuning
     the server thread pools. First (and most important) is that we need sufficient
     worker threads to handle the number of simultaneous requests (not simultaneous
@@ -164,21 +221,27 @@
     this partly depends on whether those requests will themselves execute CPU-intensive
     code or will make other blocking calls. An additional consideration in this case
     is what happens if the server makes additional nonblocking calls.
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管有这些差异，当调整服务器线程池时，我们应该牢记两个基本点。首先（也是最重要的）是，我们需要足够的工作线程来处理服务器可以处理的同时请求的数量（而不是同时连接）。正如在[第9章](ch09.html#ThreadPerformance)中讨论的那样，这部分取决于这些请求本身是否执行CPU密集型代码或将进行其他阻塞调用。在这种情况下的另一个考虑是，如果服务器进行了额外的非阻塞调用，会发生什么。
 - en: 'Consider a REST server that just performs CPU-intensive calculations. Then,
     like all CPU-bound cases, there is no need to have more threads than there are
     virtual CPUs on the machine or container running the server: we’ll never be able
     to run more threads than that.'
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 考虑一个仅执行CPU密集型计算的REST服务器。然后，与所有CPU绑定的情况一样，不需要比服务器或容器上的虚拟CPU更多的线程：我们永远无法运行超过那个数量的线程。
 - en: What if the REST server, in turn, makes outbound calls to another resource—say,
     another REST server or a database? Now it depends on whether those calls are blocking
     or nonblocking. Assume for now that those calls are blocking. Now we’ll need one
     thread for every simultaneous outbound blocking call. This threatens to turn our
     server back into an inefficient one-thread-per-client model.
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果REST服务器反过来对另一个资源进行出站调用——比如另一个REST服务器或数据库，那会怎么样？现在取决于这些调用是阻塞还是非阻塞。暂时假设这些调用是阻塞的。现在，我们将需要为每个同时的出站阻塞调用使用一个线程。这可能会将我们的服务器重新转变为低效的一个线程对应一个客户端模型。
 - en: Imagine that in order to satisfy a particular client request, the worker thread
     must spend 900 ms retrieving data from a database and 100 ms setting up that database
     call and processing the data into the response for the client on a system with
@@ -188,22 +251,31 @@
     don’t need 600 threads in the worker thread pool, but we cannot get by with only
     2 threads (one per CPU) either. On average, 20 requests will be blocked at a time,
     so we’ll need at least that many threads in the worker thread pool.
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设为了满足特定客户请求，工作线程必须花费 900 ms 从数据库检索数据，并花费 100 ms 设置该数据库调用并将数据处理成客户端响应。在一个有两个非超线程
+    CPU 的系统上，该服务器有足够的 CPU 处理每秒 20 个请求。如果每 30 秒有一个请求来自每个客户端，服务器可以处理 600 个客户端。由于客户端连接处理是非阻塞的，我们不需要在工作线程池中使用
+    600 个线程，但也不能仅用 2 个线程（每个 CPU 一个）。平均而言，会有 20 个请求被阻塞，因此我们至少需要这么多线程在工作线程池中。
 - en: 'Now let’s say that the outbound request is also nonblocking so that during
     the 900 ms the database takes to return the answer, the thread making the database
     call is free to handle other requests. Now we’re back to needing only two worker
     threads: they can spend all their time handling the 100 ms sections it takes to
     deal with the database data, keeping the CPUs fully busy and the throughput of
     our server at the maximum value.'
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在假设出站请求也是非阻塞的，因此在数据库花费 900 ms 返回答案期间，进行数据库调用的线程可以处理其他请求。现在我们只需要两个工作线程：它们可以花费所有时间处理数据库数据所需的
+    100 ms 部分，使 CPU 充分忙碌，服务器的吞吐量达到最大值。
 - en: 'As usual, this simplifies the discussion somewhat: we need time to read and
     set up the requests, and so on. Still, the basic rule holds: you need as many
     threads in the worker pool as will be simultaneously executing code and simultaneously
     blocked on other resources.'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 像往常一样，这些讨论有所简化：我们需要时间来读取和设置请求等。但基本规则仍然适用：您需要与将同时执行代码并同时阻塞在其他资源上的线程数量相同的工作线程池。
 - en: 'Another tuning consideration here is the number of threads that need to act
     as selectors at any given point. You need more than one. A selector thread executes
     the `select()` call in order to find out which of many sockets has I/O available.
@@ -212,34 +284,47 @@
     it can return and call the `select()` method again. But during the time it processes
     the results from the `select()` call, another thread should be executing the `select()`
     call for other sockets to see when they have available data.'
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的另一个调整考虑因素是任何给定时间需要充当选择器的线程数量。您需要多于一个。选择器线程执行 `select()` 调用以查找哪些套接字有 I/O 可用。然后它必须花时间处理这些数据：至少通知其他工作线程有哪些客户端请求需要处理。然后它可以返回并再次调用
+    `select()` 方法。但在处理 `select()` 调用结果的同时，另一个线程应该执行 `select()` 调用以查看其他套接字何时有可用数据。
 - en: So in frameworks that have a separate pool of threads for selectors, you’ll
     want to make sure the pool has at least a few threads (typically, three is the
     default value for frameworks). In frameworks where the same pool of threads handles
     selection and processing, you’ll want to add a few extra threads than is required
     based on the worker guideline we just discussed.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，在具有独立的选择器线程池的框架中，您需要确保该池至少有几个线程（通常，默认值为三个）。在同一线程池处理选择和处理的框架中，根据我们刚刚讨论的工作指南，您需要增加几个额外的线程。
 - en: Async Rest Servers
+  id: totrans-33
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 异步 REST 服务器
 - en: An alternative to tuning the request thread pool of a server is to defer work
     to another thread pool. This is an approach taken by the async server implementation
     of JAX-RS as well as Netty’s event executor tasks (designed for long-running tasks)
     and other frameworks.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 调整服务器请求线程池的另一种方法是将工作推迟到另一个线程池。这是 JAX-RS 的异步服务器实现以及 Netty 的事件执行器任务（专为长时间运行的任务设计）和其他框架采取的方法。
 - en: 'Let’s look at this from the perspective of JAX-RS. In a simple REST server,
     requests and responses are all handled on the same thread. This throttles the
     concurrency of those servers. For instance, the default thread pool for a Helidon
     server on an eight-CPU machine is 32. Consider the following endpoint:'
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从JAX-RS的角度来看待这个问题。在一个简单的REST服务器中，请求和响应都在同一个线程上处理。这限制了服务器的并发性能。例如，在一个八核CPU的Helidon服务器上，默认线程池为32。考虑以下端点：
 - en: '[PRE0]'
+  id: totrans-36
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'The point of the sleep in this example is just for testing: assume that the
     sleep is making a remote database call or calling another REST server, and that
     remote call takes 100 ms. If I run that test in a Helidon server with default
@@ -248,15 +333,19 @@
     processing). A load generator with a concurrency of 64 will report that each request
     takes 200 ms, since each request will have to wait for another request to finish
     before it can start processing.'
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个例子中，睡眠的目的仅用于测试：假设该睡眠正在进行远程数据库调用或调用另一个REST服务器，而那个远程调用需要100毫秒。如果我在一个带有默认配置的Helidon服务器上运行该测试，它将处理32个同时请求。具有并发性为32的负载生成器将报告每个请求需要100毫秒（加上1–2毫秒的处理时间）。具有并发性为64的负载生成器将报告每个请求需要200毫秒，因为每个请求都必须等待另一个请求完成后才能开始处理。
 - en: 'Other servers will have a different configuration, but the effect is the same:
     there will be some throttle based on the size of the request thread pool. Often
     that is a good thing: if the 100 ms is spent as active CPU time (instead of sleeping)
     in this example, then the server won’t really be able to handle 32 requests simultaneously
     unless it is running on a very large machine.'
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 其他服务器将有不同的配置，但效果是一样的：基于请求线程池的大小将有一些限制。通常这是一件好事：如果在这个例子中，那100毫秒是作为活跃的CPU时间（而不是睡眠），那么除非它运行在一个非常大的机器上，否则服务器实际上不会能够同时处理32个请求。
 - en: In this case, though, the machine is not even close to being CPU-bound; it may
     take only 20%–30% of a single core to process the load when there is no processing
     to be done (and again, the same amount to process the load if those 100 ms time
@@ -264,16 +353,22 @@
     on this machine by changing the configuration of the default thread pool to run
     more calls. The limit here would be based on the concurrency of the remote systems;
     we still want to throttle the calls into those systems so that they are not overwhelmed.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 不过，在这种情况下，机器甚至没有接近CPU负载；当没有处理需要进行时，它可能只需要单个核心的20%–30%来处理负载（如果那些100毫秒的时间间隔只是对另一个服务的远程调用的话，处理负载时也是同样的情况）。因此，我们可以通过更改默认线程池的配置来增加该机器上的并发性能，以处理更多的调用。这里的限制将基于远程系统的并发性；我们仍然希望限制调用这些系统，以免超负荷。
 - en: 'JAX-RS provides a second way to increase the concurrency, and that is by utilizing
     an asynchronous response. The asynchronous response allows us to defer the business
     logic processing to a different thread pool:'
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: JAX-RS提供了第二种增加并发性的方式，那就是利用异步响应。异步响应允许我们将业务逻辑处理延迟到不同的线程池中进行：
 - en: '[PRE1]'
+  id: totrans-41
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: In this example, the initial request comes in on the server’s default thread
     pool. That request sets up a call to execute the business logic in a separate
     thread pool (called the *async thread pool*), and then the `sleepAsyncEndpoint()`
@@ -281,34 +376,46 @@
     so it can immediately handle another request. Meanwhile, the async response (annotated
     with the `@Suspended` tag) is waiting for the logic to complete; when that happens,
     it is resumed with the response to be sent back to the user.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个例子中，初始请求在服务器的默认线程池上进行。该请求设置了一个调用，用于在一个单独的线程池（称为*异步线程池*）中执行业务逻辑，然后`sleepAsyncEndpoint()`方法立即返回。这释放了默认线程池中的线程，使其能够立即处理另一个请求。与此同时，异步响应（标有`@Suspended`标签）正在等待逻辑完成；完成后，它将恢复并将响应发送回用户。
 - en: This allows us to run 64 (or whatever parameter we pass to the thread pool)
     simultaneous requests before the requests start to back up. But frankly, we haven’t
     achieved anything different from resizing the default thread pool to 64\. In fact,
     in this case, our response will be slightly worse, since the request gets sent
     to a different thread for processing, which will take a few milliseconds.
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 这使得我们可以在请求开始积压之前运行 64（或我们传递给线程池的任何参数）个并行请求。但坦率地说，我们并没有从将默认线程池调整为 64 实现任何不同。事实上，在这种情况下，我们的响应会稍差一些，因为请求被发送到不同的线程进行处理，这将花费几毫秒。
 - en: 'There are three reasons you would use an async response:'
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用异步响应的三个原因：
 - en: To introduce more parallelism into the business logic. Imagine that instead
     of sleeping for 100 ms, our code had to make three (unrelated) JDBC calls to obtain
     data needed for the response. Using an async response allows the code to process
     each call in parallel, with each JDBC call using a separate thread in the async
     thread pool.
+  id: totrans-45
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 为了将更多并行性引入业务逻辑。假设我们的代码不是睡眠 100 毫秒，而是需要进行三次（无关的）JDBC 调用来获取响应所需的数据。使用异步响应使得代码能够在异步线程池中的每个线程中并行处理每个调用。
 - en: To limit the number of active threads.
+  id: totrans-46
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 限制活动线程的数量。
 - en: To properly throttle the server.
+  id: totrans-47
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 为了正确限制服务器的流量。
 - en: In most REST servers, if we just throttle the request thread pool, new requests
     will wait their turn, and the queue for the thread pool will grow. Often, this
     queue is unbounded (or at least has a very large bound) so that the total number
@@ -316,15 +423,21 @@
     pool queue will often be abandoned by the time they are processed, and even if
     they are not abandoned, the long response times are going to kill the total throughput
     of the system.
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 在大多数 REST 服务器中，如果仅仅限制请求线程池，新请求将等待它们的轮次，并且线程池的队列将增长。通常，这个队列是无界的（或者至少具有非常大的限制），因此请求的总数最终将变得难以管理。在线程池队列中等待很长时间的请求通常会被放弃，即使它们没有被放弃，长时间的响应时间也会降低系统的总吞吐量。
 - en: A better approach is to look at the async thread pool status before queueing
     the response, and rejecting the request if the system is too busy.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 更好的方法是在排队响应之前查看异步线程池的状态，并在系统过载时拒绝请求。
 - en: '[PRE2]'
+  id: totrans-50
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: That can be accomplished in many ways, but for this simple example, we’ll look
     at the active count running in the pool. If the count is equal to the pool size,
     the response is immediately canceled. (A more sophisticated example would set
@@ -334,59 +447,83 @@
     processed at this time. That is the preferred way to handle an overloaded server
     in the REST world, and immediately returning that status will reduce the load
     on our overloaded server, which in the end will lead to much better overall performance.
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 这可以通过多种方式实现，但在这个简单的例子中，我们将关注池中运行的活动计数。如果计数等于池大小，则立即取消响应。（更复杂的例子会为池设置有界队列，并在线程池的拒绝执行处理程序中取消请求。）这里的效果是调用者将立即收到
+    HTTP 503 服务不可用状态，表明此时无法处理请求。这是在 REST 世界中处理过载服务器的首选方式，立即返回此状态将减少负载，从而最终实现更好的整体性能。
 - en: Quick Summary
+  id: totrans-52
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速摘要
 - en: Nonblocking I/O using Java’s NIO APIs allows servers to scale by reducing the
     number of threads required to handle multiple clients.
+  id: totrans-53
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用 Java 的 NIO API 进行非阻塞 I/O 允许服务器通过减少处理多个客户端所需的线程数量来扩展。
 - en: This technique means that a server will need one or more thread pools to handle
     the client requests. This pool should be tuned based on the maximum number of
     simultaneous requests the server should handle.
+  id: totrans-54
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 此技术意味着服务器将需要一个或多个线程池来处理客户端请求。这个池应该根据服务器应该处理的最大同时请求数进行调整。
 - en: A few extra threads are then needed for handling selectors (whether as part
     of the worker thread pool or a separate thread pool depending on the server framework).
+  id: totrans-55
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 然后需要一些额外的线程来处理选择器（无论是作为工作线程池的一部分还是作为依赖于服务器框架的单独线程池的一部分）。
 - en: Server frameworks often have a mechanism to defer long requests to a different
     thread pool, which offers more robust handling of requests on the main thread
     pool.
+  id: totrans-56
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 服务器框架通常有一种机制，可以将长时间的请求推迟到不同的线程池中，从而更加稳健地处理主线程池上的请求。
 - en: Asynchronous Outbound Calls
+  id: totrans-57
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 异步出站调用
 - en: The preceding section gave the example of a server with two CPUs that needed
     a pool of 20 threads to obtain its maximum throughput. That was because the threads
     spent 90% of their time blocked on I/O while making an outbound call to another
     resource.
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 前面的章节给出了一个具有两个 CPU 的服务器的示例，它需要一个包含 20 个线程的池来获得其最大吞吐量。这是因为这些线程在向其他资源发出出站调用时，90%
+    的时间都被阻塞在 I/O 上。
 - en: 'Nonblocking I/O can help in this instance too: if those outbound HTTP or JDBC
     calls are nonblocking, we needn’t dedicate a thread to the call and can reduce
     the size of the thread pool accordingly.'
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 非阻塞 I/O 在这种情况下也很有帮助：如果这些出站的 HTTP 或 JDBC 调用是非阻塞的，我们就不需要专门为每个调用分配一个线程，可以相应减少线程池的大小。
 - en: Asynchronous HTTP
+  id: totrans-60
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 异步 HTTP
 - en: HTTP clients are classes that (unsurprisingly) handle HTTP requests to a server.
     There are many clients, and they all have different functional as well as performance
     characteristics. In this section, we’ll look into the performance characteristics
     for common use cases among them.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: HTTP 客户端是处理向服务器发出的 HTTP 请求的类（毫不奇怪）。有许多客户端，它们都具有不同的功能和性能特性。在本节中，我们将研究它们在常见用例中的性能特征。
 - en: 'Java 8 has a basic HTTP client, the `java.net.HttpURLConnection` class (and
     for secure connections, the subclass `java.net.HttpsURLConnection`). Java 11 adds
     a new client: the `java.net.http.HttpClient` class (which also handles HTTPS).
@@ -394,8 +531,13 @@
     from the Apache Foundation, `org​.asynchttpclient.AsyncHttpClient` built on top
     of the Netty Project, and `org.eclipse.jetty.client.HttpClient` from the Eclipse
     Foundation.'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 8 提供了一个基本的 HTTP 客户端，即 `java.net.HttpURLConnection` 类（对于安全连接，还有子类 `java.net.HttpsURLConnection`）。Java
+    11 添加了一个新的客户端：`java.net.http.HttpClient` 类（同时处理 HTTPS）。其他包中的 HTTP 客户端类包括 Apache
+    基金会的 `org.apache.http.cli⁠ent​.HttpClient`，建立在 Netty 项目之上的 `org​.asynchttpclient.AsyncHttpClient`，以及
+    Eclipse 基金会的 `org.eclipse.jetty.client.HttpClient`。
 - en: Although it is possible to perform basic operations with the `HttpURLConnection`
     class, most REST calls are made using a framework such as JAX-RS. Hence, most
     HTTP clients directly implement those APIs (or slight variants), but the default
@@ -403,29 +545,43 @@
     Hence, you can use JAX-RS with the underlying HTTP client that gives you the best
     performance. The JAX-RS and underlying HTTP clients carry two basic performance
     considerations.
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然可以使用 `HttpURLConnection` 类执行基本操作，但大多数 REST 调用都使用诸如 JAX-RS 等框架进行。因此，大多数 HTTP
+    客户端直接实现这些 API（或稍有变化），但 JAX-RS 的默认实现也提供了最受欢迎的 HTTP 客户端的连接器。因此，可以使用 JAX-RS 与提供最佳性能的底层
+    HTTP 客户端。JAX-RS 和底层 HTTP 客户端包含两个基本的性能考虑因素。
 - en: 'First, the JAX-RS connectors provide a `Client` object that is used to make
     the REST calls; when using the clients directly, they similarly provide a client
     object with a name like `HttpClient` (the `HttpURLConnection` class is an exception;
     it cannot be reused). A typical client would be created and used like this:'
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，JAX-RS 连接器提供了一个名为 `Client` 的对象，用于进行 REST 调用；当直接使用客户端时，它们类似地提供了一个名为 `HttpClient`
+    的客户端对象（`HttpURLConnection` 类是个例外；它不能被重用）。典型的客户端将如下创建和使用：
 - en: '[PRE3]'
+  id: totrans-65
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: The key in this example is that the `client` object is a static, shared object.
     All client objects are threadsafe, and all are expensive to instantiate, so you
     want only a limited number of them (e.g., one) in your application.
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个示例中的关键是 `client` 对象是一个静态的、共享的对象。所有的 client 对象都是线程安全的，且创建开销很大，因此你希望应用程序中只有很少的数量（比如一个）。
 - en: The second performance consideration is to make sure that the HTTP client properly
     pools connections and uses keepalive to keep connections open. Opening a socket
     for HTTP communications is an expensive operation, particularly if the protocol
     is HTTPS and the client and server must perform an SSL handshake. Like JDBC connections,
     HTTP(S) connections should be reused.
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二个性能考虑因素是确保 HTTP 客户端正确地池化连接并使用 keepalive 来保持连接开放。对于 HTTP 通信来说，打开一个 socket 是昂贵的操作，特别是如果协议是
+    HTTPS 并且客户端和服务器必须执行 SSL 握手。像 JDBC 连接一样，HTTP(S) 连接也应该被重复使用。
 - en: 'All HTTP clients provide a mechanism to pool them, though the mechanism of
     pooling within the `HttpURLConnection` class is frequently misunderstood. By default,
     that class will pool five connections (per server). Unlike a traditional pool,
@@ -436,13 +592,17 @@
     class, it’s easy to see lots of transient connections and assume that the connections
     are not being pooled (and the Javadoc isn’t helpful here either; it never mentions
     the pooling functionality, though the behavior is documented elsewhere).'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有 HTTP 客户端都提供了池化机制，尽管在`HttpURLConnection`类中的池化机制经常被误解。默认情况下，该类将池化五个连接（每个服务器）。然而，与传统的连接池不同，该类中的池不会限制连接：如果请求第六个连接，将会创建一个新连接，而你使用完毕后会被销毁。这种短暂连接在传统连接池中是看不到的。所以在`HttpURLConnection`类的默认配置中，很容易看到大量的短暂连接，并且会误以为连接没有被池化（Javadoc在这方面也不够明确；它从未提及池化功能，尽管行为在其他地方有文档记录）。
 - en: You can change the size of the pool by setting the system property `-Dhttp.maxConnections=*N*`,
     which defaults to 5\. Despite its name, this property applies to HTTPS connections
     as well. There is no way to have this class throttle connections, though.
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可以通过设置系统属性`-Dhttp.maxConnections=*N*`来更改池的大小，默认为 5。尽管名称如此，此属性也适用于 HTTPS 连接。但没有方法使该类限制连接。
 - en: In the new `HttpClient` class in JDK 11, the pool follows a similar idea, but
     with two important differences. First, the default pool size is unbounded, though
     that can be set with the `-Djdk.httpclient.connectionPoolSize=*N*` system property.
@@ -450,70 +610,101 @@
     than are configured, they will be created when needed and then destroyed when
     they are complete. Second, this pool is per `HttpClient` object, so if you are
     not reusing that object, you will not get any connection pooling.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDK 11 的新`HttpClient`类中，池遵循类似的思路，但有两个重要的区别。首先，默认池大小是无界的，尽管可以通过设置`-Djdk.httpclient.connectionPoolSize=*N*`系统属性来设置。该属性仍然不会作为限制；如果请求超过配置的连接数，它们将在需要时被创建，然后在完成时被销毁。其次，该池是每个`HttpClient`对象的，因此如果不重用该对象，则不会进行连接池化。
 - en: 'In JAX-RS itself, it is frequently suggested to use a different connector than
     the default if you want a connection pool. Since the default connector uses the
     `HttpURLConnection` class, that’s not true: unless you want to throttle the connections,
     you can tune the connection size of that class as we’ve just discussed. Other
     popular connectors will also pool the connections.'
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JAX-RS 中，经常建议使用与默认不同的连接器以获取连接池。因为默认连接器使用`HttpURLConnection`类，这是不正确的：除非你想限制连接，你可以调整该类的连接大小，正如我们刚刚讨论的那样。其他流行的连接器也将池化连接。
 - en: Table 10-1\. Tuning the HTTP connection pool of popular clients
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 10-1。调整流行客户端的 HTTP 连接池
 - en: '| Connector | HTTP client class | Pooling mechanism |'
+  id: totrans-73
   prefs: []
   type: TYPE_TB
+  zh: '| 连接器 | HTTP 客户端类 | 池化机制 |'
 - en: '| --- | --- | --- |'
+  id: totrans-74
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| Default | `java.net.HttpURLConnection` | Setting the `maxConnections` system
     property |'
+  id: totrans-75
   prefs: []
   type: TYPE_TB
+  zh: '| 默认 | `java.net.HttpURLConnection` | 设置`maxConnections`系统属性 |'
 - en: '| Apache | `org.apache.http.​cli⁠ent.HttpClient` | Create a `PoolingHttpClientConnectionManager`
     |'
+  id: totrans-76
   prefs: []
   type: TYPE_TB
+  zh: '| Apache | `org.apache.http.​cli⁠ent.HttpClient` | 创建一个`PoolingHttpClientConnectionManager`
+    |'
 - en: '| Grizzly | `com.ning.http.client.​Asyn⁠cHttpClient` | Pooled by default; can
     modify configuration |'
+  id: totrans-77
   prefs: []
   type: TYPE_TB
+  zh: '| Grizzly | `com.ning.http.client.​Asyn⁠cHttpClient` | 默认池化；可以修改配置 |'
 - en: '| Jetty | `org.eclipse.jetty.​cli⁠ent.HttpClient` | Pooled by default; can
     modify configuration |'
+  id: totrans-78
   prefs: []
   type: TYPE_TB
+  zh: '| Jetty | `org.eclipse.jetty.​cli⁠ent.HttpClient` | 默认池化；可以修改配置 |'
 - en: In JAX-RS, the Grizzly connection manager uses the `com.ning.http.client​.Asyn⁠cHttpClient`
     client. That client has since been renamed to `org​.asyn⁠chttpclient.AsyncHttpClient`;
     it is the async client built on top of Netty.
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JAX-RS 中，Grizzly 连接管理器使用`com.ning.http.client​.Asyn⁠cHttpClient`客户端。该客户端已经更名为`org​.asyn⁠chttpclient.AsyncHttpClient`，它是基于
+    Netty 构建的异步客户端。
 - en: Async HTTP clients
+  id: totrans-80
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 异步 HTTP 客户端
 - en: Asynchronous (async) HTTP clients, like async HTTP servers, allow for better
     thread management in an application. The thread that makes an async call sends
     the request to the remote server, and arrangements are made for a different (background)
     thread to process the request when it is available.
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 异步（async）HTTP 客户端，如异步 HTTP 服务器，允许更好地管理应用程序中的线程。发出异步调用的线程将请求发送到远程服务器，并在请求可用时安排不同（后台）线程来处理请求。
 - en: That statement (“arrangements are made”) is purposely vague here, because the
     mechanism in which that is achieved is very different between different HTTP clients.
     But from a performance perspective, the point is that using an async client increases
     performance because it defers the response handling to another thread, allowing
     more things to run in parallel.
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个声明（“安排已经做好”）在这里故意模糊，因为在不同的 HTTP 客户端之间实现这一机制的方式是非常不同的。但从性能的角度来看，使用异步客户端增加了性能，因为它将响应处理推迟到另一个线程，允许更多的事情并行运行。
 - en: 'Async HTTP clients are a feature of JAX-RS 2.0, though most standalone HTTP
     clients also support async features directly. In fact, you may have noticed that
     some of the clients we looked at had *async* as part of their name; they are asynchronous
     by default. Although they have a synchronous mode, that happens in the implementation
     of the synchronous methods: those methods make an async call, wait for the response
     to be complete, and then return that response (synchronously) to the caller.'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 异步 HTTP 客户端是 JAX-RS 2.0 的一个特性，尽管大多数独立的 HTTP 客户端也直接支持异步特性。事实上，您可能已经注意到我们查看的一些客户端的名称中包含
+    *async*：它们默认是异步的。虽然它们也有同步模式，但这发生在同步方法的实现中：这些方法发出异步调用，等待响应完成，然后将响应（同步地）返回给调用者。
 - en: 'This async mode is supported by JAX-RS 2.0 implementations, including those
     in the reference Jersey implementation. That implementation includes several connectors
     that can be used asynchronously, though not all these connectors are truly asynchronous.
@@ -522,8 +713,11 @@
     blocking Java I/O. In that case, the background thread pool needs one thread for
     every request to be handled concurrently. That’s the same as with the async server:
     we gain concurrency by adding lots of other threads.'
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种异步模式由 JAX-RS 2.0 实现支持，包括参考 Jersey 实现中的实现。该实现包括几个可以异步使用的连接器，尽管并非所有这些连接器都是真正的异步。在所有情况下，响应处理都推迟到另一个线程，但它可以以两种基本方式运行。在一种情况下，另一个线程可以简单地使用标准的阻塞
+    Java I/O。在这种情况下，后台线程池需要为每个要同时处理的请求提供一个线程。这与异步服务器相同：通过添加大量其他线程，我们实现了并发性。
 - en: 'In the second case, the HTTP client uses nonblocking I/O. For that kind of
     processing, the background thread needs a few (at least one, but typically more)
     threads to handle NIO key selection and then some threads to handle responses
@@ -532,45 +726,65 @@
     to be read, a thread (usually from a pool) is notified of that event. That thread
     reads the data, processes it (or passes the data to yet another thread to be processed),
     and then returns to the pool.'
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 在第二种情况下，HTTP 客户端使用非阻塞 I/O。对于这种类型的处理，后台线程需要一些（至少一个，但通常更多）线程来处理 NIO 键选择，然后一些线程来处理随时到来的响应。在许多情况下，这些
+    HTTP 客户端总体上使用较少的线程。NIO 是经典的事件驱动编程：当套接字连接上的数据可供读取时，会通知一个线程（通常来自池）。该线程读取数据，处理数据（或将数据传递给另一个线程以进行处理），然后返回到池中。
 - en: Async programming is typically thought of as being event-driven, and so in a
     strict sense, the async HTTP clients that use blocking I/O (and pin a thread for
     the entire request) are not asynchronous. The API gives the illusion of asynchronous
     behavior, even if the thread scalability will not be what we are expecting.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 异步编程通常被认为是事件驱动的，因此严格来说，使用阻塞 I/O（并将线程固定在整个请求期间）的异步 HTTP 客户端并不是异步的。即使 API 给出了异步行为的假象，线程的可扩展性也不会如我们所期望的那样。
 - en: 'From a performance perspective, the async client gives us similar benefits
     as the async server: we can increase concurrency during a request so that it executes
     more quickly, and we can better manage (and throttle) requests by utilizing different
     thread pools.'
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 从性能的角度来看，异步客户端给我们带来了与异步服务器类似的好处：我们可以增加请求的并发性，使其执行更快，并且可以通过利用不同的线程池更好地管理（和限制）请求。
 - en: 'Let’s take a common case for async examples: a REST service that functions
     as an aggregator of information from three other REST services. The pseudocode
     outline for such a service looks like this:'
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们以异步示例的常见情况为例：一个作为来自另外三个 REST 服务的信息聚合器的 REST 服务。这样一个服务的伪代码概述如下：
 - en: '[PRE4]'
+  id: totrans-89
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Note that we also use an async response in this example, but we don’t need
     a separate pool as before: the request will be resumed in one of the threads that
     handles the response.'
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，在这个示例中，我们也使用了异步响应，但是不需要像之前那样使用单独的线程池：请求将在处理响应的一个线程中恢复。
 - en: This introduces the desired concurrency into this operation, but let’s take
     a little closer look into the thread usage. [Figure 10-3](#FigureAsyncClient)
     shows the significant thread usage by the Helidon server when executing this example.
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 这为该操作引入了所需的并发性，但让我们更仔细地看一下线程使用情况。[图 10-3](#FigureAsyncClient) 展示了执行此示例时 Helidon
+    服务器的显着线程使用情况。
 - en: '![Async Client Thread Usage](assets/jp2e_1003.png)'
+  id: totrans-92
   prefs: []
   type: TYPE_IMG
+  zh: '![异步客户端线程使用](assets/jp2e_1003.png)'
 - en: Figure 10-3\. Simple thread usage of async HTTP clients
+  id: totrans-93
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 10-3\. 异步 HTTP 客户端的简单线程使用
 - en: 'At time T1, the request comes in and starts executing on a Helidon request
     thread. The thread sets up the three remote calls; each call is actually sent
     by a thread in the async client pool. (In the diagram, the three are sent by the
@@ -579,8 +793,11 @@
     to send their data.) The three sockets associated with those calls are also registered
     on the event queue being processed by the NIO polling thread. The request thread
     finishes processing at time T2.'
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: 在时间 T1，请求进入并开始在 Helidon 请求线程上执行。线程设置了三个远程调用；每个调用实际上都是由异步客户端池中的一个线程发送的。（在图表中，三个调用由同一个线程发送，但这取决于时间：它们可能在三个不同的线程上执行，这取决于请求的快速执行和发送数据的时间。）与这些调用相关联的三个套接字也在由
+    NIO 轮询线程处理的事件队列上注册。请求线程在时间 T2 结束处理。
 - en: 'At time T3, the NIO polling thread gets an event that one of the sockets has
     data, so it sets up HTTP client thread #1 to read and process that data. That
     processing continues until time T5\. Meanwhile at time T4, the NIO polling thread
@@ -590,8 +807,12 @@
     read and process that request, which finishes at time T8 (and at that point, the
     `resume()` method is called on the response object, and the response is delivered
     to the client).'
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: '在时间 T3，NIO 轮询线程收到一个套接字有数据的事件，因此设置 HTTP 客户端线程 #1 读取和处理该数据。该处理将持续到时间 T5。同时，在时间
+    T4，NIO 轮询线程收到另一个套接字有数据可读的事件，然后由 HTTP 客户端线程 #2 读取和处理（这需要到时间 T7）。然后在时间 T5，第三个套接字准备好被处理。由于
+    HTTP 客户端线程 #1 空闲，它可以读取和处理该请求，该请求在时间 T8 完成（在那时，`resume()` 方法被调用，响应对象被传递给客户端）。'
 - en: 'The duration of the processing in the client threads is the key here. If the
     processing is very fast and the responses staggered well enough, a single thread
     can handle all the responses. If the processing takes a long time or the responses
@@ -601,8 +822,11 @@
     an nginx server of static content: ultimately, even in a completely asynchronous
     implementation, the CPU needs of the business logic are going to require a fair
     number of threads in order to get good concurrency.'
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的关键是客户端线程的处理时间。如果处理非常快，且响应之间有很好的间隔，一个线程就可以处理所有响应。如果处理时间很长或者响应被打包，我们将需要一个线程处理一个请求。在这个示例中，我们处于一个中间地带：我们使用的线程比一个线程处理一个请求的模型少，但比一个线程多。这是
+    REST 服务器与像 nginx 服务器一样的静态内容之间的一个关键区别：最终，即使在完全异步的实现中，业务逻辑的 CPU 需求也将需要相当数量的线程以获得良好的并发性。
 - en: This example assumes that the HTTP client is utilizing NIO. If the client uses
     traditional NIO, the figure would be slightly different. When the first async
     client thread call is made, that call will last all the way until time T7\. The
@@ -610,58 +834,82 @@
     until time T8\. And the third async client thread will run until time T5 (the
     clients would not be expected to complete in the same order as they were started).
     [Figure 10-4](#FigureAsyncClientTraditional) shows the difference.
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 此示例假定HTTP客户端正在使用NIO。如果客户端使用传统的NIO，那么图示将略有不同。当进行第一个异步客户端线程调用时，该调用将持续到时间T7。对异步客户端的第二个调用将需要一个新线程；该请求将持续到时间T8。第三个异步客户端线程将运行到时间T5（客户端不会按照它们启动的顺序完成）。[Figure 10-4](#FigureAsyncClientTraditional)显示了区别。
 - en: 'In either case, the results are the same for the end user: the three requests
     are handled in parallel, with the expected gain in performance. But the thread
     usage (and hence overall system efficiency) will be quite different.'
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论哪种情况，对于最终用户来说，结果都是相同的：三个请求并行处理，性能得到了预期的提升。但是，线程使用情况（因此整体系统效率）将有很大的不同。
 - en: '![Blocking Client Thread Usage](assets/jp2e_1004.png)'
+  id: totrans-99
   prefs: []
   type: TYPE_IMG
+  zh: '![阻塞式客户端线程使用情况](assets/jp2e_1004.png)'
 - en: Figure 10-4\. Simple thread usage of blocking HTTP clients
+  id: totrans-100
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图10-4\. 阻塞式HTTP客户端的简单线程使用情况
 - en: Async HTTP clients and thread usage
+  id: totrans-101
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 异步HTTP客户端和线程使用情况
 - en: These background thread pool(s) will act as throttles, of course, and they must
     as usual be tuned so that they are large enough to handle the concurrency that
     your application needs, but not too large so as to overwhelm requests to the backend
     resource. Often the default settings are sufficient, but if you need to look further
     into the different connectors with the reference implementation of JAX-RS and
     their background pool, here is some additional information on each of them.
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些后台线程池将充当节流阀，并且通常必须像往常一样进行调整，使其足够大以处理应用程序所需的并发性，但不能太大以至于压倒对后端资源的请求。通常，默认设置就足够了，但如果您需要进一步研究JAX-RS的参考实现中的不同连接器及其后台池，请参阅每个连接器的其他信息。
 - en: Default connector
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认连接器
 - en: 'The default connector uses blocking I/O. A single async client thread pool
     in Jersey (the reference JAX-RS implementation) will handle all requests; the
     threads in this pool are named beginning with `jersey-client-async-executor`.
     That pool will need one thread per simultaneous request, as [Figure 10-4](#FigureAsyncClientTraditional)
     showed. By default, that pool size is unbounded; you can set a bound when the
     client is configured by setting this property:'
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认连接器使用阻塞式I/O。Jersey（JAX-RS的参考实现）中的单个异步客户端线程池将处理所有请求；此线程池中的线程以`jersey-client-async-executor`开头命名。该池将需要一个线程来处理每个同时进行的请求，正如[Figure 10-4](#FigureAsyncClientTraditional)所示。默认情况下，该池大小是无限的；您可以在配置客户端时通过设置此属性来设置上限：
 - en: '[PRE5]'
+  id: totrans-105
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: Apache connector
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: Apache连接器
 - en: Although the Apache libraries have a true asynchronous client (one that uses
     NIO for reading the response rather than requiring a dedicated thread), the Apache
     connector in Jersey uses the traditional blocking I/O Apache client. With respect
     to thread pools, it behaves and is configured just like the default connector.
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管Apache库具有真正的异步客户端（使用NIO读取响应而不需要专用线程），但Jersey中的Apache连接器使用传统的阻塞式I/O Apache客户端。关于线程池，它的行为和配置方式与默认连接器完全相同。
 - en: Grizzly connector
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: Grizzly连接器
 - en: 'The HTTP client used by the Grizzly connector is asynchronous, following the
     model in [Figure 10-3](#FigureAsyncClient). Multiple pools are involved: a pool
     (`grizzly-ahc-kernel`) that writes the requests, a pool (`nioEventLoopGroup`)
@@ -669,11 +917,15 @@
     responses. That latter pool is the important one to configure for throughput/throttling
     reasons, and its size is unbounded; it can be throttled by using the `ASYNC_THREADPOOL_SIZE`
     property.'
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: Grizzly连接器使用的HTTP客户端是异步的，遵循[Figure 10-3](#FigureAsyncClient)中的模型。涉及多个池：一个池（`grizzly-ahc-kernel`）用于写请求，一个池（`nioEventLoopGroup`）用于等待NIO事件，以及一个池（`pool-N`）用于读取和处理响应。后一个池对于吞吐量/节流而言非常重要，并且其大小是无限的；可以使用`ASYNC_THREADPOOL_SIZE`属性进行节流。
 - en: Jetty connector
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: Jetty连接器
 - en: 'Jetty uses an asynchronous client. Requests are sent and read from the same
     thread pool (and event polling also happens in that pool). In Jersey, that pool
     is also configured using the `ASYNC_THREADPOOL_SIZE` property, though a server
@@ -681,31 +933,43 @@
     threads (which handles miscellaneous bookkeeping), and the pool of threads handling
     the Jetty clients (those threads are named beginning with `HttpClient`). If that
     property is not set, the size of the `HttpClient` pool will be 200.'
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: Jetty使用异步客户端。请求由同一个线程池发送和读取（并且事件轮询也在该池中发生）。在Jersey中，该池也使用`ASYNC_THREADPOOL_SIZE`属性进行配置，尽管使用Jetty的服务器有两个后端线程池：处理杂项簿记的`jersey-client-async-executor`线程池，以及处理Jetty客户端的线程池（这些线程以`HttpClient`开头命名）。如果未设置该属性，则`HttpClient`池的大小为200。
 - en: Quick Summary
+  id: totrans-112
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Always make sure that the connection pool for HTTP clients is set correctly.
+  id: totrans-113
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 确保HTTP客户端的连接池设置正确。
 - en: Asynchronous HTTP clients can improve performance by distributing work among
     multiple threads, increasing concurrency.
+  id: totrans-114
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 异步HTTP客户端可以通过将工作分配给多个线程来提高性能，增加并发性。
 - en: Async HTTP clients built using NIO will require fewer threads than those built
     using traditional I/O, but a REST server still requires a fairly large number
     of threads to process asynchronous requests.
+  id: totrans-115
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用NIO构建的异步HTTP客户端将比使用传统I/O构建的客户端需要更少的线程，但是一个REST服务器仍然需要大量线程来处理异步请求。
 - en: Asynchronous database calls
+  id: totrans-116
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 异步数据库调用
 - en: If the outbound call in question is a call to a relational database, making
     it truly asynchronous is hard. The standard JDBC API does not lend itself to using
     nonblocking I/O, so a general solution will require a new API or new technologies.
@@ -714,77 +978,109 @@
     for existing synchronous APIs to scale well without the need for asynchronous
     programming. Fibers are part of the OpenJDK [Project Loom](https://oreil.ly/npuXr),
     but no target release date has been set (as of this writing).
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果涉及的出站调用是对关系型数据库的调用，使其真正异步是很困难的。标准的JDBC API不适合使用非阻塞I/O，因此一个通用的解决方案将需要一个新的API或者新的技术。围绕这样一个API的各种提案已经被提出并被拒绝，目前的希望是一种名为*fibers*的新轻量级任务模型将使现有的同步API能够在不需要异步编程的情况下良好扩展。*Fibers*是OpenJDK
+    [Loom项目](https://oreil.ly/npuXr)的一部分，但截至本文写作时尚未设定目标发布日期。
 - en: 'Proposals (and implementations) of asynchronous JDBC wrappers often defer the
     JDBC work to a separate thread pool. This is similar to the default Jersey asynchronous
     HTTP client from the preceding section: from a programmatic viewpoint, the API
     looks asynchronous. But in implementation, background threads are blocked on the
     I/O channels, so we don’t gain any scalability by going in that direction.'
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 异步JDBC包装器的提案（和实现）通常将JDBC工作推迟到一个单独的线程池中。这与前一节中的默认Jersey异步HTTP客户端类似：从程序的角度来看，API看起来是异步的。但是在实现中，后台线程在I/O通道上被阻塞，因此我们不会通过这种方式获得可伸缩性。
 - en: Various projects outside the JDK can fill the gap. The most widely used is Spring
     Data [R2DBC](https://oreil.ly/tN6oR) from the Spring project. This requires using
     a different API, and drivers are available only for certain databases. Still,
     for nonblocking access to a relational database, this is the best game in town.
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: JDK之外的各种项目可以填补这一空白。最广泛使用的是Spring项目的Spring Data [R2DBC](https://oreil.ly/tN6oR)。这需要使用不同的API，并且仅适用于某些数据库的驱动程序。但是，对于关系型数据库的非阻塞访问来说，这是目前最佳的选择。
 - en: For NoSQL databases, the story is somewhat similar. On the other hand, no Java
     standard exists for accessing a NoSQL database in the first place, so your programming
     depends on a database-proprietary API anyway. So the Spring projects for reactive
     NoSQL databases can be used for true asynchronous access.
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于NoSQL数据库，情况有些类似。另一方面，Java没有用于首次访问NoSQL数据库的标准，因此您的编程依赖于数据库专有的API。因此，用于反应式NoSQL数据库的Spring项目可以用于真正的异步访问。
 - en: JSON Processing
+  id: totrans-121
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: JSON处理
 - en: Now that we’ve looked at the mechanics of how data is sent in Java servers,
     let’s delve into the data itself. In this section, we’ll look primarily at JSON
     processing. Older Java programs often use XML (and the processing trade-offs among
     JSON and XML are pretty much identical); there are also newer formats like Apache
     Avro and Google’s protocol buffers.
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经看过Java服务器中数据发送的机制，让我们深入了解数据本身。在本节中，我们将主要关注JSON处理。旧版Java程序通常使用XML（JSON和XML之间的处理权衡几乎相同）；还有像Apache
+    Avro和Google的协议缓冲区这样的新格式。
 - en: An Overview of Parsing and Marshaling
+  id: totrans-123
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 解析和编组概述
 - en: Given a series of JSON strings, a program must convert those strings into data
     suitable for processing by Java. This is called either *marshaling* or *parsing*,
     depending on the context and the resulting output. If the output is a Java object,
     the process is called *marshaling*; if the data is processed as it is read, the
     process is called *parsing*. The reverse—producing JSON strings from other data—is
     called *unmarshaling*.
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 给定一系列JSON字符串，程序必须将这些字符串转换为适合Java处理的数据。这称为*编组*或*解析*，取决于上下文和生成的输出。如果输出是Java对象，则该过程称为*编组*；如果数据在读取时被处理，则该过程称为*解析*。从其他数据生成JSON字符串的反向过程称为*解编组*。
 - en: 'We can use three general techniques to handle JSON data:'
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以使用三种一般技术来处理JSON数据：
 - en: Pull parsers
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 拉取解析器
 - en: The input data is associated with a parser, and the program asks for (or pulls)
     a series of tokens from the parser.
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 输入数据与解析器关联，并且程序从解析器请求（或拉取）一系列令牌。
 - en: Document models
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: 文档模型
 - en: The input data is converted to a document-style object that the application
     can then walk through as it looks for pieces of data. The interface here is in
     terms of generic document-oriented objects.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 输入数据转换为文档样式对象，应用程序随后可以遍历该对象以查找数据片段。这里的接口是以通用文档对象为基础的。
 - en: Object representations
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象表示
 - en: The input data is converted to one or more Java objects by using a set of predefined
     classes that reflect the structure of the data (e.g., a predefined `Person` class
     is for data that represents an individual). These are typically known as plain
     old Java objects (POJOs).
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 输入数据通过使用一组预定义类转换为一个或多个Java对象，这些类反映了数据的结构（例如，预定义的`Person`类用于表示个体数据）。这些通常被称为普通的旧Java对象（POJOs）。
 - en: These techniques are listed in rough order of fastest to slowest, but again
     the functional differences between them are more important than their performance
     differences. Simple scanning is all a parser can do, so they are not ideally suited
@@ -793,114 +1089,168 @@
     an internal data structure, which is a simple matter of programming. But the document
     and Java object models already provide structured data, which will usually be
     easier than defining new structures on your own.
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些技术按照从最快到最慢的粗略顺序列出，但是它们之间的功能差异比性能差异更重要。简单扫描是解析器所能做的所有工作，因此它们并不理想地适合必须按随机顺序访问或多次检查的数据。为了处理这些情况，只使用简单解析器的程序需要构建一个内部数据结构，这只是一个简单的编程问题。但文档和Java对象模型已经提供了结构化数据，通常比自行定义新结构更容易。
 - en: 'This, in fact, is the real difference between using a parser and using a data
     marshaler. The first item in the list is a parser, and it is up to the application
     logic to handle the data as the parser provides it. The next two are data marshalers:
     they must use a parser to process the data, but they provide a data representation
     that more-complex programs can use in their logic.'
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 实际上，这是使用解析器和使用数据编组器之间的真正区别。列表中的第一项是解析器，应用程序逻辑要根据解析器提供的数据来处理数据。接下来的两项是数据编组器：它们必须使用解析器来处理数据，但它们提供了更复杂程序可以在其逻辑中使用的数据表示。
 - en: So the primary choice regarding which technique to use is determined by how
     the application needs to be written. If a program needs to make one simple pass
     through the data, simply using the fastest parser will suffice. Directly using
     a parser is also appropriate if the data is to be saved in a simple, application-defined
     structure; for example, the prices for the items in the sample data could be saved
     to an `ArrayList`, which would be easy for other application logic to process.
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，关于使用哪种技术的主要选择取决于应用程序需要如何编写。如果程序需要对数据进行简单的一次遍历，仅使用最快的解析器即可。如果数据要保存在简单的应用程序定义结构中，直接使用解析器也是适当的；例如，样本数据中项目的价格可以保存到
+    `ArrayList` 中，这对其他应用程序逻辑来说很容易处理。
 - en: 'Using a document model is more appropriate when the format of the data is important.
     If the format of the data must be preserved, a document format is easy: the data
     can be read into the document format, altered in some way, and then the document
     format can simply be written to a new data stream.'
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 当数据格式至关重要时，使用文档模型更为合适。如果必须保留数据的格式，文档格式是简单的：可以将数据读入文档格式，进行某种方式的修改，然后可以将文档格式简单地写入新的数据流。
 - en: For ultimate flexibility, an object model provides Java-language-level representation
     of the data. The data can be manipulated in the familiar terms of objects and
     their attributes. The added complexity in the marshaling is (mostly) transparent
     to the developer and may make that part of the application a little slower, but
     the productivity improvement in working with the code can offset that issue.
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于最大的灵活性，对象模型提供了数据的 Java 语言级表示。可以在对象及其属性的熟悉术语中操作数据。尽管编组时的额外复杂性（大部分）对开发人员来说是透明的，可能会使应用程序的某些部分变慢，但在与代码工作中的生产力改进方面可以抵消这个问题。
 - en: JSON Objects
+  id: totrans-137
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: JSON 对象
 - en: 'JSON data has two object representations. The first is generic: simple JSON
     objects. These objects are manipulated via generic interfaces: `JsonObject`, `JsonArray`,
     and so on. They provide a way to build up or inspect JSON documents without making
     specific class representations of the data.'
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: JSON 数据有两种对象表示形式。第一种是通用的：简单的 JSON 对象。这些对象通过通用接口操作：`JsonObject`、`JsonArray` 等。它们提供了一种构建或检查
+    JSON 文档的方式，而无需创建数据的特定类表示。
 - en: The second JSON object representation binds the JSON data to a full-fledged
     Java class, using JSON bindings (JSON-B) that result in POJO. For example, the
     item data in our sample JSON data would be represented by an `Item` class that
     has attributes for its fields.
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二种 JSON 对象表示形式将 JSON 数据绑定到一个成熟的 Java 类上，使用 JSON 绑定（JSON-B）生成 POJO。例如，我们样本 JSON
+    数据中的项目数据将由一个 `Item` 类表示，该类具有其字段的属性。
 - en: 'The difference between the two object representations is that the first is
     generic and requires no classes. Given a `JsonObject` that represents an item
     in our sample data, the title of the item would be found like this:'
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 这两种对象表示形式的区别在于，第一种是通用的，不需要类。假设我们有一个代表样本数据中项目的 `JsonObject`，那么项目的标题将如下所示：
 - en: '[PRE6]'
+  id: totrans-141
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'In JSON-B, the title of an item would be available via more intuitive getters
     and setters:'
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JSON-B 中，项目的标题可以通过更直观的 getter 和 setter 方法获得：
 - en: '[PRE7]'
+  id: totrans-143
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: In either case, the object itself is created with an underlying parser, so it
     is important to configure the parser for optimal performance. But in addition
     to parsing the data, the object implementations allow us to produce a JSON string
     from the object (i.e., to unmarshal the object). [Table 10-2](#TableJsonB) shows
     the performance of those operations.
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论哪种情况，对象本身都是使用底层解析器创建的，因此配置解析器以获得最佳性能非常重要。但除了解析数据外，对象实现还允许我们从对象生成 JSON 字符串（即反编组对象）。[表 10-2](#TableJsonB)
+    显示了这些操作的性能。
 - en: Table 10-2\. Performance of JSON object models
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 10-2\. JSON 对象模型的性能
 - en: '| Object model | Marshal performance |'
+  id: totrans-146
   prefs: []
   type: TYPE_TB
+  zh: '| 对象模型 | 编组性能 |'
 - en: '| --- | --- |'
+  id: totrans-147
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| JSON object | 2318 ± 51 μs |'
+  id: totrans-148
   prefs: []
   type: TYPE_TB
+  zh: '| JSON 对象 | 2318 ± 51 微秒 |'
 - en: '| JSON-B classes | 7071 ± 71 μs |'
+  id: totrans-149
   prefs: []
   type: TYPE_TB
+  zh: '| JSON-B 类 | 7071 ± 71 微秒 |'
 - en: '| Jackson mapper | 1549 ± 40 μs |'
+  id: totrans-150
   prefs: []
   type: TYPE_TB
+  zh: '| Jackson 映射器 | 1549 ± 40 微秒 |'
 - en: Producing a simple JSON object is substantially faster than producing custom
     Java classes, though those Java classes will be easier to work with from a programming
     perspective.
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 生成简单的 JSON 对象比生成自定义 Java 类要快得多，尽管从编程角度来看，后者更容易使用。
 - en: 'The Jackson mapper in this table is an alternate approach, which at this point
     has pretty much eclipsed other uses. Although Jackson provides an implementation
     of the standard JSON parsing (JSON-P) API, they have an alternate implementation
     that marshals and unmarshals JSON data into Java objects, but that doesn’t follow
     JSON-B. That implementation is built on the `ObjectMapper` class that Jackson
     provides. The JSON-B code to marshal data into an object looks like this:'
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 本表中的 Jackson 映射器是另一种方法，目前几乎已经超越了其他用途。尽管 Jackson 提供了标准 JSON 解析（JSON-P）API 的实现，但他们还有一种备用实现，该实现将
+    JSON 数据编组和解编组为 Java 对象，但不遵循 JSON-B。该实现是建立在 Jackson 提供的 `ObjectMapper` 类上的。将数据编组为对象的
+    JSON-B 代码如下：
 - en: '[PRE8]'
+  id: totrans-153
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'The `ObjectMapper` code is slightly different:'
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ObjectMapper` 的代码略有不同：'
 - en: '[PRE9]'
+  id: totrans-155
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: From a performance perspective, `ObjectMapper` use has some pitfalls. As the
     JSON data is marshaled, the `mapper` will create a lot of proxy classes that are
     used to create the resulting POJO. That in itself is somewhat time-consuming the
@@ -910,96 +1260,143 @@
     GC cycles, and even `OutOfMemory` errors. There need be only a single `ObjectMapper`
     object in an application, which helps both CPU and memory usage. Even so, an object
     model representation of data will consume memory for those objects.
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
+  zh: 从性能角度来看，`ObjectMapper` 的使用存在一些缺陷。由于 JSON 数据被编组，`mapper` 会创建许多用于生成最终 POJO 的代理类。这本身在首次使用类时会耗费一些时间。为了克服这个问题——也是第二个性能问题——是创建大量的映射器对象（例如，每个执行编组的类静态一个）。这往往会导致内存压力、过多的
+    GC 循环，甚至 `OutOfMemory` 错误。一个应用程序中只需要一个 `ObjectMapper` 对象，这有助于 CPU 和内存的使用。即便如此，数据的对象模型表示将为这些对象消耗内存。
 - en: JSON Parsing
+  id: totrans-157
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: JSON 解析
 - en: Direct parsing of JSON data has two advantages. First, if the JSON object model
     is too memory-intensive for your application, directly parsing the JSON and processing
     it will save that memory. Second, if the JSON you are dealing with contains a
     lot of data (or data that you want in some way to filter), parsing it directly
     will be more efficient.
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 直接解析 JSON 数据有两个优点。首先，如果 JSON 对象模型对您的应用程序来说占用内存过多，直接解析 JSON 并处理它将节省内存。其次，如果您处理的
+    JSON 包含大量数据（或希望以某种方式过滤的数据），直接解析将更高效。
 - en: 'All JSON parsers are pull parsers, which operate by retrieving data from the
     stream on demand. The basic pull parser for the tests in this section has this
     loop as its main logic:'
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有 JSON 解析器都是拉取解析器，通过按需从流中检索数据来操作。本节测试中的基本拉取解析器的主要逻辑是这个循环：
 - en: '[PRE10]'
+  id: totrans-160
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: This code pulls tokens from the parser. In the code, most tokens are just discarded.
     When a start token is found, the code checks to see if the token is an item ID.
     If it is, the next character token will be the ID the application wants to save.
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 此代码从解析器中提取标记。在代码中，大多数标记只是丢弃的。当找到起始标记时，代码会检查该标记是否为项 ID。如果是，下一个字符标记将是应用程序想要保存的
+    ID。
 - en: 'This test also allows us to filter the data; in this case, we are filtering
     to read only the first 10 items in the JSON data. That’s done when we process
     the ID: that ID is saved via the `addItemId()` method, which returns `true` if
     the desired number of IDs have been stored. When that happens, the loop can just
     return and not process the remaining data in the input stream.'
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 该测试还允许我们过滤数据；在这种情况下，我们正在过滤以仅读取 JSON 数据中的前 10 个项。这是在我们处理 ID 时完成的：通过 `addItemId()`
+    方法保存该 ID，如果已存储所需数量的 ID，则该循环可以直接返回而不处理输入流中的剩余数据。
 - en: How do these parsers actually perform? [Table 10-3](#TablePullParserJson) shows
     the average time in microseconds to parse the sample document, assuming parsing
     stops after 10 items, and to process the entire document. Predictably, parsing
     90% fewer items leads to a 90% improvement in performance.
+  id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些解析器实际上是如何执行的？[表格 10-3](#TablePullParserJson) 展示了解析样本文档所需的平均微秒数，假设在处理完 10 个项后停止解析，并处理整个文档。可预见的是，解析少
+    90% 的项会使性能提升 90%。
 - en: Table 10-3\. Performance of pull parsers
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 表格 10-3\. 拉取解析器的性能
 - en: '| Items processed | Default parser | Jackson parser |'
+  id: totrans-165
   prefs: []
   type: TYPE_TB
+  zh: '| 项数 | 默认解析器 | Jackson 解析器 |'
 - en: '| --- | --- | --- |'
+  id: totrans-166
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 10 | 159 ± 2 us | 86 ± 5 μs |'
+  id: totrans-167
   prefs: []
   type: TYPE_TB
+  zh: '| 10 | 159 ± 2 us | 86 ± 5 μs |'
 - en: '| 100 | 1662 ± 46 us | 770 ± 4 μs |'
+  id: totrans-168
   prefs: []
   type: TYPE_TB
+  zh: '| 100 | 1662 ± 46 us | 770 ± 4 μs |'
 - en: As has been the case for a while, the Jackson parser delivers superior performance
     here, but both are quite faster than reading actual objects.
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 长期以来，Jackson 解析器在这里表现出色，但两者都比读取实际对象快得多。
 - en: Quick Summary
+  id: totrans-170
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速摘要
 - en: 'There are two options for processing JSON: creating POJOs objects, and using
     direct parsing.'
+  id: totrans-171
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 处理 JSON 有两种选项：创建 POJO 对象和直接解析。
 - en: The choice is dependent on the application needs, but direct parsing offers
     filtering and general performance opportunities. Creating JSON objects can often
     lead to GC issues when the objects are large.
+  id: totrans-172
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 选择取决于应用需求，但直接解析提供了过滤和通用性能机会。当对象较大时，创建 JSON 对象往往会导致 GC 问题。
 - en: The Jackson parser is generally the fastest parser; it should be preferred over
     default implementations.
+  id: totrans-173
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Jackson 解析器通常是最快的解析器；应优先选择它而不是默认实现。
 - en: Summary
+  id: totrans-174
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: Nonblocking I/O forms the basics of effective server scaling because it allows
     servers to handle a relatively large number of connections with a relatively small
     number of threads. Traditional servers utilize this for basic client connection
     handling, and newer server frameworks can extend the nonblocking nature up the
     stack to other applications.
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: 非阻塞 I/O 构成了有效服务器扩展的基础，因为它允许服务器使用相对较少的线程处理大量连接。传统服务器利用这一点来处理基本的客户端连接，而新型服务器框架可以将非阻塞特性扩展到其他应用程序。
 - en: ^([1](ch10.html#idm45775547323624-marker)) This scheme has many slight variations;
     you’ll see some of those in the next section.
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch10.html#idm45775547323624-marker)) 这种方案有许多细微的变化；你将在下一节看到其中一些。

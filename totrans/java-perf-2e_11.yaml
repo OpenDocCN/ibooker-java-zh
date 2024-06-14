@@ -1,76 +1,106 @@
 - en: Chapter 11\. Database Performance Best Practices
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第11章。数据库性能最佳实践
 - en: 'This chapter investigates the performance of Java-driven database applications.
     Applications that access a database are subject to non-Java performance issues:
     if a database is I/O-bound or if it is executing SQL queries that require full
     table scans because an index is missing, no amount of Java tuning or application
     coding is going to solve the performance issues. When dealing with database technologies,
     be prepared to learn (from another source) about how to tune and program the database.'
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章调查了由Java驱动的数据库应用程序的性能。访问数据库的应用程序受非Java性能问题的影响：如果数据库受I/O限制，或者执行需要全表扫描的SQL查询（因为缺少索引），那么无论多少Java调优或应用编码都无法解决性能问题。在处理数据库技术时，准备好从其他来源学习如何调优和编程数据库。
 - en: This is not to say that the performance of an application that uses a database
     is insensitive to things under the control of the JVM and the Java technologies
     that are used. Rather, for good performance, it is necessary to ensure that both
     the database and the application are correctly tuned and executing the best possible
     code.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 这并不意味着使用数据库的应用程序的性能对JVM和所使用的Java技术下的事物不敏感。相反，为了良好的性能，有必要确保数据库和应用程序都正确调优并执行最佳代码。
 - en: This chapter starts by looking at JDBC drivers, since those influence the data
     frameworks that talk to relational databases. Many frameworks abstract the JDBC
     details, including the JPA and the Spring data modules.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章首先从JDBC驱动程序开始，因为这些驱动程序会影响与关系数据库对话的数据框架。许多框架都会抽象出JDBC的细节，包括JPA和Spring数据模块。
 - en: Sample Database
+  id: totrans-4
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 样例数据库
 - en: The examples in this chapter use a sample database set up to store the data
     for 256 stock entities for the period of one year. The year has 261 business days.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的示例使用了一个样例数据库设置，用于存储256个股票实体在一年期间的数据。该年有261个工作日。
 - en: Prices for the individual stocks are held in a table called STOCKPRICE, which
     has a primary key of the stock symbol and the date. There are 66,816 rows in that
     table (256 × 261).
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 单个股票的价格存储在名为STOCKPRICE的表中，该表具有股票符号和日期的主键。该表中有66,816行（256 × 261）。
 - en: Each stock has a set of five associated options, which are also priced daily.
     The STOCKOPTIONPRICE table holds that data with a primary key of the symbol, the
     date, and an integer representing the option number. There are 334,080 rows in
     that table (256 × 261 × 5).
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 每支股票都有一组五个相关的期权，这些期权也是按日定价的。STOCKOPTIONPRICE表保存了具有符号、日期和表示期权号码的整数的数据，该表中有334,080行（256
+    × 261 × 5）。
 - en: JDBC
+  id: totrans-8
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: JDBC
 - en: This chapter covers database performance from the perspective of JPA version
     2.*x*. However, JPA uses JDBC under the covers, and many developers still write
     applications directly to the JDBC APIs—so it is important to look at the most
     important performance aspects of JDBC also. Even for applications that use JPA
     (or another database framework from something like Spring Data), understanding
     JDBC performance will help get better performance out of the framework.
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章介绍了从JPA版本2.*x*的角度来看数据库性能。然而，JPA在内部使用JDBC，并且许多开发人员仍然直接向JDBC API编写应用程序，因此重要的是要查看JDBC的最重要性能方面。即使是使用JPA（或类似于Spring
+    Data的其他数据库框架）的应用程序，了解JDBC性能也将有助于从框架中获得更好的性能。
 - en: JDBC Drivers
+  id: totrans-10
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: JDBC驱动程序
 - en: The JDBC driver is the most important factor in the performance of database
     applications. Databases come with their own set of JDBC drivers, and alternate
     JDBC drivers are available for most popular databases. Frequently, the justification
     for these alternate drivers is that they offer better performance.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: JDBC驱动程序是数据库应用程序性能的最重要因素。数据库配备了各自的JDBC驱动程序，并且大多数流行的数据库都有备用的JDBC驱动程序可用。这些备用驱动程序通常被认为提供更好的性能。
 - en: It’s impossible to adjudicate the performance claims of all database drivers,
     but here are some things to consider when evaluating drivers.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 不可能裁决所有数据库驱动程序的性能声明，但在评估驱动程序时需要考虑以下几点。
 - en: Where work is performed
+  id: totrans-13
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 工作执行地点
 - en: 'JDBC drivers can be written to perform more work within the Java application
     (the database client) or to perform more work on the database server. The best
     example of this is the thin and thick drivers for Oracle databases. The *thin
@@ -79,8 +109,11 @@
     just the opposite: it offloads work from the database at the expense of requiring
     more processing and more memory on the Java client. That kind of trade-off is
     possible in most databases.'
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: JDBC 驱动程序可以编写以在 Java 应用程序（数据库客户端）中执行更多工作，或者在数据库服务器上执行更多工作。最好的例子是 Oracle 数据库的轻量和重量驱动程序。*轻量驱动程序*
+    的设计使其在 Java 应用程序内占用的空间相对较小：它依赖于数据库服务器执行更多处理。*重量驱动程序* 则相反：它从数据库卸载工作，但需要在 Java 客户端上进行更多处理和占用更多内存。大多数数据库都可以做出这种权衡。
 - en: Competing claims disagree on which model gives the better performance. The truth
     is that neither model offers an inherent advantage—the driver that will offer
     the best performance depends on the specifics of the environment in which it is
@@ -90,29 +123,41 @@
     will give the better performance in that case. Conversely, an enterprise that
     has 100 departments accessing a single HR database will see the best performance
     if database resources are preserved and the clients deploy a thick-style driver.^([1](ch11.html#idm45775546052104))
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 竞争性声明对于哪种模型提供更好性能存在分歧。事实是，这两种模型都没有固有优势——提供最佳性能的驱动程序取决于其运行环境的具体情况。例如，如果一个应用主机是一台小型双核机器连接到一个巨大而经过调整的数据库，那么应用主机的
+    CPU 在数据库承受任何重要负载之前可能会饱和。在这种情况下，轻量驱动程序将提供更好的性能。相反，如果一个企业有 100 个部门访问单个 HR 数据库，则如果保留数据库资源并且客户端部署了重量驱动程序，则将获得最佳性能。^([1](ch11.html#idm45775546052104))
 - en: 'This is a reason to be suspicious of any performance claims when it comes to
     JDBC drivers: it is easy to pick a driver that is well suited to a particular
     environment and show that it is superior to another vendor’s driver that performs
     badly on the exact same setup. As always, test in your own environment, and make
     sure that environment mirrors what you will deploy on.'
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 在涉及 JDBC 驱动程序时，任何性能声明都值得怀疑：很容易选择一款适合特定环境的驱动程序，并展示它优于另一家供应商在完全相同设置下表现不佳的驱动程序。像往常一样，在您自己的环境中进行测试，并确保该环境与您将要部署的环境相匹配。
 - en: The JDBC driver type
+  id: totrans-17
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: JDBC 驱动程序类型
 - en: JDBC drivers come in four types (1–4). The driver types in wide use today are
     type 2 (which uses native code) and type 4 (which is pure Java).
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: JDBC 驱动程序有四种类型（1–4）。目前广泛使用的驱动程序类型是类型 2（使用本地代码）和类型 4（纯 Java）。
 - en: Type 1 drivers provide a bridge between Open Database Connectivity (ODBC) and
     JBDC. If an application must talk to a database using ODBC, it must use this driver.
     Type 1 drivers generally have quite bad performance; you would choose that only
     if you had to talk via the ODBC protocol to a legacy database.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 类型 1 驱动程序提供了 ODBC 和 JBDC 之间的桥梁。如果应用程序必须使用 ODBC 与数据库通信，则必须使用此驱动程序。类型 1 驱动程序通常性能较差；只有在必须通过
+    ODBC 协议与传统数据库通信时才会选择它。
 - en: Type 3 drivers are, like type 4 drivers, written purely in Java, but they are
     designed for a specific architecture in which a piece of middleware (sometimes,
     though usually not, an application server) provides an intermediary translation.
@@ -120,8 +165,11 @@
     an application server) sends the JDBC protocol to the middleware, which translates
     the requests into a database-specific protocol and forwards the request to the
     database (and performs the reverse translation for the response).
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 类型 3 驱动程序与类型 4 驱动程序一样，完全由 Java 编写，但它们设计用于一种特定架构，其中一个中间件（有时，尽管通常不是应用服务器）提供中介翻译。在此架构中，一个
+    JDBC 客户端（通常是一个独立程序，尽管理论上可以是应用服务器）向中间件发送 JDBC 协议，中间件将请求翻译成数据库特定协议，并将请求转发到数据库（并对响应执行反向翻译）。
 - en: 'In some situations, this architecture is required: the middleware can sit in
     the network demilitarized zone (DMZ) and provide additional security for connections
     to the database. From a performance standpoint, potential advantages and disadvantages
@@ -130,20 +178,27 @@
     the latency of the request). Without that caching, however, performance will suffer,
     as two round-trip network requests are now required to perform a database operation.
     In the ideal case, those will balance out (or the caching will be even faster).'
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 在某些情况下，这种架构是必需的：中间件可以位于网络的去军事化区域（DMZ），并为与数据库的连接提供额外的安全性。从性能的角度来看，存在潜在的优势和劣势。中间件可以自由缓存数据库信息，从而减轻数据库的负担（使其更快），并更早地将数据返回给客户端（减少请求的延迟）。但是，如果没有进行缓存，性能将会受到影响，因为现在需要执行两个往返网络请求来执行数据库操作。在理想情况下，这些将会达到平衡（或者缓存将更快）。
 - en: 'As a practical situation, though, this architecture has not really been widely
     adopted. It is generally easier to put the server itself in the middle tier (including
     in the DMZ if needed). The server can then perform the database operations, but
     it needn’t provide a JDBC interface to clients: it is better off providing servlet
     interfaces, web service interfaces, and so on—isolating the client from any knowledge
     of the database.'
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 但实际情况是，这种架构实际上并没有被广泛采纳。通常更容易将服务器本身放在中间层（包括需要时放在 DMZ 中）。服务器然后可以执行数据库操作，但无需为客户端提供
+    JDBC 接口：最好是提供 servlet 接口、Web 服务接口等，将客户端与数据库的任何知识隔离开来。
 - en: That leaves type 2 and 4 drivers, both of which are quite popular, and neither
     of which has an inherent performance advantage over the other.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 这留下了 Type 2 和 Type 4 驱动器，两者都非常受欢迎，也没有一个在性能上有固有的优势。
 - en: 'Type 2 drivers use a native library to access the database. These drivers are
     popular with some database vendors because they allow the Java driver to leverage
     the years of work that has been put into writing the C library that other programs
@@ -152,8 +207,12 @@
     for the driver, and the Java application must set up environmental variables to
     use that library. Still, given the work that the vendor has already put into the
     C library, type 2 drivers tend to perform very well.'
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: Type 2 驱动器使用本地库访问数据库。这些驱动器在某些数据库供应商中很受欢迎，因为它们允许 Java 驱动器利用多年来用于编写其他程序访问数据库的
+    C 库的工作。由于依赖本地库，部署更加困难：数据库供应商必须为驱动器提供特定平台的本地库，并且 Java 应用程序必须设置环境变量来使用该库。尽管如此，考虑到供应商已经投入到
+    C 库的工作，Type 2 驱动器往往表现非常出色。
 - en: 'Type 4 drivers are pure Java drivers that implement the wire protocol that
     the database vendor has defined for accessing their database. Because they are
     written completely in Java, they are easy to deploy: the application simply needs
@@ -161,42 +220,60 @@
     as type 2 drivers because both use the same wire protocol. From the vendor’s perspective,
     the type 4 driver may be additional code to write, but from a user’s perspective,
     they are generally the easiest to use.'
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: Type 4 驱动器是纯 Java 驱动器，实现了数据库供应商为访问其数据库定义的协议。因为它们完全由 Java 编写，所以部署非常简单：应用程序只需将一个
+    JAR 文件添加到其类路径中。Type 4 驱动器通常与 type 2 驱动器一样性能良好，因为它们都使用相同的协议。从供应商的角度来看，Type 4 驱动器可能是额外的编码工作，但从用户的角度来看，它们通常是最容易使用的。
 - en: Don’t conflate the driver type (2 or 4) with whether the driver is considered
     thick or thin, as discussed in the previous section. It is true that type 2 drivers
     tend to be thick and type 4 drivers tend to be thin, but that is not a requirement.
     In the end, whether a type 2 or type 4 driver is better depends on the environment
     and the specific drivers in question. There is really no a priori way to know
     which will perform better.
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 不要将驱动程序类型（2 或 4）与前面讨论的驱动程序被视为厚或薄混为一谈。确实，Type 2 驱动器倾向于较厚，而 Type 4 驱动器倾向于较薄，但这不是必须的。最终，Type
+    2 或 Type 4 驱动器哪个更好取决于环境和具体的驱动程序。没有一种先验方法可以知道哪种表现更好。
 - en: Quick Summary
+  id: totrans-27
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Spend time evaluating the best JDBC driver for the application.
+  id: totrans-28
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 花些时间评估应用程序最适合的 JDBC 驱动器。
 - en: The best driver will often vary depending on the specific deployment. The same
     application may be better with one JDBC driver in one deployment and a different
     JDBC driver in a different deployment.
+  id: totrans-29
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 最佳驱动程序通常会根据特定的部署情况而异。同一应用程序可能在一个部署中使用一种JDBC驱动程序，在另一个部署中使用不同的JDBC驱动程序。
 - en: If you have a choice, avoid ODBC and type 1 JDBC drivers.
+  id: totrans-30
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果可以选择，应避免使用ODBC和类型1的JDBC驱动程序。
 - en: JDBC Connection Pools
+  id: totrans-31
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: JDBC连接池
 - en: Connections to a database are time-consuming to create, so JDBC connections
     are another prototypical object that you should reuse in Java.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 数据库连接的建立非常耗时，因此在Java中，JDBC连接是另一个应该重复使用的典型对象。
 - en: In most server environments, all JDBC connections come from the server’s connection
     pool. In a Java SE environment with JPA, most JPA providers will use a connection
     pool transparently, and you can configure the connection pool within the *persistence.xml*
@@ -205,23 +282,30 @@
     pool libraries that are available from many sources. Often, though, it is easier
     to create a connection and store it in a thread-local variable for each thread
     in a standalone application.
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 在大多数服务器环境中，所有JDBC连接都来自服务器的连接池。在具有JPA的Java SE环境中，大多数JPA提供程序将透明地使用连接池，并且您可以在*persistence.xml*文件中配置连接池。在独立的Java
+    SE环境中，连接必须由应用程序管理。为了处理最后一种情况，可以使用许多来源提供的几个连接池库之一。但通常情况下，对于独立应用程序中的每个线程，更容易创建一个连接并将其存储在线程本地变量中。
 - en: As usual, it is important to strike the right balance between the memory occupied
     by the pooled objects and the amount of extra GC the pooling will trigger. This
     is particularly true because of the prepared statement caches that we’ll examine
     in the next section. The actual connection objects may not be very big, but statement
     caches (which exist on a per connection basis) can grow to be quite big.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常情况下，重要的是在池化对象占用的内存和池化操作会触发的额外GC量之间达到正确的平衡。这一点尤为重要，因为我们将在下一节中检查的准备语句缓存存在。
 - en: 'In this case, striking the correct balance applies to the database as well.
     Each connection to the database requires resources on the database (in addition
     to the memory held in the application). As connections are added to the database,
     the database needs more resources: it will allocate additional memory for each
     prepared statement used by the JDBC driver. Database performance can be adversely
     affected if the application server has too many open connections.'
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种情况下，达到正确的平衡也适用于数据库。每个连接到数据库都需要数据库资源（除了应用程序中持有的内存）。随着连接被添加到数据库中，数据库需要更多资源：它将为JDBC驱动程序使用的每个准备语句分配额外的内存。如果应用程序服务器有太多打开的连接，可能会对数据库性能造成不利影响。
 - en: 'The general rule of thumb for connection pools is to have one connection for
     every thread in the application. In a server, start by applying the same sizing
     to the thread pool and the connection pool. In a standalone application, size
@@ -229,8 +313,10 @@
     a typical case, this will offer the best performance: no thread in the program
     will have to wait for a database connection to be available, and typically there
     are enough resources on the database to handle the load imposed by the application.'
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 连接池的一般经验法则是每个应用程序线程一个连接。在服务器上，首先将线程池的大小和连接池的大小设置为相同。在独立应用程序中，根据应用程序创建的线程数量设置连接池的大小。通常情况下，这将提供最佳性能：程序中的任何线程都不必等待数据库连接可用，而且数据库通常有足够的资源来处理应用程序施加的负载。
 - en: If the database becomes a bottleneck, however, this rule can become counterproductive.
     Having too many connections to an undersized database is another illustration
     of the principle that injecting load into a busy system will decrease its performance.
@@ -238,42 +324,56 @@
     database is the way to improve performance in that situation. Application threads
     may have to wait for a free connection, but the total throughput of the system
     will be maximized if the database is not overburdened.
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，如果数据库成为瓶颈，这个规则可能会适得其反。连接过多到一个容量不足的数据库，是将负载注入繁忙系统降低性能的另一个例子。在这种情况下，使用连接池来控制发送到容量不足数据库的工作量是提高性能的方法。应用程序线程可能需要等待空闲连接，但如果不过度负担数据库，系统的总吞吐量将会最大化。
 - en: Quick Summary
+  id: totrans-38
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速摘要
 - en: Connections are expensive objects to initialize; they are routinely pooled in
     Java—either in the JDBC driver itself or within JPA and other frameworks.
+  id: totrans-39
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 连接是昂贵的初始化对象；它们在Java中经常被池化——要么在JDBC驱动程序本身内，要么在JPA和其他框架内。
 - en: As with other object pools, it is important to tune the connection pool so it
     doesn’t adversely affect the garbage collector. In this case, it is also necessary
     to tune the connection pool so it doesn’t adversely affect the performance of
     the database itself.
+  id: totrans-40
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 与其他对象池一样，调整连接池以避免对垃圾收集器产生不利影响非常重要。在这种情况下，还需要调整连接池以避免对数据库性能产生不利影响。
 - en: Prepared Statements and Statement Pooling
+  id: totrans-41
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 预处理语句和语句池
 - en: 'In most circumstances, code should use a `PreparedStatement` rather than a
     `Statement` for its JDBC calls. This aids performance: prepared statements allow
     the database to reuse information about the SQL that is being executed. That saves
     work for the database on subsequent executions of the prepared statement. Prepared
     statements also have security and programming advantages, particularly in specifying
     parameters to the call.'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 在大多数情况下，代码应该使用`PreparedStatement`而不是`Statement`进行JDBC调用。这有助于性能：预处理语句允许数据库重复使用正在执行的SQL的信息。这样可以节省数据库在后续执行预处理语句时的工作量。预处理语句还具有安全性和编程优势，特别是在指定调用参数时。
 - en: '*Reuse* is the operative word here: the first use of a prepared statement takes
     more time for the database to execute, since it must set up and save information.
     If the statement is used only once, that work will be wasted; it’s better to use
     a regular statement in that case.'
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的关键词是*重用*：预处理语句的第一次使用需要更多时间来执行，因为它必须设置和保存信息。如果语句仅被使用一次，那么这些工作将被浪费；在这种情况下最好使用常规语句。
 - en: When there are only a few database calls, the `Statement` interface will let
     the application finish faster. But even batch-oriented programs may make hundreds
     or thousands of JDBC calls to the same few SQL statements; later examples in this
@@ -281,19 +381,26 @@
     Batch programs that have many JDBC calls—and servers that will service many requests
     over their lifetime—are better off using a `PreparedStatement` interface (and
     database frameworks will do that automatically).
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 当只有少量数据库调用时，`Statement`接口将使应用程序更快完成。但即使是面向批处理的程序也可能对同几条SQL语句进行数百或数千次的JDBC调用；本章的后续示例将使用批处理程序将其400,896条记录加载到数据库中。具有许多JDBC调用的批处理程序——以及将服务于许多请求的服务器——最好使用`PreparedStatement`接口（数据库框架将自动执行此操作）。
 - en: 'Prepared statements provide their performance benefit when they are pooled—that
     is, when the actual `PreparedStatement` object is reused. For proper pooling,
     two things must be considered: the JDBC connection pool and the JDBC driver configuration.^([2](ch11.html#idm45775545987720))
     These configuration options apply to any program that uses JDBC, whether directly
     or via a framework.'
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 当预处理语句对象被重复使用时，它们提供性能优势——即池化时。为了正确池化，必须考虑两件事：JDBC连接池和JDBC驱动程序配置。^([2](ch11.html#idm45775545987720))
+    这些配置选项适用于任何直接或通过框架使用JDBC的程序。
 - en: Setting up the statement pool
+  id: totrans-46
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 设置语句池
 - en: Prepared statement pools operate on a per connection basis. If one thread in
     a program pulls a JDBC connection out of the pool and uses a prepared statement
     on that connection, the information associated with the statement will be valid
@@ -301,26 +408,34 @@
     up establishing a second pooled instance of the prepared statement. In the end,
     each connection object will have its own pool of all the prepared statements used
     in the application (assuming that they are all used over the lifetime of the application).
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 准备好的语句池是基于每个连接操作的。如果程序中的一个线程从池中取出一个JDBC连接，并在该连接上使用一个准备好的语句，那么与该语句相关的信息仅对该连接有效。使用第二个连接的第二个线程最终将建立第二个语句池的实例。最终，每个连接对象将在应用程序中拥有自己的所有准备好的语句的池（假设它们在应用程序的生命周期内都被使用）。
 - en: 'This is one reason a standalone JDBC application should use a connection pool.
     It also means that the size of the connection pool matters (to both JDBC and JPA
     programs). That is particularly true early in the program’s execution: when a
     connection that has not yet used a particular prepared statement is used, that
     first request will be a little slower.'
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 这也是独立的JDBC应用程序应该使用连接池的一个原因。这也意味着连接池的大小对JDBC和JPA程序都很重要。特别是在程序的早期执行阶段，当尚未使用特定准备好的语句的连接被使用时，第一个请求会稍微慢一些。
 - en: The size of the connection pool also matters because it is caching those prepared
     statements, which take up heap space (and often a lot of heap space). Object reuse
     is certainly a good thing in this case, but you must be aware of how much space
     those reusable objects take up and make sure it isn’t negatively affecting the
     GC time.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 连接池的大小也很重要，因为它正在缓存那些准备好的语句，这些语句占用堆空间（通常是大量的堆空间）。在这种情况下，对象重用当然是一件好事，但你必须意识到这些可重用对象占用了多少空间，并确保它不会对GC时间产生负面影响。
 - en: Managing statement pools
+  id: totrans-50
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 管理语句池
 - en: The second thing to consider about the prepared statement pool is what piece
     of code will actually create and manage the pool. This is done by using the `setMaxStatements()`
     method of the `ConnectionPoolDataSource` class to enable or disable statement
@@ -329,14 +444,18 @@
     pooling should occur—whether in the JDBC driver or another layer, such as the
     application server. And that single interface is insufficient for some JDBC drivers,
     which require additional configuration.
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 关于准备好的语句池的第二个考虑是哪段代码实际上将创建和管理该池。这是通过使用`ConnectionPoolDataSource`类的`setMaxStatements()`方法来启用或禁用语句池来完成的。如果传递给`setMaxStatements()`方法的值为0，则禁用语句池。该接口明确不定义语句池应该发生在何处——无论是在JDBC驱动程序中还是在另一层，比如应用服务器中。对于某些需要额外配置的JDBC驱动程序来说，这单一接口是不够的。
 - en: 'So, when writing a Java SE application that uses JDBC calls directly, we have
     two choices: either the JDBC driver must be configured to create and manage the
     statement pool or the pool must be created and managed within the application
     code. When using a framework, the statement pool is often managed by the framework.'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，在编写直接使用JDBC调用的Java SE应用程序时，我们有两个选择：要么配置JDBC驱动程序以创建和管理语句池，要么在应用程序代码中创建和管理池。在使用框架时，语句池通常由框架管理。
 - en: The tricky thing is that no standards exist in this area. Some JDBC drivers
     do not provide a mechanism to pool statements at all; they expect to be used only
     within an application server that is doing the statement pooling and want to provide
@@ -346,8 +465,10 @@
     statement pool puts a burden on you if you are the developer of a standalone application).
     In the end, you’ll have to sift through this landscape and make sure that the
     statement pool is created somewhere.
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 棘手的问题在于在这个领域中不存在标准。一些JDBC驱动程序根本不提供池语句的机制；它们期望仅在执行语句池的应用服务器中使用，并且希望提供一个更简单的驱动程序。一些应用服务器不提供和管理池；它们期望JDBC驱动程序处理该任务，并且不希望复杂化其代码。这两种观点都有其优点（尽管一个不提供语句池的JDBC驱动程序会给独立应用程序的开发者带来负担）。最终，你将不得不筛选这个景观，并确保语句池在某处被创建。
 - en: Since there are no standards, you may encounter a situation where both the JDBC
     driver and the data layer framework are capable of managing the prepared statement
     pool. In that case, it is important that only one of them be configured to do
@@ -356,8 +477,11 @@
     JDBC driver to perform better statement pooling. Since the driver is (usually)
     specific to a particular database, it can be expected to make better optimizations
     for that database than the more generic application server code.
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于没有标准，您可能会遇到这样一种情况：JDBC 驱动程序和数据层框架都能够管理准备好的语句池。在这种情况下，重要的是只配置其中一个来执行此操作。从性能的角度来看，更好的选择将再次取决于驱动程序和服务器的确切组合。作为一般规则，您可以期望
+    JDBC 驱动程序执行更好的语句池。由于驱动程序（通常）是针对特定数据库的，因此可以预期它会为该数据库进行更好的优化，而不像更通用的应用服务器代码那样。
 - en: 'To enable statement pooling (or caching) for a particular JDBC driver, consult
     that driver’s documentation. In many cases, you need only set up the driver so
     that the `maxStatements` property is set to the desired value (i.e., the size
@@ -365,33 +489,46 @@
     the Oracle JDBC drivers require that specific properties be set to tell it whether
     to use implicit or explicit statement caching, and MySQL drivers require that
     you set a property to enable statement caching.'
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 要为特定的 JDBC 驱动程序启用语句池（或缓存），请参阅该驱动程序的文档。在许多情况下，您只需设置驱动程序，以便 `maxStatements` 属性设置为所需的值（即语句池的大小）。其他驱动程序可能需要其他设置：例如，Oracle
+    JDBC 驱动程序要求设置特定属性以告知其是否使用隐式或显式语句缓存，并且 MySQL 驱动程序要求您设置一个属性以启用语句缓存。
 - en: Quick Summary
+  id: totrans-56
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Java applications will typically execute the same SQL statement repeatedly.
     In those cases, reusing prepared statements will offer a significant performance
     boost.
+  id: totrans-57
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Java 应用程序通常会重复执行相同的 SQL 语句。在这些情况下，重用准备好的语句将显著提高性能。
 - en: Prepared statements must be pooled on a per connection basis. Most JDBC drivers
     and data frameworks can do this automatically.
+  id: totrans-58
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 准备好的语句必须基于每个连接进行池化。大多数 JDBC 驱动程序和数据框架可以自动执行此操作。
 - en: Prepared statements can consume a significant amount of heap. The size of the
     statement pool must be carefully tuned to prevent GC issues from pooling too many
     very large objects.
+  id: totrans-59
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 准备好的语句可能会消耗大量堆内存。必须仔细调整语句池的大小，以防止过多的非常大的对象引发 GC 问题。
 - en: Transactions
+  id: totrans-60
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 事务
 - en: Applications have correctness requirements that ultimately dictate how transactions
     are handled. A transaction that requires repeatable-read semantics will be slower
     than a transaction that requires only read-committed semantics, but knowing that
@@ -399,8 +536,10 @@
     reads. So while this section discusses how to use the least intrusive isolation
     semantics for an application, don’t let the desire for speed overcome the correctness
     of the application.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 应用程序具有最终决定如何处理事务的正确性要求。需要可重复读语义的事务将比仅需要读取已提交语义的事务慢，但是对于不能容忍非可重复读的应用程序来说，了解这一点并没有太大的实际好处。因此，虽然本节讨论了如何为应用程序使用最不具侵入性的隔离语义，但是不要让速度的愿望克服应用程序的正确性。
 - en: Database transactions have two performance penalties. First, it takes time for
     the database to set up and then commit the transaction. This involves making sure
     that changes to the database are fully stored on disk, that the database transaction
@@ -410,37 +549,50 @@
     for a lock on the same database row, the scalability of the application will suffer.
     From a Java perspective, this is exactly analogous to the discussion in [Chapter 9](ch09.html#ThreadPerformance)
     about contended and uncontended locks.
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 数据库事务有两个性能惩罚。首先，数据库设置和提交事务需要时间。这涉及确保对数据库的更改完全存储在磁盘上，数据库事务日志是一致的等等。其次，在数据库事务期间，常常会为特定数据集（不一定是行，但我将在此处使用它作为示例）获取锁。如果两个事务竞争对同一数据库行的锁定，应用程序的可扩展性将会受到影响。从
+    Java 的角度来看，这与[第 9 章](ch09.html#ThreadPerformance)中关于有争议和无争议锁定的讨论完全类似。
 - en: 'For optimal performance, consider both of these issues: how to program the
     transactions so that the transaction itself is efficient and how to hold locks
     on the database during a transaction so that the application as a whole can scale.'
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了实现最佳性能，考虑这两个问题：如何编写事务使得事务本身高效，以及如何在事务期间在数据库上持有锁，以便整个应用程序可以扩展。
 - en: JDBC transaction control
+  id: totrans-64
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: JDBC事务控制
 - en: Transactions are present within both JDBC and JPA applications, but JPA manages
     transactions differently (those details are discussed later in this chapter).
     For JDBC, transactions begin and end based on the way the `Connection` object
     is used.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: JDBC和JPA应用程序中均存在事务，但JPA以不同的方式管理事务（这些细节将在本章后面讨论）。对于JDBC，事务的开始和结束取决于如何使用Connection对象。
 - en: In basic JDBC usage, connections have an autocommit mode (set via the `setAutoCommit()`
     method). If autocommit is turned on (and for most JDBC drivers, that is the default),
     each statement in a JDBC program is its own transaction. In that case, a program
     need take no action to commit a transaction (in fact, if the `commit()` method
     is called, performance will often suffer).
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 在基本的JDBC使用中，连接具有自动提交模式（通过`setAutoCommit()`方法设置）。如果自动提交被打开（对于大多数JDBC驱动程序来说，这是默认的），JDBC程序中的每个语句都是其自身的事务。在这种情况下，程序不需要执行任何操作来提交事务（事实上，如果调用`commit()`方法，性能通常会受到影响）。
 - en: If autocommit is turned off, a transaction implicitly begins when the first
     call is made on the connection object (e.g., by calling the `executeQuery()` method).
     The transaction continues until the `commit()` method (or the `rollback()` method)
     is called. A new transaction will begin when the connection is used for the next
     database call.
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果关闭了自动提交，当连接对象的第一次调用（例如通过调用`executeQuery()`方法）时，事务会隐式开始。事务将持续到调用`commit()`方法（或`rollback()`方法）。在下次数据库调用时，连接将开始新的事务。
 - en: 'Transactions are expensive to commit, so one goal is to perform as much work
     in a transaction as is possible. Unfortunately, that principle is completely at
     odds with another goal: because transactions can hold locks, they should be as
@@ -448,48 +600,68 @@
     will depend on the application and its locking requirements. The next section,
     on transaction isolation and locking, covers that in more detail; first let’s
     look into the options for optimizing the transaction handling itself.'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 提交事务的成本很高，因此一个目标是尽可能多地在一个事务中执行工作。不幸的是，这个原则与另一个目标完全对立：因为事务可能持有锁，所以事务应该尽可能短暂。这里肯定存在一个平衡点，而找到这个平衡将取决于应用程序及其锁定需求。下一节将详细讨论事务隔离和锁定，首先让我们看看优化事务处理本身的选项。
 - en: 'Consider some sample code that inserts data into a database for use by the
     stock application. For each day of valid data, one row must be inserted into the
     STOCKPRICE table, and five rows into the STOCKOPTIONPRICE table. A basic loop
     to accomplish that looks like this:'
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 考虑一些插入数据到数据库供股票应用程序使用的示例代码。对于每天的有效数据，必须向STOCKPRICE表插入一行数据，并向STOCKOPTIONPRICE表插入五行数据。一个完成这些操作的基本循环如下所示：
 - en: '[PRE0]'
+  id: totrans-70
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: In the full code, the prices are precalculated into the `stockPrices` array.
     If that array represents data for the year 2019, this loop will insert 261 rows
     into the STOCKPRICE table (via the first call to the `executeUpdate()` method)
     and 1,305 rows into the STOCKOPTIONPRICE table (via the `for` loop). In the default
     autocommit mode, that means 1,566 separate transactions, which will be quite expensive.
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 在完整的代码中，价格预先计算到`stockPrices`数组中。如果该数组表示2019年的数据，这个循环将通过第一次调用`executeUpdate()`方法向STOCKPRICE表中插入261行，并通过`for`循环向STOCKOPTIONPRICE表中插入1,305行。在默认的自动提交模式下，这意味着1,566个单独的事务，这将是非常昂贵的。
 - en: 'Better performance will be achieved if autocommit mode is disabled and an explicit
     commit is performed at the end of the loop:'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果禁用自动提交模式并在循环结束时执行显式提交，将实现更好的性能：
 - en: '[PRE1]'
+  id: totrans-73
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'From a logical point of view, that probably makes sense as well: the database
     will end up with either an entire year’s worth of data or no data.'
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 从逻辑上讲，这也可能是有道理的：数据库最终将具有整年的数据或者没有数据。
 - en: 'If this loop is repeated for multiple stocks, we have a choice of committing
     all the data at once or committing all the data for a symbol at once:'
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果此循环为多个股票重复进行，则可以选择一次性提交所有数据或一次性提交一个符号的所有数据：
 - en: '[PRE2]'
+  id: totrans-76
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Committing all the data at once offers the fastest performance. In this example,
     though, the application semantics might dictate that each year of data be committed
     individually. Sometimes, other requirements intrude on attempts to get the best
     performance.
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 将所有数据一次性提交提供了最快的性能。然而，在这个例子中，应用程序语义可能要求每年的数据都单独提交。有时，其他要求可能会干扰到尝试获得最佳性能的努力。
 - en: Each time the `executeUpdate()` method is executed in the preceding code, a
     remote call is made to the database and work must be performed. In addition, locking
     will occur when the updates are made (to ensure, at least, that another transaction
@@ -497,53 +669,81 @@
     can be further optimized in this case by batching the inserts. When inserts are
     batched, the JDBC driver holds them until the batch is completed; then all statements
     are transmitted in one remote JDBC call.
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前述代码中每次执行 `executeUpdate()` 方法时，都会向数据库发出远程调用并执行相应的工作。此外，在进行更新时会发生锁定（至少可以确保另一个事务不能在相同的符号和日期上插入记录）。在这种情况下，通过批量插入可以进一步优化事务处理。当插入被批处理时，JDBC驱动程序会将它们保持，直到批次完成；然后所有语句一起通过远程JDBC调用传输。
 - en: 'Here is how batching is achieved:'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里是批处理的实现方式：
 - en: '[PRE3]'
+  id: totrans-80
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: The code could equally well choose to execute each batch on a per stock basis
     (similar to the way we committed after each stock symbol change). Some JDBC drivers
     have a limitation on the number of statements they can batch (and the batch does
     consume memory in the application), so even if the data is committed at the end
     of the entire operation, the batches may need to be executed more frequently.
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 代码同样可以选择按每支股票的方式执行每个批处理（类似于我们在每个股票符号更改后提交的方式）。某些JDBC驱动程序对它们可以批处理的语句数量有限制（并且批次在应用程序中会消耗内存），因此即使在整个操作结束时数据被提交，批次可能仍然需要更频繁地执行。
 - en: These optimizations can yield very large performance increases. [Table 11-1](#TableJDBCCommit)
     shows the time required to insert one year of data for 256 stocks (a total of
     400,896 insertions).
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些优化可以大幅提升性能。[表 11-1](#TableJDBCCommit) 显示了为256支股票插入一年数据所需的时间（共计400,896次插入）。
 - en: Table 11-1\. Seconds required to insert data for 256 stocks
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 11-1\. 插入256支股票数据所需的秒数
 - en: '| Programming mode | Time required | DB calls | DB commits |'
+  id: totrans-84
   prefs: []
   type: TYPE_TB
+  zh: '| 编程模式 | 所需时间 | 数据库调用 | 数据库提交 |'
 - en: '| --- | --- | --- | --- |'
+  id: totrans-85
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- | --- |'
 - en: '| Autocommit enabled, no batching | 537 ± 2 seconds | 400,896 | 400,896 |'
+  id: totrans-86
   prefs: []
   type: TYPE_TB
+  zh: '| 启用自动提交，无批处理 | 537 ± 2秒 | 400,896 | 400,896 |'
 - en: '| 1 commit for each stock | 57 ± 4 seconds | 400,896 | 256 |'
+  id: totrans-87
   prefs: []
   type: TYPE_TB
+  zh: '| 每支股票1提交 | 57 ± 4秒 | 400,896 | 256 |'
 - en: '| 1 commit for all data | 56 ± 14 seconds | 400,448 | 1 |'
+  id: totrans-88
   prefs: []
   type: TYPE_TB
+  zh: '| 所有数据1批次/1提交 | 56 ± 14秒 | 400,448 | 1 |'
 - en: '| 1 batch per commit for each stock | 4.6 ± 2 seconds | 256 | 256 |'
+  id: totrans-89
   prefs: []
   type: TYPE_TB
+  zh: '| 每支股票1批次/每提交1次 | 4.6 ± 2秒 | 256 | 256 |'
 - en: '| 1 batch per stock; 1 commit | 3.9 ± 0.7 seconds | 256 | 1 |'
+  id: totrans-90
   prefs: []
   type: TYPE_TB
+  zh: '| 每支股票1批次/1提交 | 3.9 ± 0.7秒 | 256 | 1 |'
 - en: '| 1 batch/commit for all data | 3.8 ± 1 seconds | 1 | 1 |'
+  id: totrans-91
   prefs: []
   type: TYPE_TB
+  zh: '| 全部数据1批次/1提交 | 3.8 ± 1秒 | 1 | 1 |'
 - en: 'Note one interesting fact about this table that is not immediately obvious:
     the difference between rows 1 and 2 is that autocommit has been turned off and
     the code is explicitly calling the `commit()` method at the end of each `while`
@@ -551,90 +751,126 @@
     autocommit is still enabled. A batch is considered one transaction, which is why
     there is a one-to-one correspondence between database calls and commits (and eliminating
     more than 400,000 calls yields that impressive speedup).'
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 这张表中有一个有趣的事实并不立即显而易见：第1行和第2行的区别在于自动提交已关闭，并且代码在每个 `while` 循环结束时显式调用了 `commit()`
+    方法。第1行和第4行之间的区别在于语句被批量处理，但是自动提交仍然是启用状态。一个批次被视为一个事务，这就是为什么数据库调用和提交之间存在一对一的对应关系（并且消除超过400,000次调用可以带来显著的加速）。
 - en: It’s also interesting to note that the difference between 400,896 and 256 calls
     to commit data (rows 1 and 2) is an order of magnitude, yet the difference between
     having 1 and 256 commits is not really significant (i.e., the difference between
     rows 2 and 3, or the differences between rows 5 and 6). Committing the data is
     fast enough that when there are 256 calls, the overhead is just noise; when there
     are 400,896 of them, it adds up.^([3](ch11.html#idm45775545357736))
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 值得注意的是，提交数据的调用次数从400,896次到256次之间的差异是数量级的差别，但是在1次和256次提交之间的差异并不显著（即第2行和第3行之间的差异，或第5行和第6行之间的差异）。提交数据的速度足够快，以至于当调用次数为256次时，额外开销只是噪音；但当调用次数达到400,896次时，这些开销将累积起来。^([3](ch11.html#idm45775545357736))
 - en: Transaction isolation and locking
+  id: totrans-94
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 事务隔离和锁定
 - en: The second factor affecting transaction performance concerns the scalability
     of the database as data within transactions is locked. Locking protects data integrity;
     in database terms, it allows one transaction to be isolated from other transactions.
     JDBC and JPA support the four major transaction isolation modes of databases,
     though they differ in the way they accomplish that.
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 影响事务性能的第二个因素涉及数据库的可伸缩性，因为事务内的数据被锁定。锁定保护数据完整性；在数据库术语中，它允许一个事务与其他事务隔离。JDBC 和 JPA
+    支持数据库的四种主要事务隔离模式，尽管它们在实现方式上有所不同。
 - en: Isolation modes are briefly covered here, though since programming to a correct
     isolation mode isn’t really a Java-specific issue, you are urged to consult a
     database programming book for more information.
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 隔离模式在此简要介绍，尽管正确选择隔离模式并非 Java 特定问题，建议查阅数据库编程书籍以获取更多信息。
 - en: 'Here are the basic transaction isolation modes (in order from most to least
     expensive):'
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里是基本的事务隔离模式（按从昂贵到廉价的顺序）：
 - en: TRANSACTION_SERIALIZABLE
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: TRANSACTION_SERIALIZABLE
 - en: This is the most expensive transaction mode; it requires that all data accessed
     within the transaction be locked for the duration of the transaction. This applies
     both to data accessed via a primary key and to data accessed via a `WHERE` clause—and
     when there is a `WHERE` clause, the table is locked such that no new records satisfying
     the clause can be added for the duration of the transaction. A serialized transaction
     will always see the same data each time it issues a query.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是最昂贵的事务模式；它要求事务期间访问的所有数据都被锁定。这适用于通过主键访问的数据和通过`WHERE`子句访问的数据——当存在`WHERE`子句时，表被锁定，以使不能添加满足子句的新记录至事务结束。序列化事务每次发出查询时都将看到相同的数据。
 - en: TRANSACTION_REPEATABLE_READ
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: TRANSACTION_REPEATABLE_READ
 - en: 'This requires that all accessed data is locked for the duration of the transaction.
     However, other transactions can insert new rows into the table at any time. This
     mode can lead to *phantom reads*: a transaction that reissues a query with a `WHERE`
     clause may get back different data the second time the query is executed.'
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: 这要求事务期间所有访问的数据都被锁定。然而，其他事务可以随时向表中插入新行。这种模式可能导致*幻读*：重新执行带有`WHERE`子句的查询时，事务可能会获得不同的数据。
 - en: TRANSACTION_READ_COMMITTED
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: TRANSACTION_READ_COMMITTED
 - en: 'This mode locks only rows that are written during a transaction. This leads
     to *nonrepeatable reads*: data that is read at one point in the transaction may
     be different from data that is read at another point in the transaction.'
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 此模式仅锁定事务期间写入的行。这导致*不可重复读*：事务中某一时间点读取的数据可能与事务中另一时间点读取的数据不同。
 - en: TRANSACTION_READ_UNCOMMITTED
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
+  zh: TRANSACTION_READ_UNCOMMITTED
 - en: This is the least expensive transaction mode. No locks are involved, so one
     transaction may read the written (but uncommitted) data in another transaction.
     This is known as a *dirty read*; the problem here arises because the first transaction
     may roll back (meaning the write never actually happens), and hence the second
     transaction is operating on incorrect data.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是最经济的事务模式。不涉及锁定，因此一个事务可以读取另一个事务中已写入但未提交的数据。这称为*脏读*；问题在于第一个事务可能会回滚（意味着写入实际上没有发生），因此第二个事务操作的是不正确的数据。
 - en: 'Databases operate in a default mode of transaction isolation: MySQL starts
     with a default of `TRANSACTION_REPEATABLE_READ`; Oracle and IBM Db2 start with
     a default of `TRANSACTION_READ_COMMITTED`; and so on. There are lots of database-specific
     permutations here. Db2 calls its default transaction mode `CS` (for *cursor stability*)
     and has different names for the other three JDBC modes. Oracle doesn’t support
     either `TRANSACTION_READ_UNCOMMITTED` or `TRANSACTION_REPEATABLE_READ`.'
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 数据库以事务隔离的默认模式运行：MySQL 默认使用`TRANSACTION_REPEATABLE_READ`；Oracle 和 IBM Db2 默认使用`TRANSACTION_READ_COMMITTED`；等等。这里有很多特定于数据库的变体。Db2
+    将其默认事务模式称为`CS`（代表*游标稳定性*），并为其他三种 JDBC 模式使用了不同的名称。Oracle 不支持`TRANSACTION_READ_UNCOMMITTED`和`TRANSACTION_REPEATABLE_READ`这两种模式。
 - en: When a JDBC statement is executed, it uses the database’s default isolation
     mode. Alternately, the `setTransaction()` method on the JDBC connection can be
     called to have the database supply the necessary transaction isolation level (and
     if the database doesn’t support the given level, the JDBC driver will either throw
     an exception or silently upgrade the isolation level to the next strictest level
     it supports).
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 当执行 JDBC 语句时，它使用数据库的默认隔离模式。另外，可以调用 JDBC 连接上的 `setTransaction()` 方法来让数据库提供必要的事务隔离级别（如果数据库不支持给定级别，则
+    JDBC 驱动程序将抛出异常或者悄悄地将隔离级别升级为它支持的下一个最严格的级别）。
 - en: 'For simple JDBC programs, this is sufficient. More commonly—and particularly
     when used with JPA—programs may want to mix isolation levels on data within a
     transaction. In an application that queries my employee information so as to ultimately
@@ -644,8 +880,12 @@
     ID. There is no real reason to lock that data during the transaction, so access
     to that row could certainly operate as `TRANSACTION_READ_COMMITTED` (or possibly
     even lower).'
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于简单的 JDBC 程序，这就足够了。更常见的做法是——尤其是在与 JPA 结合使用时——程序可能需要在事务中混合使用数据的隔离级别。在一个查询我的员工信息以便最终给我加薪的应用程序中，必须保护对我的员工记录的访问：该数据需要被视为
+    `TRANSACTION_REPEATABLE_READ`。但该事务还可能访问其他表中的数据，比如保存我的办公室 ID 的表。在事务期间锁定那些数据没有真正的理由，因此对该行的访问肯定可以作为
+    `TRANSACTION_READ_COMMITTED` 运行（甚至可能更低）。
 - en: JPA allows you to specify locking levels on a per entity basis (and, of course,
     an entity is, at least usually, simply a row in the database). Because getting
     these locking levels correct can be difficult, it is easier to use JPA than to
@@ -653,16 +893,23 @@
     locking levels in JDBC applications, employing the same pessimistic and optimistic
     locking semantics that JPA uses (and if you’re not familiar with those semantics,
     this example should serve as a good introduction).
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: JPA 允许您按照每个实体的基础指定锁定级别（当然，实体至少通常是数据库中的一行）。因为正确设置这些锁定级别可能很困难，所以使用 JPA 比在 JDBC
+    语句中执行锁定要容易得多。尽管如此，在 JDBC 应用程序中使用不同的锁定级别是可能的，它使用与 JPA 相同的悲观和乐观锁定语义（如果您不熟悉这些语义，这个例子应该是一个很好的介绍）。
 - en: 'At a JDBC level, the basic approach is to set the isolation level of the connection
     to `TRANSACTION_READ_UNCOMMITTED` and then to lock explicitly only that data that
     needs to be locked during the transaction:'
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDBC 层面，基本的方法是将连接的隔离级别设置为 `TRANSACTION_READ_UNCOMMITTED`，然后仅在事务期间显式锁定需要锁定的数据：
 - en: '[PRE4]'
+  id: totrans-111
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'The `ps1` statement establishes an explicit lock on the employee data table:
     no other transaction will be able to access that row for the duration of this
     transaction. The SQL syntax to accomplish that is nonstandard. You must consult
@@ -670,52 +917,71 @@
     locking, but the common syntax is to include the `FOR UPDATE` clause. This kind
     of locking is called *pessimistic locking*. It actively prevents other transactions
     from accessing the data in question.'
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ps1` 语句在员工数据表上建立了显式锁定：在此事务期间，其他事务将无法访问该行。实现这一目标的 SQL 语法是非标准的。您必须查阅数据库供应商的文档，了解如何实现所需的锁定级别，但常见的语法是包含
+    `FOR UPDATE` 子句。这种类型的锁定称为 *悲观锁定*。它积极地阻止其他事务访问相关数据。'
 - en: Locking performance can often be improved by using optimistic locking. If the
     data access is uncontended, this will be a significant performance boost. If the
     data is even slightly contended, however, the programming becomes more difficult.
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过使用乐观锁定，锁定性能通常可以得到改善。如果数据访问没有竞争，这将是一个显著的性能提升。然而，如果数据甚至有轻微的竞争，编程会变得更加困难。
 - en: 'In a database, optimistic concurrency is implemented with a version column.
     When data is selected from a row, the selection must include the desired data
     plus a version column. To select information about me, I could issue the following
     SQL:'
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: 在数据库中，乐观并发是通过版本列实现的。当从行中选择数据时，选择必须包括所需数据以及版本列。要选择关于我的信息，我可以执行以下 SQL：
 - en: '[PRE5]'
+  id: totrans-115
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: 'This query will return my names (Scott and Oaks) plus whatever the current
     version number is (say, 1012). When it comes time to complete the transaction,
     the transaction updates the version column:'
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个查询将返回我的姓名（斯科特和奥克斯），以及当前版本号（比如，1012）。当完成交易时，事务会更新版本列：
 - en: '[PRE6]'
+  id: totrans-117
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: If the row in question requires repeatable-read or serialization semantics,
     this update must be performed even if the data was only read during the transaction—those
     isolation levels require locking read-only data used in a transaction. For read-committed
     semantics, the version column needs to be updated only when other data in the
     row is also updated.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果涉及的行需要可重复读或串行化语义，即使在事务期间仅读取数据，也必须执行此更新——这些隔离级别要求锁定事务中使用的只读数据。对于读提交语义，只有在行中的其他数据也更新时，才需要更新版本列。
 - en: Under this scheme, if two transactions use my employee record at the same time,
     each will read a version number of 1012. The first transaction to complete will
     successfully update the version number to 1013 and continue. The second transaction
     will not be able to update the employee record—there is no longer any record where
     the version number is 1012, so the SQL update statement will fail. That transaction
     will get an exception and be rolled back.
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 根据此方案，如果两个事务同时使用我的员工记录，每个事务将读取版本号1012。首个完成的事务将成功将版本号更新为1013并继续。第二个事务将无法更新员工记录——不再存在版本号为1012的记录，因此SQL更新语句将失败。该事务将收到异常并回滚。
 - en: 'This highlights a major difference between optimistic locking in the database
     and Java’s atomic primitives: in database programming, when the transaction gets
     that exception, it is not (and cannot be) transparently retried. If you are programming
     directly to JDBC, the `commit()` method will get an `SQLException`; in JPA, your
     application will get an `OptimisticLockException` when the transaction is committed.'
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 这突显了数据库中乐观锁定与Java原子基元之间的主要区别：在数据库编程中，当事务收到异常时，不能透明地重试。如果您直接编程到JDBC，则`commit()`方法将获得`SQLException`；在JPA中，当事务提交时，应用程序将获得`OptimisticLockException`。
 - en: Depending on your perspective, this is either a good or a bad thing. In [Chapter 9](ch09.html#ThreadPerformance),
     we looked at the performance of the atomic utilities that use CAS-based features
     to avoid explicit synchronization. Those utilities are essentially using optimistic
@@ -727,16 +993,20 @@
     optimistic transaction in the database has a far greater potential to lead to
     a never-ending spiral of retries. Plus, it is often infeasible to determine automatically
     what operation(s) to retry.
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: 根据您的角度不同，这或许是好事，也或许是坏事。在[第9章](ch09.html#ThreadPerformance)中，我们讨论了使用CAS基础特性的原子实用程序的性能，以避免显式同步。这些实用程序基本上使用乐观并发性，具有无限的自动重试。在高度竞争的情况下，性能会受到影响，因为大量重试会消耗大量CPU资源，尽管在实践中这通常不是问题。在数据库中，情况要严重得多，因为在事务中执行的代码比简单增加内存位置中的值要复杂得多。在数据库中重试失败的乐观事务可能导致无休止的重试螺旋，这种潜力要远远大于在内存中的情况。此外，自动确定要重试的操作（或操作）通常是不可行的。
 - en: So not retrying transparently is a good thing (and often the only possible solution),
     but on the other hand, that does mean the application is now responsible for handling
     the exception. The application can choose to retry the transaction (maybe only
     once or twice), it can choose to prompt the user for different data, or it can
     simply inform the user that the operation has failed. No one-size-fits-all answer
     exists.
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，不透明地重试是一件好事（而且通常是唯一可能的解决方案），但另一方面，这意味着应用现在负责处理异常。应用程序可以选择重试事务（也许只重试一次或两次），可以选择提示用户获取不同的数据，或者可以简单地通知用户操作失败。没有一种适合所有情况的答案。
 - en: 'Optimistic locking works best, then, when there is little chance of a collision
     between two sources. Think of a joint checking account: there is a slight chance
     that my husband and I may be in different parts of the city withdrawing money
@@ -749,112 +1019,158 @@
     would be counterproductive. In truth, stock applications would frequently use
     no locking when possible just because of the volume of changes, although actual
     trade updates would require some locking.'
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 乐观锁定在两个源之间几乎不会发生碰撞时效果最佳。想象一个联合支票账户：我丈夫和我在同一时间可能在城市的不同地方从我们的支票账户中取款，有一点点可能性会导致乐观锁定异常。即使确实发生了这种情况，要求其中一个再试一次也不会太繁重，现在乐观锁定异常的几率几乎为零（或者我希望如此；我们不要讨论我们多频繁地进行
+    ATM 取款）。将这种情况与涉及样本股票应用程序的情况进行对比。在现实世界中，这些数据更新频率如此之高，以至于乐观锁定将是适得其反的。事实上，由于变化量巨大，实际股票应用程序在可能的情况下经常不使用锁定，尽管实际交易更新可能需要一些锁定。
 - en: Quick Summary
+  id: totrans-124
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: 'Transactions affect the speed of applications in two ways: transactions are
     expensive to commit, and the locking associated with transactions can prevent
     database scaling.'
+  id: totrans-125
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 事务以两种方式影响应用程序的速度：事务提交的成本很高，并且与事务相关的锁定可能阻止数据库扩展。
 - en: 'Those two effects are antagonistic: waiting too long to commit a transaction
     increases the amount of time that locks associated with the transaction are held.
     Especially for transactions using stricter semantics, the balance should be toward
     committing more frequently rather than holding the locks longer.'
+  id: totrans-126
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 这两个效果是对立的：等待提交事务的时间过长会增加持有事务相关锁定的时间。特别是对于使用更严格语义的事务，应该更倾向于更频繁地提交而不是保持锁定更长时间。
 - en: For fine-grained control of transactions in JDBC, use a default `TRANSACTION_READ_UNCOMMITTED`
     level and explicitly lock data as needed.
+  id: totrans-127
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 为了在 JDBC 中对事务进行精细控制，使用默认的 `TRANSACTION_READ_UNCOMMITTED` 级别，并根据需要显式锁定数据。
 - en: Result Set Processing
+  id: totrans-128
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 结果集处理
 - en: 'Typical database applications will operate on a range of data. The stock application,
     for example, deals with a history of prices for an individual stock. That history
     is loaded via a single `SELECT` statement:'
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 典型的数据库应用程序将处理一系列数据。例如，股票应用程序处理个股的价格历史。该历史通过单个 `SELECT` 语句加载：
 - en: '[PRE7]'
+  id: totrans-130
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'That statement returns 261 rows of data. If the option prices for the stock
     are also required, a similar query would be executed that would retrieve five
     times that amount of data. The SQL to retrieve all data in the sample database
     (256 stocks covering one year) will retrieve 400,896 rows of data:'
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 该语句返回了 261 行数据。如果还需要股票的期权价格，则执行类似的查询，将检索到五倍数量的数据。检索示例数据库中所有数据（涵盖一年的 256 只股票）的
+    SQL 将检索到 400,896 行数据：
 - en: '[PRE8]'
+  id: totrans-132
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'To use this data, code must scroll through the result set:'
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使用这些数据，代码必须滚动浏览结果集：
 - en: '[PRE9]'
+  id: totrans-134
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: The question here is where that data for the 400,896 rows lives. If the entire
     set of data is returned during the `executeQuery()` call, the application will
     have a very large chunk of live data in its heap, probably causing GC and other
     issues. Instead, if only one row of data is returned from the call to the `next()`
     method, a lot of back-and-forth traffic will occur between the application and
     the database as the result set is processed.
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的问题是 400,896 行数据的数据存放在哪里。如果在 `executeQuery()` 调用期间返回整个数据集，应用程序将在其堆中拥有非常大的活动数据块，可能导致
+    GC 和其他问题。相反，如果从 `next()` 方法调用返回了一行数据，则应用程序与数据库之间将发生大量来回的流量，因为结果集正在处理中。
 - en: As usual, there is no correct answer here; in some cases it will be more efficient
     to keep the bulk of the data in the database and retrieve it as needed, while
     in other cases it will be more efficient to load all the data at once when the
     query is executed. To control this, use the `setFetchSize()` method on the `PreparedStatement`
     object to let the JDBC driver know how many rows at a time it should transfer.
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常情况下，这里没有正确的答案；在某些情况下，将大部分数据保留在数据库中，并根据需要检索数据可能更有效率，而在其他情况下，当执行查询时一次性加载所有数据可能更有效率。为了控制这一点，在`PreparedStatement`对象上使用`setFetchSize()`方法，让JDBC驱动程序知道每次应传输多少行数据。
 - en: The default value for this varies by JDBC driver; for example, in Oracle’s JDBC
     drivers, the default value is 10\. When the `executeQuery()` method is called
     in the loop shown previously, the database will return 10 rows of data, which
     will be buffered internally by the JDBC driver. Each of the first 10 calls to
     the `next()` method will process one of those buffered rows. The 11th call will
     return to the database to retrieve another 10 rows, and so on.
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个默认值因JDBC驱动程序而异；例如，在Oracle的JDBC驱动程序中，默认值为10。当在先前显示的循环中调用`executeQuery()`方法时，数据库将返回10行数据，并由JDBC驱动程序在内部缓冲。前10次调用`next()`方法将处理这些缓冲行中的一行。第11次调用将返回数据库以检索另外10行数据，依此类推。
 - en: Though the value varies, JDBC drivers will typically set the default fetch size
     to a fairly small number. That approach is reasonable in most circumstances; in
     particular, it is unlikely to lead to any memory issues within the application.
     If the performance of the `next()` method (or the performance of the first getter
     method on the result set) is particularly slow every now and then, consider increasing
     the fetch size.
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然值会有所不同，但是JDBC驱动程序通常会将默认的fetch size设置为一个相当小的数值。这种方法在大多数情况下是合理的；特别是在应用程序内部不太可能导致任何内存问题时更为合理。如果`next()`方法的性能（或结果集上第一个getter方法的性能）偶尔特别慢，请考虑增加fetch
+    size。
 - en: Quick Summary
+  id: totrans-139
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Applications that process large amounts of data from a query should consider
     changing the fetch size of the data.
+  id: totrans-140
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 处理查询中大量数据的应用程序应考虑更改数据的fetch size。
 - en: A trade-off exists between loading too much data in the application (putting
     pressure on the garbage collector) and making frequent database calls to retrieve
     a set of data.
+  id: totrans-141
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在应用程序中加载过多数据（增加垃圾收集器的压力）与频繁地从数据库检索一组数据之间存在权衡。
 - en: JPA
+  id: totrans-142
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: JPA
 - en: The performance of JPA is directly affected by the performance of the underlying
     JDBC driver, and most of the performance considerations regarding the JDBC driver
     apply to JPA. JPA has additional performance considerations.
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: JPA的性能直接受底层JDBC驱动程序性能的影响，大多数关于JDBC驱动程序的性能考虑也适用于JPA。JPA还有额外的性能考虑。
 - en: 'JPA achieves many of its performance enhancements by altering the bytecode
     of the entity classes. In most server frameworks, this happens transparently.
     In a Java SE environment, it is important to make sure that the bytecode processing
@@ -862,183 +1178,261 @@
     fields that are expected to be loaded lazily might be loaded eagerly, data saved
     to the database might be redundant, data that should be in the JPA cache may need
     to be refetched from the database, and so on.'
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: JPA通过修改实体类的字节码实现了许多性能增强。在大多数服务器框架中，这是透明进行的。在Java SE环境中，确保字节码处理设置正确非常重要。否则，JPA应用程序的性能将无法预测：预期按需加载的字段可能被急切加载，保存到数据库的数据可能是冗余的，应该在JPA缓存中的数据可能需要重新从数据库获取，等等。
 - en: There is no JPA-defined way for the bytecode to be processed. Typically, this
     is done as part of compilation—after the entity classes are compiled (and before
     they are loaded into JAR files or run by the JVM), they are passed through an
     implementation-specific postprocessor that “enhances” the bytecode, producing
     an altered class file with the desired optimizations. Hibernate, for example,
     does this via a Maven or Gradle plug-in during compilation.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 没有JPA定义的方法来处理字节码。通常，这是作为编译的一部分来完成——在实体类编译完成之后（并在加载到JAR文件或JVM运行之前），它们会通过一个实现特定的后处理器“增强”字节码，生成一个带有所需优化的改变后的类文件。例如，Hibernate通过Maven或Gradle插件在编译过程中完成此操作。
 - en: Some JPA implementations also provide a way to dynamically enhance the bytecode
     as the classes are loaded into the JVM. This requires running an agent within
     the JVM that is notified when classes are loaded; the agent interposes on the
     classloading and alters the bytes before they are used to define the class. The
     agent is specified on the command line of the application; for example, for EclipseLink
     you include the `-javaagent:path_to/eclipselink.jar` argument.
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 一些 JPA 实现还提供了一种在类加载到 JVM 时动态增强字节码的方法。这需要在 JVM 中运行一个代理，当类加载时被通知；代理介入类加载并在类被用于定义之前修改字节。代理在应用程序的命令行中指定；例如，对于
+    EclipseLink，你包括 `-javaagent:path_to/eclipselink.jar` 参数。
 - en: Optimizing JPA Writes
+  id: totrans-147
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 优化 JPA 写入
 - en: 'In JDBC, we looked at two critical performance techniques: reusing prepared
     statements and performing updates in batches. It is possible to accomplish both
     of those optimizations with JPA, but the way it is done depends on the JPA implementation
     in use; there are no calls within the JPA API to do that. For Java SE, these optimizations
     typically require setting a particular property in the application’s *persistence.xml*
     file.'
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDBC 中，我们研究了两个关键的性能技术：重用准备好的语句和批量执行更新。可以通过 JPA 完成这两种优化，但其实现方式取决于所使用的 JPA 实现；在
+    JPA API 内部没有调用来完成这些操作。对于 Java SE，这些优化通常需要在应用程序的 *persistence.xml* 文件中设置特定的属性。
 - en: 'For example, using the JPA EclipseLink reference implementation, statement
     reuse is enabled by adding the following property to the *persistence.xml* file:'
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，使用 JPA EclipseLink 参考实现，可以通过在 *persistence.xml* 文件中添加以下属性来启用语句重用：
 - en: '[PRE10]'
+  id: totrans-150
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: Note that this enables statement reuse within the EclipseLink implementation.
     If the JDBC driver is capable of providing a statement pool, it is usually preferable
     to enable the statement caching in the driver and to leave this property out of
     the JPA configuration.
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，这可以在 EclipseLink 实现中实现语句重用。如果 JDBC 驱动能够提供语句池，则通常更倾向于在驱动程序中启用语句缓存，并且不在 JPA
+    配置中设置此属性。
 - en: 'Statement batching in the reference JPA implementation is achieved by adding
     these properties:'
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: JPA 参考实现中的语句批处理是通过添加以下属性实现的：
 - en: '[PRE11]'
+  id: totrans-153
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'JDBC drivers cannot automatically implement statement batching, so this is
     a useful property to set in all cases. The batch size can be controlled in two
     ways: first, the `size` property can be set, as is done in this example. Second,
     the application can periodically call the `flush()` method of the entity manager,
     which will cause all batched statements to be executed immediately.'
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: JDBC 驱动程序无法自动实现语句批处理，因此在所有情况下设置此属性非常有用。批处理大小可以通过两种方式控制：首先，可以设置 `size` 属性，就像本例中所做的那样。其次，应用程序可以周期性地调用实体管理器的
+    `flush()` 方法，这将导致所有批处理语句立即执行。
 - en: '[Table 11-2](#TableJPAWrite) shows the effect of the statement reuse and batching
     to create and write stock entities into the database.'
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: '[表 11-2](#TableJPAWrite) 显示了语句重用和批处理对创建和写入数据库的股票实体的影响。'
 - en: Table 11-2\. Seconds required to insert data for 256 stocks via JPA
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 11-2\. 通过 JPA 插入 256 只股票所需的秒数
 - en: '| Programming mode | Time required |'
+  id: totrans-157
   prefs: []
   type: TYPE_TB
+  zh: '| 编程模式 | 所需时间 |'
 - en: '| --- | --- |'
+  id: totrans-158
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| No batching, no statement pool | 83 ± 3 seconds |'
+  id: totrans-159
   prefs: []
   type: TYPE_TB
+  zh: '| 无批处理，无语句池 | 83 ± 3 秒 |'
 - en: '| No batching, statement pool | 64 ± 5 seconds |'
+  id: totrans-160
   prefs: []
   type: TYPE_TB
+  zh: '| 无批处理，语句池 | 64 ± 5 秒 |'
 - en: '| Batching, no statement pool | 10 ± 0.4 seconds |'
+  id: totrans-161
   prefs: []
   type: TYPE_TB
+  zh: '| 批处理，无语句池 | 10 ± 0.4 秒 |'
 - en: '| Batching, statement pooling | 10 ± 0.3 seconds |'
+  id: totrans-162
   prefs: []
   type: TYPE_TB
+  zh: '| 批处理，语句池 | 10 ± 0.3 秒 |'
 - en: Quick Summary
+  id: totrans-163
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: JPA applications, like JDBC applications, can benefit from limiting the number
     of write calls to the database (with the potential trade-off of holding transaction
     locks).
+  id: totrans-164
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: JPA 应用程序和 JDBC 应用程序一样，可以通过限制向数据库的写入调用次数来获益（可能需要权衡事务锁的持有）。
 - en: Statement caching can be achieved at the JPA layer or the JDBC layer. Caching
     at the JDBC layer should be explored first.
+  id: totrans-165
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 语句缓存可以在 JPA 层或 JDBC 层实现。首先应该先探索在 JDBC 层进行缓存。
 - en: Batching JPA updates can be done declaratively (in the *persistence.xml* file)
     or programmatically (by calling the `flush()` method).
+  id: totrans-166
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 批处理 JPA 更新可以通过声明方式（在 *persistence.xml* 文件中）或者通过调用 `flush()` 方法来编程实现。
 - en: Optimizing JPA Reads
+  id: totrans-167
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 优化 JPA 读取
 - en: Optimizing when and how JPA reads data from the database is more complicated
     than it might seem, because JPA will cache data in the hope that it might be used
     to satisfy a future request. That’s usually a good thing for performance, but
     it means that the JPA-generated SQL used to read that data may seem, on the face
     of it, suboptimal. The data retrieval is optimized to serve the needs of the JPA
     cache, rather than being optimized for whatever particular request is in progress.
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
+  zh: 优化JPA从数据库中读取数据的时间和方式比看起来要复杂得多，因为JPA将缓存数据，希望可以用来满足将来的请求。这通常对性能是一个好事，但这意味着JPA生成的用于读取数据的SQL看起来可能并不是最优的。数据检索被优化以满足JPA缓存的需求，而不是为了正在进行的特定请求而优化。
 - en: 'The details of the cache are covered in the next section. For now, let’s look
     at the basic ways to apply database read optimizations to JPA. JPA reads data
     from the database in three cases: when the `find()` method of the `EntityManager`
     is called, when a JPA query is executed, and when code navigates to a new entity
     using the relationship of an existing entity. In the stock class, that latter
     case means calling the `getOptions()` method on a `Stock` entity.'
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 缓存的详细信息将在下一节中介绍。现在，让我们看一下如何将数据库读取优化应用于JPA的基本方法。JPA从数据库中读取数据有三种情况：当调用`EntityManager`的`find()`方法时，当执行JPA查询时，以及当代码使用现有实体的关系导航到新实体时。在股票类中，后一种情况意味着在`Stock`实体上调用`getOptions()`方法。
 - en: 'Calling the `find()` method is the most straightforward case: only a single
     row is involved, and (at least) that single row is read from the database. The
     only thing that can be controlled is the amount of data retrieved. JPA can retrieve
     only some of the fields in the row, it can retrieve the entire row, or it can
     prefetch other entities related to the row being retrieved. Those optimizations
     apply to queries as well.'
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 调用`find()`方法是最简单的情况：只涉及单行数据，并且（至少）从数据库中读取了该单行数据。唯一可以控制的是检索的数据量。JPA可以仅检索行中的一些字段，也可以检索整行，或者可以预提取与正在检索的行相关的其他实体。这些优化同样适用于查询。
 - en: 'Two possible paths are available: read less data (because the data won’t be
     needed) or read more data at a time (because that data will definitely be needed
     in the future).'
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 有两种可能的路径可供选择：读取更少的数据（因为数据不会被需要）或一次性读取更多数据（因为将来绝对需要该数据）。
 - en: Reading less data
+  id: totrans-172
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 读取更少的数据
 - en: To read less data, specify that the field in question is loaded lazily. When
     an entity is retrieved, the fields with a lazy annotation will be excluded from
     the SQL used to load the data. If the getter of that field is ever executed, it
     will mean another trip to the database to retrieve that piece of data.
+  id: totrans-173
   prefs: []
   type: TYPE_NORMAL
+  zh: 要读取更少的数据，请指定所讨论的字段是按需加载的。当检索实体时，带有延迟注解的字段将被排除在用于加载数据的SQL之外。如果该字段的getter被执行，这将意味着另一次访问数据库以检索该数据片段。
 - en: 'It is rare to use that annotation for simple columns of basic types, but consider
     using it if the entity contains large BLOB- or CLOB-based objects:'
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 很少使用该注解来简单列出基本类型的简单列，但是如果实体包含基于大型BLOB或CLOB的对象，请考虑使用它：
 - en: '[PRE12]'
+  id: totrans-175
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'In this case, the entity is mapped to a table storing binary image data. The
     binary data is large, and the example assumes it shouldn’t be loaded unless it
     is needed. Not loading the unneeded data in this case serves two purposes: it
     makes for faster SQL when the entity is retrieved, and it saves a lot of memory,
     leading to less GC pressure.'
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种情况下，实体映射到存储二进制图像数据的表中。二进制数据很大，本例假设除非需要，否则不应加载。在这种情况下不加载不必要的数据有两个目的：当检索实体时，这样做可以使SQL更快，并且节省大量内存，从而减少GC压力。
 - en: Note also that the lazy annotation is, in the end, only a hint to the JPA implementation.
     The JPA implementation is free to request that the database eagerly provide that
     data anyway.
+  id: totrans-177
   prefs: []
   type: TYPE_NORMAL
+  zh: 还要注意，延迟注解最终只是对JPA实现的提示。JPA实现可以自由地要求数据库急切地提供该数据。
 - en: 'On the other hand, perhaps other data should be preloaded—for example, when
     one entity is fetched, data for other (related) entities should also be returned.
     That is known as *eager fetching*, and it has a similar annotation:'
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，也许应该预加载其他数据，例如，当获取一个实体时，应该返回其他（相关的）实体的数据。这称为*急切加载*，并且具有类似的注解：
 - en: '[PRE13]'
+  id: totrans-179
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: 'By default, related entities are already fetched eagerly if the relationship
     type is `@OneToOne` or `@ManyToOne` (and so it is possible to apply the opposite
     optimization to them: mark them as `FetchType.LAZY` if they are almost never used).'
+  id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，如果关系类型是`@OneToOne`或`@ManyToOne`（因此可以对它们应用相反的优化：如果它们几乎从不使用，则标记它们为`FetchType.LAZY`），则相关实体已经被急切地获取。
 - en: 'This also is just a hint to the JPA implementation, but it essentially says
     that anytime a stock price is retrieved, make sure also to retrieve all related
     option prices. Beware here: a common expectation about eager relationship fetching
@@ -1047,101 +1441,148 @@
     object, and then one or more SQL commands to fetch any additional, related objects.
     From a simple `find()` method, there is no control over this: if a `JOIN` statement
     is required, you will have to use a query and program the `JOIN` into the query.'
+  id: totrans-181
   prefs: []
   type: TYPE_NORMAL
+  zh: 这也只是对JPA实现的一个提示，但它基本上表示每次检索股票价格时，确保还检索所有相关的期权价格。在这里要注意：关于急切关系获取的一个常见期望是它将在生成的SQL中使用`JOIN`。在典型的JPA提供程序中，情况并非如此：它们将发出一个SQL查询来获取主对象，然后发出一个或多个SQL命令来获取任何其他相关对象。从一个简单的`find()`方法中，对此没有控制：如果需要一个`JOIN`语句，您将不得不使用一个查询并将`JOIN`编程到查询中。
 - en: Using JOIN in queries
+  id: totrans-182
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 在查询中使用JOIN
 - en: 'The JPA Query Language (JPQL) doesn’t allow you to specify fields of an object
     to be retrieved. Take the following JPQL query:'
+  id: totrans-183
   prefs: []
   type: TYPE_NORMAL
+  zh: JPA查询语言（JPQL）不允许您指定要检索的对象的字段。接下来看一个JPQL查询：
 - en: '[PRE14]'
+  id: totrans-184
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: 'That query will always yield this SQL statement:'
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 那个查询将始终产生这个SQL语句：
 - en: '[PRE15]'
+  id: totrans-186
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: If you want to retrieve fewer fields in the generated SQL, you have no option
     but to mark them as lazy. Similarly, for fields that are marked as lazy, there
     is no real option for fetching them in a query.
+  id: totrans-187
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果要在生成的SQL中检索较少的字段，您除了将它们标记为lazy之外别无选择。同样，对于标记为lazy的字段，在查询中获取它们也没有真正的选择。
 - en: 'If relationships exist between entities, the entities can be explicitly joined
     in a query in JPQL, which will retrieve the initial entities and their related
     entities in one shot. For example, in the stock entities, this query can be issued:'
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果实体之间存在关系，则可以在JPQL查询中显式加入实体，这将一次检索初始实体及其相关实体。例如，在股票实体中，可以发出以下查询：
 - en: '[PRE16]'
+  id: totrans-189
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: 'That results in an SQL statement similar to this:'
+  id: totrans-190
   prefs: []
   type: TYPE_NORMAL
+  zh: 这将导致类似于这样的SQL语句：
 - en: '[PRE17]'
+  id: totrans-191
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: The exact SQL will differ among JPA providers (this example is from EclipseLink),
     but this is the general process.
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: 在JPA提供程序之间确切的SQL将有所不同（此示例来自EclipseLink），但这是一般过程。
 - en: Join fetching is valid for entity relationships regardless of whether they are
     annotated as eager or lazy. If the join is issued on a lazy relationship, the
     lazily annotated entities that satisfy the query are still retrieved from the
     database, and if those entities are later used, no additional trip to the database
     is required.
+  id: totrans-193
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论实体关系是否被注释为急切或懒惰，联接获取都是有效的。如果在懒惰关系上发出连接，则仍然会从数据库中检索满足查询的懒惰注释实体，如果稍后使用这些实体，则不需要额外的数据库访问。
 - en: When all the data returned by a query using a join fetch will be used, the join
     fetch often provides a big improvement in performance. However, a join fetch also
     interacts with the JPA cache in unexpected ways. An example is shown in [“JPA
     Caching”](#JPACaching); be sure you understand those ramifications before writing
     custom queries using a join fetch.
+  id: totrans-194
   prefs: []
   type: TYPE_NORMAL
+  zh: 当使用join fetch的查询返回的所有数据都将被使用时，join fetch通常会显著提高性能。但是，join fetch也会以意想不到的方式与JPA缓存交互。示例在[“JPA缓存”](#JPACaching)中显示；在编写使用join
+    fetch的自定义查询之前，请确保您了解这些影响。
 - en: Batching and queries
+  id: totrans-195
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 批处理和查询
 - en: 'JPA queries are handled like a JDBC query yielding a result set: the JPA implementation
     has the option of getting all the results at once, getting the results one at
     a time as the application iterates over the query results, or getting a few results
     at a time (analogous to how the fetch size worked for JDBC).'
+  id: totrans-196
   prefs: []
   type: TYPE_NORMAL
+  zh: JPA查询被处理为像JDBC查询一样产生一个结果集：JPA实现可以选择一次性获取所有结果，当应用程序遍历查询结果时一次获取一个结果，或者一次获取少量结果（类似于JDBC中的抓取大小工作原理）。
 - en: 'There is no standard way to control this, but JPA vendors have proprietary
     mechanisms to set the fetch size. In EclipseLink, a hint on the query specifies
     the fetch size:'
+  id: totrans-197
   prefs: []
   type: TYPE_NORMAL
+  zh: 没有标准方法来控制这一点，但JPA供应商有专有的机制来设置抓取大小。在EclipseLink中，查询上的一个提示指定了抓取大小：
 - en: '[PRE18]'
+  id: totrans-198
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: Hibernate offers a custom `@BatchSize` annotation instead.
+  id: totrans-199
   prefs: []
   type: TYPE_NORMAL
+  zh: Hibernate提供了一个定制的`@BatchSize`注解。
 - en: 'If a very large set of data is being processed, the code may need to page through
     the list returned by the query. This has a natural relationship to how the data
     might be displayed to the user on a web page: a subset of data is displayed (say
     100 rows), along with Next and Previous page links to navigate (page) through
     the data.'
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果正在处理非常大的数据集，则代码可能需要浏览查询返回的列表。这与数据在网页上如何显示有自然的关系：显示数据的子集（例如100行），以及用于浏览数据的上一页和下一页链接（页面）。
 - en: 'This is accomplished by setting a range on the query:'
+  id: totrans-201
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是通过在查询上设置一个范围来实现的：
 - en: '[PRE19]'
+  id: totrans-202
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: 'This returns a list suitable for display on the second page of the web application:
     items 101–200\. Retrieving only the range of data needed will be more efficient
     than retrieving 200 rows and discarding the first 100 of them.'
+  id: totrans-203
   prefs: []
   type: TYPE_NORMAL
+  zh: 这返回一个适合在 Web 应用程序的第二页上显示的列表：项目 101-200\. 仅检索所需数据范围将比检索 200 行并丢弃前 100 行更有效。
 - en: 'Note that this example uses a named query (the `createNamedQuery()` method)
     rather than an ad hoc query (the `createQuery()` method). In many JPA implementations,
     named queries are faster: the JPA implementation will almost always use a prepared
@@ -1149,50 +1590,71 @@
     JPA implementations from using similar logic for unnamed, ad hoc queries, though
     implementing that is more difficult, and the JPA implementation may simply default
     to creating a new statement (i.e., a `Statement` object) each time.'
+  id: totrans-204
   prefs: []
   type: TYPE_NORMAL
+  zh: 请注意，此示例使用了命名查询（`createNamedQuery()` 方法），而不是临时查询（`createQuery()` 方法）。在许多 JPA
+    实现中，命名查询更快：JPA 实现几乎总是使用带绑定参数的预编译语句，利用语句缓存池。虽然 JPA 实现可以使用类似的逻辑处理未命名的临时查询，但实现起来更加困难，JPA
+    实现可能简单地默认创建新的语句（即`Statement`对象）每次执行。
 - en: Quick Summary
+  id: totrans-205
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: JPA can perform several optimizations to limit (or increase) the amount of data
     read in a single operation.
+  id: totrans-206
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: JPA 可以执行多种优化以限制（或增加）单次操作中读取的数据量。
 - en: Large fields (e.g., BLOBs) that are not frequently used should be loaded lazily
     in a JPA entity.
+  id: totrans-207
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 不经常使用的大字段（例如 BLOBs）应该在 JPA 实体中懒惰地加载。
 - en: When a relationship exists between JPA entities, the data for the related items
     can be loaded eagerly or lazily. The choice depends on the needs of the application.
+  id: totrans-208
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 当 JPA 实体之间存在关系时，相关项的数据可以被急切地或懒惰地加载。选择取决于应用程序的需求。
 - en: When eagerly loading relationships, named queries can be used to issue a single
     SQL statement using a `JOIN` statement. Be aware that this affects the JPA cache;
     it is not always the best idea (as the next section discusses).
+  id: totrans-209
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在急切加载关系时，可以使用命名查询来发出使用 `JOIN` 语句的单个 SQL 语句。请注意，这会影响 JPA 缓存；这并不总是最佳选择（如下一节所讨论的）。
 - en: Reading data via named queries will often be faster than a regular query, since
     it is easier for the JPA implementation to use a `PreparedStatement` for named
     queries.
+  id: totrans-210
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 通过命名查询读取数据通常比普通查询快，因为 JPA 实现更容易使用 `PreparedStatement` 来处理命名查询。
 - en: JPA Caching
+  id: totrans-211
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: JPA 缓存
 - en: One of the canonical performance-related use cases for Java is to supply a middle
     tier that caches data from backend database resources. The Java tier performs
     architecturally useful functions (such as preventing clients from directly accessing
     the database). From a performance perspective, caching frequently used data in
     the Java tier can greatly speed up response times for the clients.
+  id: totrans-212
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 的一个经典与性能相关的用例是为客户端提供一个中间层，该中间层从后端数据库资源缓存数据。Java 中间层执行架构上有用的功能（例如防止客户端直接访问数据库）。从性能角度来看，在
+    Java 中间层缓存经常使用的数据可以极大地加快响应时间。
 - en: 'JPA is designed with that architecture in mind. Two kinds of caches exist in
     JPA. Each entity manager instance is its own cache: it will locally cache data
     that it has retrieved during a transaction. It will also locally cache data that
@@ -1200,123 +1662,183 @@
     transaction commits. A program may have many entity manager instances, each executing
     a different transaction, and each with its own local cache. (In particular, the
     entity managers injected into Java servers are distinct instances.)'
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: JPA 被设计以考虑这种架构。JPA 中存在两种缓存：每个实体管理器实例都是其自己的缓存：它将在事务期间检索的数据本地缓存。它还将在事务期间写入的数据本地缓存；只有在事务提交时才将数据发送到数据库。程序可能有许多实体管理器实例，每个执行不同的事务，并且每个具有自己的本地缓存。（特别是，注入到
+    Java 服务器中的实体管理器是不同的实例。）
 - en: When an entity manager commits a transaction, all data in the local cache can
     be merged into a global cache. The global cache is shared among all entity managers
     in the application. The global cache is also known as the *Level 2 (L2) cache*
     or the *second-level cache*; the cache in the entity manager is known as the *Level
     1*, *L1*, or *first-level cache*.
+  id: totrans-214
   prefs: []
   type: TYPE_NORMAL
+  zh: 当实体管理器提交事务时，所有本地缓存中的数据可以合并到全局缓存中。全局缓存在应用程序中的所有实体管理器之间共享。全局缓存也称为*第二级缓存 (L2 缓存)*或*二级缓存*；实体管理器中的缓存称为*第一级
+    (L1)*或*L1 缓存*。
 - en: 'There is little to tune within an entity manager transaction cache (the L1
     cache), and the L1 cache is enabled in all JPA implementations. The L2 cache is
     different: most JPA implementations provide one, but not all of them enable it
     by default (e.g., Hibernate does not, but EclipseLink does). Once enabled, the
     way in which the L2 cache is tuned and used can substantially affect performance.'
+  id: totrans-215
   prefs: []
   type: TYPE_NORMAL
+  zh: 在实体管理器事务缓存（L1 缓存）中很少有调整空间，并且所有 JPA 实现都启用了 L1 缓存。L2 缓存不同：大多数 JPA 实现提供了 L2 缓存，但并非所有实现都默认启用它（例如，Hibernate
+    不启用，但 EclipseLink 启用）。一旦启用，调整和使用 L2 缓存的方式可以显著影响性能。
 - en: The JPA cache operates only on entities accessed by their primary keys, that
     is, items retrieved from a call to the `find()` method, or items retrieved from
     accessing (or eagerly loading) a related entity. When the entity manager attempts
     to find an object via either its primary key or a relationship mapping, it can
     look in the L2 cache and return the object(s) if they are found there, thus saving
     a trip to the database.
+  id: totrans-216
   prefs: []
   type: TYPE_NORMAL
+  zh: JPA 缓存仅在通过其主键访问的实体上运行，即从 `find()` 方法调用或访问（或急切加载）相关实体检索的项目。当实体管理器尝试通过其主键或关系映射查找对象时，它可以查看
+    L2 缓存，并在那里找到对象时返回它们，从而节省了对数据库的访问。
 - en: Items retrieved via a query are not held in the L2 cache. Some JPA implementations
     do have a vendor-specific mechanism to cache the results of a query, but those
     results are reused only if the exact same query is reexecuted. Even if the JPA
     implementation supports query caching, the entities themselves are not stored
     in the L2 cache and cannot be returned in a subsequent call to the `find()` method.
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过查询检索的项目不存储在 L2 缓存中。一些 JPA 实现确实具有特定于供应商的机制来缓存查询的结果，但只有在重新执行完全相同的查询时才重复使用这些结果。即使
+    JPA 实现支持查询缓存，实体本身也不存储在 L2 缓存中，并且不能在后续调用 `find()` 方法时返回。
 - en: 'The connections between the L2 cache, queries, and the loading of objects affect
     performance in many ways. To examine them, code based on the following loop will
     be used:'
+  id: totrans-218
   prefs: []
   type: TYPE_NORMAL
+  zh: L2 缓存、查询和对象加载之间的连接以多种方式影响性能。为了检查它们，将使用基于以下循环的代码：
 - en: '[PRE20]'
+  id: totrans-219
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: '[![1](assets/1.png)](#co_database_performance_best_practices_CO1-1)'
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](assets/1.png)](#co_database_performance_best_practices_CO1-1)'
 - en: SQL Call Site 1
+  id: totrans-221
   prefs: []
   type: TYPE_NORMAL
+  zh: SQL 调用站点 1
 - en: '[![2](assets/2.png)](#co_database_performance_best_practices_CO1-2)'
+  id: totrans-222
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![2](assets/2.png)](#co_database_performance_best_practices_CO1-2)'
 - en: SQL Call Site 2
+  id: totrans-223
   prefs: []
   type: TYPE_NORMAL
+  zh: SQL 调用站点 2
 - en: Because of the L2 cache, this loop will perform one way the first time it is
     executed, and another (generally faster) way on subsequent executions. The specific
     difference of that performance depends on various details of the queries and the
     entity relationships. The next few subsections explain the results in detail.
+  id: totrans-224
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于 L2 缓存，第一次执行此循环时将以一种方式执行，而在后续执行中将以另一种（通常更快）方式执行。具体的性能差异取决于查询和实体关系的各种细节。接下来的几个小节详细解释了结果。
 - en: The differences in this example are based in some cases on different JPA configurations
     but also occur because some tests are executed without traversing the relationship
     between the `Stock` and `StockOptions` classes. In those tests without traversal
     of the relationship, the `processOptions` value in the loop is `false`; only the
     `StockPrice` objects are actually used.
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: 此示例中的差异在某些情况下基于不同的 JPA 配置，但也因为某些测试在不遍历 `Stock` 和 `StockOptions` 类之间的关系时执行。在那些没有遍历关系的测试中，循环中的
+    `processOptions` 值为 `false`；实际上只使用了 `StockPrice` 对象。
 - en: Default caching (lazy loading)
+  id: totrans-226
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 默认缓存（延迟加载）
 - en: 'In the sample code, the stock prices are loaded via a named query. In the default
     case, this simple query is executed to load the stock data:'
+  id: totrans-227
   prefs: []
   type: TYPE_NORMAL
+  zh: 在示例代码中，股票价格通过命名查询加载。在默认情况下，执行此简单查询以加载股票数据：
 - en: '[PRE21]'
+  id: totrans-228
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: 'The `StockPrice` class has a `@OneToMany` relationship with the `StockOptionPrice`
     class using the `optionsPrices` instance variable:'
+  id: totrans-229
   prefs: []
   type: TYPE_NORMAL
+  zh: '`StockPrice` 类与 `StockOptionPrice` 类具有 `@OneToMany` 关系，使用 `optionsPrices` 实例变量：'
 - en: '[PRE22]'
+  id: totrans-230
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: '`@OneToMany` relationships are loaded lazily by default. [Table 11-3](#TableJPACache)
     shows the time to execute this loop.'
+  id: totrans-231
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，`@OneToMany` 关系是惰性加载的。[表 11-3](#TableJPACache) 显示了执行此循环所需的时间。
 - en: Table 11-3\. Seconds required to read data for 256 stocks (default configuration)
+  id: totrans-232
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 11-3\. 默认配置下读取 256 只股票数据所需秒数
 - en: '| Test case | First execution | Subsequent executions |'
+  id: totrans-233
   prefs: []
   type: TYPE_TB
+  zh: '| 测试案例 | 第一次执行 | 后续执行 |'
 - en: '| --- | --- | --- |'
+  id: totrans-234
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| Lazy relationship | 22.7 ± 2 seconds (66,817 SQL calls) | 1.1 ± 0.7 seconds
     (1 SQL call) |'
+  id: totrans-235
   prefs: []
   type: TYPE_TB
+  zh: '| 惰性关系 | 22.7 ± 2 秒（66,817 次 SQL 调用） | 1.1 ± 0.7 秒（1 次 SQL 调用） |'
 - en: '| Lazy relationship, no traversal | 2.0 ± 0.3 seconds (1 SQL call) | 1.0 ±
     0.02 seconds (1 SQL call) |'
+  id: totrans-236
   prefs: []
   type: TYPE_TB
+  zh: '| 惰性关系，无遍历 | 2.0 ± 0.3 秒（1 次 SQL 调用） | 1.0 ± 0.02 秒（1 次 SQL 调用） |'
 - en: The first time the sample loop is executed in this scenario (for 256 stocks
     with one year of data), the JPA code executes one SQL statement in the call to
     the `executeQuery()` method. That statement is executed at SQL Call Site 1 in
     the code listing.
+  id: totrans-237
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此场景中第一次执行包含 256 只股票一年数据的示例循环时，JPA 代码在调用 `executeQuery()` 方法时执行一条 SQL 语句。该语句在代码清单中的
+    SQL 调用站点 1 执行。
 - en: As the code loops through the stock and visits each collection of option prices,
     JPA will issue SQL statements to retrieve all the options associated with the
     particular entity (that is, it retrieves the entire collection for one stock/date
     combination at once). This occurs at SQL Call Site 2, and it results in 66,816
     individual `SELECT` statements during execution (261 days × 256 stocks), yielding
     66,817 total calls.
+  id: totrans-238
   prefs: []
   type: TYPE_NORMAL
+  zh: 当代码循环遍历股票并访问每个期权价格集合时，JPA 将发出 SQL 语句来检索与特定实体相关联的所有期权（即一次检索一只股票/日期组合的整个集合）。这发生在
+    SQL 调用站点 2，并导致执行期间发出 66,816 个独立的 `SELECT` 语句（261 天 × 256 只股票），总共 66,817 次调用。
 - en: That example takes almost 23 seconds for the first execution of the loop. The
     next time that code is executed, it takes only a little more than 1 second. That’s
     because the second time the loop is executed, the only SQL executed is the named
@@ -1325,8 +1847,12 @@
     only for entities loaded from a relationship or a find operation. So the stock
     option entities can be found in the L2 cache, but the stock prices—since they
     were loaded from a query—do not appear in the L2 cache and must be reloaded.)
+  id: totrans-239
   prefs: []
   type: TYPE_NORMAL
+  zh: 该示例第一次执行循环几乎需要 23 秒。下次执行相同代码时，只需略多于 1 秒。这是因为第二次执行循环时，唯一执行的 SQL 是命名查询。通过关系检索的实体仍在
+    L2 缓存中，因此在这种情况下不需要数据库调用。（请记住，L2 缓存仅适用于从关系或查找操作加载的实体。因此，股票期权实体可以在 L2 缓存中找到，但股票价格——因为它们是从查询加载的——不会出现在
+    L2 缓存中，必须重新加载。）
 - en: 'The second line in [Table 11-3](#TableJPACache) represents the code that does
     not visit each of the options in the relationship (i.e., the `processOptions`
     variable is `false`). In that case, the code is substantially faster: it takes
@@ -1334,16 +1860,23 @@
     (The difference in performance between those two cases is due to the warm-up period
     of the compiler. Although it wasn’t as noticeable, that warm-up occurred in the
     first example as well.)'
+  id: totrans-240
   prefs: []
   type: TYPE_NORMAL
+  zh: '[表 11-3](#TableJPACache) 的第二行表示不访问关系中的每个期权的代码（即 `processOptions` 变量为 `false`
+    的情况）。在这种情况下，代码速度显著加快：第一次循环迭代花费 2 秒，后续迭代只需 1 秒。（这两种情况的性能差异是由编译器的预热期造成的。虽然第一个示例中并不明显，但也发生了预热。）'
 - en: Caching and eager loading
+  id: totrans-241
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 缓存与急切加载
 - en: In the next two experiments, the relationship between the stock prices and option
     prices is redefined so that the option prices are loaded eagerly.
+  id: totrans-242
   prefs: []
   type: TYPE_NORMAL
+  zh: 在接下来的两个实验中，重新定义了股票价格与期权价格之间的关系，以便急切地加载期权价格。
 - en: When all the data is used (i.e., the first rows in Tables [11-3](#TableJPACache)
     and [11-4](#TableJPACacheEager)), the performance of the eager and lazy loading
     cases is essentially the same. But when the relationship data isn’t actually used
@@ -1351,116 +1884,177 @@
     on the first execution of the loop. Subsequent executions of the loop don’t save
     time since the eager-loading code isn’t reloading the data in those subsequent
     iterations; it is loading data from the L2 cache.
+  id: totrans-243
   prefs: []
   type: TYPE_NORMAL
+  zh: 当所有数据都被使用时（即表[11-3](#TableJPACache)和[11-4](#TableJPACacheEager)的第一行），急切加载和延迟加载的性能基本相同。但当关系数据实际上没有被使用时（每个表的第二行），延迟加载的情况节省了一些时间——特别是在循环的第一次执行时。由于在后续迭代中急切加载的代码不会重新加载数据，而是从
+    L2 缓存中加载数据，因此后续执行的循环并不节省时间。
 - en: Table 11-4\. Seconds required to read data for 256 stocks (eager loading)
+  id: totrans-244
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 11-4\. 读取 256 只股票数据所需的时间（急切加载）
 - en: '| Test case | First execution | Subsequent executions |'
+  id: totrans-245
   prefs: []
   type: TYPE_TB
+  zh: '| 测试用例 | 第一次执行 | 后续执行 |'
 - en: '| --- | --- | --- |'
+  id: totrans-246
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| Eager relationship | 23 ± 1.0 seconds (66,817 SQL calls) | 1.0 ± 0.8 seconds
     (1 SQL call) |'
+  id: totrans-247
   prefs: []
   type: TYPE_TB
+  zh: '| 急切关系 | 23 ± 1.0 秒（66,817 次 SQL 调用） | 1.0 ± 0.8 秒（1 次 SQL 调用） |'
 - en: '| Eager relationship, no traversal | 23 ± 1.3 seconds (66,817 SQL calls) |
     1.0 ± 0.5 seconds (1 SQL call) |'
+  id: totrans-248
   prefs: []
   type: TYPE_TB
+  zh: '| 急切关系，无遍历 | 23 ± 1.3 秒（66,817 次 SQL 调用） | 1.0 ± 0.5 秒（1 次 SQL 调用） |'
 - en: Join fetch and caching
+  id: totrans-249
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 加入抓取和缓存
 - en: 'As discussed in the previous section, the query could be written to explicitly
     use a `JOIN` statement:'
+  id: totrans-250
   prefs: []
   type: TYPE_NORMAL
+  zh: 如前一节所讨论的，查询可以编写成显式使用`JOIN`语句：
 - en: '[PRE23]'
+  id: totrans-251
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: Using that named query (with full traversal) yields the data in [Table 11-5](#TableJPACacheQuery).
+  id: totrans-252
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用该命名查询（完整遍历）会在 [Table 11-5](#TableJPACacheQuery) 中给出数据的结果。
 - en: Table 11-5\. Seconds required to read data for 256 stocks (`JOIN` query)
+  id: totrans-253
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 11-5\. 读取 256 只股票数据所需的时间（`JOIN`查询）
 - en: '| Test case | First execution | Subsequent executions |'
+  id: totrans-254
   prefs: []
   type: TYPE_TB
+  zh: '| 测试用例 | 第一次执行 | 后续执行 |'
 - en: '| --- | --- | --- |'
+  id: totrans-255
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| Default configuration | 22.7 ± 2 seconds (66,817 SQL calls) | 1.1 ± 0.7 seconds
     (1 SQL call) |'
+  id: totrans-256
   prefs: []
   type: TYPE_TB
+  zh: '| 默认配置 | 22.7 ± 2 秒（66,817 次 SQL 调用） | 1.1 ± 0.7 秒（1 次 SQL 调用） |'
 - en: '| Join fetch | 9.0 ± 0.3 seconds (1 SQL call) | 5.6 ± 0.4 seconds (1 SQL call)
     |'
+  id: totrans-257
   prefs: []
   type: TYPE_TB
+  zh: '| 加入抓取 | 9.0 ± 0.3 秒（1 次 SQL 调用） | 5.6 ± 0.4 秒（1 次 SQL 调用） |'
 - en: '| Join fetch with query cache | 5.8 ± 0.2 seconds (1 SQL call) | 0.001 ± 0.0001
     seconds (0 SQL calls) |'
+  id: totrans-258
   prefs: []
   type: TYPE_TB
+  zh: '| 带查询缓存的加入抓取 | 5.8 ± 0.2 秒（1 次 SQL 调用） | 0.001 ± 0.0001 秒（0 次 SQL 调用） |'
 - en: 'The first time the loop is executed with a `JOIN` query, a big performance
     win results: it takes only 9 seconds. That is the result of issuing only one SQL
     request rather than 66,817 of them.'
+  id: totrans-259
   prefs: []
   type: TYPE_NORMAL
+  zh: 第一次执行带有`JOIN`查询的循环会带来很大的性能优势：仅需 9 秒。这是仅发出一次 SQL 请求而不是 66,817 次的结果。
 - en: Unfortunately, the next time the code is executed, it still needs that one SQL
     statement, since query results are not in the L2 cache. Subsequent executions
     of the example take 5.6 seconds—because the SQL statement that is executed has
     the `JOIN` statement and is retrieving more than 400,000 rows of data.
+  id: totrans-260
   prefs: []
   type: TYPE_NORMAL
+  zh: 不幸的是，下次执行代码时仍然需要那个 SQL 语句，因为查询结果不在 L2 缓存中。例如的后续执行需要 5.6 秒——因为执行的 SQL 语句中有 `JOIN`
+    语句，并且正在检索超过 400,000 行的数据。
 - en: If the JPA provider implements query caching, this is clearly a good time to
     use it. If no SQL statements are required during the second execution of the code,
     only 1 ms is required on the subsequent executions. Be aware that query caching
     works only if the parameters used in the query are exactly the same each time
     the query is executed.
+  id: totrans-261
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果 JPA 提供程序实现了查询缓存，则明显是使用它的好时机。如果在代码的第二次执行过程中不需要 SQL 语句，则后续执行仅需 1 毫秒。请注意，查询缓存仅在每次执行查询时使用的参数完全相同时才有效。
 - en: Avoiding queries
+  id: totrans-262
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 避免查询
 - en: 'If entities are never retrieved via a query, all entities can be accessed through
     the L2 cache after an initial warm-up period. The L2 cache can be warmed up by
     loading all entities, so slightly modifying the previous example gives this code:'
+  id: totrans-263
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果实体从未通过查询检索，所有实体都可以在初始预热期后通过 L2 缓存访问。可以通过加载所有实体来预热 L2 缓存，稍微修改之前的示例代码如下：
 - en: '[PRE24]'
+  id: totrans-264
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: The results of executing this code are given in [Table 11-6](#TableJPACacheNoQuery).
+  id: totrans-265
   prefs: []
   type: TYPE_NORMAL
+  zh: 执行此代码的结果在 [Table 11-6](#TableJPACacheNoQuery) 中给出。
 - en: Table 11-6\. Seconds required to read data for 256 stocks (L2 cache used)
+  id: totrans-266
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 11-6\. 读取 256 只股票数据所需的时间（使用 L2 缓存）
 - en: '| Test case | First execution | Subsequent executions |'
+  id: totrans-267
   prefs: []
   type: TYPE_TB
+  zh: '| 测试用例 | 第一次执行 | 后续执行 |'
 - en: '| --- | --- | --- |'
+  id: totrans-268
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| Default configuration | 22.7 ± 2 seconds (66,817 SQL calls) | 1.1 ± 0.7 seconds
     (1 SQL call) |'
+  id: totrans-269
   prefs: []
   type: TYPE_TB
+  zh: '| 默认配置 | 22.7 ± 2 秒（66,817 次 SQL 调用） | 1.1 ± 0.7 秒（1 次 SQL 调用） |'
 - en: '| No query | 35 ± 3 seconds (133,632 SQL calls) | 0.28 ± 0.3 seconds (0 SQL
     calls) |'
+  id: totrans-270
   prefs: []
   type: TYPE_TB
+  zh: '| 无查询 | 35 ± 3 秒（133,632 条 SQL 调用） | 0.28 ± 0.3 秒（0 条 SQL 调用） |'
 - en: 'The first execution of this loop requires 133,632 SQL statements: 66,816 for
     the call to the `find()` method, and an additional 66,816 for the call to the
     `getOptions()` method. Subsequent executions of that code are very fast indeed,
     since all the entities are in the L2 cache, and no SQL statements need to be issued.'
+  id: totrans-271
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个循环的第一次执行需要 133,632 条 SQL 语句：66,816 条用于调用 `find()` 方法，另外 66,816 条用于调用 `getOptions()`
+    方法。由于所有实体都在 L2 缓存中，且不需要发出 SQL 语句，因此代码的后续执行非常快速。
 - en: Recall that the sample database includes five option prices for every date and
     symbol pair, or a total of 334,080 option prices for 256 stocks over one year
     of data. When the five stock options for a particular symbol and date are accessed
@@ -1470,8 +2064,12 @@
     is not the same thing as executing a query. If the L2 cache is warmed up by iterating
     through entities, don’t iterate through related entities individually—do that
     by simply visiting the relationship.
+  id: totrans-272
   prefs: []
   type: TYPE_NORMAL
+  zh: 请记住，示例数据库包括每个日期和符号对应的五个期权价格，或者一年数据中 256 只股票共 334,080 个期权价格。当通过关系访问特定符号和日期的五只股票期权时，它们可以一次性全部检索出来。这就是为什么只需要
+    66,816 条 SQL 语句来加载所有期权价格数据。即使从这些 SQL 语句返回了多行，JPA 仍然能够缓存实体——这与执行查询不同。如果通过迭代实体来预热
+    L2 缓存，请不要逐个迭代相关实体——而是通过简单访问关系来做到这一点。
 - en: As code is optimized, you must take into account the effects of the cache (and
     particularly the L2 cache). Even if you think you could write better SQL than
     what JPA generates (and hence should use complex named queries), make sure that
@@ -1479,19 +2077,27 @@
     a simple named query will be faster to load data, consider what would happen in
     the long run if those entities were loaded into the L2 cache via a call to the
     `find()` method.
+  id: totrans-273
   prefs: []
   type: TYPE_NORMAL
+  zh: 当优化代码时，您必须考虑缓存（特别是 L2 缓存）的影响。即使您认为您可以比 JPA 生成更好的 SQL（因此应使用复杂的命名查询），请确保在缓存起作用之后该代码是值得的。即使看起来使用简单的命名查询加载数据会更快，也要考虑如果这些实体通过调用
+    `find()` 方法加载到 L2 缓存中会发生什么。
 - en: Sizing the JPA cache
+  id: totrans-274
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 调整 JPA 缓存大小
 - en: 'As with all cases where objects are reused, the JPA cache has a potential performance
     downside: if the cache consumes too much memory, it will cause GC pressure. This
     may require that the cache be tuned to adjust its size or that you control the
     mode in which entities remain cached. Unfortunately, these are not standard options,
     so you must perform these tunings based on which JPA provider you are using.'
+  id: totrans-275
   prefs: []
   type: TYPE_NORMAL
+  zh: 与所有对象复用的情况一样，JPA 缓存存在潜在的性能缺陷：如果缓存消耗过多内存，将导致 GC 压力。这可能需要调整缓存大小或者控制实体保持缓存的模式。不幸的是，这些不是标准选项，因此您必须根据您使用的
+    JPA 提供程序执行这些调整。
 - en: 'JPA implementations typically provide an option to set the size of the cache,
     either globally or per entity. The latter case is obviously more flexible, though
     it also requires more work to determine the optimal size for each entity. An alternative
@@ -1502,52 +2108,76 @@
     still requires some planning: in particular, recall from [Chapter 7](ch07.html#Memory)
     that weak references do not really survive any GC operation and are hence a questionable
     choice for a cache.'
+  id: totrans-276
   prefs: []
   type: TYPE_NORMAL
+  zh: JPA 实现通常提供了设置缓存大小的选项，可以是全局的，也可以是每个实体的。后者显然更灵活，但也需要更多工作来确定每个实体的最佳大小。另一种方法是 JPA
+    实现使用软引用和/或弱引用来管理 L2 缓存。例如，EclipseLink 提供了五种缓存类型（还有一些已弃用的类型），基于软引用和弱引用的各种组合。虽然这种方法可能比确定每个实体的最佳大小更容易，但仍然需要一些规划：特别是请回忆第
+    [第 7 章](ch07.html#Memory) 弱引用在任何 GC 操作中都不会真正存活，因此作为缓存的选择有所疑问。
 - en: If a cache based on soft or weak references is used, the performance of the
     application will also depend on what else happens in the heap. The examples of
     this section all used a large heap so that caching the 400,896 entity objects
     in the application would not cause issues with the garbage collector. Tuning a
     heap when there are large JPA L2 caches is quite important for good performance.
+  id: totrans-277
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果使用基于软引用或弱引用的缓存，则应用程序的性能还取决于堆中发生的其他事情。 本节的示例都使用了一个大堆，以便在应用程序中缓存 400,896 个实体对象不会导致垃圾收集器出现问题。
+    当存在大型 JPA L2 缓存时，调整堆非常重要以获得良好的性能。
 - en: Quick Summary
+  id: totrans-278
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: The JPA L2 cache will automatically cache entities for an application.
+  id: totrans-279
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: JPA L2 缓存将自动为应用程序缓存实体。
 - en: The L2 cache does not cache entities retrieved via queries. This means that
     in the long run it can be beneficial to avoid queries altogether.
+  id: totrans-280
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: L2 缓存不缓存通过查询检索的实体。 这意味着从长远来看，完全避免查询可能是有利的。
 - en: Unless query caching is supported by the JPA implementation in use, using a
     `JOIN` query turns out to frequently have a negative performance effect, since
     it bypasses the L2 cache.
+  id: totrans-281
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 除非所使用的 JPA 实现支持查询缓存，否则使用 `JOIN` 查询通常会对性能产生负面影响，因为它绕过了 L2 缓存。
 - en: Spring Data
+  id: totrans-282
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: Spring 数据
 - en: Although JDBC and JPA are standard parts of the Java platform, other third-party
     Java APIs and frameworks manage database access. NoSQL vendors all have their
     own APIs to access their databases, and various frameworks provide database access
     via different abstractions than JPA.
+  id: totrans-283
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管 JDBC 和 JPA 是 Java 平台的标准部分，但其他第三方 Java API 和框架管理数据库访问。 NoSQL 供应商都有自己的 API
+    来访问其数据库，各种框架通过与 JPA 不同的抽象提供数据库访问。
 - en: 'The most-widely used of these is Spring Data, which is a collection of database
     access modules for both relational and NoSQL databases. This framework contains
     several modules, including these:'
+  id: totrans-284
   prefs: []
   type: TYPE_NORMAL
+  zh: 其中最广泛使用的是 Spring Data，这是一个包含关系型和 NoSQL 数据库访问模块的集合。 这个框架包含几个模块，包括以下内容：
 - en: Spring Data JDBC
+  id: totrans-285
   prefs: []
   type: TYPE_NORMAL
+  zh: Spring Data JDBC
 - en: 'This is designed as a simple alternative to JPA. It provides a similar entity
     mapping as JPA but without caching, lazy loading, or dirty entity tracking. This
     sits on top of standard JDBC drivers so it has wide support. That means you can
@@ -1555,88 +2185,129 @@
     to use prepared statements for repeated calls, implement the necessary interfaces
     in your code to support Spring batched statement models, and/or work directly
     with the connection objects to change autocommit semantics.'
+  id: totrans-286
   prefs: []
   type: TYPE_NORMAL
+  zh: 这被设计为 JPA 的简单替代方案。 它提供与 JPA 类似的实体映射，但没有缓存、延迟加载或脏实体跟踪。 它建立在标准 JDBC 驱动程序之上，因此得到了广泛支持。
+    这意味着您可以在 Spring 代码中跟踪本章的性能方面：确保对重复调用使用预编译语句，实现必要的接口以支持 Spring 批处理语句模型，并/或直接使用连接对象以更改自动提交语义。
 - en: Spring Data JPA
+  id: totrans-287
   prefs: []
   type: TYPE_NORMAL
+  zh: Spring Data JPA
 - en: 'This is designed as a wrapper around standard JPA. One large benefit is that
     it reduces the amount of boilerplate code developers need to write (which is good
     for developer performance but doesn’t really impact the performance we’re discussing).
     Because it wraps standard JPA, the JPA performance aspects mentioned in this chapter
     all apply: setting up eager versus lazy loading, batching updates and inserts,
     and the L2 caches all still apply.'
+  id: totrans-288
   prefs: []
   type: TYPE_NORMAL
+  zh: 这被设计为标准 JPA 的封装。 其一个重要优势是减少开发人员需要编写的样板代码量（这对开发者的性能有好处，但实际上并不影响我们讨论的性能）。 因为它包装了标准
+    JPA，本章提到的 JPA 性能方面仍然适用：设置急切加载与延迟加载，批量更新和插入，以及所有 L2 缓存仍然适用。
 - en: Spring Data for NoSQL
+  id: totrans-289
   prefs: []
   type: TYPE_NORMAL
+  zh: Spring Data 用于 NoSQL
 - en: Spring has various connectors for NoSQL (and NoSQL-like) technologies, including
     MongoDB, Cassandra, Couchbase, and Redis. This somewhat simplifies the NoSQL access,
     since the techniques to access the store are then the same, though differences
     in setup and initialization remain.
+  id: totrans-290
   prefs: []
   type: TYPE_NORMAL
+  zh: Spring 具有各种 NoSQL（和类似 NoSQL 的）技术的连接器，包括 MongoDB、Cassandra、Couchbase 和 Redis。
+    这在某种程度上简化了 NoSQL 访问，因为访问存储的技术是相同的，尽管设置和初始化方面仍有差异。
 - en: Spring Data R2DBC
+  id: totrans-291
   prefs: []
   type: TYPE_NORMAL
+  zh: Spring 数据 R2DBC
 - en: 'Spring Data R2DBC, mentioned in [Chapter 10](ch10.html#JavaServers), allows
     asynchronous JDBC access to Postgres, H2, and Microsoft SQL Server databases.
     It follows the typical Spring Data programming model rather than direct JDBC,
     so it is similar to Spring Data JDBC: access is via simple entities in repositories,
     though without the caching, lazy loading, and other features of JPA.'
+  id: totrans-292
   prefs: []
   type: TYPE_NORMAL
+  zh: Spring Data R2DBC，在[第10章](ch10.html#JavaServers)提到，允许异步访问Postgres、H2和Microsoft
+    SQL Server数据库。它遵循典型的Spring Data编程模型，而不是直接使用JDBC，因此类似于Spring Data JDBC：通过仓库中的简单实体进行访问，尽管没有JPA的缓存、延迟加载和其他特性。
 - en: Summary
+  id: totrans-293
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: 'Properly tuning JDBC and JPA access to a database is one of the most significant
     ways to affect the performance of a middle-tier application. Keep in mind these
     best practices:'
+  id: totrans-294
   prefs: []
   type: TYPE_NORMAL
+  zh: 正确调优JDBC和JPA对数据库的访问是影响中间层应用性能的最重要方法之一。请记住以下最佳实践：
 - en: Batch reads and writes as much as possible by configuring the JDBC or JPA configuration
     appropriately.
+  id: totrans-295
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 通过适当配置JDBC或JPA配置，尽可能进行批量读写。
 - en: Optimize the SQL the application issues. For JDBC applications, this is a question
     of basic, standard SQL commands. For JPA applications, be sure to consider the
     involvement of the L2 cache.
+  id: totrans-296
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 优化应用程序发出的SQL。对于JDBC应用程序，这是一个关于基本标准SQL命令的问题。对于JPA应用程序，请务必考虑L2缓存的参与。
 - en: Minimize locking where possible. Use optimistic locking when data is unlikely
     to be contended, and use pessimistic locking when data is contended.
+  id: totrans-297
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 尽可能减少锁定。当数据不太可能争用时，请使用乐观锁定；当数据争用时，请使用悲观锁定。
 - en: Make sure to use a prepared statement pool.
+  id: totrans-298
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 确保使用准备好的语句池。
 - en: Make sure to use an appropriately sized connection pool.
+  id: totrans-299
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 确保使用适当大小的连接池。
 - en: 'Set an appropriate transaction scope: it should be as large as possible without
     negatively affecting the scalability of the application because of the locks held
     during the transaction.'
+  id: totrans-300
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 设置适当的事务范围：它应尽可能大，而不会因事务持有的锁而对应用的可扩展性产生负面影响。
 - en: ^([1](ch11.html#idm45775546052104-marker)) You might prefer to scale the database
     instead, but that is often difficult in real-world deployments.
+  id: totrans-301
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch11.html#idm45775546052104-marker)) 在实际部署中，您可能更喜欢扩展数据库，但这通常很困难。
 - en: ^([2](ch11.html#idm45775545987720-marker)) Statement pooling is often called
     *statement caching* by database vendors.
+  id: totrans-302
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([2](ch11.html#idm45775545987720-marker)) 数据库供应商通常将语句池称为*语句缓存*。
 - en: ^([3](ch11.html#idm45775545357736-marker)) In the first edition of this book,
     when the tests were run on Oracle 11g, that also wasn’t the case; there was a
     clear difference between rows 2 and 3 and between rows 5 and 6\. These tests were
     run on Oracle 18c, which has its own improvements.
+  id: totrans-303
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([3](ch11.html#idm45775545357736-marker)) 在本书的第一版中，当测试运行在Oracle 11g上时，情况也不一样；行2和3之间以及行5和6之间有明显差异。这些测试是在具有其自身改进的Oracle
+    18c上运行的。
