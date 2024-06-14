@@ -1,0 +1,1011 @@
+- en: Chapter 11\. Classloading, Reflection, and Method Handles
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 3](ch03.xhtml#javanut8-CHP-3), we met Java’s `Class` objects, a
+    way of representing a live type in a running Java process. In this chapter, we
+    will build on this foundation to discuss how the Java environment loads and makes
+    new types available. In the second half of the chapter, we will introduce Java’s
+    introspection capabilities—both the original Reflection API and the newer Method
+    Handles capabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Class Files, Class Objects, and Metadata
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Class files, as we saw in [Chapter 1](ch01.xhtml#javanut8-CHP-1), are the result
+    of compiling Java source files (or, potentially, other languages) into the intermediate
+    form used by the JVM. These are binary files that are not designed to be human
+    readable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The runtime representation of these class files are the class objects that contain
+    metadata, which represents the Java type that the class file was created from.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Examples of Class Objects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'You can obtain a class object in Java in several ways. The simplest is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This returns the class object of the instance that it is called from. However,
+    as we know from our survey of the public methods of `Object`, the `getClass()`
+    method on `Object` is public, so we can also obtain the class of an arbitrary
+    object `o`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Class objects for known types can also be written as “class literals”:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For primitive types and `void`, we also have class objects that are represented
+    as literals:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There is also the possibility of using the `.class` syntax directly on a primitive
+    type, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The relationship between `.class` and `.TYPE` can be seen with some simple
+    tests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the wrapper types (`Integer`, etc) have a `.TYPE` property, but in
+    general classes do not. Also, all of this works only for types that are known
+    at compile time; for unknown types, we will have to use more sophisticated methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Class Objects and Metadata
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The class objects contain metadata about the given type. This includes the methods,
+    fields, constructors, and the like that are defined on the class in question.
+    This metadata can be accessed by the programmer to investigate the class, even
+    if nothing is known about the class when it is loaded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, we can find all the deprecated methods in the class file (they
+    will be marked with the `@Deprecated` annotation):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We could also find the common ancestor class of a pair of class files. This
+    simple form will work when both classes have been loaded by the same classloader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Class files have a very specific layout they must conform to if they are to
+    be legal and loadable by the JVM. The sections of the class file are (in order):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Magic number (all class files starting with the four bytes `CA FE BA BE` in
+    hexadecimal)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Version of class file standard in use
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Constant pool for this class
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Access flags (`abstract`, `public`, etc.)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Name of this class
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Inheritance info (e.g., name of superclass)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implemented interfaces
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fields
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Methods
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Attributes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The class file is a simple binary format, but it is not human readable. Instead,
+    tools like `javap` (see [Chapter 13](ch13.xhtml#javanut8-CHP-13)) should be used
+    to comprehend the contents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the most frequently used sections in the class file is the *constant
+    pool*, which contains representations of all the methods, classes, fields, and
+    constants that the class needs to refer to (whether they are in this class or
+    another). It is designed so that bytecodes can simply refer to a constant pool
+    entry by its index number—which saves space in the bytecode representation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A number of different class file versions are created by various Java versions.
+    However, one of Java’s backward compatibility rules is that JVMs (and tools) from
+    newer versions can always use older class files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at how the classloading process takes a collection of bytes on disk
+    and turns it into a new class object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Phases of Classloading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Classloading is the process by which a new type is added to a running JVM process.
+    This is the only way that new code can enter the system and the only way to turn
+    data into code in the Java platform. There are several phases to the process of
+    classloading, so let’s examine them in turn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Loading
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The classloading process starts with loading a byte array. This is usually read
+    in from a filesystem, but it also can be read from a URL or other location (often
+    represented as a `Path` object).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ClassLoader::defineClass()` method is responsible for turning a class file
+    (represented as a byte array) into a class object. It is a protected method and
+    so is not accessible without subclassing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first job of `defineClass()` is loading. This produces the skeleton of a
+    class object, corresponding to the class you’re attempting to load. By this stage,
+    some basic checks have been performed on the class (e.g., the constants in the
+    constant pool have been checked to ensure that they’re self-consistent).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, loading doesn’t produce a complete class object by itself, and the
+    class isn’t yet usable. Instead, after loading, the class must be linked. This
+    step breaks down into separate subphases:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Verification
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Preparation and resolution
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Initialization
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Verification
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Verification confirms that the class file conforms to expectations, and that
+    it doesn’t try to violate the JVM’s security model (see [“Secure Programming and
+    Classloading”](#javanut8-CHP-11-SECT-3) for details).
+  prefs: []
+  type: TYPE_NORMAL
+- en: JVM bytecode is designed so that it can be (mostly) checked statically. This
+    has the effect of slowing down the classloading process but speeding up runtime
+    (as checks can be omitted).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The verification step is designed to prevent the JVM from executing bytecodes
+    that might crash it or put it into an undefined and untested state where it might
+    be vulnerable to other attacks by malicious code. Bytecode verification is a defense
+    against malicious hand-crafted Java bytecodes and untrusted Java compilers that
+    might output invalid bytecodes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The default methods mechanism works via classloading. When an implementation
+    of an interface is being loaded, the class file is examined to see if implementations
+    for default methods are present. If they are, classloading continues normally.
+    If some are missing, the implementation is patched to add in the default implementation
+    of the missing methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preparation and Resolution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: After successful verification, the class is prepared for use. Memory is allocated
+    and static variables in the class are readied for initialization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this stage, variables aren’t initialized, and no bytecode from the new class
+    has been executed. Before we run any code, the JVM checks that every type referred
+    to by the new class file is known to the runtime. If the types aren’t known, they
+    may also need to be loaded—which can kick off the classloading process again,
+    as the JVM loads the new types.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This process of loading and discovery can execute iteratively until a stable
+    set of types is reached. This is called the “transitive closure” of the original
+    type that was loaded.^([1](ch11.xhtml#idm45927708690512))
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at a quick example by examining the dependencies of `java.lang.Object`.
+    [Figure 11-1](#javanut8-CHP-11-FIG-1) shows a simplified dependency graph for
+    `Object`. It shows only the direct dependencies of `Object` that are visible in
+    the public API of `Object` and the direct, API-visible dependencies of those dependencies.
+    In addition, the dependencies of `Class` on the reflection subsystem, and of `PrintStream`
+    and `PrintWriter` on the I/O subsystems, are shown in very simplified form.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Figure 11-1](#javanut8-CHP-11-FIG-1), we can see part of the transitive
+    closure of `Object`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![JN7 1101](assets/jns8_1101.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-1\. Transitive closure of types
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Initialization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Once resolved, the JVM can finally initialize the class. Static variables can
+    be initialized and static initialization blocks are run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the first time that the JVM is executing bytecode from the newly loaded
+    class. When the static blocks complete, the class is fully loaded and ready to
+    go.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Secure Programming and Classloading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java programs can dynamically load Java classes from a variety of sources, including
+    untrusted sources, such as websites reached across an insecure network. The ability
+    to create and work with such dynamic sources of code is one of the great strengths
+    and features of Java. To make it work successfully, however, Java puts great emphasis
+    on a security architecture that allows untrusted code to run safely, without fear
+    of damage to the host system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java’s classloading subsystem is where a lot of safety features are implemented.
+    The central idea of the security aspects of the classloading architecture is that
+    there is only one way to get new executable code into the process: a class.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This provides a “pinch point”—the only way to create a new class is to use the
+    functionality provided by `ClassLoader` to load a class from a stream of bytes.
+    By concentrating on making classloading secure, we can constrain the attack surface
+    that needs to be protected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One extremely helpful aspect of the JVM’s design is that the JVM is a stack
+    machine, so all operations are evaluated on a stack, rather than in registers.
+    The stack state can be deduced at every point in a method, and this can be used
+    to ensure that the bytecode doesn’t attempt to violate the security model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some of the security checks implemented by the JVM are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: All the bytecode of the class has valid parameters.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All methods are called with the right number of parameters of the correct static
+    types.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bytecode never tries to underflow or overflow the JVM stack.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Local variables are not used before they are initialized.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Variables are only assigned suitably typed values.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Field, method, and class access control modifiers must be respected.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: No unsafe casts (e.g., attempts to convert an `int` to a pointer).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All branch instructions are to legal points within the same method.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Of fundamental importance is the approach to memory, and pointers. In assembly
+    and C/C++, integers and pointers are interchangeable, so an integer can be used
+    as a memory address. We can write it in assembly like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The lowest level of the Java security architecture involves the design of the
+    Java Virtual Machine and the bytecodes it executes. The JVM does not allow any
+    kind of direct access to individual memory addresses of the underlying system,
+    which prevents Java code from interfering with the native hardware and operating
+    system. These intentional restrictions on the JVM are reflected in the Java language
+    itself, which does not support pointers or pointer arithmetic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Neither the language nor the JVM allow an integer to be cast to an object reference
+    or vice versa, and there is no way whatsoever to obtain an object’s address in
+    memory. Without capabilities like these, malicious code simply cannot gain a foothold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recall from [Chapter 2](ch02.xhtml#javanut8-CHP-2) that Java has two types of
+    values—primitives and object references. These are the only things that can be
+    put into variables. Note that “object contents” cannot be put into variables.
+    Java has no equivalent of C’s `struct` and always has pass-by-value semantics.
+    For reference types, what is passed is a copy of the reference—which is a value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References are represented in the JVM as pointers, but they are not directly
+    manipulated by the bytecode. In fact, bytecode does not have opcodes for “access
+    memory at location X.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead, all we can do is access fields and methods; bytecode cannot call an
+    arbitrary memory location. This means that the JVM always knows the difference
+    between code and data. In turn, this prevents a whole class of stack overflow
+    and other attacks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Applied Classloading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To apply knowledge of classloading, it’s important to fully understand `java.lang.ClassLoader`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is an abstract class that is fully functional and has no abstract methods.
+    The `abstract` modifier exists only to ensure that users must subclass `ClassLoader`
+    if they want to use it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to the aforementioned `defineClass()` method, we can load classes
+    via a public `loadClass()` method. This is commonly used by the `URLClassLoader`
+    subclass, which can load classes from a URL or file path.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can use `URLClassLoader` to load classes from the local disk like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The argument to `loadClass()` is the binary name of the class file. Note that
+    for the `URLClassLoader` to find the classes correctly, they need to be in the
+    expected place on the filesystem. In this example, the class `com.example.DFACaller`
+    would need to be found in the file *com/example/DFACaller.class* relative to the
+    working directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternatively, `Class` provides `Class.forName()`, a static method that can
+    load classes that are present on the classpath but that haven’t been referred
+    to yet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This method takes a fully qualified class name. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: It throws a `ClassNotFoundException` if the class can’t be found. As the example
+    indicates, this was commonly used in older versions of Java Database Connectivity
+    (JDBC) to ensure that the correct driver was loaded, while avoiding a direct `import`
+    dependency on the driver classes. With the advent of JDBC 4.0, this initialization
+    step is no longer required.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Class.forName()` has an alternative, three-argument form, which is sometimes
+    used in conjunction with alternative classloaders:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are a host of subclasses of `ClassLoader` that deal with individual special
+    cases of classloading—which fit into the classloader hierarchy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Classloader Hierarchy
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The JVM has a hierarchy of classloaders; each classloader in the system (apart
+    from the initial, “bootstrap” classloader) has a parent that it can delegate to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The arrival of modules in Java 9 has affected the details of the way that classloading
+    operates. In particular, the classloaders that load the JRE classes are now *modular
+    classloaders*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The convention is that a classloader will ask its parent to resolve and load
+    a class, and it will perform the job itself if only the parent classloader is
+    unable to comply. Some common classloaders are shown in [Figure 11-2](#javanut8-CHP-11-FIG-2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![JN7 1102](assets/jns8_1102.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-2\. Classloader hierarchy
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Bootstrap classloader
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This is the first classloader to appear in any JVM process and is only used
+    to load the core system classes. In older texts, it is sometimes referred to as
+    the *primordial classloader*, but modern usage favors the bootstrap name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For performance reasons, the bootstrap classloader does no verification and
+    relies on the boot classpath being secure. Types loaded by the bootstrap classloader
+    are implicitly granted all security permissions, and so this group of modules
+    is kept as restricted as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Platform classloader
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This level of the classloader hierarchy was originally used as the *extension
+    classloader*, but this mechanism has now been removed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In its new role, this classloader (which has the bootstrap classloader as its
+    parent) is now known as the *platform classloader*. It is available via the method
+    `ClassLoader::getPlatformClassLoader` and appears in (and is required by) the
+    Java specification from version 9 onward. It loads the remaining modules from
+    the base system (the equivalent of the old `rt.jar` used in version 8 and earlier).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the new modular implementations of Java, far less code is required to bootstrap
+    a Java process; accordingly, as much JDK code (now represented as modules) as
+    possible has been moved out of the scope of the bootstrap loader and into the
+    platform loader instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Application classloader
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Historically, this was sometimes called the system classloader, but this is
+    a bad name, as it doesn’t load the system (the bootstrap and platform classloaders
+    do). Instead, it is the classloader that loads application code from either the
+    module path or the classpath. It is the most commonly encountered classloader,
+    and it has the platform classloader as its parent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To perform classloading, the application classloader first searches the named
+    modules on the module path (the modules known to any of the three built-in classloaders).
+    If the requested class is found in a module known to one of these classloaders
+    then that classloader will load the class. If the class is not found in any known
+    named module, the application classloader delegates to its parent (the platform
+    classloader). If the parent fails to find the class, the application classloader
+    searches the classpath. If the class is found on the classpath, it is loaded as
+    a member of the application classloader’s unnamed module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The application classloader is very widely used, but many advanced Java frameworks
+    require functionality that the main classloaders do not supply. Instead, extensions
+    to the standard classloaders are required. This forms the basis of “custom classloading”—which
+    relies on implementing a new subclass of `ClassLoader`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Custom classloader
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: When performing classloading, sooner or later we have to turn data into code.
+    As noted earlier, the `defineClass()` (actually a group of related methods) is
+    responsible for converting a `byte[]` into a class object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This method is usually called from a subclass—for example, this simple custom
+    classloader that creates a class object from a file on disk:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that in the preceding example we didn’t need to have the class file in
+    the “correct” location on disk, as we did for the `URLClassLoader` example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We need to provide a classloader to act as parent for any custom classloader.
+    In this example, we provided the classloader that loaded the `DiskLoader` class
+    (which would usually be the application classloader).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Custom classloading is a very common technique in Java EE and advanced SE environments,
+    and it provides very sophisticated capabilities to the Java platform. We’ll see
+    an example of custom classloading later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One drawback of dynamic classloading is that when working with a class object
+    that we loaded dynamically, we typically have little or no information about the
+    class. To work effectively with this class, we will therefore have to use a set
+    of dynamic programming techniques known as reflection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reflection
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Reflection is the capability of examining, operating on, and modifying objects
+    at runtime. This includes modifying their structure and behavior—even self-modification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The Java modules system introduces major changes to how reflection works on
+    the platform. It is important to reread this section after you have gained an
+    understanding of how modules work and how the two capabilities interact. More
+    details on how modules restrict reflection are available in [“Open Modules”](ch12.xhtml#javanut8-CHP-12-SECT-2-5).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reflection is capable of working even when type and method names are not known
+    at compile time. It uses the essential metadata provided by class objects and
+    can discover method or field names from the class object—and then acquire an object
+    representing the method or field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instances can also be constructed reflectively (by using `Class::newInstance()`
+    or another constructor). With a reflectively constructed object and a `Method`
+    object, we can call any method on an object of a previously unknown type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This makes reflection a very powerful technique, so it’s important to understand
+    when we should use it, and when it’s overkill.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When to Use Reflection
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Many, if not most, Java frameworks use reflection in some capacity. Writing
+    architectures that are flexible enough to cope with code that is unknown until
+    runtime usually requires reflection. For example, plug-in architectures, debuggers,
+    code browsers, and read-evaluate-print loop (REPL)-like environments are usually
+    implemented on top of reflection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reflection is also widely used in testing (e.g., by the JUnit and TestNG libraries)
+    and for mock object creation. If you’ve used any kind of Java framework you have
+    almost certainly been using reflective code, even if you didn’t realize it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To start using the Reflection API in your own code, the most important thing
+    to realize is that it is about accessing objects where virtually no information
+    is known, and that the interactions can be cumbersome because of this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If some static information is known about dynamically loaded classes (e.g.,
+    that the classes loaded all implement a known interface), this can greatly simplify
+    the interaction with the classes and reduce the burden of operating reflectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is a common mistake to try to create a reflective framework that attempts
+    to account for all possible circumstances, instead of dealing only with the cases
+    that are immediately applicable to the problem domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to Use Reflection
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The first step in any reflective operation is to get a `Class` object representing
+    the type to be operated on. From this, other objects, representing fields, methods,
+    or constructors, can be accessed and applied to instances of the unknown type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we already have an instance of an unknown type, we can retrieve its class
+    via the `Object::getClass()` method. Alternatively, the static `Class.forName()`
+    method demonstrated in [“Applied Classloading”](#javanut8-CHP-11-SECT-4) for classloading
+    can also perform lookup of a `Class` object by name:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once we have an instance of a `Class` object, the next reasonable step is calling
+    a method reflectively. The `Method` objects are some of the most commonly used
+    objects provided by the Reflection API. We’ll discuss them in detail—the `Constructor`
+    and `Field` objects are similar in many respects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Method objects
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A class object contains a `Method` object for each method on the class. These
+    are lazily created after classloading, and so they aren’t immediately visible
+    in an IDE’s debugger.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Methods on `Class` allow us to retrieve (and if necessary lazily initialize)
+    these `Method` objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The second parameter to `getMethod()` takes an array of `Class` objects representing
+    the method’s parameters to distinguish between method overrides.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code demonstrated here will only list and find public methods on our `Class`
+    objects. There are alternative methods of the form `getDeclaredMethod` that parallel
+    what we’ve shown that allow access to protected and private methods. We’ll have
+    more to say shortly about using these mechanisms to circumvent Java’s access model,
+    though.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Like any good Java object, `Method` provides accessors for all the relevant
+    information about the method. Let’s look at the most critical metadata about a
+    method that we can retrieve:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can explore the metadata of a `Method` object by calling accessor methods,
+    but by far the single biggest use case for `Method` is reflective invocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The methods represented by these objects can be executed by reflection using
+    the `invoke()` method on `Method`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An example of invoking `hashCode()` on a `String` object follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the static type of `rcvr` was declared to be `Object`. No static type
+    information was used during the reflective invocation. The `invoke()` method also
+    returns `Object`, so the actual return type of `hashCode()` has been autoboxed
+    to `Integer`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This autoboxing is one of the aspects of Reflection where you can see some of
+    the slight awkwardness of the API—which we’ll discuss in an upcoming section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating instances with Reflection
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you’re looking to create new instances of a `Class` object, you’ll find that
+    the method lookups don’t help. Our constructors don’t have names that those APIs
+    are able to find.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the simplest case of a no-argument constructor, a helper is available via
+    the `Class` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: For constructors that take arguments, `Class` has methods like `getConstructor`
+    that allow for finding the override you’re after. While they return a separate
+    `Constructor` type, using these is very similar to what we’ve already seen for
+    interacting with `Method` objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look at an extended example and see how to combine reflection with custom
+    classloading to inspect a class file on disk for any deprecated methods (these
+    should be marked with `@Deprecated`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: This showcases some of the power of reflective techniques, but there are also
+    problems that come with using the API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Problems with Reflection
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Java’s Reflection API is often the only way to deal with dynamically loaded
+    code, but a number of annoyances in the API can make it slightly awkward to deal
+    with:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heavy use of `Object[]` to represent call arguments and other instances.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Also uses `Class[]` when talking about types.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Methods can be overloaded on name, so we need an array of types to distinguish
+    between methods.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Representing primitive types can be problematic—we have to manually box and
+    unbox.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`void` is a particular problem—there is a `void.class`, but it’s not used consistently.
+    Java doesn’t really know whether `void` is a type or not, and some methods in
+    the Reflection API use `null` instead.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is cumbersome, and can be error prone—in particular, the slight verbosity
+    of Java’s array syntax can lead to errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One further problem is the treatment of non-`public` methods. As mentioned
+    before, instead of using `getMethod()`, we must use `getDeclaredMethod()` to get
+    a reference to a non-`public` method. Additionally, to call non-`public` methods,
+    we must override the Java access control subsystem, calling `setAccessible()`
+    to allow it to be executed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Because reflection always involves unknown information, we just have to live
+    with some of this verbosity. It’s the price of using the dynamic, runtime power
+    of reflective invocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dynamic Proxies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'One last piece of the Java Reflection story is the creation of dynamic proxies.
+    These are classes (which extend `java.lang.reflect.Proxy`) that implement a number
+    of interfaces. The implementing class is constructed dynamically at runtime and
+    forwards all calls to an invocation handler object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Proxies can be used as stand-in objects for testing (especially in test mocking
+    approaches).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another use case is to provide partial implementations of interfaces, or to
+    decorate or otherwise control some aspect of delegation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Proxies are an extremely powerful and flexible capability used within many Java
+    frameworks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Method Handles
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In Java 7, a brand new mechanism for introspection and method access was introduced.
+    This was originally designed for use with dynamic languages, which may need to
+    participate in method dispatch decisions at runtime. To support this at the JVM
+    level, the new `invokedynamic` bytecode was introduced. This bytecode was not
+    used by Java 7 itself, but with the advent of Java 8, it was extensively used
+    in both lambda expressions and the Nashorn JavaScript implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even without `invokedynamic`, the new Method Handles API is comparable in power
+    to many aspects of the Reflection API—and can be cleaner and conceptually simpler
+    to use, even standalone. It can be thought of as Reflection done in a safer, more
+    modern way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: MethodType
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In Reflection, method signatures are represented as `Class[]`. This is quite
+    cumbersome. By contrast, method handles rely on `MethodType` objects. These are
+    a typesafe and object-oriented way to represent the type signature of a method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: They include the return type and argument types but not the receiver type or
+    name of the method. The name is not present, as this allows any method of the
+    correct signature to be bound to any name (as per the functional interface behavior
+    of lambda expressions).
+  prefs: []
+  type: TYPE_NORMAL
+- en: A type signature for a method is represented as an immutable instance of `MethodType`,
+    as acquired from the factory method `MethodType.methodType()`. The zeroth argument
+    to `methodType()` is the return type of the method, with the types of the method
+    arguments following it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: This single piece of the puzzle provides significant gains over Reflection,
+    as it makes method signatures significantly easier to represent and discuss. The
+    next step is to acquire a handle on a method. This is achieved by a lookup process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Method Lookup
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Method lookup queries are performed on the class where a method is defined
+    and are dependent on the context that they are executed from:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: We always need to call `MethodHandles.lookup()`—this gives us a lookup context
+    object based on the currently executing method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lookup objects have several methods (which all start with `find`) declared on
+    them for method resolution. These include `findVirtual()`, `findConstructor()`,
+    and `findStatic()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One big difference between the Reflection and Method Handles APIs is access
+    control. A `Lookup` object will only return methods that are accessible to the
+    context where the lookup was created—and there is no way to subvert this (no equivalent
+    of Reflection’s `setAccessible()` hack).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, we can see that when we attempt to look up the protected `ClassLoader::defineClass()`
+    method from a general lookup context, we fail to resolve it with an `IllegalAccessException`,
+    as the protected method is not accessible:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Method handles therefore always comply with the security manager, even when
+    the equivalent reflective code does not. They are access-checked at the point
+    where the lookup context is constructed—the lookup object will not return handles
+    to any methods to which it does not have proper access.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The lookup object, or method handles derived from it, can be returned to other
+    contexts, including ones where access to the method would no longer be possible.
+    Under those circumstances, the handle is still executable—access control is checked
+    at lookup time, as we can see in this example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: With a `Lookup` object, we’re able to produce method handles to any method we
+    have access to. We can also produce a way of accessing fields that may not have
+    a method that gives access. The `findGetter()` and `findSetter()` methods on `Lookup`
+    produce method handles that can read or update fields as needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Invoking Method Handles
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A method handle represents the ability to call a method. They are strongly typed
+    and as typesafe as possible. Instances are all of some subclass of `java.lang.invoke.MethodHandle`,
+    which is a class that needs special treatment from the JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are two ways to invoke a method handle—`invoke()` and `invokeExact()`.
+    Both of these take the receiver and call arguments as parameters. `invokeExact()`
+    tries to call the method handle directly as is, whereas `invoke()` will massage
+    call arguments if needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In general, `invoke()` performs an `asType()` conversion if necessary—this
+    converts arguments according to these rules:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A primitive argument will be boxed if required.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A boxed primitive will be unboxed if required.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Primitives will be widened if necessary.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `void` return type will be massaged to 0 or `null`, depending on whether the
+    expected return was primitive or of reference type.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`null` values are passed through, regardless of static type.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'With these potential conversions in place, invocation looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Method handles provide a clearer and more coherent way to access the same dynamic
+    programming capabilities as Reflection. In addition, they are designed to work
+    well with the low-level execution model of the JVM and thus hold out the promise
+    of much better performance than Reflection can provide.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch11.xhtml#idm45927708690512-marker)) As in [Chapter 6](ch06.xhtml#javanut8-CHP-6),
+    we’re borrowing the expression *transitive closure* from the branch of mathematics
+    called graph theory.
+  prefs: []
+  type: TYPE_NORMAL

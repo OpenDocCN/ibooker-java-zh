@@ -1,0 +1,1093 @@
+- en: Chapter 8\. Parallel Data Processing with Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our world is overwhelmingly concurrent and parallel; we can almost always do
+    more than one thing at once. Our programs need to solve more and more problems,
+    that’s why data processing often benefits from being parallel, too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Chapter 6](ch06.xhtml#_02-data-processing), you’ve learned about Streams
+    as data processing pipelines built of functional operations. Now it’s time to
+    go parallel!
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, you will learn about the importance of concurrency and parallelism,
+    how and when to use parallel Streams, and when not to. Everything you learned
+    in the previous two chapters about data processing with Streams so far also applies
+    to using them for parallel processing. That’s why this chapter will concentrate
+    on the differences and intricacies of parallel Streams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrency Versus Parallelism
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The terms *parallelism* and *concurrency* often get mixed up because the concepts
+    are closely related. Rob Pike, one of the co-designers of the programming language
+    [*Go*](https://go.dev), defined the terms nicely:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrency is about **dealing** with a lot of things at once. Parallelism is
+    about **doing** a lot of things at once. The ideas are, obviously, related, but
+    one is inherently associated with structure, and the other is associated with
+    execution. Concurrency is structuring things in a way that might allow parallelism
+    to actually execute them simultaneously. But parallelism is not the goal of concurrency.
+    The goal of concurrency is good structure and the possibility to implement execution
+    modes like parallelism.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Rob Pike, [“Concurrency Is Not Parallelism” at Waza 2012](https://go.dev/blog/waza-talk)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: '*Concurrency* is the general concept of multiple tasks running in overlapping
+    time periods competing over the available resources. A single CPU core interleaves
+    them by scheduling and switching between tasks as it sees fit. Switching between
+    tasks is relatively easy and fast. This way, two tasks can *figuratively* run
+    on a single CPU core simultaneously, even though they *literally* don’t. Think
+    of it like a juggler using only one hand (single CPU core) with multiple balls
+    (tasks). They can only hold a single ball at any time (doing the work), but which
+    ball changes over time (interrupting and switching to another task). Even with
+    only two balls, they have to juggle the workload.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Parallelism*, on the other hand, isn’t about managing interleaved tasks but
+    their *simultaneous* execution. If more than one CPU core is available, the tasks
+    can run *in-parallel* on different cores. The juggler now uses both hands (more
+    than one CPU core) to hold two balls at once (doing the work simultaneously).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: See [Figure 8-1](#_01-parallel-concurrent-async_concurrent-vs-parallel) for
+    a more visual representation of how thread scheduling differs between the two
+    concepts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Concurrent versus parallel thread execution](assets/afaj_0801.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-1\. Concurrent versus parallel thread execution
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '*Concurrency* and *parallelism* in Java share the same goal: taking care of
+    *multiple* tasks with threads. Their difference lies in the difficulty to do it
+    efficiently, with ease, and doing it right, and in a safe manner.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both multi-tasking concepts aren’t mutually exclusive and are often used together.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One thing to consider when using multiple threads is that you can no longer
+    easily follow or debug the actual flow of your application as you could do in
+    a single-threaded one. To use data structures in concurrent environments, they
+    have to be “thread-safe,” usually requiring coordination with locks, semaphores,
+    etc., to work correctly and guarantee safe access to any shared state. Executing
+    code in parallel usually lacks such coordination because it’s focused on the execution
+    itself. This makes it safer, more natural, and easier to reason with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Streams as Parallel Functional Pipelines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Java provides an easy-to-use data processing pipeline with parallel processing
+    capabilities: *Streams*. As I’ve discussed before in [Chapter 6](ch06.xhtml#_02-data-processing),
+    they process their operations in *sequential* order by default. However, a single
+    method call switches the pipeline into “parallel mode,” either the intermediate
+    Stream operation `parallel`, or the `parallelStream` method available on `java.util.Collection`-based
+    types. Going back to a sequentially processed Stream is possible, too, by calling
+    the intermediate operation `sequential()`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Switching between execution modes with `parallel()` and `sequential()` affects
+    the Stream pipeline as a whole regardless of the position in the pipeline. The
+    last one called before the terminal operation dictates the mode for the whole
+    pipeline. There’s no way to run a certain part of the Stream in a different execution
+    mode from the rest.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parallel Streams use the concept of *recursive decomposition*, meaning they
+    *divide and conquer* the data source by splitting up the elements with the underlying
+    `Spliterator` to process chunks of elements in parallel. Each chunk is processed
+    by a dedicated thread and may even be split up again, recursively, until the Stream
+    API is satisfied that the chunks and threads are a good match for the available
+    resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You don’t have to create or manage these threads or use an explicit `ExecutorService`.
+    Instead, the Stream API uses the *common* `ForkJoinPool` internally to spin-off
+    and manage new threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These chunks of elements and their operations are forked into multiple threads.
+    Finally, the sub-results of the threads are joined again to derive a final result,
+    as shown in [Figure 8-2](#_02-data-processing_parallel-fork-join).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Parallel Stream Fork/Join](assets/afaj_0802.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-2\. Parallel Stream Fork/Join
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The size of the chunks varies, depending on the Stream’s data source underlying
+    `Spliterator` characteristics. [“Choosing the Right Data Source”](#_02-parallel-streams_data-source)
+    goes over the different characteristics and data sources and their affinity for
+    proficiency in splitting elements into chunks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parallel Streams in Action
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To illustrate how to process a Stream in parallel, we’re going to count the
+    occurrences of distinct words in Tolstoy’s “War and Peace” again, ^([1](ch08.xhtml#idm45115231315840)),
+    as was done in the previous chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, a rough approach should be outlined as a blueprint for the necessary
+    steps that need to be translated into Stream operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Loading the content of “War and Peace”
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cleaning the content by removing punctuation, etc.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Splitting the content to create words
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Counting all distinct words
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Instead of using the `Files.lines` method, a more naïve sequential approach,
+    as shown in <<[Example 8-1](#_01-parallel-concurrent-async_war-and-peace-seq)
+    is chosen to better represent the improvements the right data source and parallel
+    Streams can have.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-1\. Sequentially counting words in “War and Peace”
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_parallel_data_processing_with_streams_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multiple pre-compiled `Pattern` instances are used to clean up the content.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_parallel_data_processing_with_streams_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The content is read in one swoop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_parallel_data_processing_with_streams_CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The cleanup patterns remove all punctuation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_parallel_data_processing_with_streams_CO1-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The lines are split on whitespace and the resulting `String[]` array is flat-mapped
+    to a Stream of `String` elements, which are further filtered to be actually “words.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](assets/5.png)](#co_parallel_data_processing_with_streams_CO1-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Counting words in a case-insensitive fashion is simply done by converting all
+    words to lowercase and letting a Collector do the actual work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Counting is done with the help of `Collectors.toMap`, which takes the words
+    as keys by calling `Function.identity()`, which is a shortcut to create a `Function<T,
+    T>` that returns its input argument. If a key collision occurs, meaning a word
+    is encountered more than once, the Collector merges the existing value with the
+    new value, `1`, by evaluation `Integer::sum` with both values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On my computer with a 6-core / 12-thread CPU, the sequential version runs in
+    ~140ms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Threads, in the case of a CPU, refer to *simultanous multithreading* (SMT),
+    not Java threads. It’s often referred to as *hyper-threading*, which is the proprietary
+    implementation of SMT by Intel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This initial Stream pipeline might solve the problem of counting words in “War
+    and Peace” but it leaves quite some room for improvement. Making it parallel wouldn’t
+    change much because the data source only provides a singular element, so only
+    later operations can be forked off. So how can the pipeline be redesigned to gain
+    performance from a parallel approach?
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you think back to [Figure 8-2](#_02-data-processing_parallel-fork-join),
+    parallel Streams fork pipelines of operations that are merged back together to
+    create a result. Right now, the pipeline counts words for a singular `String`
+    which is the whole book. A more the pipeline could easily count words in any `String`
+    element flowing through the pipeline and let the terminal `collect` operation
+    merge the results just as easily.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For a good parallel performance of all operations, the Stream pipeline needs
+    a data source with multiple elements. Instead of using `Files.readString`, the
+    convenience type also has a `Stream`-creating method that reads a file line-by-line:
+    `static Stream<String> lines(Path path) throws IOException`. Even though processing
+    more elements will result in more clean-up operation calls in total, the tasks
+    are distributed to multiple threads run in parallel to use the available resources
+    most efficiently.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another important change must be done to the `collect` operation. To ensure
+    no `ConcurrentModificationException` occurs, the thread-safe variant `Collectors.toConcurrentMap`
+    is used with the same arguments as before.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Collectors in parallel environments
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As Collectors share a mutable intermediate results container, they’re susceptible
+    to concurrent modifications from multiple threads during the `combiner` step.
+    That’s why you should always check the documentation of the Collector used in
+    a parallel pipeline for thread-safety, and choose an appropriate alternative if
+    necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All these small adaptions to switch to a parallel approach accumulates in the
+    code shown in [Example 8-2](#_01-parallel-concurrent-async_war-and-peace-parallel).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-2\. Parallel counting words in “War and Peace”
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_parallel_data_processing_with_streams_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Files.lines` call requires you to close the `Stream`. Using it in a `try-with-resources`-block
+    delegates the work to the runtime, so you don’t have to close it manually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_parallel_data_processing_with_streams_CO2-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: All previous steps — cleaning and splitting the lines — are unchanged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_parallel_data_processing_with_streams_CO2-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Counting is done the same way but with a thread-safe Collector variant instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By using an optimized data source and adding a `parallel()` call into the pipeline,
+    the required time decreases to ~25ms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That’s a performance increase of over 5x! So why don’t we always use parallel
+    Streams?
+  prefs: []
+  type: TYPE_NORMAL
+- en: When to Use and When to Avoid Parallel Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Why use a sequential Stream if a parallel Stream can provide a performance
+    boost with a single method call and a few considerations to the data source and
+    terminal operation? The simple answer: any performance gains aren’t guaranteed
+    and are affected by many factors. Using parallel Streams is primarily a performance
+    optimization and should always be a conscious and informed decision, not just
+    because it’s *easy* thanks to a single method call.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are no *absolute* rules about choosing parallel over sequential data processing.
+    The criteria depend on many different factors, like your requirements, the task
+    at hand, available resources, etc., and all influence each other. That’s why there
+    is no easy answer to the question “when to use parallel Streams?”, neither *quantitative*
+    nor *qualitative*. Still, there are certain *informal* guidelines that provide
+    a good starting point to decide.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s take a look at them in order of how a Stream pipeline is built, from creating
+    a Stream to adding intermediate operation and finishing the pipeline by adding
+    the terminal operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Choosing the Right Data Source
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Every Stream — sequential and parallel — begins with a data source handled by
+    a `Spliterator`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a sequential Stream, the `Spliterator` behaves like a simple `Iterator`,
+    supplying the Stream with one element after another. For parallel Streams, however,
+    the data source gets split up into multiple chunks. Ideally, these chunks are
+    of roughly equivalent size, so the work is distributed evenly, but that isn’t
+    always possible, depending on the data source itself. This splitting process is
+    called *decomposing the data source*. It can be cheap or favorable for parallel
+    processing; or complicated and costly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, an array-based data source, like `ArrayList`, knows its exact size
+    and easily decomposes because the location of all elements is known, so equally
+    large chunks are easily obtainable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A linked list, on the other hand, is a fundamentally sequential data source,
+    with each of its elements only effectively knowing their direct neighbors. Finding
+    a specific position means you have to traverse all beforehand. Although Java’s
+    implementation, `LinkedList`, *cheats* by keeping track of the size, which creates
+    the more favorable `Spliterator` characteristics `SIZED` and `SUBSIZED`. Nevertheless,
+    it’s not a preferred data source for parallel Streams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 8-1](#_01-parallel-streams_decomposability) lists different common data
+    sources and their proficiency of decomposability for parallel use.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 8-1\. Parallel decomposability
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Data source | Parallel Decomposability |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `IntStream.range / .rangeClosed` | `+++` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Arrays.stream` (primitives) | `+++` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ArrayList` | `++` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Arrays.stream` (objects) | `++` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `HashSet` | `+` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `TreeSet` | `+` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `LinkedList` | `--` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Stream.iterate` | `--` |'
+  prefs: []
+  type: TYPE_TB
+- en: The degree of efficient decomposability isn’t the only factor regarding data
+    sources and their possible performance in parallel Streams. A more technical aspect
+    that’s easy to overlook is *data locality*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Besides more cores, modern computers feature a myriad of caches to improve performance
+    at a memory level. Where memory is stored depends on the decisions made by the
+    runtime and the CPU itself. Reading from L1 cache is ~100 times faster than RAM,
+    L2 cache ~25 times. The “closer” the data is to actual processing, the better
+    performance can be achieved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Usually, JDK implementations store object fields and arrays in adjacent memory
+    locations. This design allows for prefetching “near” data and speeding up any
+    task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Arrays and lists of reference types, a `List<Integer>` or an `Integer[]`, store
+    a collection of pointers to the actual values, compared to an array of primitives — `int[]` — which
+    stores its values next to each other. If there’s a cache miss because the required
+    next value isn’t prefetched, the CPU has to wait for the actual data to be loaded,
+    and therefore *wasting* resources. That doesn’t mean that only primitive arrays
+    are a good match for parallel processing, though. *Data locality* is just one
+    of many criteria that might affect your decision to choose the right data source
+    for going parallel. Compared to the other criteria, though, it’s quite a minuscule
+    one and slightly out of your direct control of how the runtime and JDK store data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Number of Elements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There’s no definitive number of elements that will give you the best parallel
+    performance, but one thing is clear: the more elements a parallel Stream has to
+    process, the better, so it can offset the overhead of coordinating multiple threads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To process elements in parallel, they must be partitioned, processed, and joined
+    again for the final result. These operations are all related, and finding a sensible
+    balance is a *must-have*. This balance is represented by the *NQ model*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*N* represents the number of elements, *Q* is the cost of a single task. Their
+    product — *N * Q* — indicates the likeliness of getting a speedup from parallel
+    processing. A general overview of weighing the different aspects can be seen in
+    [Figure 8-3](#_01-parallel-concurrent-async_n-q).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Cost per task in relation to task count](assets/afaj_0803.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-3\. The NQ model
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'As you can see, a higher number of elements is always a good indicator for
+    possible speedup by parallel processing compared to a lower number. Long-running
+    tasks also profit from being run in parallel and might even outweigh the lack
+    of enough elements. But the best-case scenario is having both: lots of elements
+    *and* non-cheap tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stream Operations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: After choosing the right data source, the operations are the next puzzle piece.
+    The main goal of designing your parallel operations is to achieve the same final
+    result as with a sequential Stream. That’s why most of the design choices for
+    intermediate operations are universal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case of parallel Streams, though, issues that aren’t a big deal in sequential
+    Streams can accumulate quickly. So adhering to more functional principles and
+    parallel-friendly operations is important.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pure Lambdas
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Lambda expressions used in Stream operations should always be *pure*, meaning
+    they shouldn’t rely on *non-local* mutable state or emit any side effects. To
+    mitigate the most apparent *non-local* state issues, any captured variables must
+    be effectively `final`, as explained in [“Effectively final”](ch02.xhtml#_01-functions_lambdas_effectively-final),
+    which only affects the reference itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reading immutable state isn’t an issue either. The real problem arises from
+    a thread that changes *non-local* state, so any access requires synchronization
+    between them, or you end up with non-deterministic behavior, like *race conditions*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The easiest way to prevent any non-deterministic behavior is to make sure that
+    any *non-local* state is deeply immutable. This way, the lambda stays pure and
+    can’t be affected by other threads running the same lambda.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parallel-friendly Operations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Not all Stream operations are a good fit for parallel processing. The simplest
+    way to judge an operation is its reliance on a specific encounter order for the
+    Stream’s elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, the `limit`, `skip`, or `distinct` intermediate operations rely
+    heavily on encounter order to provide a deterministic — or *stable* — behavior
+    for ordered Streams, meaning they always choose or dismiss the same items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This stability, however, comes at a price in parallel Streams: synchronization
+    across all threads and increased memory needs. For example, to guarantee that
+    the `limit` operation produces the same results in parallel use as in sequential
+    Streams, it must wait for all preceding operations to finish in encounter order
+    and buffer all elements until it’s known if they are needed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Luckily, not all pipelines require a fixed encounter order. Calling `unordered()`
+    on a Stream pipeline changes the resulting Streams characteristics to `UNORDERED`,
+    and therefore, *stable* operations become *unstable*. In many cases, it just doesn’t
+    matter *which* distinct elements are picked, as long as the final result contains
+    no duplicates. For `limit`, it’s a little trickier and depends on your requirements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are also two *stable* terminal operations that depend on the encounter
+    order of the data source, `findFirst` and `forEach`. Both of them provide an *unstable*
+    variant, too, as listed in [Table 8-2](#_01-parallel-streams-stable-unstable-terminal-ops).
+    They should be preferred for parallel Streams if your requirements allow it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 8-2\. Stable versus unstable terminal operations
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Stable operations | Unstable operations |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `findFirst()` | `findAny()` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `forEachOrdered(Consumer<? super T> action)` | `forEach(Consumer<? super
+    T> action)` |'
+  prefs: []
+  type: TYPE_TB
+- en: Even with fully parallelized intermediate operations, the final applicative
+    terminal operation in a Stream pipeline is sequential to achieve a singular result
+    or emit a side effect. Just like with unstable intermediate operations, the terminal
+    operations `findAny()` and `forEach(…​)` can immensely profit from being unconstrained
+    from encounter order and having to wait for other elements from other threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reduce Versus Collect
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The terminal operations `reduce` and `collect` are two sides of the same coin:
+    both are *reduction* — or *fold* — operations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In functional programming, *fold* operations combine elements by applying a
+    function to the elements and recombine the results recursively to build up a return
+    value. The difference lies in the general approach on how to recombine the results:
+    *immutable* versus *mutable* accumulation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As I’ve discussed in [“Reducing Versus Collecting Elements”](ch06.xhtml#_02-data-processing_reduce-vs-collect),
+    a *mutable* accumulation is more akin to how you would approach the problem in
+    a `for`-loop, as seen in [Example 8-3](#_01-parallel-streams_mutable-acc-for-loop).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-3\. Mutable accumulation with a for-loop
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: For a sequentially processed problem, this is a straightforward approach. Using
+    non-local and mutable state, however, is a contra-indicator for parallel processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Functional programming favors *immutable* values, so the accumulation only depends
+    on the previous result and current Stream element to produce a new and *immutable
+    result*. This way, the operations can easily be run in parallel, as seen in [Figure 8-4](#_01-parallel-streams_immutable-reduction).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Immutable accumulation of numbers](assets/afaj_0804.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-4\. Immutable accumulation of numbers
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The flow still has the same elements as before: an initial value `0` for each
+    summation of values. Instead of accumulating the results in a single value, each
+    step returns a new value as the left operand for the next summation. The simplest
+    Stream form is shown in [Example 8-4](#_01-parallel-streams_immutable-reduction-stream).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-4\. Immutable accumulation of numbers with a Stream
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_parallel_data_processing_with_streams_CO3-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The initial value — or *identity* — is used for every parallel reduction operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_parallel_data_processing_with_streams_CO3-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The method reference translates into a `BiFunction<Integer, Integer, Integer>`
+    to accumulate the previous (or initial) value with the current Stream element.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This more abstract form of reduction is easily parallelizable if it’s *associative*
+    and without any shared state. A reduction is associative if the order or grouping
+    of the accumulator arguments is irrelevant to the final result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even though *immutable* reduction is more amenable to parallel processing, it’s
+    not the only reduction option in town. Depending on your requirements, a *mutable*
+    reduction might be a more fitting solution because creating a new immutable result
+    for every accumulation step could be costly. With enough elements, such costs
+    accumulate over time affecting performance and memory requirements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A *mutable* reduction mitigates this overhead by using a mutable results container.
+    The accumulation function receives this container instead of only the prior result,
+    and it doesn’t return any value, unlike a `reduce` operator. To create the final
+    result, the combiner merges all containers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The factors that a decision between using `reduce` or `collect` in sequential
+    and parallel Streams boil down to what kind of element you have and the usability
+    and straightforwardness of the terminal *fold* operation. There are times when
+    you might need every bit of performance available to you to improve your data
+    processing, and a more complicated *fold* operation. Many other factors affect
+    performance in general, so having an easier-to-understand and maintainable terminal
+    operation might outweigh the downside of sacrificing a little bit more memory
+    and CPU cycles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stream Overhead and Available Resources
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Compared to traditional looping structures, a Stream always creates an unavoidable
+    overhead, regardless of being sequential or parallel. Their advantage lies in
+    providing a declarative way of defining data processing pipelines and utilizing
+    many functional principles to maximize their ease of use and performance. In most
+    real-world scenarios, though, the overhead is negligible compared to their conciseness
+    and clarity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case of parallel Streams, though, you start with a more significant initial
+    handicap compared to sequential Streams. Besides the overhead of the Stream scaffold
+    itself, you have to think about data source decomposition costs, thread management
+    by the `ForkJoinPool`, and recombining the final result, to get the full picture
+    of all moving parts. And all those parts must have the resources — CPU cores and
+    memory available to actually run them in parallel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coined by the computer scientist Gene Amdahl in 1967, *Amdahl’s law*⁠^([2](ch08.xhtml#idm45115230447824))
+    provides a way to calculate the theoretical latency speedup in parallel executions
+    for constant workloads. The law takes the *parallel portion* of a single task
+    and the *number of tasks* running in parallel into account, as shown in [Figure 8-5](#_01-parallel-concurrent-async_amdhals-law).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Amdahl''s law](assets/afaj_0805.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-5\. Amdahl’s law
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: As you can see, the maximum performance gains have a ceiling depending on the
+    count of parallel tasks that can be run simultaneously. There is no benefit in
+    easily parallelizable tasks if the runtime can’t actually run them parallel due
+    to the lack of adequate resources and is forced to interleave the tasks instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example: War and Peace (revisited)'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With all these criteria for parallel Stream performance in mind, let’s analyze
+    the previous example of counting the distinct words of Tolstoy’s “War and Peace”
+    again to better understand why this particular Stream pipeline is a great match
+    for parallel processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data source characteristics
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Stream is created from a UTF-8 plain text file with the help of the `Files.lines`
+    method, which has quite good parallel characteristics according to its documentation^([3](ch08.xhtml#idm45115230437904)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Number of elements
+  prefs: []
+  type: TYPE_NORMAL
+- en: The text file contains over 60.000 lines, therefore, 60.000 elements flow through
+    the pipeline. That’s not much for modern computers, but it’s also not a negligible
+    number of elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Intermediate operations
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each Stream operation works on a single line, completely independent from another,
+    without any shared or outside state that requires coordination. The regular expressions
+    are pre-compiled and read-only.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Terminal operation
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Collector` can gather the results independently and merges them with a
+    simple arithmetic operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Available resources
+  prefs: []
+  type: TYPE_NORMAL
+- en: My computer has 12 CPU threads available at most and therefore ~5.000 lines
+    per thread if all of them are utilized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It looks like the example hit the *parallelism jackpot*, even if not all criteria
+    were matched perfectly. That’s why the performance gain for even such a simple
+    task was quite high and near the expected speedup of *Amdahl’s law* for highly
+    parallelizable operations. Looking back at [Figure 8-5](#_01-parallel-concurrent-async_amdhals-law),
+    the 5x improvement on my setup with 6 cores / 12 threads suggests a parallelizability
+    of ~90%.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example: Random Numbers'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This simplistic but deliberately chosen example of counting words in “War and
+    Peace” showed that parallel Streams could provide enormous performance gains that
+    scale with the available resources. But that’s not always the case for every workload,
+    especially for a more complex one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at another example, working with random numbers, and how `IntStream` — sequential
+    and parallel — compares to a simple `for`-loop, as shown in [Example 8-5](#_01-parallel-concurrent-async_for-seq-para).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-5\. Random number statistics
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_parallel_data_processing_with_streams_CO4-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 100 million elements should be enough elements to reach the (non-definite) threshold
+    to gain a performance boost from parallel processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_parallel_data_processing_with_streams_CO4-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To do at least some work, the elements will be multiplied by `2` twice with
+    the help of a shared lambda.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_parallel_data_processing_with_streams_CO4-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The default source for pseudo-random numbers is used: `java.util.Random`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_parallel_data_processing_with_streams_CO4-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `for`-loop version tries to mimic a Stream as well as possible, including
+    using the same logic for *collecting* the results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](assets/5.png)](#co_parallel_data_processing_with_streams_CO4-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The sequential Stream is as straightforward as possible: Stream creation, two
+    mapping functions, and then the collection of the results in the form of summary
+    statistics.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![6](assets/6.png)](#co_parallel_data_processing_with_streams_CO4-6)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The parallel variant only adds a `parallel()` call to the previous sequential
+    one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Is the summarizing of random numbers a good match for the criteria of parallel
+    processing? Let’s analyze!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data source characteristics
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even though `Random` is thread-safe, it’s explicitly mentioned in its documentation^([4](ch08.xhtml#idm45115230117168))
+    that repeated use from different threads will impact performance negatively. Instead,
+    the `ThreadLocalRandom` type is recommended.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Number of elements
+  prefs: []
+  type: TYPE_NORMAL
+- en: 100 million elements should be enough to get a performance gain from parallel
+    processing, no worries there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Intermediate operations
+  prefs: []
+  type: TYPE_NORMAL
+- en: No local or shared state. Another plus point for possible parallel performance.
+    But the example might be too simplistic to offset the parallel overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Terminal operation
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `IntSummaryStatistics` collector only holds four integers and can combine
+    sub-results with simple arithmetics. It shouldn’t impact parallel performance
+    negatively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The scorecard for parallel processing doesn’t look too bad. The most obvious
+    problem is the data source itself. A more fitting data source might increase performance
+    compared to the *default* `Random` number generator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Besides `Random` and `ThreadLocalRandom`, there’s also `SplittableRandom`, which
+    is specially designed for Streams. After measuring the elapsed time of the `for`-loop
+    as the baseline compared to the other options, the necessity of choosing a favorable
+    data source and measuring the Stream’s performance is quite obvious The factor
+    of increased time between the different data sources is listed in [Table 8-3](#_01-parallel-concurrent-async_randoms).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 8-3\. Elapsed time for different random number generators
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Data source | for-loop | Sequential Stream | Parallel Stream |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Random` | 1.0x | 1.05x | 27.4x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `SplittableRandom` | 1.0x | 2.1x | 4.1x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ThreadLocalRandom` | 1.0x | 2.3x | 0.6x |'
+  prefs: []
+  type: TYPE_TB
+- en: Even though there should be enough elements in the pipeline, enabling parallel
+    processing can be counter-productive and decrease the performance manifold. That’s
+    why making Stream’s parallel must be a conscious and informed decision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Better performance is a worthwhile goal, but it depends on the context and your
+    requirements if a parallel Stream is preferable to sequential data processing.
+    You should always start with a sequential Stream and only go parallel if the requirements
+    dictate it and you’ve measured the performance gain. Sometimes, a “good old” `for`-loop
+    might do the job just as well, or even better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parallel Streams Checklist
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '[Example 8-5](#_01-parallel-concurrent-async_for-seq-para) exposed the problem
+    of unfavorable data sources for parallel processing. But it’s not the only indicator
+    for non-parallelizable workflows. Based on the criteria in [“When to Use and When
+    to Avoid Parallel Streams”](#_01-parallel-concurrent-async_when-to-use-parallelism),
+    a checklist can be established as a quick indicator to favor a parallel Stream,
+    or not, as seen in [Table 8-4](#_01-parallel-streams_checklist).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 8-4\. Parallel Stream checklist
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Criteria | Considerations |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Data source |'
+  prefs: []
+  type: TYPE_TB
+- en: Cost of Decomposability
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Evenness/predictability of split chunks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Data locality of elements
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of elements |'
+  prefs: []
+  type: TYPE_TB
+- en: Total number of elements
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*NQ* model'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Intermediate operations |'
+  prefs: []
+  type: TYPE_TB
+- en: Interdependence between operations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Necessity of shared state
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Parallel-friendly operations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Encounter order
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Terminal operation |'
+  prefs: []
+  type: TYPE_TB
+- en: Cost of merging the final result
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mutable or immutable reduction
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Available resources |'
+  prefs: []
+  type: TYPE_TB
+- en: CPU count
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Memory
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Common `ForkJoinPool` or customized
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Any of these criteria affect parallel Stream performance and should influence
+    your decision. No single one of them is an absolute deal-breaker, though.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Your code could *always* be more performant. Running Streams in parallel adds
+    the complexity and overhead of coordinating multiple threads with possibly little
+    gain or even decreased performance if not used correctly or in unfavorable environments.
+    However, if used for fitting data sources and parallelizable tasks, using parallel
+    Streams is an easy-to-use optimization technique for introducing a more efficient
+    way of data processing into your pipelines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Takeaways
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Hardware evolves in the direction of more cores, not necessarily faster ones.
+    Concurrency and parallelism play an important role in utilizing all available
+    resources.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sequential processing is defined by its textual order in the code. Parallel
+    code execution may overlap, making it harder to follow, analyze, and debug.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Going parallel with Streams is easy, but their inherent complexity is hidden.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Concurrent and parallel code introduces a whole new set of requirements and
+    possible problems and caveats. Parallel processing is an optimization technique
+    and should be treated as such: if you don’t need it, don’t do it; it’s a hard
+    problem.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Most functionally preferred techniques, like *pure functions* and *immutability*,
+    are beneficial, if not a requirement, for error-free and performant parallelized
+    code. Adhering to these techniques early on, even in sequential code, allows an
+    easier transition to parallel processing, if needed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kent Beck’s famous quote applies to parallel Streams, too: “first make it work,
+    then make it right, and, finally, make it fast."⁠^([5](ch08.xhtml#idm45115230052720))
+    Start with a sequential Stream to fulfill your data processing needs. Improve
+    it by optimizing its operations. Only if necessary and proven beneficial, make
+    it fast by going parallel.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Read the documentation of your data source, operations, etc., to see if they
+    are a good fit for parallel execution. It often provides the reasoning behind
+    implementation details, performance indications, examples, and sometimes even
+    alternative approaches.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ^([1](ch08.xhtml#idm45115231315840-marker)) Project Gutenberg provides multiple
+    versions of Tolstoy’s [“War and Peace”](https://www.gutenberg.org/ebooks/2600)
+    for free. The plain-text version is used so no additional formatting affects the
+    process of counting words.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch08.xhtml#idm45115230447824-marker)) The Wikipedia entry on [Amdahl’s
+    law](https://en.wikipedia.org/wiki/Amdahl%27s_law) describes the actual formula
+    in detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch08.xhtml#idm45115230437904-marker)) The call if delegated to `Files.lines(Path
+    path, CharSet cs)` which [documentation](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/nio/file/Files.xhtml#lines(java.nio.file.Path,java.nio.charset.Charset))
+    lists possibly good parallel performance due to its `Spliterator` splitting in
+    an optimal ratio under normal circumstances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([4](ch08.xhtml#idm45115230117168-marker)) Ususally, the documentation of a
+    type, like for [`java.util.Random`](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Random.xhtml)
+    gives indications about their use in multi-threaded environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([5](ch08.xhtml#idm45115230052720-marker)) Kent Beck is an American software
+    engineer and the creator of *extreme programming*. The quote is usually attributed
+    to him, even though the gist of it exists for a long time like described in B.
+    W. Lampson, “Hints for Computer System Design,” in [*IEEE Software*, Vol. 1, No.
+    1, 11-28, Jan. 1984](https://doi.org/10.1109/MS.1984.233391).
+  prefs: []
+  type: TYPE_NORMAL

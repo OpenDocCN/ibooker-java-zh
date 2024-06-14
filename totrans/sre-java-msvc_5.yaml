@@ -1,0 +1,1410 @@
+- en: Chapter 5\. Safe, Multicloud Continuous Delivery
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The placement of this chapter in the second half of this book should signal
+    the importance of telemetry in achieving safe and effective delivery practices.
+    This may come as a surprise, because every organization ships software with an
+    emphasis on testing as a means of guaranteeing safety, but not every organization
+    measures it actively in a way that is directly related to end-user experience.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The concepts in this chapter will be introduced with a continuous delivery tool
+    called Spinnaker, but as with earlier chapters, a different tool could achieve
+    similar ends. I’d like to establish a minimum base for what you should expect
+    from a worthy CD tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spinnaker is an open source continuous delivery solution that started at Netflix
+    in 2014 to help manage its microservices in AWS. It was preceded at Netflix by
+    a tool called Asgard, which was really just an alternative AWS console organized
+    with application developers in mind, and built for Netflix’s unusual scale of
+    AWS consumption. At one point, I was interacting with an AWS console form that
+    required me to select a security group. The UI element in the console was a plain
+    HTML select (list box) with four visible elements. The available security groups
+    were unsorted in the list box, and there were thousands of them (again, because
+    of Netflix’s broad scale in this account)! Usability issues like this led to Asgard,
+    which in turn led to Spinnaker. Asgard was really just an application inventory
+    with some actions (like the AWS console). Spinnaker was conceived as an inventory
+    *plus* pipelines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In 2015 Spinnaker was open sourced and other, initially IaaS implementations
+    were added to it. At various points, Spinnaker has seen significant contributions
+    from Google, Pivotal, Amazon, and Microsoft, as well as end users like Target.
+    Many of these contributors worked together to write a [separate book](https://oreil.ly/fuhPb)
+    on the topic of Spinnaker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The practices described in this chapter are applicable to a wide variety of
+    platforms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Types of Platforms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Different types of platforms have a surprising level of commonality in the
+    high-level concepts that make up a running application. The concepts introduced
+    in this chapter will be mostly platform neutral. Platforms fall into one of the
+    following categories:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Infrastructure as a service (IaaS)
+  prefs: []
+  type: TYPE_NORMAL
+- en: An infrastructure as a service provides virtualized computing resources as a
+    service. An IaaS provider traditionally is responsible for servers, storage, networking
+    hardware, the hypervisor layer, and APIs and other forms of user interface to
+    manage these resources. Originally, to the extent you were using an IaaS, it was
+    as an alternative to having physical hardware. Provisioning resources on an IaaS
+    involves building virtual machine (VM) images. Deploying to an IaaS requires building
+    VM images at some point in the delivery pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Container as a service (CaaS)
+  prefs: []
+  type: TYPE_NORMAL
+- en: A container as a service is a kind of specialization of an IaaS for container-based
+    workloads rather than VMs. It provides a higher level of abstraction for the deployment
+    of apps as containers. Kubernetes has of course become the de facto standard CaaS
+    offered by public cloud vendors and on-prem. It provides a lot of other services
+    that are outside the scope of this book. Deploying to a CaaS requires the extra
+    step of building containers somewhere in the delivery pipeline (often at build
+    time).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Platform as a service (PaaS)
+  prefs: []
+  type: TYPE_NORMAL
+- en: A platform as a service further abstracts away the details of the underlying
+    infrastructure, generally by allowing you to upload an application binary like
+    a JAR or WAR directly to the PaaS API, which is then responsible for building
+    an image and provisioning it. Contrary to the as-a-service implication of PaaS,
+    sometimes PaaS offerings like Cloud Foundry are layered on top of virtualized
+    infrastructure in customer datacenters. They also can be layered on top of IaaS
+    offerings to provide a further abstraction away from the IaaS resource model,
+    which may serve the purpose of preserving some degree of public cloud provider
+    vendor neutrality or permitting similar delivery and management workflows in a
+    hybrid private/public cloud environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These abstractions can be provided to you by another company, or you can build
+    this cloud native infrastructure yourself (as a number of large companies have).
+    The key requirement is an elastic, self-serve, and API-driven platform upon which
+    to build.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A key assumption we will make throughout this chapter is that you are building
+    immutable infrastructure. While nothing about an IaaS, for example, prevents you
+    from building a VM image, launching an instance of it, and dropping an application
+    onto it after launch, we are going to assume that the VM image is “baked” along
+    with the application and any supporting software in such a way that when a new
+    instance is provisioned, the application should start and run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A further assumption is that applications deployed in this manner are approximately
+    cloud native. The definition of cloud native varies from source to source, but
+    at a minimum the applications that are amenable to the deployment strategies discussed
+    throughout this chapter are stateless. Other elements of [12-Factor apps](https://12factor.net/)
+    aren’t as crucial.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, I managed a service at Netflix that routinely took over 40 minutes
+    to start, which doesn’t look good against the disposability criteria, but was
+    otherwise unavoidable. The same service used exceedingly high memory footprint
+    instance types in AWS, of which we had a small reserved pool. These put constraints
+    on my choices: I couldn’t have more than about four instances of this service
+    running at any given time, so I wasn’t going to be doing blue/green deployments
+    with several disabled clusters (described in [“Blue/Green Deployment”](part0010_split_010.html#9H5RH-2d714b853a094e9a910510217e0e3d73)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To further center the discussion around a common language, let’s discuss the
+    resource building blocks common to all of these platforms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Resource Types
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To keep our discussion of delivery concepts platform-neutral, we will adopt
+    the abstractions as defined by Spinnaker, which are surprisingly portable across
+    different types of platforms:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instance
+  prefs: []
+  type: TYPE_NORMAL
+- en: An instance is a running copy of some microservice (that isn’t on a local developer
+    machine, because I sincerely hope production traffic isn’t finding its way there).
+    The AWS EC2 and Cloud Foundry platforms both call this “instance,” conveniently.
+    In Kubernetes, an instance is a pod.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Server group
+  prefs: []
+  type: TYPE_NORMAL
+- en: A server group represents a collection of instances, managed together. Platforms
+    have different ways of managing a collection of instances, but they tend to have
+    a responsibility for ensuring that a certain number of instances are running.
+    We generally assume that all of the instances of a server group have the same
+    code and configuration, because they are immutable (except when they aren’t).
+    Server groups can logically be devoid of any instances at all but simply have
+    the potential to scale into a nonzero set of instances. In AWS EC2 a server group
+    is an Auto Scaling Group. In Kubernetes a server group is roughly the combination
+    of a Deployment and ReplicaSet (where a deployment manages rollout of ReplicaSets)
+    or a StatefulSet. In Cloud Foundry, a server group is an Application (not to be
+    confused with Application as defined in this list and as we are going to use the
+    term throughout this chapter).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cluster
+  prefs: []
+  type: TYPE_NORMAL
+- en: A cluster is a set of server groups that may span multiple regions. Within a
+    single region, multiple server groups may represent different versions of the
+    microservice. Clusters do *not* span cloud providers. You could be running two
+    very similar clusters in different cloud providers, but for our discussion they
+    would be considered distinct. A cluster is a logical concept that doesn’t actually
+    have a correlated resource type in any cloud provider. Even more precisely, it
+    doesn’t span multiple installations of a particular platform. So a cluster does
+    not span multiple Cloud Foundry foundations or Kubernetes clusters. There is no
+    higher-level abstraction in AWS EC2 that represents a collection of Auto Scaling
+    Groups or in Kubernetes that represents a collection of Deployments. Spinnaker
+    manages cluster membership by naming conventions or additional metadata that it
+    places on resources it creates, depending on the platform’s implementation in
+    Spinnaker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Application
+  prefs: []
+  type: TYPE_NORMAL
+- en: An application is a logical business function and not one particular resource.
+    All of the running instances of an application are included. They may span multiple
+    clusters in multiple regions. They may exist on multiple cloud providers, either
+    because you are transitioning from one provider to another, or because you have
+    some concrete business case for not being locked into one provider, or for any
+    other reason. Wherever there is a running process that represents an instance
+    of this business function, it is part of the grander concept called application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Load balancer
+  prefs: []
+  type: TYPE_NORMAL
+- en: A load balancer is a component that allocates individual requests to instances
+    in one or more server groups. Most load balancers have a set of strategies or
+    algorithms they can use to allocate traffic. Also, they generally have a health-checking
+    feature that allows the load balancer to determine if a candidate microservice
+    instance is healthy enough to receive traffic. In AWS EC2 a load balancer is an
+    Application Load Balancer (or a legacy Elastic Load Balancer). In Kubernetes,
+    the Service resource is a load balancer. The Cloud Foundry Router is a load balancer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Firewall
+  prefs: []
+  type: TYPE_NORMAL
+- en: A firewall is a set of rules that govern ingress and egress to a set of server
+    groups. In AWS EC2 these are called Security Groups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spinnaker’s Kubernetes implementation is a little unique among the providers.
+    Spinnaker can really deploy any Kubernetes resource because it internally uses
+    `kubectl apply` and passes the manifest to the Kubernetes cluster. Furthermore,
+    Spinnaker allows you to treat manifests as templates and provide variable substitution.
+    It then maps some Kubernetes objects like ReplicaSets/Deployments/StatefulSets
+    to server groups and Services to load balancers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 5-1](part0010_split_002.html#spinnaker_k8s_actions) shows a Spinnaker
+    view of a series of Kubernetes ReplicaSets. Note how this infrastructure view
+    also contains actions like Edit, Scale, Disable, and Delete for the selected resource.
+    In this view, `replicaSet helloworldapp-frontend` is the “Cluster” resource (an
+    amalgamation in this case of the Kubernetes resource type and name), representing
+    a set of ReplicaSets in one or more Kubernetes namespaces. `HELLOWORLDWEBAPP-STAGING`
+    is the “Region” corresponding to a Kubernetes namespace of the same name. `helloworldapp-frontend-v004`
+    is a server group (a ReplicaSet). The individual blocks are the “Instances” corresponding
+    to Kubernetes pods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0501](../images/00035.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-1\. Spinnaker view of three Kubernetes ReplicaSets with actions highlighted
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Delivery Pipelines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Spinnaker pipelines are just one of many delivery-focused pipeline solutions
+    on the market both commercially and in OSS. They range from the low-level and
+    heavily opinionated Spring Cloud Pipelines to continuous integration pipelining
+    extended to include delivery building blocks like JenkinsX. For the sake of this
+    chapter, we will stick to Spinnaker pipelines, but if you substitute another pipelining
+    solution, look for some key capabilities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Platform neutrality
+  prefs: []
+  type: TYPE_NORMAL
+- en: A delivery solution doesn’t have to support every possible vendor to qualify
+    as a platform-neutral solution, but delivery solutions based on, for example,
+    Kubernetes custom resource definitions are guaranteed to be locked into a given
+    platform. With this kind of lock-in, any heterogeny in your deployed environment
+    means you are going to be building to multiple tools. Mixed platform use is exceedingly
+    common in enterprises of sufficient scale (as it should be).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Automated triggers
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pipelines should be able to be automatically triggered by events, especially
+    by changes in artifact inputs. We will discuss more about how artifact triggers
+    help you repave your infrastructure in a safe and controlled way in [“Packaging
+    for the Cloud”](part0010_split_004.html#9H5O7-2d714b853a094e9a910510217e0e3d73).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scalability
+  prefs: []
+  type: TYPE_NORMAL
+- en: A good pipelining solution accounts for the radically different computational
+    nature of different pipeline stages. “Deploy” stages that are exercising platform
+    API endpoints to provision new resources have very low computational needs, even
+    if the stage may run for several minutes. A single instance of a pipeline execution
+    service can easily run thousands of these in parallel. “Execute script” stages
+    that execute something like a Gradle task are arbitrarily resource-intensive,
+    so the execution of them is best delegated to something like a container scheduler
+    such that the resource utilization of the stage execution doesn’t affect the performance
+    of the pipeline execution service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When continuous integration products are used to perform deployment operations,
+    they generally inefficiently use resources in a significant way. For one financial
+    institution I once visited, performing delivery operations with the CI system
+    Concourse was costing several million dollars per year. For this organization,
+    running 30 `m4.large` reserved instances in EC2 to support a Spinnaker installation
+    would have cost a little over $15,000 per year. The resource inefficiency can
+    easily swing the other direction though. Stages of arbitrary computational complexity
+    should not be run on host or in process with Spinnaker’s Orca (i.e., pipeline)
+    service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The various cloud providers *feel* very different. The deployable resource is
+    a different level of abstraction for each type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spinnaker pipelines consist of stages that are approximately cloud neutral.
+    That is, the same basic building blocks will be available for every cloud provider
+    implementation, but the configuration of a stage like “Deploy” will vary from
+    platform to platform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 5-2](part0010_split_003.html#spinnaker_k8s_pipeline_definition) shows
+    the definition of a Spinnaker pipeline that is going to deploy to Kubernetes.
+    Pipelines can be arbitrarily complex, containing parallel stages and multiple
+    triggers defined in the special configuration stage up front.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0502](../images/00001.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-2\. A detailed view of a Spinnaker pipeline showing multiple stages
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Spinnaker defines several different trigger types. This pipeline is triggered
+    by the publication of a new container image in a Docker registry, as shown in
+    [Figure 5-3](part0010_split_003.html#spinnaker_k8s_expected_artifact).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0503](../images/00060.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-3\. Spinnaker expected artifact definition
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '[Figure 5-4](part0010_split_003.html#spinnaker_k8s_pipelines) shows the execution
+    history of two Spinnaker pipelines, including the one whose configuration we just
+    saw. The staging pipeline was last executed by a Docker registry trigger (a new
+    container published to a Docker registry). In the other circumstances, the pipeline
+    was manually triggered.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0504](../images/00101.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-4\. Spinnaker view of two different delivery pipelines
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The first task of any delivery pipeline is to package the application in an
+    immutable unit of deployment that can be stamped out in instances across a server
+    group.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Packaging for the Cloud
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The different abstractions given by the various types of cloud platforms have
+    tradeoffs in terms of startup time, resource efficiency, and cost. But as we’ll
+    see, there shouldn’t be a significant difference in terms of the effort each requires
+    to package a microservice for deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generating a new application from [start.spring.io](https://start.spring.io)
+    includes the generation of a Gradle or Maven build that can generate a runnable
+    JAR. For PaaS platforms like Cloud Foundry and Heroku, this runnable JAR *is*
+    the input unit of deployment. It is the responsibility of the cloud provider to
+    take this runnable JAR and containerize or otherwise package it and then provision
+    some underlying resource to run this package on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For cloud platforms other than PaaS, the effort required from the application
+    team is surprisingly not much different. The examples included here are implemented
+    with Gradle because open source tooling exists for both IaaS and CaaS uses. There
+    is no reason similar tooling couldn’t be produced for Maven.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One of the typical value propositions of a PaaS is that you provide just the
+    application binary as an input to deployment processes and let the PaaS manage
+    the operating system and package patching on your behalf, even transparently.
+    In practice, it doesn’t work out quite like this. In the case of Cloud Foundry,
+    the platform is responsible for a certain level of patching that is achieved in
+    a rolling manner, affecting one instance at a time in any server group (a.k.a.
+    “application” in Cloud Foundry parlance). But such patching comes with a certain
+    degree of risk: an update to any part of the operating system could adversely
+    affect an application running on it. So there is this risk/reward trade-off that
+    carefully circumscribes the types of changes the platform is willing to automate
+    on behalf of users. All other patches/updates are applied to the “type” of image
+    that the platform will layer your application on. Cloud Foundry calls these buildpacks.
+    For example, Java version upgrades involve an update to the buildpack. The platform
+    does not automatically update buildpack versions for every running application
+    that used the Java buildpack. It really is up to the organization then to redeploy
+    every application using the Java buildpack to pick up the update.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For non-PaaS environments, with the extra amount of effort involved in generating
+    another type of artifact (other than a JAR) from your build or having an additional
+    stage in your deployment pipeline comes a dramatically greater degree of control
+    and flexibility over how infrastructure can be patched across your organization.
+    While the type of base image is different between IaaS and CaasS (virtual machine
+    and container image, respectively), the principle of baking your application on
+    top of a base image allows you to define your application binary and the base
+    image it is layered upon as separate inputs to each microservice delivery pipeline.
+    [Figure 5-5](part0010_split_004.html#base_image_trigger) shows a hypothetical
+    delivery pipeline for a microservice that first deploys to a test environment,
+    runs tests, and goes through an audit check before finally being deployed to production.
+    Note how Spinnaker supports multiple trigger types in this case: one for a new
+    application binaries and one for a new base image.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0505](../images/00115.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-5\. Changes to the base image trigger pipelines
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In the same organization, a different microservice may have more or fewer stages
+    to verify the fitness of the combination of application artifact and base image
+    before promoting to production. Having changes to the base image *trigger* delivery
+    pipelines is the ideal balance between safety and speed. Microservices whose delivery
+    pipelines contain all fully automated stages may adopt the new base within minutes,
+    where another service with more stringent manual verification and approval stages
+    takes days. Both types of services adopt the change in a way that is best in line
+    with the responsible team’s unique culture and requirements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Packaging for IaaS Platforms
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For an IaaS platform, the immutable unit of deployment is a virtual machine
+    image. In AWS EC2, this image is called an Amazon Machine Image. Creating one
+    is a matter of provisioning an instance of the base image (which contains common
+    opinions for all of your microservices like the Java version, common system dependencies,
+    and monitoring and debugging agents.), installing a system dependency on it containing
+    your application binary, snapshotting the resultant image, and configuring new
+    server groups to use this image as the template when provisioning instances of
+    the microservice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The process of provisioning the instance, installing the system dependency,
+    and snapshotting it is collectively called *baking*. It isn’t always necessary
+    to even launch a live copy of the base image to bake. HashiCorp’s battle-tested
+    [Packer](https://www.packer.io) provides an open source bakery solution that works
+    for a variety of different IaaS providers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 5-6](part0010_split_005.html#iaas_packaging_participants) shows where
+    the boundaries of responsibility are for the build tool, the bakery, and the server
+    group managed by the cloud provider. A Spinnaker pipeline stage is responsible
+    for starting the baking process and for creating the server group with the image
+    resulting from the bake stage. It shows that there is one additional requirement
+    of each microservice’s build, the production of a system dependency, meaning the
+    production of a Debian package on an Ubuntu or Debian base image, an RPM on a
+    Red Hat base image, etc. Ultimately, the bakery will in some way be invoking the
+    operating-system-level package installer to layer your application binary onto
+    the base image (e.g., `apt-get install <system-package>`).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0506](../images/00076.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-6\. Participants in IaaS packaging
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Producing a Debian or RPM system dependency is fortunately straightforward with
+    the application of a Gradle plug-in from Netflix’s Nebula suite of Gradle plug-ins,
+    as shown in [Example 5-1](part0010_split_005.html#nebula_ospackage). This adds
+    a Gradle task called `buildDeb` that does all the work necessary to output a Debian
+    package for a Spring Boot application. It is a one-line change to the build file!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-1\. Using a Nebula Gradle plug-in to produce a Debian package
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0010_split_005.html#co_safe__multicloud_continuous_delivery_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Replace `LATEST` with whatever the latest version is on the [Gradle plug-in
+    portal](https://oreil.ly/xPGaq), because `LATEST` isn’t actually valid for Gradle
+    plug-in version specifications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ospackage plug-in contains a variety of options for adding start scripts,
+    configuring output locations for configuration files and runnable artifacts, etc.
+    Ultimately though, wherever and whatever happens with these files, there should
+    be enough commonality between microservices in an organization to encapsulate
+    these opinions in a similar way to what Netflix has done with `nebula.ospackage-application-spring-boot`
+    and distribute them as a build tool plug-in that makes adoption trivial.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Packaging for Container Schedulers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Preparing a microservice for deployment to a container scheduler like Kubernetes
+    can be similar. Opinionated tooling is again available in open source to package
+    for common frameworks like Spring Boot, as shown in [Example 5-2](part0010_split_006.html#muschko_docker_spring_boot).
+    This plug-in also understands how to publish to Docker registries, given a little
+    more configuration (which can easily be encapsulated and shipped as a common build
+    tool plug-in across an organization).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-2\. Using a Nebula Gradle plug-in to produce and publish a Docker
+    image
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Rely on Open Source Build Tooling, but Be Careful About Consuming Base Images
+    Without Validation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It’s great to have tools like Ben Muschko’s Gradle Docker plug-in for producing
+    an image containing an application built on top of some base. But you should expect
+    that somebody in your organization is validating and creating approved images,
+    known to perform well and be free of known defects and security vulnerabilities.
+    This is applicable to both VM and container images.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This approach does have the disadvantage that operating system and other system
+    package updates are part of the base Docker image used to produce the application
+    container image. Propagating a base container image change across the whole organization
+    then requires us to rebuild the application binary, which can be inconvenient.
+    After all, to effect a change to *only* the base image and not the application
+    code (which may have a set of further source code changes since the last time
+    it was built), we have to check out the application code at the hash of the version
+    in production and rebuild with the new image. This process, since it involves
+    the build again, is fraught with the potential for nonreproducibility in the application
+    binary when all we want to do is update the base image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a bake stage to containerized workloads simplifies the build by removing
+    the need to publish a container image at all (just publish the JAR to a Maven
+    artifact repository) and allows for mass updating of the base image, again with
+    the same process and safety guarantees that we received by making the base image
+    an artifact trigger for IaaS-based workloads above. Spinnaker supports baking
+    container images with [Kaniko](https://oreil.ly/JpW3V), removing the need for
+    container image building/publishing to be part of the build workflow. One of the
+    advantages of doing so is that you can rebake the same application binary on a
+    more recent base (say, when you fix a security vulnerability in the base), operating
+    effectively with an immutable copy of the application code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Surprisingly then, the desire for safe base updates across all three cloud abstractions
+    (IaaS, CaaS, and PaaS) leads to a remarkably similar workflow for all three (and
+    similar application developer experience). In effect, ease of deployment is no
+    longer a decision criterion between these level of abstractions, and we are left
+    with considering other differentiators like startup time, vendor lock-in, cost,
+    and security.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we’ve discussed packaging, let’s turn our attention to deployment strategies
+    that can be used to stand up these packages on your platform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Delete + None Deployment
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If the name *delete + none* sounds ugly, that’s because I’m about to describe
+    a hack that may only be useful in certain narrow situations but helps set the
+    framework for other deployment strategies to follow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The basic idea is to simply delete the existing deployment and deploy a new
+    one. The obvious ramification of this is downtime, however short it may be. The
+    existence of downtime suggests that API compatibility across versions isn’t strictly
+    required, provided you coordinate deployments to all callers of a service with
+    a changing API at the same time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every deployment strategy that follows will be zero-downtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To tie this concept to deployment practices you may be familiar with that are
+    *not immutable*, a delete + none deployment strategy is in use when, on an always-running
+    virtual machine, a new application version is installed and started (replacing
+    the previously running version). Again, this chapter focuses strictly on immutable
+    deployments, and no other deployment strategy that follows has an obvious mutable
+    counterpart.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The strategy is also in use when performing a basic `cf push` on Cloud Foundry
+    and an operation on AWS EC2 that reconfigures an Auto Scaling Group to use a different
+    Amazon Machine Image. The point is, often basic CLI or console-based deployment
+    options do accept downtime and operate more or less with this strategy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next strategy is similar, but with zero downtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Highlander
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Despite the odd name, the Highlander strategy is the most common zero-downtime
+    strategy in practice today. The name comes from a slogan from the *Highlander*
+    movie: “there can be only one.” In other words, when you deploy a new version
+    of a service, you replace the old version. There can be only one. Only the new
+    version is running at the end of the deployment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Highlander strategy is zero-downtime. In practice it involves deploying
+    a new version of the application and adding it to the load balancer, which causes
+    traffic to be served to both for a short period of time while the old version
+    is destroyed automatically. So maybe the more accurate slogan for this deployment
+    strategy is “there is usually only one.” Required API compatibility across versions
+    follows from the existence of this brief overlap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Highlander model is simple, and its simplicity can make it an attractive
+    option for many services. Since there is only one server group at any given time,
+    there is no need to worry about coordinating to prevent interference from “other”
+    running versions that are not supposed to be in service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Going back to a previous version of code under a Highlander strategy involves
+    reinstalling an old version of the microservice (which receives a new server group
+    version number). Therefore, the time to completion for this pseudorollback action
+    is the amount of time it takes to install and initialize the application process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next strategy offers faster rollback at the expense of some coordination
+    and complexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blue/Green Deployment
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The blue/green deployment strategy involves having at least two copies of the
+    microservice provisioned (whether in an enabled or disabled state), involving
+    server groups for old and new versions. At any given time, production traffic
+    is being served from one of these versions. Rolling back is a matter of switching
+    which copy is considered live. Rolling forward to the newer version has the same
+    experience. How this switching logic is achieved is cloud-platform-dependent (but
+    orchestrated by Spinnaker), but at a high level it involves influencing the cloud
+    platform’s load balancer abstraction to send traffic to one version or the other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: kubectl apply Is a Specific Kind of Blue/Green by Default
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '`kubectl apply` that updates a Kubernetes Deployment (from the CLI and not
+    using Spinnaker) is by default a rolling blue/green deployment, allowing you to
+    roll back to a ReplicaSet representing a previous version. Because it is a container
+    deployment type, the rollback operation involves pulling back the image. The Kubernetes
+    Deployment resource is implemented as a controller on top of ReplicaSet that manages
+    rolling blue/green deployment and rollback. Spinnaker offers more control for
+    Kubernetes ReplicaSets, enabling blue/green functionality with N disabled versions,
+    canary deployments, etc. So think of a Kubernetes Deployment as a limited, opinionated
+    blue/green deployment strategy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Load balancer switching can have implications for the structure of deployed
+    assets. For example, on Kubernetes, blue/green basically requires that you use
+    the ReplicaSet abstraction. The blue/green strategy requires that *running* resources
+    are somehow edited to influence traffic. For Kubernetes, we can do this with label
+    manipulation, and this is what the Spinnaker Kubernetes implementation does to
+    achieve blue/green. If we instead tried to edit the Kubernetes Deployment object,
+    it would trigger a rollout. Spinnaker automatically adds special labels to ReplicaSets
+    that indirectly cause them to be considered enabled or disabled and a label selector
+    to the service to only route traffic to enabled ReplicaSets. If you aren’t using
+    Spinnaker, you’ll need to create some sort of similar process that mutates labels
+    in place on ReplicaSets and configure your services to be aware of these labels.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The colors blue/green imply that there are two server groups and either the
+    blue or the green server group is serving traffic. Blue/green strategies aren’t
+    always binary either, and the coloring should not suggest that these server groups
+    need to be long-lived, mutating with new service versions as they become available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A blue/green deployment is more generally a 1:N relationship in any given cluster,
+    where one server group is live and N server groups are not live. A visual representation
+    of such a 1:N blue/green cluster is shown in [Figure 5-7](part0010_split_011.html#spinnaker_blue_green_cluster).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0507](../images/00116.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-7\. Spinnaker blue/green cluster
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The rollback server group action, shown in [Figure 5-8](part0010_split_011.html#spinnaker_server_group_actions),
+    allows for the selection of any one of these disabled server group versions (V023–V026).
+    At the completion of the rollback, the current live version (V027) will still
+    be around, but disabled.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0508](../images/00032.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-8\. Spinnaker rollback server group action
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Depending on what the underlying cloud platform can support, a disabled cluster
+    can retain live running instances that aren’t receiving any traffic, or it may
+    be reduced to zero instances, ready at rollback to be scaled back up. To achieve
+    the fastest form of rollbacks, disabled clusters should be left with active instances.
+    This of course increases the expense of running the service, as you now pay not
+    only for the cost of the set of instances serving live production traffic, but
+    also the set of instances remaining from prior service versions that may potentially
+    be rolled back to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ultimately, you need to evaluate the trade-off between rollback speed and cost,
+    the spectrum of which is shown in [Figure 5-9](part0010_split_011.html#cost_rollback_speed_tradeoff).
+    This should be done on a microservice by microservice basis rather than across
+    the organization. The extra operational cost of maintaining fully scaled disabled
+    server groups in a blue/green deployment of a microservice that needs to run hundreds
+    of live instances is not equivalent to the extra cost for such a service that
+    only needs a handful of instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0509](../images/00079.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-9\. The trade-off between operational cost and rollback speed by deployment
+    strategy
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: When a microservice is not purely RESTful, the blue/green deployment strategy
+    that doesn’t completely scale to zero disabled clusters has implications for the
+    application code itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consider for example an (at least partially) event-driven microservice that
+    reacts to messages on a Kafka topic or RabbitMQ queue. Shifting the load balancer
+    from one server group to another has no effect on such a service’s connection
+    to their topic/queue. In some way, the application code needs to respond to being
+    placed out of service by some external process, in this case a blue/green deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, an application process running on an instance that is part of a disabled
+    server group needs to respond to being placed back *in service* by an external
+    process such as a Rollback server group action in Spinnaker, in this case reconnecting
+    to queues and beginning to process work again. The Spinnaker AWS implementation
+    of the blue/green deployment strategy is aware of this problem, and when [Eureka](https://oreil.ly/ODfkK)
+    service discovery is also in use, it influences service availability using Eureka’s
+    API endpoints for taking instances in and out of service, as shown in [Table 5-1](part0010_split_011.html#eureka_api_availability).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notice how this is done on a per-instance basis. Spinnaker’s awareness of what
+    instances exist (through polling the state of deployed environment regularly)
+    helps it build this kind of automation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-1\. Eureka API endpoints that externally affect service availability
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Action | API | Notes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Take instance out of service | `PUT /eureka/v2/apps/appID/instanceID/status?value=OUT_OF_SERVICE`
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Move instance back into service (remove override) | `DELETE /eureka/v2/apps/appID/instanceID/status?value=UP`
+    | The value=UP is optional; it is used as a suggestion for the fallback status
+    due to removal of the override |'
+  prefs: []
+  type: TYPE_TB
+- en: This supposes that your application is using the Eureka service discovery client
+    to register with Eureka. But doing so means that you can add a Eureka status-changed
+    event listener, as shown in [Example 5-3](part0010_split_011.html#eureka_event_listener).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-3\.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Naturally the same sort of workflow could be achieved with [Consul](https://www.consul.io),
+    a dynamic configuration server that allows for tagging (i.e., tag by server group
+    name, or cluster), or any other central source of data that has two characteristics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Application code can respond to change events in near real time via some sort
+    of event listener.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The data is groupable by at least server group, cluster, and application, and
+    your application code is able to determine which server group, cluster, and application
+    it belongs to.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The same requirement to respond to external modifications of a service’s availability
+    is applicable also to microservices using persistent RPC connections like [RSocket](https://rsocket.io)
+    or streaming/bidirectional [GRPC](https://oreil.ly/tNORN), where a disabled server
+    group needs to terminate any persistent RPC connections either outbound or inbound.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There’s a hidden and significant point embedded in having to listen to discovery
+    status events (or any other external indicator service availability): the application
+    is aware of its participation in service discovery. A goal of service mesh (see
+    [“Implementation in Service Mesh”](part0012_split_023.html#BE895-2d714b853a094e9a910510217e0e3d73))
+    is to take this kind of responsibility away from the application and externalize
+    it to a sidecar process or container, generally for the sake of achieving polyglot
+    support for these patterns quickly. We’ll talk about other problems with this
+    model later, but blue/green deployment of message-driven applications where you’d
+    like to preserve live instances in disabled server groups is an example of where
+    a language-specific binding (in this case for service discovery) is necessary.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What’s in a Name?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A blue/green deployment is the same thing as a red/black deployment. They are
+    just different sets of colors, but the techniques have precisely the same meaning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blue/green deployments are something every team should practice before considering
+    a more complex strategy, such as automated canary analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Automated Canary Analysis
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Blue/green deployments achieve a great deal of reliability at a reasonably low
+    cost most of the time. Not every service needs to go any further than this. Yet,
+    there is an additional level of safety we can pursue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While blue/green deployments allow you to quickly roll back a code or configuration
+    change that causes unanticipated issues, canary releases provide an additional
+    level of risk reduction by exposing a small subset of users to a new version of
+    the service that runs alongside the existing version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Canaries aren’t appropriate for every service. Services with low throughput
+    make it difficult, but not impossible, to send just a small percentage of traffic
+    to a canary server group without prolonging the determination of the canary’s
+    fitness to a long period of time. There isn’t a right amount of time that a canary
+    fitness determination needs to take. It may very well be acceptable for you to
+    run a canary test for days on a relatively low throughput service to make a determination.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is a noticeable bias in many engineering teams to understate how much
+    traffic their service actually receives and thus assume that techniques like canary
+    analysis couldn’t possibly work for them. Recall the real-world team mentioned
+    in [“Learning to Expect Failure”](part0005_split_005.html#monitoring_dont_expect_perfection),
+    whose business application was receiving over 1,000 requests per minute. This
+    throughput is significantly higher than most engineers on this team would guess.
+    This is yet another reason that real production telemetry should be the first
+    priority. Building up even a short history of what is happening in production
+    helps you make better decisions about which kinds of techniques, in this case
+    deployment strategies, are appropriate later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: My Service Can Never Fail Because It Is Too Important
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Be cautious of a line of reasoning that eschews strategies like automated canary
+    analysis strictly on the basis that a particular microservice is too important
+    to fail. Rather, adopt the mindset that failure is not only possible, but will
+    happen on every service regardless of its importance to the business, and act
+    accordingly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The fitness of a canary deployment is determined by comparing service level
+    indicators of the old and new versions. When there is a significant enough worsening
+    in one or more of these SLIs, all traffic is routed to the stable version, and
+    the canary is aborted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ideally, canary deployments consist of three server groups, as shown in [Figure 5-10](part0010_split_014.html#aca_participants).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0510](../images/00006.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-10\. Canary release participants
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'These canary deployments can be described as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Production
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the existing server group prior to the canary deployment, containing
+    one or more instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baseline
+  prefs: []
+  type: TYPE_NORMAL
+- en: This server group runs the same version of code and configuration as the production
+    server group. While it may seem counterintuitive to run another copy of the old
+    code at first, we need a baseline that is launched at roughly the same time as
+    the canary because a production server group, by virtue of the fact that it has
+    been running for some amount of time, may have different characteristics like
+    heap consumption or cache contents. It is important to be able to make an accurate
+    comparison between the old code and new, and the best way to do that is to launch
+    copies of each at roughly the same time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Canary
+  prefs: []
+  type: TYPE_NORMAL
+- en: This server group consists of the new code or configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The fitness of the canary is entirely determined by comparing a set of metrics
+    indicators relative only to the baseline (not the production cluster). This implies
+    that applications undergoing canaries are publishing metrics with a `cluster`
+    common tag so that the canary analysis system can aggregate over indicators coming
+    from instances belonging to the canary and baseline clusters and compare the two
+    aggregates relative to each other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This relative comparison is much preferable to testing a canary against a set
+    of fixed thresholds because fixed thresholds tend to make certain assumptions
+    about the amount of throughput going through the system at test time. [Figure 5-11](part0010_split_014.html#canary_test_against_fixed_threshold)
+    shows the problem. The application exhibits a higher response time during peak
+    business hours when most traffic is flowing through the system (which is typical).
+    So for the fixed threshold, perhaps we try to set a value that would fail a canary
+    if response time was more than 10% worse than the normative case. During peak
+    business hours, the canary would fail because it has a worse than 10% degradataion
+    from the baseline. But if we ran the canary test after hours, it could be significantly
+    worse than 10% from the baseline and still be under the fixed threshold, which
+    was set to 10% worse than what we expect under *different operating conditions*.
+    There is a greater chance that a relative comparison would be able to catch a
+    performance degradation whether the test runs during or after business hours.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0511](../images/00045.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-11\. Canary test against fixed threshold
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: On several occassions, I’ve met with organizations about automated delivery
+    practices where the conversation came about because someone heard about canary
+    deployments and the idea sounds so compelling that it stimulates an interest in
+    the topic. Commonly, these organizations didn’t have dimensional metrics instrumentation
+    in place or an automated release process resembling a blue/green deployment. Maybe
+    because of the allure of the safety of a canary deployment, platforms sometimes
+    include canary deployment features. Often they lack baselining and/or comparative
+    measurement, so evaluate platform-provided canary features from this perspective
+    and decide whether giving up one or both still makes sense. I would suggest it
+    doesn’t in many cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the three-cluster setup (production, baseline, canary), most traffic will
+    go to the production cluster, with a small amount going to the baseline and canary.
+    The canary deployment uses load balancer configuration, service mesh configuration,
+    or whatever other platform feature is available to distribute traffic proportionally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 5-12](part0010_split_014.html#spinnaker_aca_infra_when_canary) shows
+    a Spinnaker infrastructure view of the three clusters participating in a canary
+    test. In this case, they are running on a single Kubernetes cluster that has been
+    named “PROD-CLUSTER” in Spinnaker (“cluster” referring to Kubernetes cluster,
+    not as we’ve defined the word in the delivery definitions at the beginning of
+    this chapter).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spinnaker integrates with an open source automated canary analysis service,
+    which encapsulates the evaluation of metrics from baseline and canary clusters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0512](../images/00042.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-12\. Three clusters of an application undergoing a canary
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Spinnaker with Kayenta
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[Kayenta](https://oreil.ly/f4KZW) is a stand-alone open source automated canary
+    analysis service that is also deeply integrated into Spinnaker by way of pipeline
+    stages and configuration.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kayenta determines whether there is a significant difference between the canary
+    and baseline for each metric, yielding a *pass*, *high*, or *low* classification.
+    *High* and *low* are both failing conditions. Kayenta makes this difference comparatively
+    between the two clusters using a [Mann-Whitney *U* test](https://oreil.ly/qLYOS).
+    The implementation of this statistical test is called a judge, and Kayenta could
+    be configured with alternative judges, but they typically involve code that goes
+    beyond what you could achieve through a single query against a metrics system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 5-13](part0010_split_015.html#aca_metrics) presents an example of Kayenta’s
+    classification decisions for several metrics. This screenshot is from the original
+    Netflix [blog](https://oreil.ly/ik79d) on Kayenta. In this case, latency has failed
+    the test.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0513](../images/00028.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-13\. Canary metrics
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In Spinnaker, the canary metrics for an application can be defined in the “Canary
+    Configs” tab of the application infrastructure view. In the configuration, as
+    shown in [Figure 5-14](part0010_split_015.html#spinnaker_aca_canary_config), you
+    can define one or more service level indicators. If enough of these indicators
+    fail, the canary will fail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0514](../images/00118.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-14\. Canary configuration for an application in Spinnaker
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '[Figure 5-15](part0010_split_015.html#spinnaker_aca_cpu_configuration) shows
+    the configuration of a single indicator, in this case processor utilization. Notice
+    how the configuration contains a metrics query that is specific to a monitoring
+    system that you have configured Kayenta to poll from (in this case, Prometheus).
+    You then indicate very broadly that an increase or decrease (or a deviation either
+    way) is considered bad. We would not like to see significantly higher processor
+    utilization in this case, although a decrease would be welcome.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, a *decrease* in servicing throughput for an application that
+    should process rather continuously at a certain rate would be a bad sign. The
+    indicator can be marked as critical enough that failure alone should fail the
+    canary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0515](../images/00071.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-15\. Processor utilization canary configuration
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Once the canary configuration is built, it can be used in pipelines. A characteristic
+    canary deployment pipeline is shown in [Figure 5-16](part0010_split_015.html#spinnaker_aca_pipeline).
+    The “Configuration” stage defines the triggers that begin the process of evaluating
+    the canary. “Set Cluster Name to Canary” sets a variable that is used in the subsequent
+    stage “Deploy Canary” by Spinnaker to name the cluster canary. It is this variable
+    that eventually yields the named canary cluster shown in [Figure 5-12](part0010_split_014.html#spinnaker_aca_infra_when_canary).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0516](../images/00022.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-16\. A canary deployment pipeline in Spinnaker
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In parallel, Spinnaker is retrieving the artifacts that the current production
+    version is based off of and creating a baseline cluster with those artifacts as
+    well. The “Canary Analysis” stage could run for hours or even days, depending
+    on how it is configured. If it passes, we will deploy a new prod cluster (with
+    the same artifact used to created the canary, which may no longer be the latest
+    version available in the artifact repository). In parallel, we can tear down the
+    baseline and canary clusters that are no longer needed. This whole pipeline can
+    be configured in Spinnaker to be run serially so that only one canary is being
+    evaluated at any given time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The outcome of a canary run is viewable in a few different ways. Spinnaker presents
+    a “Canary Reports” tab that shows the outcome of the judgment for a canary stage,
+    breaking down each service level indicator that goes into the decision individually.
+    Each indicator can be viewed as a time series graph over the interval in which
+    the canary ran, as in [Figure 5-17](part0010_split_015.html#spinnaker_aca_cpu_comparison).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0517](../images/00108.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-17\. Time series visualization of CPU utilization in baseline and canary
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Current Production Version Isn’t Always Latest
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Note that the current production version from which a baseline will be created
+    is *not* always the latest version of the application binary (e.g., JAR or WAR)
+    available in an artifact repository. It may actually be several versions older,
+    in cases where we have attempted to release new versions but they have failed
+    canaries or were otherwise rolled back. One of the values of a stateful continuous
+    delivery solution like Spinnaker is its ability to poll the environment for what
+    is there and to then act upon this information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternatively, the comparison for an indicator can be viewed as a bar chart
+    (or histogram), as in [Figure 5-18](part0010_split_016.html#spinnaker_aca_latency_histogram_view).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0518](../images/00062.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-18\. Histogram visualization of 99th-percentile latency
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Lastly, and perhaps most usefully, the comparison between canary and baseline
+    can be visualized as a beeswarm plot, shown in [Figure 5-19](part0010_split_016.html#spinnaker_aca_latency_beeswarm_view).
+    The canary is judged over time, with Kayenta polling the monitoring system for
+    values for the canary and baseline at a prescribed interval. The individual samples
+    here are shown on the beeswarm plot along with a box-and-whisker plot showing
+    the basic quartiles (min, 25th percentile, median, 75th percentile, and max of
+    all samples). The median has certainly increased, but as discussed in [Chapter 2](part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73),
+    measures of centrality like mean and median aren’t really that useful for judging
+    the fitness of a service. This plot really highlights this fact. The max and even
+    75% latency haven’t changed much at all between versions. So there’s a little
+    more variation in the median, but it probably doesn’t indicate a performance regression
+    at all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0519](../images/00021.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-19\. Beeswarm visualization of 99th-percentile latency
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The key indicators for canary analysis will be different sometimes than the
+    indicators we use to alert, because they are designed for comparative analysis
+    between two clusters rather than against an absolute measure. Even if a new application
+    version remains underneath a service level objective boundary that we’ve set as
+    the test for an alert, it’s still probably best that the general trajectory of
+    the code doesn’t continue to regress closer and closer to that service level objective.
+  prefs: []
+  type: TYPE_NORMAL
+- en: General-Purpose Canary Metrics for Every Microservice
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Think of the L-USE acronym when considering canary metrics that are useful to
+    start with. In fact, many of the same SLIs that you should alert on for most microservices
+    are also good canary metrics, with a twist.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s consider a few good canary metrics, beginning with latency. Really any
+    of the signals described in [Chapter 4](part0009_split_000.html#8IL24-2d714b853a094e9a910510217e0e3d73)
+    are good candidates for canary analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Latency
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Latency for some bellwether API endpoint is a good starting point. Constrain
+    the metric to successful outcomes only, since successful outcomes tend to have
+    different latency characteristics than unsuccessful outcomes. Imagine fixing a
+    bug that caused failures for a critical API endpoint in production, only to have
+    the canary fail because the bug caused the API endpoint to fail fast and the canary
+    decides that latency has degraded too much by fixing it!
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Chapter 4](part0009_split_000.html#8IL24-2d714b853a094e9a910510217e0e3d73),
+    the idea was to measure a timed operation’s decaying *maximum* latency against
+    a fixed service level objective, that service level objective being a conservative
+    boundary inside engineering’s service level agreement determined with business
+    partners. But maximum latency has a way of being spiky. For example, hypervisor
+    and garbage collection pauses or full connection pools are mostly temporary conditions
+    (and outside of your control) that naturally affect instances at different times.
+    For the purposes of measuring an application’s fitness relative to a service level
+    objective, we want to make sure that performance is still acceptable even under
+    these conditions. But because of the staggered nature in which they occur on different
+    instances, these effects lead to bad *comparative* measures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For canaries, it is best to look at a distribution statistic like 99th-percentile
+    latency, which shaves off the top 1% where these temporary conditions exhibit.
+    99th percentile (or some other high percentile) is generally a better measure
+    of a piece of code’s performance *potential* minus temporary environmental factors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recall from [“Histograms”](part0007_split_007.html#6LKA8-2d714b853a094e9a910510217e0e3d73)
+    that in order to compute a high-percentile latency across a cluster (and constrained
+    to successful outcomes for a particular endpoint), we need to use a method like
+    percentile approximation based off of histogram data that can be summed across
+    the instances in this cluster and any other tag variation that exists for successful
+    outcomes for this critical API endpoint. Only a handful of monitoring systems
+    at this point support aggregable percentile approximation. If your monitoring
+    system can’t do percentile approximation, do not attempt to aggregate individual
+    percentiles from instances (we showed why the math for this doesn’t work in [“Percentiles/Quantiles”](part0007_split_003.html#6LK44-2d714b853a094e9a910510217e0e3d73)).
+    Also, avoid the temptation to use another measure like average. Look at the beeswarm
+    plot in [Figure 5-18](part0010_split_016.html#spinnaker_aca_latency_histogram_view)
+    to see how measures of centrality like median and mean can vary widely between
+    versions (and realistically even over time with the same version!) without any
+    real change in performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Average: a random number that falls somewhere between the maximum and 1/2 the
+    median. Most often used to ignore reality.'
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Gil Tene
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: To compute an aggregable percentile approximation for Atlas, use the `:percentiles`
+    function, as in [Example 5-4](part0010_split_017.html#atlas_percentile_latency).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-4\. Atlas percentile latency for canaries
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: For Prometheus, use the `histogram_quantile` function, as in [Example 5-5](part0010_split_017.html#prometheus_percentile_latency).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-5\. Prometheus percentile latency for canaries
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: In a similar way, you should include latency metrics for interactions with critical
+    downstream resources like a database. Consider relational database interactions.
+    It is not uncommon for new code to inadvertently cause an existing database index
+    to go unused (increasing latency substantially, as well as load on the database),
+    or for a new index to not perform as well as expected once it gets to production.
+    Regardless of how well we try to replicate and test these new interactions in
+    lower-level environments, there is nothing quite like production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error ratio
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Error ratio ([Example 5-6](part0010_split_017.html#atlas_error_ratio) on Atlas
+    and [Example 5-7](part0010_split_017.html#prometheus_error_ratio) for Prometheus)
+    on some bellwether API endpoint (or all of them) can be incredibly useful as well,
+    as this will determine whether you have introduced semantic regressions into your
+    code that may have not been caught by tests but are causing issues in production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-6\. Error ratio of HTTP server requests in Atlas
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 5-7\. Error ratio of HTTP server requests in Prometheus
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Carefully consider whether to include more than one API endpoint in a single
+    canary signal. Suppose you had two separate API endpoints that receive significantly
+    different throughput, one receiving 1,000 requests/second and the other receiving
+    10 requests/second. Because our service isn’t perfect (what is?), the old code
+    is failing the high throughput endpoint at a fixed rate of 3 requests/second,
+    but all requests to the low throughput endpoint succeed. Now imagine we make a
+    code change that causes 3 out of 10 requests to the low throughput endpoint to
+    fail but doesn’t change the error ratio of the other endpoint. If these endpoints
+    are considered together by the canary judge, the judge will probably pass the
+    regression because it only resulted in a small uptick in error ratio (0.3% to
+    0.6%). Considered separately, however, the judge would certainly fail the error
+    ratio on the low throughput endpoint (0% to 33%).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap saturation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Heap utilization can be compared in two ways: for total consumption relative
+    to the maximum heap and allocation performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Total consumption is determined by dividing used by max, shown in [Example 5-8](part0010_split_017.html#atlas_heap_canary)
+    and [Example 5-9](part0010_split_017.html#prometheus_heap_canary).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-8\. Atlas heap consumption canary metric
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 5-9\. Prometheus heap consumption canary metric
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Allocation performance can be measured by dividing allocations by promotions,
+    shown in Examples [5-10](part0010_split_017.html#atlas_allocation_canary) and
+    [5-11](part0010_split_017.html#prometheus_allocation_canary).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-10\. Atlas allocation performance canary metric
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 5-11\. Prometheus allocation performance canary metric
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: CPU utilization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Process CPU utilization can be compared rather simply, shown in [Example 5-12](part0010_split_017.html#atlas_cpu_canary)
+    and [Example 5-13](part0010_split_017.html#prometheus_cpu_canary).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-12\. Atlas CPU utilization canary metric
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 5-13\. Prometheus CPU utilization canary metric
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Add canary metrics incrementally, since failed canary tests block the production
+    path, potentially slowing down the delivery of features and bug fixes unnecessarily.
+    Canary failures should be tuned to block dangerous regressions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter introduced continuous delivery concepts at a high level with Spinnaker
+    as its example system. You don’t need to rush to adopt Spinnaker in order to find
+    a way to gain some of the benefits. For many enterprises, I believe clearing two
+    hurdles would go a long way in improving release success:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blue/green capability
+  prefs: []
+  type: TYPE_NORMAL
+- en: Have a blue/green deployment strategy that supports *N* active disabled clusters
+    for fast rollback and takes into account the unique needs of event-driven applications
+    (as switching a load balancer isn’t enough to effectively take an event-driven
+    application out of service).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deployed asset inventory
+  prefs: []
+  type: TYPE_NORMAL
+- en: Have some means of querying the live state of your deployed assets. It’s easier
+    (and likely more accurate) to accomplish this by actually polling the state of
+    your deployed environments periodically than by trying to make every possible
+    mutating action pass through some central system like a CI server and trying to
+    rebuild the state of the system from all the individual mutations that have occurred.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A further goal would be to have sufficient access and quality controls in place
+    in your delivery system (again, whether that is Spinnaker or something else) to
+    allow for some variation in deployments between teams. Some deployments, especially
+    for static assets or internal tools, aren’t going to benefit from blue/green deployment
+    significantly. Others may release frequently enough that multiple disabled server
+    groups in a blue/green deployment strategy are needed. Some start up fast enough
+    that having active instances in disabled clusters represents a cost inefficiency.
+    A platform engineering team thinking in terms of “guardrails not gates” will favor
+    allowing this pipeline diversity over organizational consistency, maximizing the
+    safety/cost trade-off uniquely for each team.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we’ll use the presence of a deployed asset inventory as
+    an assumption for building an artifact provenance chain for your deployed assets
+    that reaches down to the source code running in each environment.
+  prefs: []
+  type: TYPE_NORMAL

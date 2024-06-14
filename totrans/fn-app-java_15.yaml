@@ -1,0 +1,1430 @@
+- en: Chapter 13\. Asynchronous Tasks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Modern workloads require more thought about how to use available system resources
+    efficiently. Asynchronous tasks are an excellent tool for improving the responsiveness
+    of your application by avoiding performance bottlenecks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java 8 introduced the new type `CompletableFuture<T>`, which improved upon the
+    previously available `Future<T>` type to create async tasks by utilizing a declarative
+    and functional approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter explains why and how to utilize asynchronous programming and how
+    `CompletableFuture<T>` is a more flexible and functional approach to asynchronous
+    tasks than what was included in the JDK before.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronous Versus Asynchronous
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The concept of synchronous and asynchronous tasks is not restricted to software
+    development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, an in-person meeting or conference call is a synchronous activity,
+    at least if you pay attention. You can’t do anything else except participate and
+    maybe take notes. Every other task is *blocked* until the meeting/call is over.
+    If the meeting/call would have been an e-mail instead — as most of my meetings
+    could and should be — your current task isn’t interrupted by requiring immediate
+    attention before you could resume your previous task. Therefore, an e-mail is
+    *non-blocking* communication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The same principles are true for software development. Synchronously executed
+    tasks run in sequence, blocking further work until they’re finished. From a single-threaded
+    point of view, a blocking task means waiting for the result, possibly wasting
+    resources by not doing anything else until the task is finished.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asynchronous tasks are about starting a task that is processed “somewhere else”
+    and you get notified when it’s done. Such tasks are non-blocking by using concurrency
+    techniques to spin off their work — usually to another thread — so they don’t
+    have to wait for them to finish. Therefore, the current thread isn’t blocked and
+    can continue with other tasks, as illustrated in [Figure 13-1](#_02-completable-future_sync-vs-async).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Comparison of synchronous and asynchronous execution](assets/afaj_1301.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 13-1\. Comparison of synchronous and asynchronous execution
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Parallel execution, as I’ve discussed in [Chapter 8](ch08.xhtml#_01-parallel-streams),
+    strives for maximum throughput as its primary objective; the completion time of
+    a single task is generally of lesser concern in the greater scheme of things.
+    An asynchronous execution model like with `CompletableFuture`, on the other hand,
+    is focused on the overall latency and responsiveness of the system. Spinning off
+    tasks ensures a responsive system even in single-threaded or resource-constrained
+    environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java Futures
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java 5 introduced the interface `java.util.concurrent.Future<T>` as a container
+    type for an eventual result of an asynchronous computation. To create a `Future`,
+    a task in the form of a `Runnable` or a `Callable<T>` gets submitted to an `ExecutorService`
+    which starts the task in a separate thread but immediately returns a Future instance.
+    This way, the current thread can continue to do more work without waiting for
+    the eventual result of the `Future` computation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The result is retrievable by calling the `get` method on a `Future<T>` instance,
+    which might block the current thread, though, if the computation hasn’t finished
+    yet. A simple example of the general flow is visualized in [Example 13-1](#_02-completable-future_execution-flow).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-1\. `Future<T>` flow of execution
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_asynchronous_tasks_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: An explicit `ExecutorService` is needed to spin-off a `Callable<T>` or `Runnable`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_asynchronous_tasks_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Callable<T>` interface has been available since before the introduction
+    of lambdas of functional interfaces. Its intended use case is equivalent to `Supplier<T>`
+    but it throws an `Exception` in its single abstract method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_asynchronous_tasks_CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The computation of `expensiveTask` starts immediately, reflected in the output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_asynchronous_tasks_CO1-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this point, the calculation isn’t finished yet, so calling the `get` method
+    on `future` blocks the current thread until it is finished.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although the `Future<T>` type achieves the essential requirement of being a
+    *non-blocking* container for asynchronous computation, its feature set is limited
+    to only a few methods: checking if the computation is done, canceling it, and
+    retrieving its result.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To have a versatile tool for asynchronous programming, there are a lot of features
+    left to be desired:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Easier way of retrieving a result, like callbacks on completion or failure.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chaining and combining multiple tasks in the spirit of functional composition.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Integrated error handling and recovery possibilities.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Manual creation or completion of tasks without requiring an `ExecutorService`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Java 8 improved upon Futures to remedy the lacking features by introducing the
+    interface `CompletionStage<T>`, and its sole implementation, `CompletableFuture<T>`,
+    in the same package `java.util.concurrent`. They’re versatile tools to build asynchronous
+    task pipelines with a richer feature set than Futures before them. Where `Future<T>`
+    is a container type for an asynchronous computation of an eventual value, `CompletionStage<T>`
+    represents a single stage of an asynchronous pipeline with a massive API of over
+    70 methods!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing Asynchronous Pipelines with CompletableFuture<T>
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The general design philosophy of CompletableFutures is similar to Streams:
+    both are task-based pipelines offering parameterized methods accepting common
+    functional interfaces. The new API adds a myriad of coordination tools that return
+    new instances of `CompletionStage<T>` or +CompletableFuture<T>. This amalgamation
+    of a container for asynchronous computation and coordination tools provides all
+    the previously missing features in a fluently composable and declarative API.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Due to the massive `CompletableFuture<T>` API and the complex mental model
+    of asynchronous programming in general, let’s start with a simple metaphor: *making
+    breakfast*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The imaginary breakfast consists of coffee, toast, and eggs. Preparing the breakfast
+    in synchronous — or *blocking* — order doesn’t make much sense. Waiting for the
+    coffee maker to finish or for the toast to be done before starting with the eggs
+    is a poor use of available resources that will add unnecessarily to the total
+    prep time, leaving you hungry by the time you sit down to eat. Instead, you can
+    start frying the eggs while the coffee maker and toaster do their thing and only
+    react to them when the toaster pops or the coffeemaker is done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The same logic applies to programming. The available resources should be allocated
+    as needed and not wasted by waiting for *expensive* and long-running tasks. The
+    underlying concept of such asynchronous pipelines is available in many languages
+    under a different, maybe more common name: *Promises*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Promising a Value
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Promises* are the building blocks for asynchronous pipelines with built-in
+    coordination tools that allow chaining and combining multiple tasks, including
+    error handling. Such a building block is either *pending* (not settled), *resolved*
+    (settled and computation completed), or *rejected* (settled, but in the error
+    state). Moving between states in the compositional pipeline is done by switching
+    between two channels: *data* and *error*, as shown in [Figure 13-2](#_02-completable-future_channels).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Promise data and error channels](assets/afaj_1302.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 13-2\. Promise data and error channels
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The data channel is the “happy path” if everything goes right. However, if a
+    promise fails, the pipeline switches to the error channel. This way, a failure
+    doesn’t crash the whole pipeline, like with Streams, and can be handled gracefully,
+    or even recover and switch the pipeline back to the data channel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you will see, the CompletableFuture API is a Promise by another name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a CompletableFuture<T>
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Like its predecessor, `Future<T>`, the new `CompletableFuture<T>` type doesn’t
+    provide any constructors to create an instance. New `Future<T>` instances are
+    created by submitting tasks to `java.util.concurrent.ExecutorService` which returns
+    an instance with its task already started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<T>` follows the same principle. However, it doesn’t necessarily
+    require an explicit `ExecutorService` to schedule tasks, thanks to its `static`
+    factory methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<Void> runAsync(Runnable runnable)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<U> supplyAsync(Supplier<U> supplier)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Both methods are also available with a second argument, accepting a `java.util.concurrent.Executor`,
+    which is the base interface of the `ExecutorService` type. If you choose the `Executor`-less
+    variants, the common ForkJoinPool is used, just like for parallel Stream pipelines
+    as explained in [“Streams as Parallel Functional Pipelines”](ch08.xhtml#_01-parallel-concurrent-async_parallel-streams).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The most apparent difference to submitting tasks to an `ExecutorService` for
+    creating a `Future<T>` is the use of `Supplier<T>` instead of `Callable<T>`. The
+    latter explicitly throws an `Exception` in its method signature. Therefore, `supplyAsync`
+    isn’t a drop-in replacement for submitting a `Callable<T>` to an `Executor`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a `CompletableFuture<T>` instance is almost equivalent to creating
+    a `Future<T>` one, as shown in [Example 13-2](#_02-completable-future_creation-vs-future).
+    The example doesn’t use type inference, so the returning types are visible. Usually,
+    you would prefer the `var` keyword instead of using the explicit type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-2\. CompletableFuture creation with convenience methods
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Even though the creation of instances is similar between `Future<T>` and `CompletableFuture<T>`,
+    the latter is more concise by not necessarily requiring an `ExecutorService`.
+    The bigger difference, though, is that a `CompletableFuture<T>` instance provides
+    a starting point for a declarative and functional pipeline of `CompletionStage<T>`
+    instances instead of a singular isolated async task in the case of a `Future<T>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compositing and Combining Tasks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: After starting with a `CompletableFuture<T>` instance, it’s time to combine
+    and compose them further to create a more complex pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The broad range of operations available to build your asynchronous pipelines
+    is separable into three groups, depending on their accepted arguments and intended
+    use cases:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transforming a result
+  prefs: []
+  type: TYPE_NORMAL
+- en: Like the `map` operation of Streams and Optionals, the CompletableFuture API
+    gives you the similar `thenApply` method, which uses a `Function<T, U>` to transform
+    the previous result of type `T` and returns another `CompletionStage<U>`. If the
+    transformation function returns another `CompletionStage`, using the `thenCompose`
+    method prevents additional nesting, similar to Stream’s and Optional’s `flatMap`
+    operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consuming a result
+  prefs: []
+  type: TYPE_NORMAL
+- en: As its name suggests, the `thenAccept` method requires a `Consumer<T>` to work
+    with the previous result of type `T` and returns a new `CompletionStage<Void>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Executing after finishing
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you don’t require access to the previous result, the `thenRun` method executes
+    a `Runnable` and returns a new `CompletionStage<Void>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are too many methods to discuss each one in detail, especially with the
+    additional `-Async` methods. Most of these methods have two additional `-Async`
+    variants: one matching the non-`Async` and another one with an additional `Executor`
+    argument.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The non-`Async` methods execute their task in the same thread as the previous
+    task, even though that’s not guaranteed, as explained later in [“About Thread
+    Pools and Timeouts”](#_02-completable-future_threads). The `-Async` variants will
+    use a new thread, either created by the common `ForkJoinPool`, or by the provided
+    `Executor`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: I will mostly discuss the non-`Async` variants to keep things simple.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compositing Tasks
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Compositing tasks creates a serial pipeline of connected CompletionStages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All compositing operations follow a general naming scheme:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `<operation>` name derives from the type of operation and its arguments,
+    mainly using the prefix `then` plus the name of the SAM of the functional interface
+    they accept:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<Void> thenAccept(Consumer<? super T> action)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<Void> thenRun(Runnable action)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<U> thenApply(Function<? super T,? extends U> fn)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Thanks to the API’s proper naming scheme, using any of the operations results
+    in a fluent and straightforward call chain. For example, imagine a bookmark manager
+    that scrapes its websites for storing a permanent copy. The overall task could
+    be run async so it won’t stop the UI thread. The task itself consists of three
+    steps: downloading the website, preparing the content for offline consumption,
+    and finally, storing it, as shown in [Example 13-3](#_02-completable-future_async-bookmark-manager_compositing).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-3\. Async bookmark manager workflow
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Compositing operations are 1:1-only, meaning they take the result of the previous
+    stage and do their intended job. If your task pipeline requires multiple flows
+    to converge, you need to combine tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Combining Tasks
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Compositing interconnected futures to create a more complex task can be immensely
+    helpful. Sometimes, however, the different tasks don’t need or can run in serial.
+    In this case, you can combine `CompletionStage` instances by using operations
+    that accept another stage in addition to their usual arguments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Their naming scheme is similar to the previous 1:1 compositing operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The additional `restriction` indicates if the operation works on both stages,
+    or either, using the aptly named suffixes `-Both` and `-Either`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 13-1](#_02-completable-future_combinational_ops) lists the available
+    2:1 operations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 13-1\. Combinational Operations
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Argument | Notes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `thenCombine` | `BiFunction<T, U, V>` | Applies the `BiFunction` after *both*
+    stages completed normally. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `thenAcceptBoth` | `BiConsumer<T, U>` | Like `thenCombine`, but doesn’t produce
+    any value. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `runAfterBoth` | `Runnable` | Evaluate the `Runnable` after both given stages
+    have been completed normally. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `applyToEither` | `Function<T, U>` | Applies the `Function` to the first
+    completed stage. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `acceptEither` | `Consumer<T, U>` | Like `applyToEither`, but doesn’t produce
+    any value. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `runAfterEither` | `Runnable` | Evaluate the `Runnable` after either of the
+    given stages has been completed normally. |'
+  prefs: []
+  type: TYPE_TB
+- en: Like with other functional Java features, the many different operations are
+    owed to Java’s static type system and how generic types are resolved. Unlike other
+    languages, like JavaScript, methods can’t accept multiple types in a single argument
+    or as a return type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The composing operations can easily be mixed with the compositing ones, as illustrated
+    in [Figure 13-3](#_01-completable-future_compositing-combining-flow).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Compositing and combining tasks](assets/afaj_1303.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 13-3\. Compositing and combining tasks
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The available operations provide a variety of functionality for almost any
+    use case. Still, there are certain blindspots in Java’s asynchronous API, especially
+    a particular variant is missing: combining the result of two stages with a `BiFunction`
+    returning another stage without creating a nested `CompletionStage`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `thenCombine` behavior is similar to other `map` operations in Java. In
+    the case of a nested return value, a `flatMap`-like operation is required, which
+    is missing for `CompletableFuture<T>`. Instead, you need an additional `thenCompose`
+    operation to flatten the nested values, as shown in [Example 13-4](#_02-completable-future_thenCompose-combine).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-4\. Unwrapping nested stages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_asynchronous_tasks_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The two stages that should combine their results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_asynchronous_tasks_CO2-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The task consuming the combined results of the previous stage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_asynchronous_tasks_CO2-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The return value of `task` is wrapped into another stage by `thenCombine`, resulting
+    in an unwanted `CompletionStage<CompletionStage<Integer>>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_asynchronous_tasks_CO2-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `thenCompose` call with `Function.identity()` unwraps the nested stage and
+    the pipeline is a `CompletionStage<Integer>` again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This approach is helpful if the task returns a `CompletableFuture` itself instead
+    of relying on the caller to handle it asynchronously by wrapping it into a `CompletableFuture`
+    if needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running More Two CompletableFuture<T> at Once
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The previously discussed operations allow you to run up to two CompletableFutures
+    to create a new one. Handling more than two, however, isn’t possible with combinational
+    operations like `thenCombine` without creating a nested method-call nightmare.
+    That’s why `CompletableFuture<T>` type has two `static` convenience methods for
+    dealing with more than two instances at once:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<Void> allOf(CompletableFuture<?>…​ cfs)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<Object> anyOf(CompletableFuture<?>…​ cfs)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `allOf` and `anyOf` methods coordinate pre-existing instances. Therefore,
+    both of them don’t provide matching `-Async` variants because each given `CompletableFuture`
+    instance already has its designated `Executor`. Another aspect of the coordination-only
+    nature is their restrictive return types. Because both accept any kind of `CompletableFuture`
+    instances, signified by the generic bound `<?>`, no definitive `T` for the overall
+    result is determinable, as the types can be mixed freely. The return type of the
+    `allOf` is a `CompletableFuture<Void>`, so you don’t have access to any result
+    of the given instances in later stages. However, it’s possible to create helper
+    methods that support returning a result as an alternative. I’ll show you how to
+    do that in [“Creating a CompletableFuture Helper”](#_02-completable-future_designing-helper),
+    but for now, let’s go through the other operations of `CompletableFuture` first.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exception Handling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far, I’ve shown you pipelines that have only trotted along the “happy path”
+    without any hiccups. However, a promise can be rejected, or as it is called in
+    Java, *complete exceptionally*, if an exception occurs in the pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Instead of blowing up the whole pipeline in the case of an Exception, as Streams
+    or Optionals do, the CompletableFuture API sees Exceptions as first-class citizens
+    and an essential part of its workflow. That’s why exception handling isn’t imposed
+    on the tasks themselves, and there are multiple operations available to handle
+    possibly rejected Promises:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CompletionStage<T> exceptionally(Function<Throwable, T> fn)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletionStage<U> handle(BiFunction<T, Throwable, U> fn)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletionStage<T> whenComplete(BiConsumer<T, Throwable> action)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the `exceptionally` operation adds an Exception hook into the pipeline,
+    which will complete normally with the previous stage’s result if no Exception
+    has occurred in any previous stage. In the case of a rejected stage, its Exception
+    is applied to the hook’s `fn` for a recovery effort. To recover, `fn` needs to
+    return any value of type `T`, which will switch the pipeline back to the data
+    channel. If no recovery is possible, throwing a new Exception, or rethrowing the
+    applied one, will keep the pipeline in the exceptionally completed state and on
+    the error channel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The more flexible `handle` operation combines the logic of `exceptionally` and
+    `thenApply` into a single operation. The `BiFunction` arguments depend on the
+    result of the previous stage. If it was rejected, the second argument of type
+    `Throwable` is non-`null`. Otherwise, the first argument of type `T` has value.
+    Be aware that it still might be a `null`-value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last operation, `whenComplete`, is similar to `handle` but doesn’t offer
+    a way to recover a rejected Promise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data and Error Channel Revisited
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Even though I explained Promises have technically two channels, data and error,
+    a CompletableFuture pipeline is actually a straight line of operations, like Streams.
+    Each pipeline stage looks for the next compatible operation, depending on which
+    state the current stage has completed. In case of completing normally, the next
+    `then`/`run`/`apply`/etc. executes. These operations are “pass-through” for exceptionally
+    completed stages, and the pipeline looks further for the next `exceptionally`/`handle`/`whenComplete`/etc.
+    operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A CompletableFuture pipeline might be a straight line created by a fluent call,
+    visualizing it as two channels, though, as done previously in [Figure 13-2](#_02-completable-future_channels),
+    gives you a better overview of what’s happening. Each operation exists in either
+    the data or error channel, except the `handle` and `whenComplete` operations,
+    which exist in between, as they’re executed regardless of the pipeline’s state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rejected Either Tasks
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A straight pipeline might get another CompletableFuture injected by using a
+    combinatorial operation. You might think the suffix `-Either` might imply that
+    *either* pipelines might complete normally to create a new, non-rejected stage.
+    Well, you’re in for a surprise!
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the previous stage is rejected, the `acceptEither` operation remains rejected
+    regardless of whether the other stage is completed normally, as shown in [Example 13-5](#_02-completable-future_either).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-5\. Either operations and rejected stages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The gist to remember is that all operations, except the error-handling ones,
+    require a non-rejected previous stage to work properly, even for `-Either` operations.
+    If in doubt, use an error-handling operation to ensure a pipeline is still on
+    the data channel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Terminal operations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Up to this point, any operation returns another `CompletionStage<T>` to extend
+    the pipeline further. The `Consumer`-based operations might fulfill many use cases,
+    but at some point, you need the actual value even if it might block the current
+    thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `CompletionStage<T>` type itself doesn’t provide any additional retrieval
+    methods compared to the `Future<t>` type. Its implementation `CompletableFuture<T>`,
+    though, gives you two options: the `getNow` and `join` methods. This ups the number
+    of terminal operations to four, as listed in [Table 13-2](#_02-completable-future_terminal).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 13-2\. Getting a value from a pipeline
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method signature | Use-case | Exceptions |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `T get()` | Blocks the current thread until the pipeline is completed. |
+    `InterruptedException` (checked) `ExecutionException` (checked)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CancellationException` (unchecked) |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| `T get(long timeout, TimeUnit unit)` | Blocks the current thread until the
+    pipeline is completed but throws an Exception after the `timeout` is reached.
+    | `TimeoutException` (checked) `InterruptedException` (checked)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ExecutionException` (checked)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CancellationException` (unchecked) |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| `T getNow(T valueIfAbsent)` | Returns the pipeline’s result if completed
+    normally or throws an `CompletionException`. If the result is still pending, the
+    provided fallback value `T` is returned immediately without canceling the pipeline.
+    | `CompletionException` (unchecked) `CancellationException` (unchecked) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `join()` | Blocks the current thread until the pipeline is done. | If it
+    completes exceptionally, the corresponding exception is wrapped into a `CompletionException`.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: The `CompletableFuture<T>` type also adds another pipeline coordination method,
+    `isCompletedExceptionally`, giving you a total of four methods for affecting or
+    retrieving the pipeline’s state, as listed in [Table 13-3](#_02-completable-future_coordination).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 13-3\. Coordination methods
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method Signature | Returns |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `boolean cancel(boolean mayInterruptIfRunning)` | Completes a not already
+    completed stage exceptionally with a `CancellationException`. The argument `mayInterruptIfRunning`
+    is ignored because interrupts aren’t used for control, unlike in `Future<T>`.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `boolean isCancelled()` | Returns `true` if the stage was canceled before
+    it has completed. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `boolean isDone()` | Returns `true` if the stage has been completed in any
+    state. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `boolean isCompletedExceptionally()` | Returns `true` if the stage has been
+    completed exceptionally, or is already in the rejected state. |'
+  prefs: []
+  type: TYPE_TB
+- en: That’s quite a humongous API, covering a lot of use cases. Still, depending
+    on your requirements, some edge cases might be missing. But adding your helper
+    to fill any gaps is easy, so let’s do it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a CompletableFuture Helper
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Although the CompletableFuture API is massive, it’s still missing certain use
+    cases. For example, as mentioned earlier in [“Combining Tasks”](#_02-completable-future_combining-tasks),
+    the return type of the `static` helper `allOf` is `CompletableFuture<Void>`, so
+    you don’t have access to any result of the given instances in later stages. It’s
+    a flexible coordination-only method that accepts any kind of `CompletableFuture<?>`
+    as its arguments but with the trade-off of not having access to any of the results.
+    To make up for this, you can create a helper to complement the existing API as
+    needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s create a helper in the vein of `allOf`, running more than two `CompletableFuture`
+    instances at once, but still giving access to their results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The proposed helper `eachOf` runs all of the given `CompletableFuture` instances,
+    like `allOf`. However, unlike `allOf`, the new helper uses the Generic type `T`
+    instead of `?` (question mark). This restriction to a singular type makes it possible
+    that the `eachOf` method can actually return a `CompletableFuture<List<T>>` instead
+    of a result-less `CompletableFuture<Void>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Helper Scaffold
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A convenience `class` is needed to hold any helper methods. Such helper methods
+    are useful for particular edge cases that aren’t possible to solve otherwise in
+    a concise way, or even at all, with the provided API. The most idiomatic and safe
+    way is to use a `class` with a `private` constructor as shown as follows to prevent
+    anyone from accidentally extending or instantiating the type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Helper classes with a `private` default constructor don’t have to be `final`
+    per se to prevent extendability. The extending class won’t compile without a visible
+    implicit `super` constructor. Nevertheless, making the helper class `final` signifies
+    the desired intent without relying on implicit behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing eachOf
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The goal of `eachOf` is almost identical to `allOf`. Both methods coordinate
+    one or more `CompletableFuture` instances. However, `eachOf` is going further
+    by managing the results, too. This leads to the following requirements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Returning a `CompletableFuture` containing all the given instances, like `allOf`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Giving access to the results of successfully completed instances.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first requirement is fulfilled by the `allOf` method. The second one, however,
+    requires additional logic. It requires you to inspect the given instances individually
+    and aggregate their results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The simplest way of running any logic after a previous stage completes in any
+    way is using the `thenApply` operation as shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using what you’ve learned so far in the book, the aggregation of the results
+    of successfully completed `CompletableFuture` instances can be done by creating
+    a Stream data processing pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s go through the steps needed to create such a pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, the Stream must be created from the given `CompletableFuture<T>` instances.
+    It’s an `vararg` method argument so it corresponds to an array. The helper `Arrays#stream(T[]
+    arrays)` is the obvious choice when dealing with a `vararg`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, the successfully completed instances are filtered. There is no explicit
+    method to ask an instance if it is completed normally, but you can ask the inverse
+    thanks to `Predicate.not`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are two methods for getting a result immediately from a `CompletableFuture`:
+    `get()` and `join()`. In this case, the latter is preferable, because it doesn’t
+    throw a checked Exception, simplifying the Stream pipeline as discussed in [Chapter 10](ch10.xhtml#_02-exception-handling):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using the `join` method blocks the current thread to get the result. However,
+    the Stream pipeline is run after `allOf` is completed anyway, so all results are
+    already available. And by filtering non-successfully completed elements beforehand,
+    no Exception is thrown that might implode the pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, the results are aggregated into a `List<T>`. This can be either done
+    with a `collect` operation, or if you’re using Java 16+, the `Stream<T>` type’s
+    `toList` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The Stream pipeline can now be used to gather the results in the `thenApply`
+    call. The full implementation of `CompletableFutures` and its `eachOf` helper
+    method is shown in [Example 13-6](#_02-completable-future_futures-eachof-complete).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-6\. Complete implementation of `eachOf`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_asynchronous_tasks_CO3-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Predicate` for testing successful completion isn’t bound to a specific
+    `CompletableFuture` instance and, therefore, reusable as a `final static` field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_asynchronous_tasks_CO3-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The result gathering action is represented by `Function<Void, List<T>>`, which
+    matches the inner types of the return type of `allOf` and the intended return
+    type of `eachOf`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_asynchronous_tasks_CO3-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The overall task is merely calling the pre-existing `allOf` and combining it
+    with the result aggregating pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That’s it! We’ve created an alternative to `allOf` for certain use cases when
+    the results should be easily accessible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final implementation is an example of the functional approach to solving
+    problems. Each task in itself is isolated and could be used on its own. By combining
+    them, though, you create a more complex solution built of smaller parts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Improving the CompletableFutures Helper
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `eachOf` method works as you would expect it as a complementary method to
+    `allOf`. If any of the given `CompletableFuture` instances fails, the returned
+    `CompletableFuture<List<T>>` has also completed exceptionally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Still, there are “fire & forget” use cases, where you are only interested in
+    the successfully completed tasks and don’t care about any failures. A failed `CompletableFuture`,
+    though, will throw an Exception if you try to extract its value with `get` or
+    similar methods. So let’s add a `bestEffort` helper method based on `eachOf` that
+    always completes successfully and only returns the successful results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The main goal is almost identical to `eachOf`, except if the `allOf` call returns
+    an exceptionally completed `CompletableFuture<Void>`, it must recover. Adding
+    an Exception hook by interjecting an `exceptionally` operation is the obvious
+    choice:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `exceptionally` lambda `ex -> null` might look weird at first. But if you
+    check out the underlying method signature, its intention becomes clearer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this case, the `exceptionally` operation requires a `Function<Throwable,
+    Void>` to recover the `CompletableFuture` by returning a value of type `Void`
+    instead of throwing an Exception. This is achieved by returning `null`. After
+    that, the aggregation Stream pipeline from `eachOf` is used to gather the results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The same behavior could be achieved with the `handle` operation and handle both
+    states, success or rejection, in a singular `BiFunction`. Still, handling the
+    states in separate steps makes a more readable pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have two helper methods with shared logic, it might make sense to
+    extract common logic into their own methods. This underlies the functional approach
+    of combining isolated logic to create a more complex and complete task. A possible
+    refactored implementation of `Futures` is shown in [Example 13-7](#_02-completable-future_futures-eachof-complete-refactored).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-7\. Refactored implementation of Futures with `eachOf` and `bestEffort`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_asynchronous_tasks_CO4-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Predicate` is unchanged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_asynchronous_tasks_CO4-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The result-gathering logic is refactored into a `private` factory method to
+    ensure consistent handling across both `eachOf` and `bestEffort`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_asynchronous_tasks_CO4-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both `public` helper methods are reduced to the absolute minimum.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The refactored `CompletableFutures` helper is simpler and more robust than before.
+    Any sharable complex logic is reused so it provides consistent behavior throughout
+    its method and minimizes the required documentation that should definitely add
+    to communicate the intended functionality to any caller.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Manual Creation and Completion
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The only way to create `Future<T>` instances besides implementing the interface
+    yourself is by submitting a task to an `ExecutorService`. The `static` convenience
+    factory methods `runAsync` or `supplyAsync` of `CompletableFuture<T>` are quite
+    similar. Unlike its predecessor, they’re not the only way to create instances,
+    though.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Manual Creation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Thanks to being an actual implementation and not an interface, the `CompletableFuture<T>`
+    type has a constructor that you can use to create an unsettled instance as shown
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Without an attached task, however, it will never be completed or fail. Instead,
+    you need to complete such a task manually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Manual Completion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are a couple of ways to settle an existing `CompletableFuture<T>` instance
+    and kickstart the attached pipeline:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`boolean complete(T value)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`boolean completeExceptionally(Throwable ex)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Both methods return `true` if the call transitions the stage to the expected
+    state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java 9 introduced additional `complete` methods for normally completed stages,
+    in the form of `-Async` variants, and a timeout-based one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<T> completeAsync(Supplier<T> supplier)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<T> completeAsync(Supplier<T> supplier, Executor executor)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<T> completeOnTimeout(T value, long timeout, TimeUnit unit)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `-Async` variants complete the current stage with the result of the `supplier`
+    in a new asynchronous task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The other method, `completeOnTimeout`, settles the current stage with the given
+    `value` if the stage doesn’t complete otherwise before the `timeout` is reached.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Instead of creating a new instance and then manually completing it, you can
+    also create an already completed instance with one of these `static` convenience
+    factory methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<U> completedFuture(U value)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<U> failedFuture(Throwable ex)` (Java 9+)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletionStage<U> completedStage(U value)` (Java 9+)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletionStage<U> failedStage(Throwable ex)` (Java 9+)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Such already completed futures can then be used in any of the combinatorial
+    operations, or as a starting point for a CompletableFutures pipeline, as I’m going
+    to discuss in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use-Cases for Manually Created and Completed Instances
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In essence, the CompletableFuture API provides an easy way to create an asynchronous
+    task pipeline with multiple steps. By creating and completing a stage manually,
+    you gain fine-grained control over how the pipeline is executed afterward. For
+    example, you can circumvent spinning off a task if the result is already known.
+    Or you can create a partial pipeline factory for common tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at a few possible use cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CompletableFuture as Return Value
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '`CompletableFuture` makes an excellent return value for possible costly or
+    long-running tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imagine a weather report service that calls a REST API to return a `WeatherInfo`
+    object. Even though weather changes over time, it makes sense to cache the `WeatherInfo`
+    for a particular place for some time before updating them with another REST call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A REST call is naturally costlier and requires more time than a simple cache
+    lookup, and therefore might block the current thread too long to be acceptable.
+    Wrapping it in a `CompletabaleFuture` provides an easy way to offload the task
+    from the current thread, leading to the following general `WeatherService` with
+    a singular `public` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Adding a cache requires two methods, one for storing any result, and one for
+    retrieving existing ones, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using `Optional<WeatherInfo>` provides you with a functional launchpad to connect
+    each part later. The actual implementation of the caching mechanism doesn’t matter
+    for the purpose and intent of the example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The actual API call should be refactored, too, to create smaller logic units,
+    leading to a singular `public` method and three `private` distinct operations.
+    The logic to store a result in the cache can be added as a `CompletableFuture`
+    operation by using `thenApply` with the `storeInCache` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now all parts can be combined to fulfill the task of providing a cached weather
+    service, as shown in [Example 13-8](#_02-completable-future_weather-service).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-8\. Cached WeatherService with CompletableFutures
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_asynchronous_tasks_CO5-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The cache lookup returns an `Optional<WeatherInfo>` to provide a fluent and
+    functional jump-off point. The `storeInCache` method returns the stored `WeatherInfo`
+    object to be usable as a method reference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_asynchronous_tasks_CO5-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `restCall` method combines the REST call itself and stores the result if
+    successfully completed, in the cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_asynchronous_tasks_CO5-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `check` method combines the other methods by looking in the cache first.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_asynchronous_tasks_CO5-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If a `WeatherInfo` is found, it returns an already completed `CompletableFuture<WeatherInfo>`
+    immediately.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](assets/5.png)](#co_asynchronous_tasks_CO5-6)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If no `WeahterInfo` object is found, the Optional’s `orElseGet` executes the
+    `reastCall` method lazily.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage of combining CompletableFutures with Optionals this way is that
+    it doesn’t matter what happens behind the scenes for the caller, whether the data
+    is loaded via REST or is coming directly from a cache. Each `private` method does
+    a singular task most efficiently, with the sole `public` method combining them
+    as an asynchronous task pipeline only doing its expensive work if absolutely required.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pending CompletableFuture Pipelines
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A pending CompletableFuture instance never completes by itself with any state.
+    Similar to Streams that won’t start their data processing until a terminal operation
+    is connected, a CompletableFuture task pipeline won’t do any work until the first
+    stage completes. Therefore, it provides a perfect starting point as the first
+    stage of a more intricate task pipeline or even a scaffold for a pre-defined task
+    to be executed on demand later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imagine you want to process image files. There are multiple independent steps
+    involved that might fail. Instead of processing the files directly, a factory
+    provides unsettled `CompletedFuture` instances, as shown in [Example 13-9](#_02-completable-future_image-process-01).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-9\. ImageProcessor with unsettled CompletableFuture
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_asynchronous_tasks_CO6-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The caller needs access to the unsettled first stage to start the pipeline,
+    but also requires the stage to access the final result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_asynchronous_tasks_CO6-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Generic type of the returned CompletableFuture instance must match the type
+    you want the caller to provide when they actually execute the pipeline. In this
+    case, the `Path` to an image file is used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_asynchronous_tasks_CO6-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The task pipeline starts with an unsettled instance so the required processing
+    operations can be added lazily.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_asynchronous_tasks_CO6-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Task` record is returned to provide easy access to the first and last stages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running the task pipeline is done by calling any of the `complete` methods
+    on the first stage `start`. Afterward, the last stage is used to retrieve a potential
+    result, as shown below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Just like a Stream pipeline without a terminal operation creates a lazy processing
+    pipeline for multiple items, a pending CompletableFuture pipeline is a lazily
+    usable task pipeline for a singular item.
+  prefs: []
+  type: TYPE_NORMAL
+- en: About Thread Pools and Timeouts
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Two last aspects of concurrent programming shouldn’t be ignored: timeouts and
+    thread pools.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: By default, all `-Async` `CompletableFuture` operations use the JDK’s common
+    `ForkJoinPool`. It’s a highly optimized thread pool based on runtime settings
+    with sensible defaults^([1](ch13.xhtml#idm45115216237728)). As its name implies,
+    the “common” pool is a shared one also used by other parts of the JDK, like parallel
+    Streams. Unlike parallel Streams, though, the async operations can use a custom
+    `Executor` instead. That allows you to use a thread pool fitting your requirements^([2](ch13.xhtml#idm45115216235488))
+    without affecting the common pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Daemon Threads
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: An important difference between using Threads via the `ForkJoinPool` and user-created
+    ones via an `Executor` is their ability to outlive the main thread. By default,
+    user-created Threads are non-daemon, which means they outlive the main thread
+    and prevent the JVM from exiting, even if the main thread has finished all its
+    work. Using Threads via the `ForkJoinPool`, however, might get killed with the
+    main thread. See this [blog post](https://bazlur.com/2021/07/be-sure-of-using-fork/join-common-pool-they-are-daemon-threads/)
+    by Java Champion A N M Bazlur Rahman for more details on the topic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running your tasks on the most efficient thread is only the first half of the
+    equation; thinking about timeouts is the other half. A `CompletableFuture` that
+    never completes or times out will remain pending for eternity, blocking its thread.
+    If you try to retrieve its value, for example, by calling `get()`, the current
+    thread is blocked, too. Choosing appropriate timeouts can prevent eternally blocked
+    threads. However, using timeouts means that you also have to deal with a possible
+    `TimeoutException` now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are multiple operations available, both intermediate and terminal, as
+    listed in [Table 13-4](#_02-completable-future_timeout).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 13-4\. Timeout-related operations
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method signature | Use-case |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `CompletableFuture<T> completeOnTimeout(T value, long timeout, TimeUnit unit)`
+    | Completes the stage normally with the provided value after the timeout is reached.
+    (Java 9+) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `CompletableFuture<T> orTimeout(long timeout, TimeUnit unit)` | Completes
+    the stage exceptionally after the timeout is reached. (Java 9+) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `T get(long timeout, TimeUnit unit)` | Blocks the current thread until the
+    end of the computation. If the `timeout` is reached, a `TimeoutException` is thrown.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: The intermediate operations `completeOnTimeout` and `orTimeout` provide an interceptor-like
+    operation to handle timeouts at any position of a `CompletableFuture` pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative to timeouts is canceling a running stage by calling `boolean
+    cancel(boolean mayInterruptIfRunning)`. It cancels an unsettled stage and its
+    dependents, so it might require some coordination and keeping track of what’s
+    happening to cancel the right one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Final Thoughts on Asynchronous Tasks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Asynchronous programming is an important aspect of concurrent programming to
+    achieve better performance and responsiveness. However, it can be difficult to
+    reason about asynchronous code execution, because it’s no longer obvious *when*
+    and on *which thread* a task is executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coordinating different threads is nothing new to Java. It can be a hassle and
+    is hard to do right and efficiently, especially if you’re not used to multi-threaded
+    programming. That’s where the `CompletableFuture` API really shines. It combines
+    the creation of intricate asynchronous possibly multi-step tasks and their coordination
+    into an extensive, consistent, and easy-to-use API. This allows you to incorporate
+    asynchronous programming into your code way easier than before. Furthermore, you
+    don’t require the common boilerplate and “handrails” normally associated with
+    multi-threaded programming.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Still, like with all programming techniques, there’s an *optimal problem context*.
+    If used indiscriminately, asynchronous tasks might achieve the opposite of their
+    intended goal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running tasks asynchronously is a good fit for any of these criteria:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Many tasks need to be done simultaneously with at least one being able to make
+    progress.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tasks performing heavy I/O, long-running computations, network calls, or any
+    kind of blocking operation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tasks are mostly independent and don’t have to wait for another one to complete.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Even with such a quite high-level abstraction like `CompletableFuture`, multi-threaded
+    code trades simplicity for possible efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Like other concurrent or parallel high-level APIs, such as the parallel Stream
+    API I discussed in [Chapter 8](ch08.xhtml#_01-parallel-streams), there are non-obvious
+    costs involved in coordinating multiple threads. Such APIs should be chosen deliberately
+    as an optimization technique, not as a one-size-fits-all solution to hopefully
+    use the available resources more efficiently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you’re interested in the finer details of how to navigate multi-threaded
+    environments safely, I recommend the book *Java Concurrency in Practice* by Brian
+    Goetz^([3](ch13.xhtml#idm45115216152080)), the Java Language Architect at Oracle.
+    Even with all the new concurrent features introduced since its release in 2006,
+    this book is still the de-facto reference manual on the topic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Takeaways
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java 5 introduced the type `Future<T>` as a container type for asynchronous
+    tasks with an eventual result.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The CompletableFuture API improves upon the `Future<T>` type by providing many
+    desirable features previously unavailable. It’s a declarative, reactive, lambda-based
+    coordination API with 70+ methods.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tasks can be easily chained or merged into a more complex pipeline that runs
+    each task in a new thread if required.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exceptions are *first-class-citizens* and you can recover within the functional
+    fluent call, unlike the Streams API.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CompletableFuture<T>` instances can be created manually with either a preexisting
+    value without requiring any threads or other coordination, or as a pending instance
+    to provide an on-demand starting point for its attached operations.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As the `CompletableFuture` API is a concurrency tool, the usual concurrency-related
+    aspects and issues need to be considered, too, like timeouts and thread pools.
+    Like parallel Streams, running tasks asynchronously should be considered an optimization
+    technique, not necessarily the first option to go to.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ^([1](ch13.xhtml#idm45115216237728-marker)) The default settings of the common
+    `ForkJoinPool` and how to change them is explained in [its documentation](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/ForkJoinPool.xhtml)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^([2](ch13.xhtml#idm45115216235488-marker)) The excellent book *Java Concurrency
+    in Practice* by Josh Bloch et.al. (ISBN 9780321349606) has all the information
+    you might need in *Part II: Chapter 8\. Applying Thread Pools* to better understand
+    how thread pools work and are utilized best.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch13.xhtml#idm45115216152080-marker)) Goetz, Brian. 2006\. “Java Concurrency
+    in Practice.” Addison-Wesley. ISBN 978-0321349606.
+  prefs: []
+  type: TYPE_NORMAL

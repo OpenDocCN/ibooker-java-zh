@@ -1,0 +1,2246 @@
+- en: Chapter 8\. Advanced AWS Lambda
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As we start getting towards the end of the book, it’s time to learn some of
+    the aspects of Lambda that are important as you start to build production-ready
+    applications—error handling, scaling, plus a few capabilities of Lambda that we
+    don’t use all the time, but are there—and important—when you need them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error Handling
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: All of our examples so far have lived in the wonderful world of rainbows and
+    unicorns where no systems fail and no one makes a mistake in writing code. Of
+    course, back in the real world, Things Go Wrong, and any useful production application
+    and architecture needs to handle the times when errors occur, whether those be
+    errors in our code or in the systems we rely on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since AWS Lambda is a “platform,” it has certain constraints and behavior when
+    it comes to errors, and in this section we’ll dig into what kind of errors can
+    happen, for which contexts, and how we can handle them. As a language note, we
+    use the words *error* and *exception* interchangeably, without the nuance that
+    comes between the two terms in the Java world.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Classes of Error
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'When using Lambda, there are several different classes of error that can occur.
+    The primary ones are as follows, in order roughly of the time in which they can
+    occur through the processing of an event:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error initializing the Lambda function (a problem loading our code, locating
+    the handler, or with the function signature)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Error parsing input into specified function parameters
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Error communicating with an external downstream service (database, etc).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Error generated within the Lambda function (either within its code or within
+    the immediate environment, like an out-of-memory problem)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Error caused by function timeout
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Another way we can break up errors is into *handled* errors and *unhandled*
+    errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, let’s consider the case where we communicate with a downstream
+    microservice over HTTP, and it throws an error. In this case, we may choose to
+    catch the error within the Lambda function and process it there (a handled error),
+    or we may let the error propagate out to the environment (an unhandled error).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternatively, say we specified an incorrect method name in our Lambda configuration.
+    In this case, we are unable to catch the error in the Lambda function code, so
+    this is always an unhandled error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we handle an error ourselves, within code, then Lambda really has nothing
+    to do with our particular error handling strategy. We can log to standard error
+    if like, but as we saw in [Chapter 7](ch07.html#ch07), standard error is treated
+    identically to standard output as far as Lambda as concerned, and no alarms are
+    raised if content is sent to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, the nuances that come with handling errors in Lambda are all about
+    unhandled errors—those that bubble out of our code to the Lambda runtime via an
+    uncaught exception or that happen externally to our code. What happens to these
+    errors? Interestingly, this depends significantly on the type of event source
+    that triggers our Lambda function in the first place, as we will now examine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Various Behaviors of Lambda Error Processing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Lambda divides what it does with errors according to the event source that
+    triggers invocation. Every event source is placed into one of the event source
+    types we listed in [Chapter 5](ch05.html#ch05) ([Table 5-1](ch05.html#lambda-event-source-types)):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronous event sources (e.g., API Gateway)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Asynchronous event sources (e.g., S3 and SNS)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Stream/queue event sources (e.g., Kinesis Data Streams and SQS)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Each of these categories has a different model for processing errors thrown
+    by a Lambda function, as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronous event sources
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This is the simplest model. For Lambda functions invoked in this way, the error
+    is propagated back up to the caller, and no automatic retry is performed. How
+    the error is exposed to the upstream client depends on the precise nature of how
+    the Lambda function was called, so you should try forcing errors within your code
+    to see how such problems are exposed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, if API Gateway is the event source, then errors thrown by a Lambda
+    function will result in an error being sent back to API Gateway. API Gateway in
+    turn returns a 500 HTTP response to the original requestor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asynchronous event sources
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Since this model of invocation is asynchronous, or event oriented, there is
+    no upstream caller that can do anything useful with an error, so Lambda has a
+    more sophisticated error handling model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, if an error is detected in this model of invocation, then Lambda will
+    (by default) retry processing the event up to twice further (for a total of three
+    attempts), with a delay between such retries (the precise delay is not documented,
+    but we’ll see an example a little later).
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the Lambda function fails for all retry attempts, then the event will be
+    posted to the function’s error destination and/or dead letter queue if either
+    is configured (more on this later); otherwise, the event is discarded and lost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stream/queue event sources
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In the absence of a configured error-handling strategy (see [“Handling Kinesis
+    and DynamoDB Stream Errors”](#failure-handling-features)), if an error bubbles
+    up to the Lambda runtime when processing an event from a stream/queue event source,
+    then Lambda will keep retrying the event until either (a) the failing event expires
+    in the upstream source or (b) the problem is resolved. This means that the processing
+    of the stream or queue is effectively blocked until the error is resolved. Note
+    that there are particular nuances here when using streams that are scaled to multiple
+    shards, which we recommend you research if this applies to you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following documentation pages are useful when you are considering error
+    handling with Lambda:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Error Handling and Automatic Retries in AWS Lambda](https://oreil.ly/4wxMf)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[AWS Lambda Function Errors in Java](https://oreil.ly/ag0cu)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Deep Dive into Asynchronous Event Source Errors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Asynchronous event sources are a popular use of Lambda and have a complicated
+    error processing model, so let’s look at this topic a little deeper by way of
+    an example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retries
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We start with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: We wire this up to an S3 bucket in the same way that we did for the `BatchEvents
+    Lambda` function in [Chapter 5](ch05.html#ch05), and we’ll see the SAM template
+    for that a little later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we upload a file to the S3 bucket attached to this function, we see [Figure 8-1](#s3-error-logs)
+    in our logs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notice that Lambda tries to process the S3 event three times—once at 20:44:00,
+    then about a minute later, and then about two minutes after that. These are the
+    three total attempts to process an event that Lambda promises for an asynchronous
+    event source.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are able configure the number of retries that Lambda will perform—0, 1,
+    or 2—using a separate CloudFormation resource. For example, let’s configure Lambda
+    not to attempt any retries for the `SingleEventLambda` function from [“Example:
+    Building a Serverless Data Pipeline”](ch05.html#serverless-data-pipeline-example).
+    We can add the following resource to the application template:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '![images/ch08_image01.png](assets/awsl_0801.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-1\. Lambda logs during S3 error
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: If we don’t make any further changes, Lambda won’t do anything more after all
+    the retries (if any) are complete—brief data about the original event will be
+    logged, but eventually it will be discarded. For something like S3 this isn’t
+    too bad—we can always list all of the objects in S3 later. But for other event
+    sources, this might be a problem if we can’t go and regenerate the events once
+    the cause of the error is fixed. There are two solutions to this problem—DLQs
+    and destinations. DLQs have been around longer, so we’ll describe them first,
+    but destinations have more capabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dead letter queues
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Lambda provides the capability of automatically forwarding events (for asynchronous
+    sources) that fail all of their retries to a dead letter queue (DLQ). This DLQ
+    can be either an SNS topic or an SQS queue. Once the event is in SNS or SQS, you
+    can do whatever you want with it either immediately, or manually later, in the
+    case of SQS. For example, you may register a separate Lambda function as an SNS
+    topic listener that posts a copy of the failing event to an operations Slack channel
+    for manual processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: DLQs can be configured along with all the other properties of a Lambda function.
+    For example, we can add a DLQ to our example app, and also add a DLQ processing
+    function, with the SAM template.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-1\. SAM template with DLQ and DLQ listener
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The important elements to observe here are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We define our own SNS topic to act as a DLQ.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Within the application function (`S3ErroringLambda`), we tell Lambda that we
+    want a DLQ for the function, that it’s of type SNS, and that DLQ messages should
+    be sent to the topic we created in this template.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We also define a separate function (`DLQProcessingLambda`) that is triggered
+    by events sent to the DLQ.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Our code for `DLQProcessingLambda` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now if we upload a file to S3, we see the following in the logs for `DLQProcessing
+    Lambda` after the final delivery attempt to `S3ErroringLambda`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The event sent to the DLQ processing function includes the full original event
+    that failed, allowing you to save this off and process later. It also includes
+    the `RequestID` of the original event, which allows you to search within the application
+    Lambda function’s log for clues as to what went wrong.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While in this example we included all of the DLQ resources within the same template
+    as the application itself, you may choose to use resources outside of the application
+    and therefore share those DLQ elements across applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Destinations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'At the end of 2019 AWS introduced an alternative to DLQs for capturing failed
+    events: [*destinations*](https://oreil.ly/XT6Ds). Destinations are actually a
+    more powerful feature than DLQ since you can capture both errors *and* successfully
+    processed asynchronous events.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further, destinations support more types of target than DLQs. SNS and SQS are
+    supported, just as they are with DLQs, but you can also route directly to another
+    Lambda function (skipping the message bus part) or EventBridge.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To configure a Destination, we use the same type of `AWS::Lambda::EventInvokeConfig`
+    resource we created earlier when configuring retry counts (see [“Retries”](#asynchronous-retries)).
+    For example, let’s replace the DLQ in the previous example with a Destination:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are a few aspects to notice from this example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are no explicit queues or topics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Destination at the end defines that when `S3ErroringLambda` fails, we want
+    events to be sent to `ErrorProcessingLambda`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The application function needs to be given permission to invoke the error handling
+    function, which we enable via the `Policies` property on the `S3Erroring Lambda`
+    resource.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The event that is sent to `ErrorProcessingLambda` is *not* the same type as
+    that sent to a DLQ. At time of writing, the `aws-lambda-java-events` library has
+    not been updated to include the Destination types, and deserializing these types
+    is tricky due to some unfortunate naming of fields within the sent objects. Ideally
+    by the time you read this book, this will have been fixed!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Destinations will likely replace most usages of DLQ, and we’re also interested
+    to see how people use the `OnSuccess` version of destinations to build interesting
+    solutions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling Kinesis and DynamoDB Stream Errors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In late 2019, AWS added a number of [failure-handling features](https://oreil.ly/gWKX-)
+    to the Kinesis and DynamoDB stream event sources. These new features make it possible
+    to avoid “poison pill” scenarios, where a single bad record could block stream
+    (or shard) processing for up to a week (depending on how long the stream retains
+    records).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The failure-handling features can be configured via SAM (or CloudFormation),
+    and are applied when a Lambda function fails to process a batch of records from
+    either a Kinesis or DynamoDB stream. The new features are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bisect on Function Error
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of simply retrying the entire batch of records for a failed Lambda invocation,
+    this feature splits the batch into two. These smaller batches are retried separately.
+    This approach can automatically narrow failures down to whichever individual records
+    are causing a problem, and those records can be dealt with via the other error-handling
+    features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maximum Record Age
+  prefs: []
+  type: TYPE_NORMAL
+- en: This instructs the Lambda function to skip records older than a specified Maximum
+    Record Age (which can be from 60 seconds to 7 days).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maximum Retry Attempts
+  prefs: []
+  type: TYPE_NORMAL
+- en: This feature retries failed batches for a configurable number of times and then
+    sends information about the batch of records to the configured *on-failure destination*
+    (the next feature in this list).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Destination on Failure
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is an SNS topic or SQS queue that will receive information about failed
+    batches. Note that it doesn’t receive the actual failed records—those have to
+    be extracted from the stream before they expire.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A comprehensive error-handling approach can (and should) combine all of these
+    features. For example, a failed batch of records can be split (perhaps several
+    times) until there is a single-record batch causing a failure. That single-record
+    batch might be retried 10 times or until the record is 15 minutes old, at which
+    point the details of the batch (with its single failed record) will be sent to
+    an SNS topic. A separate Lambda could be subscribed to that SNS topic, automatically
+    retrieve the failed record from the stream, and store it in S3 for later investigation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tracing Errors with X-Ray
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If you are using AWS X-Ray (discussed in [“Distributed Tracing”](ch07.html#distributed-tracing)),
+    then it will be able to show where errors are occurring in your graph of components.
+    For more details, see [“Finding Errors”](ch07.html#finding-errors), and the X-Ray
+    documentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error Handling Strategies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So given everything we now know about errors, and Lambda’s capabilities and
+    behaviors regarding them, how should we choose to deal with errors?
+  prefs: []
+  type: TYPE_NORMAL
+- en: For unhandled errors, we should set up monitoring (see [“Alarms”](ch07.html#cloudwatch-alarms)),
+    and when errors occur, we will likely need some kind of manual intervention. The
+    urgency of this will depend on the context, and also the type of the event source—remember
+    in the case of stream/queue event sources that processing is blocked until the
+    error is cleared.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For handled errors, though, we have an interesting choice. Should we process
+    the error and rethrow, or should we capture the error and exit the function cleanly?
+    Again, this will depend on the context and invocation type, but here are some
+    thoughts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For synchronous event sources, you will likely want to return some kind of error
+    to the original caller. Typically you’ll want to do that explicitly within the
+    Lambda code and return a well-formatted error. A problem here, though, is that
+    Lambda won’t know if this is an error, so you’ll need to track this metric manually.
+    The problem with letting unhandled errors bubble out from synchronously called
+    Lambdas is that you have no control over the error returned to the upstream client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For asynchronous event sources, what you do will largely depend on whether you
+    want to use a DLQ or Destination. If you do, then there’s often no harm in either
+    letting an error bubble out or throwing a custom error and then handling the error
+    in whatever is processing messages from the DLQ/Destination. If you don’t use
+    a DLQ/Destination then you may want to at least log the failing input event if
+    the error occurs within your code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For Kinesis and DynamoDB stream event sources, using one of the failure-handling
+    features described earlier allows processing to continue even if some records
+    cause errors. With a properly configured *Destination on Failure*, this is an
+    effective error-handling strategy, although it assumes that it is safe for your
+    application to potentially process records out of order. If that isn’t the case,
+    then consider omitting the failure-handling features and relying on the platform’s
+    automatic retry behavior (which in this case would block processing until the
+    error is resolved or the records expire).
+  prefs: []
+  type: TYPE_NORMAL
+- en: For SQS you’ll typically want to handle errors within your code, since otherwise
+    further processing is blocked. An effective way to do this is to put a top-level
+    `try-catch` block in your handler function. Within this block, you can set up
+    your own retry strategy or log the failing event and exit the function cleanly.
+    In certain situations, you really will want to block further event processing
+    until the problem causing the error is resolved, in which case you can throw a
+    new error from the top-level try-catch block and use the platform’s automatic
+    retry behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scaling
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 5](ch05.html#ch05) we touched on one of the most valuable aspects
+    of Lambda—its ability to auto-scale without any effort (see [Figure 5-10](ch05.html#data-pipeline-fanout)).
+    In the data pipeline example we used this auto-scaling ability to implement a
+    “fan-out” pattern—processing many small events in parallel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the key to Lambda’s scaling model—if all current instances of a function
+    are currently in use when a new event occurs, then Lambda will automatically create
+    a new instance, *scaling out* the function, to handle the new event.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Eventually, after a period of inactivity, function instances will be *reaped*,
+    *scaling in* the function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From a cost perspective, Lambda guarantees that we are only charged while our
+    function is processing an event, so it costs the same to process one hundred Lambda
+    events serially in one function instance as it does to process them in parallel
+    in one hundred instances (subject to any extra time costs involved in cold start,
+    which we describe later in this chapter).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda scaling has limits, of course, which we’ll examine in a moment, but first
+    let’s take a look at Lambda’s magical auto-scaling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Observing Lambda Scaling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let’s start with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Static and instance members of a function handler’s class are instantiated once
+    per instance of a function. We discuss this further later, in the section about
+    cold starts. Therefore, if we invoke the previous code five times in succession,
+    it will always return the same value for the `instanceID` member.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now let’s change the code a little, adding a `sleep` statement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Make sure if you’re deploying this code to include a `Timeout` configuration
+    of at least six seconds; otherwise, you’ll see a good example of a timeout error!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now invoke the function several times in parallel. One way to do this is by
+    running the same `aws lambda invoke` command from multiple terminal tabs. Depending
+    on how quick on the draw you are for navigating terminal sessions, you’ll now
+    see that different container IDs are returned for different invocations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This behavior is visible because when Lambda receives the second request to
+    invoke your function, the previous container that was used for the first request
+    is still processing that request, so Lambda creates a new instance, automatically
+    scaling out, to handle the second request. This creation of a new instance happens
+    for the third and fourth requests too, if you’re fast enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is an example of invoking the Lambda function directly, but this is the
+    same scaling behavior we see when Lambda is invoked by most event sources, including
+    API Gateway, S3, or SNS, whenever one instance of a Lambda function is not sufficient
+    to keep up with the event load. Magical auto-scaling, without any effort!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scaling Limits and Throttling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: AWS is not an infinite computer, and there are limits to Lambda’s scaling. Amazon
+    limits the number of concurrent executions across all functions per AWS account,
+    per region. By default, at the time of writing, this limit is one thousand, but
+    you can make a support request to have this increased. Partly this limit exists
+    because of the physical constraints of living in a material universe and partly
+    so that your AWS bill doesn’t explode to astronomical proportions!
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you reach this limit, you’ll start to experience *throttling*, and you’ll
+    know this because the account-wide `Throttles` CloudWatch metric for your Lambda
+    functions will suddenly have an amount greater than zero. This makes it a great
+    metric to set a Cloudwatch alarm for (we talked about built-in metrics and alarms
+    in [“Metrics”](ch07.html#metrics)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When your function is throttled, the behavior exhibited by AWS is similar to
+    the behavior that occurs when your function throws an error (which we talked about
+    earlier in this chapter—[“The Various Behaviors of Lambda Error Processing”](#lambda-error-behaviors))—in
+    other words, it depends on the type of event source. In summary:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For synchronous event sources (e.g., API Gateway), throttling is treated as
+    an error and passed back up to the caller as an HTTP status code 500 error.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For asynchronous event sources (e.g., S3), Lambda will retry calling your Lambda
+    function for up to six hours, by default. This is configurable, for example, by
+    using the `MaximumEventAgeInSeconds` property of the [`AWS::Lambda::EventInvokeConfig`
+    CloudFormation resource](https://oreil.ly/by8cO) that we introduced in [“Retries”](#asynchronous-retries).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For stream/queue event sources (e.g., Kinesis), Lambda will block and retry
+    until successful or the data expires.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Stream-based sources may also have other scaling restrictions, for example,
+    based on the number of shards of your stream and the configured [`ParallelizationFactor`](https://oreil.ly/4RSoj).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since the Lambda concurrency limit is account-wide, one particularly important
+    aspect to be aware of is that one Lambda function that has scaled particularly
+    wide can impact every other Lambda function in the same AWS account + region pair.
+    Because of this, it is strongly recommended that, at the very least, you use separate
+    AWS accounts for production and testing—deliberately DoS’ing (denial-of-servicing)
+    your production application because of a load test against a staging environment
+    is a particularly embarrassing situation to explain!
+  prefs: []
+  type: TYPE_NORMAL
+- en: But beyond the production versus test account separation, we also recommend
+    using different AWS “subaccounts” within one AWS “organization” for different
+    “services” within your ecosystem to further isolate yourself from the problems
+    of account-wide limits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Burst limits
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The limits and throttling mentioned refer to the total capacity available to
+    your Lambda functions. However, there’s another limit to be occasionally aware
+    of—the *burst limit*. This refers to *how quickly* (as opposed to *how wide*)
+    your Lambda function can scale. By default Lambda can scale out a function by
+    up to 500 instances every minute, with perhaps a small boost at the beginning.
+    If your workload can burst faster than this (and we’ve seen some that can), then
+    you’ll need to be aware of burst limits and may want to consider asking AWS to
+    increase your burst limit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reserved concurrency
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We just mentioned earlier that one Lambda function that has scaled particularly
+    wide can impact the rest of the account by using all of the available concurrency.
+    Lambda has a tool to help with this—the optional *reserved concurrency* configuration
+    that can be applied to a function’s configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Setting a reserved concurrency value does two things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It guarantees that the particular function will always have up to that available
+    amount of concurrency, no matter what any other functions are doing in the account.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It limits that function to scale *no wider* than that amount of concurrency.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'This second feature has some useful benefits that we discuss in [“Solution:
+    Manage scaling with reserved concurrency”](ch09.html#manage-scaling-with-reserved-concurrency).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are using SAM to define your application’s infrastructure, you can use
+    the `ReservedConcurrentExecutions` property of the `AWS::Serverless::Function`
+    resource type to declare a reserved concurrency setting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread Safety
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Because of Lambda’s scaling model, we are guaranteed that at most one event
+    will be processed per function instance at any one time. In other words, you never
+    need to be concerned about multiple events being processed at the same time within
+    a function’s runtime, let alone within a function object instance. Therefore,
+    unless you create any of your own threads, Lambda programming is entirely thread
+    safe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vertical Scaling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Almost all of Lambda’s scaling capability is “horizontal”—that is, its ability
+    to scale wider to handle multiple events in parallel. This is in contrast to “vertical”
+    scaling—the ability to handle more load by increasing the computational capability
+    of an individual node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda also has a rudimentary vertical scaling option, however, in its memory
+    configuration. We discussed this in [“Memory and CPU”](ch03.html#memory-and-cpu).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Versions and Aliases, Traffic Shifting
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In your experiments with Lambda so far, you may have occasionally seen the string
+    "`$LATEST`" appear. This is a reference to a Lambda function’s *version*. There’s
+    more to versions than just `$LATEST` though, so let’s take a look.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda Versions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Whenever we’ve deployed a new configuration, or new code, for our Lambda functions,
+    we’ve always overridden what came before. The old function was dead, long live
+    the new function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, Lambda supports keeping those old functions around if you want it to,
+    by way of a capability named Lambda Function Versioning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Without using versioning explicitly, Lambda has exactly one version of your
+    function at any one time. Its name is `$LATEST`, which you can reference explicitly;
+    alternatively, if you don’t specify a version (or alias, which we’ll see in a
+    moment), you are also referring implicitly to `$LATEST`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you create or update a function, however, you are able at the time, or
+    some time later, to snapshot that function to a version. The identifier of the
+    version is a linear counter, starting at 1. You can’t edit a version, which means
+    that it only ever makes sense to create a versioned snapshot from the current
+    `$LATEST` version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You invoke a version of a function when calling it explicitly by adding a `:VERSION-IDENTIFIER`
+    to its ARN, or if using the AWS CLI, you can add a `--qualifier` *`VERSION-IDENTIFIER`*
+    parameter to the `aws lambda invoke` command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can create a version using various AWS CLI commands or the web console.
+    You can’t create a version explicitly using SAM, but you can do so implicitly
+    when you use *aliases*, which we’ll explain next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda Aliases
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While you are able to explicitly reference a numbered version of a Lambda function,
+    when using versions, it’s more typical to use an *alias*. An alias is a named
+    pointer to a Lambda version—either `$LATEST`, or a numeric, snapshotted version.
+    An alias can be updated at any time to point to a different version. For example,
+    you may start off pointing to `$LATEST`, but then point to a specific version
+    when you want to add stability to the alias.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You invoke an alias of a function in precisely the same way as you do with a
+    function version—by specifying it in an ARN or in the `--qualifier` argument of
+    the CLI. An event source can be configured to point to a specific alias, and if
+    the underlying alias is updated to point to a new version, then events from the
+    source will flow to that new version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you deploy a Lambda function with SAM, you can define an alias that is
+    automatically updated to point to the latest, published version. You do this by
+    adding the `AutoPublishAlias` property, and giving an alias name as a value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, there’s a much more powerful way of using aliases with SAM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Traffic Shifting
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If you use the `AutoPublishAlias` property of a Lambda function with SAM, all
+    events from an event source immediately get routed to the new version of the function.
+    If something goes wrong, you can manually update the alias to point to the previous
+    version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda and SAM also have functionality to improve this process first by giving
+    the opportunity to split traffic, sending some to the new version and some to
+    the old version. This means that if a problem occurs, and a rollback is required,
+    not all traffic has been impacted by the problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second improvement is that a rollback can automatically be performed if
+    an error is detected, where you have the opportunity to define how the error is
+    calculated in a couple of different ways.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are a number of moving pieces involved in getting this working—Lambda
+    aliases, Lambda alias update policies, and use of the [AWS CodeDeploy](https://oreil.ly/t2gIB)
+    service. Fortunately, SAM does a good job of wrapping all of this up for you so
+    that you don’t need to worry about all of the gory details. The main thing you
+    need to do is add a `DeploymentPreference` property to your Lambda function in
+    your SAM template, which is [thoroughly documented](https://oreil.ly/EhJaS).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A choice you need to make when using traffic shifting is how you want your
+    traffic to be shifted to the new alias. This breaks down into four options:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: All at once
+  prefs: []
+  type: TYPE_NORMAL
+- en: While this may sound the same at first glance as `AutoPublishAlias` it’s actually
+    a lot more powerful, since you have the opportunity to automatically roll back
+    deployment through “hooks,” as we’ll describe in a moment. This is a fully automated
+    implementation of [*Blue Green Deployment*](https://oreil.ly/qowK1) for Lambda.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Canary
+  prefs: []
+  type: TYPE_NORMAL
+- en: Send a small percentage of traffic to the new version, and if it works, then
+    send the remaining traffic; otherwise, roll back.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Linear
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similar to Canary, but send increasing percentages of traffic to the new version,
+    still allowing for rollback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Custom
+  prefs: []
+  type: TYPE_NORMAL
+- en: Decide for yourself how you want traffic to split across the old and new aliases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we mentioned already, a powerful element to this feature is that automatic
+    rollback can be implemented via two different mechanisms—*hooks* and *alarms*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Hook*-triggered rollback is available to any of the previous schemes. You
+    can define *pretraffic hooks* and/or *posttraffic hooks*. These hooks are simply
+    other Lambda functions that will run whatever logic they need to decide whether
+    deployment has been successful—either before any traffic is routed to the new
+    alias or after all traffic has been shifted.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Alarms* are available with schemes that offer gradual traffic shifting. You
+    can define any number of *CloudWatch Alarms* (which we discussed in [“Alarms”](ch07.html#cloudwatch-alarms)),
+    and if any of those alarms transition to their *alarm* state, then a rollback
+    to the original alias will be performed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For more details on Lambda traffic shifting, see the [SAM documentation](https://oreil.ly/SXGLS).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When (Not) to Use Versions and Aliases
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Lambda’s traffic shifting capability is very powerful, and if you don’t already
+    have a canary release scheme upstream of your Lambda code, then it may well be
+    useful for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, apart from traffic shifting, we try to steer away from versions and
+    aliases. We find that they typically add unnecessary complexity, and instead we
+    prefer to use alternative techniques. For example, for separating development
+    and production versions of code, we prefer to use different deployed stacks. For
+    “rolling back” code, our preference is to use a fast-running deployment pipeline,
+    and roll back at the source repository, triggering a new commit through the pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Very occasionally you’ll see that some event sources use, and recommend, using
+    Lambda aliases. One example of this is when integrating Lambda with [AWS Application
+    Load Balancer (ALB)](https://oreil.ly/4U1ZD).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you do use versions and aliases, be aware of a couple of “gotchas,” beyond
+    the function instance warning earlier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Versions do not automatically clean up after themselves, so periodically you’ll
+    want to delete old versions. Otherwise, you may find you hit your account-level
+    “function and layer storage” limit of 75GB.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The default CloudWatch metrics views in the AWS Web Console for Lambda are a
+    little odd when you’re using aliases and versions. Make sure you’re being explicit
+    about which version(s) or alias(es) you want to view data for when you’re using
+    CloudWatch metrics in this way.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cold Starts
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now we move on to the thorny subject of *cold starts*. Depending on who you
+    talk to, cold starts may be a minor footnote in the life of a Lambda developer,
+    or it may be a complete blocker to Lambda even being considered a valid computation
+    platform. We find how best to approach cold starts is somewhere between these
+    two points—worth understanding and treating with rigor, but not a deal-breaker
+    in most situations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But what are cold starts, when do they happen, what impact do they have, and
+    how can we mitigate them? There’s a lot of fear, uncertainty, and doubt (FUD)
+    surrounding cold starts, and we hope to remove some of that FUD for you here.
+    Let’s dive in.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What Is a Cold Start?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Back in [Chapter 3](ch03.html#ch03), we explored the chain of activity ([Figure 3-1](ch03.html#lambda-execution-environment))
+    that occurs when a Lambda function is invoked for the first time—from starting
+    a host Linux environment through to calling our handler function. In between those
+    two activities the JVM will be started, the Lambda Java Runtime will be started,
+    our code will be loaded, and depending on the precise nature of our Lambda function,
+    more may happen besides. We collectively group this chain into something we call
+    a *cold start*, and it results in a new *instance* (an execution environment,
+    a runtime, and our code) of our Lambda function being available to process events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An important point here is that all of this activity occurs *when our Lambda
+    function is invoked*, not before. In other words, Lambda doesn’t create function
+    instances solely when Lambda code is deployed—it creates them *on demand*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, cold starts are special occurrences, rather than something that happens
+    on every invocation, because typically Lambda won’t perform a cold start for every
+    event that triggers our function. This is because once our function has finished
+    executing, Lambda can [*freeze*](https://oreil.ly/YrC-W) the instance and keep
+    it around for a little while in case another event happens soon. If an event does
+    happen soon, then Lambda will *thaw* the instance and call it with the event.
+    For many Lambda functions, cold starts in fact occur less than 1% of the time,
+    but it’s still useful to know when they do occur.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When Does a Cold Start Occur?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A cold start is necessary whenever there is no existing function instance available
+    to process an event. This situation happens at the following times:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a Lambda function’s code or configuration changes (including when the first
+    version of a function is deployed)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When all previous instances have been expired due to inactivity
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When all previous instances have been “reaped” due to age
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When Lambda needs to scale out because all current instances for the required
+    function are already processing events
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Let’s look at these four types of occurrence in a little more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we deploy our function for the first time, Lambda will create an instance
+    of our function, as we’ve already seen. However, Lambda will also create a new
+    instance whenever a function is invoked after we deploy a new version of the function
+    code, or when we change the Lambda configuration of our functions. Such configuration
+    doesn’t just cover environment variables—it also covers runtime aspects like timeouts,
+    memory settings, DLQ, etc.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: A corollary of this is that one instance of a Lambda function is guaranteed
+    to have the same code and configuration no matter how many times it is called.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Lambda will keep function instances around for a little while in case another
+    event happens “soon.” The precise definition of *soon* is not documented, but
+    it can be anywhere between a few minutes and a few hours (and is not necessarily
+    constant). In other words, if your function processes an event, and then a minute
+    later another event occurs, there’s a very good chance the second event will be
+    processed using the same instance of your function that was used to process the
+    first event. However, if there’s a day or more between events, your function will
+    likely experience a cold start for every event. In the past, some people have
+    used a “ping hack” to work around this and keep their function “alive,” but in
+    late 2019 AWS introduced Provisioned Concurrency (see [“Provisioned Concurrency”](#provisioned-concurrency))
+    to solve this kind of concern.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Even if your Lambda event is fairly active, Amazon doesn’t keep instances around
+    forever, even if they’re being used every few seconds. How long AWS will keep
+    instances around is, again, undocumented, but at time of writing we see instances
+    lasting five to six hours, and after that they’re killed off.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, a cold start will occur if all current instances of a function are
+    already busy processing events and Lambda “scales out,” as we described this earlier
+    in this chapter.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Identifying Cold Starts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: How can you tell when a cold start has occurred? There are many ways of doing
+    so, but here are a few.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, you’ll notice a latency spike. Cold starts typically add anywhere from
+    100 milliseconds to 10 seconds to the latency of your function, depending on the
+    makeup of your function. Therefore, if your function typically takes less than
+    that, a cold start will be easy to see in the function’s latency metrics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next you’ll be able to tell when a cold start has occurred due to a way that
+    Lambda’s logging works. As we discussed in [“Lambda and CloudWatch Logs”](ch07.html#lambda-and-cloudwatch-logs),
+    when Lambda functions log, the output is captured in CloudWatch Logs. All of the
+    log output for one function is available in one CloudWatch Log *group*, but each
+    instance of a function will write to a separate log *stream*, within the log group.
+    Therefore if you see the number of log streams within a log group increase then
+    you know a cold start has occurred.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also, you can track cold starts yourself within code. Since the Java object
+    encapsulating your handler is instantiated only once per instance of the actual
+    function runtime, any instance member or static member initialization will happen
+    at cold start, and never again for the lifetime of the function instance. Therefore,
+    if you add a constructor, or static initializer, to your code, it will be called
+    only when the function is experiencing a cold start. You can add explicit logging
+    to your handler class constructor to see a cold start occurring in your function
+    logs. Alternatively, we saw examples of identifying cold starts earlier in this
+    chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can also identify cold starts using X-Ray and some third-party Lambda monitoring
+    tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Impact of Cold Starts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far we’ve described what cold starts are, when they happen, and how you can
+    identify them. But why should you care about cold starts?
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we just mentioned in the previous section, one way to identify a cold start
+    is that you’ll typically see a latency spike in your event processing when one
+    occurs, and this is most often why people are concerned about them. While end-to-end
+    latency of a small Lambda function might be 50 ms in a usual case, a cold start
+    could add *at least* 200 ms to this amount, and, depending on various factors,
+    may add seconds, or even tens of seconds. The reasons that cold starts add latency
+    are because of all the steps that need to occur during creation of a function
+    instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Does this mean that we *always* need to care about cold starts? That depends
+    a lot on what your Lambda function is doing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For instance, say your function is asynchronously processing objects created
+    in S3, and you are ambivalent as to whether it takes minutes to process such objects.
+    Do you care about cold starts in this situation? Probably not. Especially when
+    you consider that S3 has no guaranteed subsecond delivery of events anyway.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here’s another example of where you likely won’t care too much about cold starts:
+    say that you have a function that is processing messages from Kinesis, that each
+    event takes about 100 ms to process, and that there’s typically always enough
+    data to keep your Lambda functions busy. In this case, one instance of your Lambda
+    function may process 200,000 events before it gets “reaped.” In other words *cold
+    starts might only affect 0.0005% of Lambda invocations*. Even if a cold start
+    added 10 seconds to your startup latency, it’s highly likely that you’ll be OK
+    with such an impact in this scenario, when you consider amortizing that time over
+    the lifetime of an instance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, say you’re building a web application, and there’s a particular
+    element that calls a Lambda function, but that function gets called in AWS only
+    once per hour. This might mean you’re getting a cold start every time the function
+    is invoked. Further, let’s say for this particular function that the cold start
+    overhead is five seconds. Is this a problem? It might be. If so, can this overhead
+    be reduced? Perhaps, and we’ll talk about that in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although the concern with cold starts is almost always about latency overhead,
+    it’s also important to note that if your function loads data from a downstream
+    resource at startup, it will be doing that every time a cold start occurs. You
+    may want to consider this when you’re thinking about the impact your Lambda functions
+    have on downstream resources, especially when all of your instances cold start
+    after a deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mitigating Cold Starts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Cold starts will always occur with Lambda, and unless we use Provisioned Concurrency
+    (described in the next section), such cold starts will always, occasionally, affect
+    our function’s performance. If cold starts are causing you a problem, there are
+    various techniques you can use to mitigate their impact. Just make sure that they
+    really are causing you a problem, though—like other forms of performance optimization,
+    you want to make sure you do this work only if it’s truly necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reduce artifact size
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Often the most effective tool in reducing cold start impact is to reduce the
+    size of our code artifact. We can do that in two main ways:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reduce the amount of our own code in the artifact to just that needed by the
+    Lambda function (where “amount” means both size and number of classes).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Prune dependencies so that only libraries that our Lambda function needs are
+    stored in the artifact.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There are a couple of follow-on techniques here. First, create a different artifact
+    for each of your Lambda functions, and execute the tasks for each artifact. This
+    was the point of the effort we went to in [Chapter 5](ch05.html#ch05) when we
+    created the multimodule Maven project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, if you want to optimize library dependencies further, then consider
+    *breaking depended-upon libraries apart to just the code you need*. And perhaps
+    even re-implement library functionality in your own code. Obviously there’s some
+    work necessary here to do this correctly and safely, but it might be a useful
+    technique for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These techniques reduce cold starts in two ways. First, there’s simply a smaller
+    artifact to copy and unpack before the runtime starts. But furthermore, there’s
+    less code for your runtime to load and initialize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All of these techniques are somewhat unusual in modern server-side software
+    development. We’ve become used to being able to add dependencies willy-nilly to
+    our projects, creating multi-hundred-megabyte deployment artifacts while Maven
+    or NPM “download the internet.” This is typically sufficient in traditional server-side
+    development since disk space is cheap, networks are fast, and most importantly,
+    we don’t care too much about startup time for our servers, at least not on the
+    order of a few seconds here and there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But with functions as a service (FaaS), and Lambda in particular, we care about
+    startup time to a much more significant extent, so we need to be more judicious
+    with how we build and package our software.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To prune dependencies in JVM projects, you may want to consider using the [Apache
+    Maven Dependency plug-in](https://oreil.ly/RZYMF), which will report on how dependencies
+    in your project are used, or a similar tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use a more load-speed-efficient packaging format
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: As we called out in [Chapter 4](ch04.html#ch04), [AWS recommends](https://oreil.ly/_S6Bb)
+    the ZIP file approach to packaging a Lambda function, over the uberjar approach,
+    because it decreases the time Lambda needs to unpack your deployment artifact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reduce startup logic
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Later in this chapter, we’ll look at state in Lambda functions. Despite what
+    you may have heard, Lambda functions aren’t stateless; they just have an unusual
+    model when it comes to thinking about state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A fairly common thing to do with Lambda functions is to create or load various
+    resources when the function is first invoked. We saw this to a small extent in
+    the examples in [Chapter 5](ch05.html#ch05) when we initialized our serialization
+    libraries and SDKs. However for some functions, it makes sense to grab this idea
+    by the horns and create a large local cache, loaded from some other resources,
+    in the name of more quickly handling events during the lifetime of the instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Such startup logic doesn’t happen for free though, and will increase cold start
+    time. If you are loading initial resources at cold start, you may find that you
+    have a trade-off to make between how much you improve the performance of subsequent
+    invocations versus how long the initial invocation takes. If possible, you may
+    want to consider if you can gradually “warm” your function’s local cache over
+    a series of initial invocations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: One big cause of slow startup is the use of application frameworks like Spring.
+    As we discuss later (see [“Lambda and Java Application Frameworks”](#java-application-frameworks)),
+    we strongly discourage the use of such frameworks with Lambda. If cold starts
+    are causing you a problem, and you’re using an application framework, then we
+    recommend your first course of action should be to investigate whether you can
+    remove the framework from your Lambda function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Language choice
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Another area that can impact cold start time is the choice of language runtime.
+    JavaScript, Python, and Go simply take less time to start up than the JVM or .NET
+    runtime. Therefore, if you’re writing a small function that isn’t called often,
+    and you care about reducing cold start impact as much as possible, you may want
+    to use either JavaScript, Python, or Go over Java, all other development aspects
+    being equal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because of this difference in startup time, we often hear people dismiss the
+    JVM and .NET runtimes as Lambda runtimes in general, but this is a short-sighted
+    opinion. For instance, in the situation we described earlier with the Kinesis
+    processing function, what if, on average, the JVM function took 80 ms to process
+    an event, but a JavaScript equivalent took 120 ms? In this case, you would literally
+    be paying twice as much for the JavaScript version of your code to run (since
+    billable Lambda time is rounded up to the next 100 ms). In this situation, JavaScript
+    may be the wrong choice of runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s perfectly possible to use alternative (non-Java) JVM languages within Lambda
+    (which we talk about more at the end of this chapter). One important aspect to
+    remember, though, is that typically these languages come with their own “language
+    runtimes” and libraries, and both of these will increase cold start time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, on the topic of language choice, it’s worth keeping some perspective
+    when it comes to impact of language on cold start, or event-processing, performance.
+    The most important factor in language choice is how effectively you can build
+    and maintain your code—the human element of software development. The cost of
+    runtime performance differences between Lambda language runtimes may pale in comparison
+    with this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory and CPU
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Certain aspects of your function’s configuration can also affect cold start
+    time. One of the primary examples of this is the `MemorySize` setting you choose.
+    A larger memory setting also gives more CPU resources, and therefore a larger
+    memory setting may speed up the time it takes your JVM code to JIT compile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Until late 2019, another configuration setting of a Lambda function that could
+    significantly increase cold start time was whether you were using a *virtual private
+    cloud (VPC)*. We discuss VPCs in general later in this chapter, but for now all
+    you need to know is that if you see any documentation anywhere warning of awful
+    Lamdba startup times because of VPCs, then you can sit happy in the knowledge
+    that this has now been resolved. For more details on what AWS did to improve this,
+    see [this article](https://oreil.ly/UnES6).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Provisioned Concurrency
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In late 2019 AWS announced a new Lambda feature—*Provisioned Concurrency*.
+    Provisioned Concurrency (PC) allows an engineer to effectively “pre-warm” Lambda
+    functions, thereby removing (almost) all of the impact of cold starts. Before
+    we describe how to use this feature, here are some important caveats:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'PC breaks the request-based cost model of Lambda. With PC you pay whether your
+    functions are invoked or not. Using Lambda with PC therefore negates one of the
+    main benefits of serverless: costs that scale to zero (see [“FaaS as Implemented
+    by Lambda”](ch01.html#lambda-as-faas)).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To avoid paying for costs related to peak usage, you need to manually configure
+    AWS Auto Scaling with PC (see [this AWS blog article on how to implement this](https://oreil.ly/9x0D6)).
+    This is extra operational overhead on your part.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: PC adds significant deployment time overhead. In our experiments, at the time
+    of writing, deploying a Lambda function with a PC setting of 1 (see below as to
+    what this means) has an overhead of about four minutes. Using a setting of 10
+    or 100 is about seven minutes.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: PC requires using either versions or aliases, which we described earlier in
+    this chapter (see [“Versions and Aliases, Traffic Shifting”](#versions-and-aliases)).
+    As we mentioned in that section, we do not recommend using versions or aliases
+    in most cases, due to the extra complexity they bring.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Given these significant caveats, our recommendation is that you only reach for
+    Provisioned Concurrency if you *absolutely need to*. As we mention in the summary
+    of this section, we find that most teams that are concerned initially about cold
+    starts find that they are of no effective consequence once they start using Lambda
+    at scale in production, especially if the teams follow the other advice we give
+    in this chapter about cold start mitigation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, we’ve told you why you almost certainly shouldn’t use Provisioned Concurrency,
+    let’s talk about what it is!
+  prefs: []
+  type: TYPE_NORMAL
+- en: PC, at its simplest, is a numerical value (*n*) that tells the Lambda platform
+    to always have *at least* *n* execution environments of your function in a “warm”
+    state. “Warm” here means that the execution environment has been created, and
+    your Lambda function handler code has been instantiated. In fact, the entire execution
+    chain (see [Figure 3-1](ch03.html#lambda-execution-environment)) is performed
+    during warming, apart from actually calling your handler method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since under a PC context Lambda won’t call a nonwarmed function (apart from
+    one caveat about scaling, which we’ll describe in a moment), this guarantees that
+    you won’t have any performance-impacting cold starts at all! In other words, *all*
+    of your function invocations will respond in their regular “warm” time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another nice aspect to PC is that it is defined solely in deployment configuration—no
+    change to your code is required to use it (although you may want to change your
+    code, as we will describe about code instantiation in a moment).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look at an example. Say that we have the following function configured
+    in our SAM template:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The new lines here are those last three. First you’ll see that we’re using an
+    alias—PC requires configuring a `ProvisionedConcurrentExecutions` value for each
+    version or alias that we want PC for. We can’t configure a `ProvisionedConcurrentExecutions`
+    value for `$LATEST`—the default version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, we then specify that we want to always have one instance of
+    our Lambda function pre-warmed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we deploy this function for the first time, Lambda will instantiate the
+    Java class `HelloWorld`, which contains our handler, even before any invocations
+    occur. Then, when an event is received for the function, Lambda calls this pre-warmed
+    function. When we *redeploy* the function, Lambda will keep routing requests to
+    the old (warm) version and start using the new version only once all the provisioned
+    instances for that version have been created. Again, this makes sure that function
+    invocation isn’t impacted by cold starts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In other third-party Lambda documentation, you may see recommendations to use
+    a secondary, scheduled, “ping” function that calls the application function, to
+    avoid cold starts. PC, with a setting of 1, in almost any case is a more effective
+    replacement of such a mechanism.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let’s cover a few details you should be aware of.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, pricing. As mentioned, PC has (at the time of writing) a different cost
+    model to regular “on-demand” Lambda. As described in [“How Expensive Is Lambda?”](ch03.html#how-expensive-is-lambda),
+    on-demand Lambda costs are based on how many requests your Lambda function receives
+    and how long your Lambda function is executing (duration). For PC you still pay
+    the request cost, and a (smaller) amount for duration, but you *also* pay a charge
+    for the entire time your function is deployed, not just when it is processing
+    requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s build on [“How Expensive Is Lambda?”](ch03.html#how-expensive-is-lambda),
+    specifically the example for the web API. Our cost estimate for just on-demand
+    Lambda was $21.60/month. How much does it cost using Provisioned Concurrency?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Again, we’ll assume 512-MB RAM, less than 100 ms to process a request and 864,000
+    requests/day. Let’s start with using a PC value of 10, since that’s what we expect
+    to peak up to. In this scenario, our Lambda costs are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The request cost is unchanged at $5.18/month.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The duration cost is 0.1 × 864000 × 0.5 × $0.000009722 = $0.42/day, or $12.60/month.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Provisioned Concurrency cost is 10 × 0.000004167 × 0.5 × 86400 = $1.80/day,
+    or $54/month.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The total cost therefore has increased by a little over three times from approximately
+    $22/month to $72/month. Yikes!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, this is likely a “worst case” since we are setting PC at peak. One option
+    we have is to manually configure auto-scaling for PC. This is described on the
+    [AWS blog introducing PC](https://oreil.ly/8p8K6). Let’s say that doing this means
+    our PC configuration averages around 2. In this case, our total costs are $29/month.
+    This is still 30% more expensive than on-demand, plus now we have the added complexity
+    of managing PC auto-scaling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are some scenarios where if you have a very consistent usage model, then
+    PC works out cheaper than on-demand, but in most cases you should expect to pay
+    a significant overhead to use PC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another issue related to costs is that you probably want to have different configuration
+    for development versus production to avoid paying “always-on” costs for development
+    environments. You can do this using CloudFormation techniques, but again this
+    is extra mental overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That’s enough about costs. Let’s move on to a different subject!
+  prefs: []
+  type: TYPE_NORMAL
+- en: What happens if at a certain point in time you have more invocations than your
+    PC configuration? As we looked at earlier in this chapter, we know that Lambda
+    always increases the number of active execution environments to satisfy load.
+    For example, say that Lambda needs to use an 11th execution environment for your
+    function, but you have a PC setting of 10—what happens now? In this case, Lambda
+    will spin up a new execution environment in the “traditional” on-demand model
+    to cover the extra load. You will be charged for this extra capacity in the usual
+    on-demand fashion, but be warned—the first event using that new extra environment
+    will also incur cold-start latency in the normal way!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, a quick note on making the most of PC. AWS has been doing a great job
+    over the last few years in reducing the *platform* overhead of cold starts, so
+    the main point of PC is mostly to mitigate *application* overhead—the time taken
+    to instantiate your language runtime, code, and handler class. This last element—class
+    instantiation—is important since your handler class constructor is called during
+    pre-warming. Therefore, you’ll want to move as much application setup as possible
+    to class and object instantiation time and not do this in the handler method itself.
+    We’ve used this pattern throughout the book, but it’s especially important if
+    you’re using PC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given all of our dire warnings about using PC, when do we recommend using it?
+    Here are a few scenarios where we can imagine PC being useful:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you have a Lambda function called very infrequently (say once per hour,
+    or longer) that you always want to return quickly (subsecond), and you are willing
+    to pay the cost overhead.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If your application has extreme “burst” scale scenarios (see [“Burst limits”](#burst-limits))
+    that Lambda can’t handle by default, then you can pre-warm sufficient capacity.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If your function itself has significant code-level cold-start time (e.g., several
+    seconds) that is not sufficient for application performance, and you have no other
+    way to mitigate this. This is typical if you’re using a heavyweight application
+    framework within your Lambda code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cold Start Summary
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Cold starts might be nothing you need to ever spend too much effort on, depending
+    on what you use Lambda for, but it’s certainly a topic that you should be aware
+    of, since how cold starts are mitigated often runs counter to how we typically
+    build and package systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We mentioned *FUD* around cold starts earlier, and cold starts are also often
+    “thrown under the bus” for latency problems that turn out to actually have nothing
+    to do with cold starts at all. Remember to perform proper latency analysis if
+    you’re having latency concerns—make sure your actual problem isn’t, for example,
+    how your code is interacting with a downstream system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also make sure to continue to test latency over time, especially if you rule
+    out a certain use of Lambda because of cold starts. AWS has made, and continues
+    to make, significant improvements in this part of the Lambda platform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our experience, cold starts concern teams when they first use Lambda, especially
+    under spiky development loads, but once they see how Lambda performs under production
+    loads, they often never worry about cold starts again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: State
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Almost any application needs to consider state. Such state may be *persistent*—in
+    other words, it captures data that is required to fulfill subsequent requests.
+    Alternatively, it may be *cached* state—a copy of data that is used to improve
+    performance, where the persisted version is stored elsewhere.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite how it’s occasionally perceived, Lambda is *not* stateless—data can
+    be stored in memory and on disk both during and across requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In-memory state is available via a handler method’s object and class members—any
+    data loaded into such members is available the next time that function instance
+    is invoked again, and a Lambda function can have up to a total of 3GB RAM (some
+    of that will be used by the Lambda runtime).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda function instances also have access to 512MB of local disk storage in
+    */tmp*. While this state is not automatically shared across function instances,
+    it will, again, be available for subsequent invocations of the same function instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, the nature of Lambda’s runtime model significantly impacts how such
+    state can be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Persistent Application State
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The way that Lambda creates function instances, especially in the way that it
+    scales, has significant implications on architecture. For example, we have absolutely
+    no guarantee that sequential requests, for the same upstream client, will be handled
+    by the same function instance. There is no “client affinity” for Lambda functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that we *cannot assume* that any state that was available locally
+    (in-memory, or on local disk) in a Lambda function for one request will be available
+    for a subsequent request. This is true whether our function scales or not—scaling
+    just underlines the point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, all persistent application state that we want to keep across Lambda
+    function invocations must be *externalized*. In other words, this means that any
+    state we want to keep beyond an individual invocation has to be either stored
+    downstream of our Lambda function—in a database, external file storage, or other
+    downstream service—or it must be returned to the caller in the case of a synchronously
+    called function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This might sound like a massive restriction, but in fact this way of building
+    server-side software is not new. Many people have been espousing the virtues of
+    the [*12-factor architecture*](https://12factor.net/) for years, and this aspect
+    of externalizing state is expressed within the sixth factor of that paradigm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That being said, this definitely is a constraint of Lambda, and may require
+    you to significantly re-architect existing applications that you want to move
+    to Lambda. It may also mean that some applications that require particularly low
+    latency to state (for example, gaming servers) are not good candidate applications
+    for Lambda, nor are those that require a large data set in memory in order to
+    perform adequately.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are various common services that people use to externalize their application
+    state with Lambda:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: DynamoDB
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'DynamoDB is the NoSQL database of AWS. We used DynamoDB in the API example
+    in [“Example: Building a Serverless API”](ch05.html#serverless-api-example). The
+    benefits of DynamoDB are that it is fast, fairly easy to operate and configure,
+    and has very similar scaling properties to Lambda. The chief drawback to DynamoDB
+    is that modeling data can get tricky.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: RDS
+  prefs: []
+  type: TYPE_NORMAL
+- en: AWS has various relational databases that it groups in the Relational/SQL Database
+    Service (RDS) family, and all of these are available for use from Lambda. One
+    fairly new option within this family is [*Aurora Serverless*](https://oreil.ly/2Kc4E)—an
+    auto-scaling version of Amazon’s own *Aurora* MySQL and Postgres engines, made
+    for serverless applications. The benefits of using a SQL database over a NoSQL
+    one are decades of experience building such applications. The drawbacks, versus
+    DynamoDB at least, typically are higher latencies and more operational overhead
+    (with nonserverless RDS).
+  prefs: []
+  type: TYPE_NORMAL
+- en: S3
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simple Storage Service (S3)—which we’ve used several times throughout this book—can
+    be used as a data store for Lambda. It’s simple to use, but isn’t particularly
+    low latency, and also has limited querying capabilities in comparison with one
+    of the database services, unless you also use [Amazon Athena](https://aws.amazon.com/athena).
+  prefs: []
+  type: TYPE_NORMAL
+- en: ElastiCache
+  prefs: []
+  type: TYPE_NORMAL
+- en: AWS offers a managed version of the Redis persistent cache application as part
+    of its [ElastiCache](https://aws.amazon.com/elasticache) family. Of these four
+    options, ElastiCache typically offers the fastest performance, but since it isn’t
+    a true serverless service, it does require some operational overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Custom downstream service
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternatively, you may choose to implement your own in-memory persistence in
+    a downstream service, built using traditional designs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: AWS continues to make interesting developments in this area, and we recommend
+    that you investigate all recently announced advances whenever you pick a persistence
+    solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Caching
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While we can’t rely on Lambda’s state capabilities for persistent application
+    state, we absolutely can use them for caching data that is also stored elsewhere.
+    Put another way, while it’s true that we have no guarantee that one Lambda function
+    instance will be called multiple times, we do know that it *probably will be*,
+    depending on invocation frequency. Because of this, cache state is a candidate
+    for Lambda’s local storage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can use either or both of Lambda’s in-memory or on-disk locations for cached
+    data. For example, say that we always need a set of fairly up-to-date reference
+    data from a downstream service to process an event, but “fairly up-to-date” is
+    on order of “valid within the last day.” In this case, we can load the reference
+    data once, for the first invocation of the function instance, and then store that
+    data locally in a static or instance member variable. Remember—our handler function
+    instance object will be instantiated only once per runtime environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As another example, say that we want to call an external program or library
+    as part of our execution—Lambda gives us a full Linux environment with which to
+    do this. That program/library may be too big to fit in either a Lambda code artifact
+    (which is restricted to at most 250MB when uncompressed) or even a Lambda layer
+    (see later in this chapter about layers). Instead, we can copy the external code
+    from S3 to */tmp* the first time we need it for a function instance, and then
+    for subsequent requests for that instance the code will be available locally already.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both of these examples relate to state that consists of chunks of data—application
+    data, or libraries and executables. Another form of state in our Lambda applications
+    are the runtime structures of our code itself, including those that represent
+    connections to external services. These runtime structures either may take some
+    amount of time to create when the function is invoked, or in the case of connections
+    to services may take time to initialize, e.g., for authentication procedures.
+    In either case, in Lambda, we will very often store these structures in program
+    elements that live longer than the call to the method itself—in Java this means
+    storing them in instance or static members.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We showed examples of this earlier in the book. For example in [Chapter 5](ch05.html#ch05)
+    at [Example 5-3](ch05.html#EX5-3) we store the following in instance members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ObjectMapper` instance, because that is a program structure that takes
+    some time to instantiate
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The DynamoDB client, which is a connection to the external DynamoDB service
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: While we typically use this form of object caching for performance reasons in
+    certain situations, it can also significantly improve the cost effectiveness of
+    our overall system—see [“Lambda Runtime Model and Cost Impact on Downstream Systems”](ch09.html#cache-to-improve-costs)
+    for more detail on this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sometimes Lambda’s own state capabilities are insufficient—for example, our
+    total cache state might be too large to fit in memory, too slow to load up during
+    a cold start, or update frequently (updating a locally cached version in a Lambda
+    function is a tricky thing to manage, although it can be done). In such a case,
+    you may choose to use one of the persistence services mentioned in the previous
+    section as a caching solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda and Java Application Frameworks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: So far in this book most of our guidance has been how to use AWS Lambda, with
+    a few warnings along the way. We’re now going to take a brief tangent and talk
+    about something we *don’t* recommend doing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Over the last two decades it’s been very common to build server-side Java applications
+    using some kind of container and/or framework. Back in the early 2000s, “Java
+    Enterprise Edition” (J2EE) was all the rage, with application servers like WebLogic,
+    WebSphere, and JBoss allowing you to build your apps with the Enterprise JavaBeans
+    (EJB) or Servlet framework. For those of you not around then we can promise you,
+    from personal experience, that this was not a whole bunch of fun.
+  prefs: []
+  type: TYPE_NORMAL
+- en: People realized that these big servers were often unwieldy and/or expensive,
+    and so they have been largely replaced by more “lightweight” equivalents, of which
+    Spring is the most common. Spring itself has evolved along the way, of course,
+    into Spring Boot, and people also use various Java web frameworks to build applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because there is so much institutional knowledge in our industry on how to build
+    “Java applications” with these tools, there’s a very large temptation to carry
+    on using them, and just port the runtime from a running process to a Lambda function.
+    AWS has even put significant effort into supporting precisely this way of thinking,
+    via the [serverless Java Container](https://oreil.ly/T_ruW) project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While we admire AWS’s desire to “meet people where they are” in this way, we
+    *strongly discourage* the use of most Java frameworks when building applications
+    with Lambda, for the following reasons.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, building a complete app in a single Lambda function misses the fundamental
+    point of Lambda. Lambda functions are meant to be small, individual, short-lived
+    functions that are event-driven, and programmed to accept a specific input event.
+    “Java applications,” on the other hand, are literally servers that have a lifecycle
+    and state, and are typically designed to handle multiple types of request. If
+    you’re building miniservers, you’re not thinking serverlessly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, most application servers assume that there is some amount of shared state
+    from request to request. While it’s possible not to work this way, it’s not a
+    natural-feeling way of working in these environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another reason we think this is a bad idea is that it detracts from the value
+    provided by other AWS serverless services. For example, with the AWS project mentioned
+    earlier, API Gateway is used, but in a “full proxy” mode. Here’s a snippet from
+    the SAM template from the [Spring Boot example](https://oreil.ly/KZYj3):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using API Gateway in this way means that all requests, no matter the path, are
+    sent to one Lambda function, and routing behavior needs to be implemented in the
+    Lambda function. While Spring Boot can do that, (a) API Gateway will give you
+    that functionality for free, and (b) it clutters up your Java code to keep it
+    in the Lambda function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Earlier in the book we mentioned that on the whole we’re wary of using too many
+    API Gateway features; for example, see the discussion of request and response
+    mapping in [“API Gateway Proxy Events”](ch05.html#api-gateway-proxy-events). However,
+    we feel that removing routing is typically a step too far down the line of abstracting
+    out the use of API Gateway.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we discussed earlier on in the section on cold starts, application frameworks
+    typically slow down function initialization. While some people may argue that
+    this is a good case to use Provisioned Concurrency, we would counter that this
+    is a Band-Aid and not a solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, container and framework-based apps tend to have large distributable
+    artifacts—partly because of the number of libraries depended upon, and partly,
+    again, because such apps usually implement a number of functions. Throughout this
+    book we’ve been attempting to reduce the size of artifacts by minimizing dependencies,
+    and dividing up applications into multiple distributable elements, all in the
+    name of keeping our Lambda functions clean and lean. Using an application framework
+    runs counter to this way of thinking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In summary, building Java Lambda applications in this way is really a “square
+    peg and round hole problem.” Yes, you can make it work, but it’s inefficient,
+    and you won’t get all the benefits of Lambda if you work in this way. There’s
+    a real danger of hitting a “local maximum” of value from Lambda, and assuming
+    that there are no further upsides.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So if we don’t recommend using these frameworks, how do we suggest you use your
+    hard-earned knowledge and skills?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Typically we find that programmers switching to “pure” Lambda development don’t
+    take too long to shake off the frameworks they’ve been used to. There’s a certain
+    “lightness” that comes with just writing a handler function. Also, there’s nothing
+    wrong with bringing along old Java code to the party, as long as it’s not too
+    ingrained in an application framework. If you can extract your domain logic into
+    something that just expresses your business needs, then you’re on the right path.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also, it’s still fine to use an ethos of “dependency injection” (DI), which
+    the frameworks often provide. You may choose to “hand roll” such DI (our preference),
+    as you’ve seen in some of the examples (see [“Add Constructors”](ch06.html#add-constructors)).
+    Alternatively, you can try to use a framework to provide just dependency injection,
+    without the other features they often come with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Virtual Private Clouds
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In all of our examples so far any external resources called by a Lambda function
+    have been secured via HTTPS/"layer 7” authentication. For example, when we called
+    DynamoDB in the serverless API example in [Example 5-3](ch05.html#EX5-3), that
+    connection was secured solely by credentials that were passed to DynamoDB from
+    our Lambda function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In other words, DynamoDB is not a “firewalled” service—it sits open to the internet,
+    and any machine anywhere else on the internet can connect to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While this brave new world of “firewall-less” computing is gathering pace, there
+    are still many situations where a Lambda function is going to need to connect
+    to a resource that is shielded behind some kind of IP-address limited protection.
+    A common way of doing that with AWS is to use a VPC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: VPCs are a lower-level piece of infrastructure than anything else we’ve discussed
+    so far in the book. They require understanding things like IP addresses, elastic
+    network interfaces (ENIs), CIDR blocks, and security groups, and also expose the
+    fact to us that AWS regions are made up of multiple AZs. In other words, “Here
+    be dragons!”
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Lambda functions can be configured to be able to access a VPC. Three typical
+    reasons a Lambda function would need this are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To be able to access an RDS SQL database (see [Figure 8-2](#lambda-with-vpc))
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To be able to access ElastiCache
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To be able to call an internal microservice running on a container cluster using
+    IP/VPC-based security
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![images/ch08_image02.png](assets/awsl_0802.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-2\. Lambda attached to VPC to access RDS database
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: You should configure Lambda to use a VPC only if it actually needs it. Adding
+    a VPC is not “free”—it impacts other systems, it changes the behavior of how Lambda
+    interacts with other services, and it adds complexity to your configuration and
+    architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further, we recommend you configure Lambda to use a VPC only if either (a) you
+    understand VPCs and the implications of doing so or (b) you’ve discussed this
+    requirement with another team in your organization that understands this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the rest of this section, we assume that you understand, broadly, VPCs in
+    general, but not necessarily any specifics with Lambda and VPCs. As such, there
+    are certain VPC terms, like ENIs and security groups, which we’ll mention but
+    not explain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Architectural Concerns of Using Lambda with a VPCs
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Before you even enable Lambda to use a VPC, there are a few things to be aware
+    of that might change your mind!
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, each *subnet* you specify in your VPC configuration is specific to an
+    AZ. One of the nice things about Lambda is that we’ve completely ignored AZs until
+    this point. If you’re using Lambda + VPC, you need to make sure you configure
+    enough subnets, across enough AZs, to allow you to continue to have the level
+    of high availability (HA) you need.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, when a Lambda function is configured to use a VPC, then *all* network
+    traffic from that Lambda will be routed through the VPC. That means if your Lambda
+    function is using non-VPC AWS resources (like S3) or is using resources *external*
+    to AWS, then you’ll need to consider network routing for those resources, just
+    like you would any other service within the VPC. For instance, for S3 you’ll likely
+    want to set up a VPC endpoint, and for external services you’ll need to make sure
+    your NAT Gateway is correctly configured.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configuring Lambda to Use a VPC
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You’ve read all the warnings, and you’ve figured out which subnets and security
+    groups to use. How do you now actually configure your Lambda to use a VPC?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fortunately, SAM comes to the rescue, and makes it fairly simple. By examining
+    the [example provided by AWS](https://oreil.ly/388NC) (slightly trimmed), we can
+    see the additions that you need to make to each Lambda function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In summary, you need to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add privileges for the Lambda function to attach to the VPC (e.g., by using
+    `VPC AccessPolicy`)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Add VPC configuration, with a list of security group IDs, and subnet IDs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: And that’s it! This particular example assumes that you’ll use [CloudFormation
+    parameters](https://oreil.ly/0xs3v) to pass in the actual security group and subnet
+    IDs at deployment time, but you should feel free to hardcode them in your template
+    too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternatives
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Say that all of our dire warnings were enough to put you off of using VPCs with
+    Lambda. What should you do instead? Here are a few approaches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first is to use roughly equivalent services that don’t require a VPC. For
+    example, if you were going to use a VPC to access an RDS database, consider using
+    DynamoDB instead (although we do acknowledge that DynamoDB is not a relational
+    database!). Or think about using Aurora serverless, and its [Data API](https://oreil.ly/uf2KE).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next is to re-architect your solution. For example, instead of calling a downstream
+    resource directly, would it be possible to use a message bus as an intermediary?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Third—if what you needed to connect to was an internal service, then consider
+    giving that internal service a “layer 7” authentication boundary. One way to do
+    this is to add an API Gateway to your internal service (or update an existing
+    API Gateway if it already has one), and then use API Gateway’s [IAM/Sigv4 authentication
+    scheme](https://oreil.ly/RJVSO).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, if you can’t modify your service, you could do something similar to
+    the previous idea, but in this case use [API Gateway as a proxy](https://oreil.ly/OKiid)
+    to your downstream service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, there is one more option—wait and see what AWS introduces next! For
+    example, the Data API for serverless Aurora that we mentioned is fairly new, and
+    signals that there may be more functionality coming that will help Lambda developers
+    avoid the perils of VPCs!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Layers and Runtimes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'If you take a look at one of your Lambda functions in the AWS Web Console,
+    you’ll now know what almost everything on there is for. Roles, environment variables,
+    memory, VPCs, DLQs, reserved concurrency, and more. However, for the observant
+    among you, you’ll see that there’s something towards the top of the page that
+    is an omission so far: *layers*. To close out this chapter, we’ll explain what
+    layers are, why you (as a Java developer) probably won’t care about them too much,
+    and how they relate to another capability known as *custom runtimes*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What Are Layers?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As you know by now, typically when you deploy a new version of a Lambda function,
+    you package up the code and all of its dependencies into a ZIP file, and upload
+    that file to the Lambda service. As your dependencies get bigger, however, this
+    artifact gets bigger, and deployment slows down. Wouldn’t it be nice to be able
+    to speed this up?
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is where Lambda layers come in. A layer is part of the deployed resources
+    of your Lambda function, which is deployed separately from the function itself.
+    If your layer stays constant, then when you deploy your Lambda function, you only
+    need to deploy the changes to your code that aren’t within the layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here’s an example. Say that you are implementing the photo processing example
+    from way back in [Chapter 1](ch01.html#ch01) ([“File processing”](ch01.html#file-processing-example)),
+    and say that the actual part of your Lambda function that performs the image manipulation
+    uses a third-party tool like [ImageMagick](https://imagemagick.org/index.php).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, ImageMagick is probably a dependency that changes rarely. With Lambda layers
+    you can define a layer (which is just a ZIP artifact containing any content that
+    you want) that contains the ImageMagick tool, and then refer to that layer with
+    your code in the photo processing Lambda. Now when you update your Lambda function,
+    you’ll only need to upload your own code, not your code *and* ImageMagick.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: ImageMagick is often used by calling an external process from your application,
+    rather than via a library API call. It’s perfectly OK to call an external process
+    like this from within a Lambda function—the Lambda runtime is a full Linux environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another useful aspect to layers is that you can share layers across Lambda functions,
+    and other AWS accounts—layers can in fact be shared publicly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When to Use, and Not Use, Layers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When layers were announced, certain parts of the Lambda-using world were very
+    excited, since they saw layers as a universal dependency system for Lambda functions.
+    This was especially true for people using the Python language, since Python’s
+    dependency management tools can be a little tricky for some people (e.g., your
+    authors!) to wrap their heads around. The Java ecosystem however, for all its
+    faults, has a very strong story to tell around dependency management.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We feel that there are some specific times when layers are useful. However,
+    there are also a number of concerns that we have about embracing them wholeheartedly,
+    for example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since layers are combined with your Lambda function after you’ve uploaded the
+    function, it’s not necessarily true that the version of a dependency you’ve used
+    at test time (before deployment) is the same as that which is used with the deployed
+    version. This, to us, is a (typically) unnecessary headache of coordination that
+    needs to be managed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lambda functions are limited to the number of layers that can be used (five),
+    and so if you have more than five dependencies, you’re going to need to use a
+    local deployment tool anyway, so why add the extra complexity of layers?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Layers don’t particularly provide any functional benefit—they are a deployment
+    optimization tool (we’ll talk about cross-cutting behavior as a caveat for this).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Particularly for developing Lambda in Java—Java does a pretty good job of defining
+    its “own world.” For example, it’s usual to only depend on third-party code in
+    Java that itself runs in the JVM, as opposed to calling out to system libraries
+    or executables. Given this, and the ubiquity of Maven dependencies, it’s easy
+    to have one consolidated dependency management system with a Java application
+    that doesn’t include the use of Lambda layers.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Some people like the fact that a layer can be manually updated for a function
+    without having to deploy a new version of the function itself. We personally believe
+    strongly that apart from extenuating circumstances, the best way to deploy any
+    changes to production is through an automated continuous delivery process, and
+    therefore the difference between changing an application library dependency versus
+    a configured template layer dependency should almost always be moot.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We’d be remiss if we didn’t also point out the places that layers can be useful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, if part of what a Lambda function executes is unrelated to the application,
+    but more related to an organization’s cross-cutting technical platform, then using
+    layers as an alternative deployment path can be useful. For example, say that
+    there is a security process that needs to be run, but as far as application developers
+    are concerned, it’s just a “fire-and-forget” call. In this case, publishing that
+    code in a layer, and being able to query all the Lambda function configurations
+    across an organization and making sure they’re using the correct version of the
+    layer, aids in organizational governance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another place where layers are useful is where a dependency is a large, system
+    binary that rarely changes. In this case, the extra complexity of using layers
+    may be worth the value of improved deployment speed, especially if the number
+    of deployments of functions using that layer is on the order of hundreds per day
+    or more.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A helpful example of this second case is where a Lambda function is using a
+    custom runtime, which we’ll explore now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Custom Runtimes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Throughout this book we have been using the Java Lambda runtime, apart from
+    our very first example, which used the Node 10 runtime. AWS offers [a number of
+    runtimes](https://oreil.ly/uLMNz) associated with different programming languages,
+    and this list is frequently updated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, what happens if you want to use a language or runtime that AWS don’t
+    support? For example, what if you have some Cobol code you want to run in a Lambda
+    function? Or, perhaps more likely, what if you want to run a highly customized
+    JVM, rather than the one AWS provides?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The answer here is to use a *custom runtime*. A custom runtime is a Linux process
+    that runs in a Lambda execution environment, and that can process Lambda events.
+    There is a [specific execution model](https://oreil.ly/onv6J) that a custom runtime
+    needs to fulfill, but the basic idea is that when the runtime instance is started
+    by the Lambda platform, it is configured with an instance-specific URL that it
+    can query for the next event to process. In other words, custom runtimes use a
+    polling architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a Java developer, it will typically be rare that you want or need to use
+    a custom runtime for production usages. Two reasons for this are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The custom runtime code itself needs to be part of your function’s deployed
+    assets. While you can package the runtime in a Lambda layer to avoid uploading
+    it on every deployment, it will still be using up some of your [250MB total unpacked
+    deployment package size limit](https://oreil.ly/02nUm). Most JVMs are going to
+    use a considerable part of that, if you want to ship a custom JVM, and so this
+    will cut into the space available for your application code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You will need to reimplement in your custom runtime a lot of what AWS has already
+    implemented in its standard runtimes, such as deserialization/serialization of
+    events and responses, error handling, and more.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: That being said, for organizations of a certain size, building a custom runtime
+    that handles various organizational-platform-related tasks might make actual Lambda
+    development even more effective, but we would suggest a through analysis before
+    jumping in!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we took a deep dive into some advanced aspects of Lambda. Some
+    of these behaviors and configurations will be crucial as you deploy your serverless
+    applications to production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You learned about the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The various different error handling strategies of Lambda and how you may choose
+    to configure and program your functions to process errors
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The liberating way that Lambda scales without any effort on your part, how you
+    can control that scaling, and what this behavior means in the context of multi-threaded
+    programming
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What Lambda versions and aliases are, and how to use them with a “traffic shifting”
+    approach for releasing new features
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What cold starts are, when they occur, whether you should be concerned about
+    them, and how to mitigate them if you need to reduce their impact in your applications
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to consider persistent and cache state in Lambda development
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to use Lambda with AWS VPCs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What Lambda layers and custom runtimes are, and when to think about using them
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the next chapter, we carry on rounding out our discussion of the more advanced
+    aspects of Lambda, but this time in the context of how Lambda interacts with other
+    services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Update `WeatherQueryLambda` in [“Example: Building a Serverless API”](ch05.html#serverless-api-example)
+    to throw an exception. What behavior do you see when you try to call the API?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If you implemented the exercise from [Chapter 5](ch05.html#ch05) to use an SQS
+    queue, then update the Lambda function that reads from SQS to throw an exception.
+    Does Lambda’s retry behavior do what you’d expect?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Investigate what happens with background threads and Lambda—start with the “Hello
+    World” example from [Chapter 2](ch02.html#ch02) (see [“Lambda Hello World (the
+    Proper Way)”](ch02.html#java-hello-world)) and within the handler use a [`ScheduledExecutorService`](https://oreil.ly/6cz67)
+    and its `scheduleAtFixedRate` method to repeatedly log the event that you received.
+    What happens? Try using some `Thread.sleep` statements too.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Update [“Example: Building a Serverless API”](ch05.html#serverless-api-example)
+    to use traffic shifting, starting with the `Linear10PercentEvery10Minutes` deployment
+    preference.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '*Extended task*: If you program on the JVM with a different language—perhaps
+    Clojure, Kotlin, or Scala—try building a Lambda function in one of those languages.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

@@ -1,0 +1,2822 @@
+- en: 'Chapter 10\. Input and Output: Reading, Writing, and Directory Tricks'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 10.0 Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Most programs need to interact with the outside world, and one common way of
+    doing so is by reading and writing files. Files are normally on some persistent
+    medium such as a disk drive; and, for the most part, we shall happily ignore the
+    differences between files on a hard disk (and all the operating system–dependent
+    filesystem types), a USB drive or SD card, a DVD-ROM, and other memory devices.
+    For now, they’re just files. And, like most other languages and OSes, Java extends
+    the reading-and-writing model to network (socket) communications, which we’ll
+    touch on in Chapters [12](ch12.html#javacook-netclient) and [13](ch13.html#javacook-netserver).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java provides many classes for input and output; they are summarized in [Figure 10-1](#javacook-io-FIG-1).
+    This chapter covers all the normal input/output operations such as opening/closing
+    and reading/writing files. Files are assumed to reside on some kind of file store
+    or permanent storage. Distributed filesystems such as Apache Hadoop HDFS, Sun’s
+    Network File System (NFS, common on Unix and available for Windows), SMB (the
+    Windows network filesystem, available for Unix via the open source Samba program),
+    and FUSE (Filesystem in User SpacE, implementations for most Unix/Linux systems)
+    are assumed to work just like disk filesystems, except where noted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The support for reading and writing is in two major parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `InputStream`/`OutputStream`/`Reader`/`Writer` classes, which are the traditional
+    ways of reading/writing files, have been largely unchanged since the days of Java
+    1.0 and 1.1. In modern Java, a new class, `java.nio.file.Files`, is provided.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'All modern operating systems provide the means to organize groups of files
+    into directories, or folders. This chapter covers directories: how to create them,
+    how to navigate them. `Files` provides most of the support for processing directories,
+    but it also introduces a number of convenience routines for easily reading, writing,
+    and copying files that are covered in this chapter. These are generally more convenient
+    than using the traditional I/O classes. We cover both in this chapter.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: There are two different uses of the term *stream*. The first is for a stream
+    of bytes to be read or written, and is unrelated to the second use, which is used
+    in modern Java to refer to a connection among cooperating methods. I’ll try to
+    keep these meanings straight by only using `InputStream` and/or `OutputStream`
+    for the former, and `Stream` for the latter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To give you control over the format of data that you read and write, the `Formatter`
+    and `Scanner` classes provide formatting and scanning operations. `Formatter`
+    allows many formatting tasks to be performed either into a `String` or to almost
+    any output destination. `Scanner` parses many kinds of objects, again either from
+    a `String` or from almost any input source. These are fairly powerful; each is
+    given its own recipe in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second part of the chapter is largely devoted to the `Files` and `Path`
+    classes in `java.nio.file`. These two classes provide the ability to list directories,
+    obtain file status, rename and delete files on disk, create directories, and perform
+    other filesystem operations. They also provide the ability to read a file line
+    by line into a `Stream<String>`. These two classes together largely supplant the
+    older `java.io.File` class. They were introduced in Java 7, so very little new
+    code should be using the older `File` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that many of the methods of this class attempt to modify the permanent
+    file store, or disk filesystem, of the computer you run them on. Naturally, you
+    might not have permission to change certain files in certain ways. This can be
+    detected by the Java Virtual Machine’s `SecurityManager`, which will throw the
+    unchecked exception `SecurityException` if you don’t have permission to do the
+    attempted operation. But failure can also be detected by the underlying operating
+    system: if the security manager approves it, but the user running your program
+    lacks permissions on the directory, for example, you will either get back an indication
+    (such as false) or an instance of the checked exception `IOException`. This must
+    be caught (or declared in the `throws` clause) in any code that calls any method
+    that tries to change the filesystem.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.1 About InputStreams/OutputStreams and Readers/Writers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java provides two sets of classes for reading and writing. The `InputStream`/`OutputStream`
+    section of package `java.io` (see [Figure 10-1](#javacook-io-FIG-1)) is for reading
+    or writing bytes of data. Older languages tended to assume that a byte (which
+    is a machine-specific collection of bits, usually eight bits on modern computers)
+    is exactly the same thing as a character—a letter, digit, or other linguistic
+    element. However, Java is designed to be used internationally, and eight bits
+    is simply not enough to handle the many different character sets used around the
+    world. Script-based languages, and pictographic languages like Chinese and Japanese,
+    each have many more than 256 characters, the maximum that can be represented in
+    an eight-bit byte. The unification of these many character code sets is called,
+    not surprisingly, Unicode. Both Java and XML use Unicode as their character sets,
+    allowing you to read and write text in any of these human languages. But you should
+    use `Reader`s and `Writer`s, not `Stream`s, for textual data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unicode itself doesn’t solve the entire problem. Many of these human languages
+    were used on computers long before Unicode was invented, and they didn’t all pick
+    the same representation as Unicode. And they all have zillions of files encoded
+    in a particular representation that isn’t Unicode. So routines are needed when
+    reading and writing to convert between Unicode `String` objects used inside the
+    Java machine and the particular external representation in which a user’s files
+    are written. These converters are packaged inside a powerful set of classes called
+    `Reader`s and `Writer`s. `Reader`s and `Writer`s should always be used instead
+    of `InputStream`s and `OutputStream`s when you want to deal with characters instead
+    of bytes. We’ll see more on this conversion, and how to specify which conversion,
+    a little later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jcb4 1001](assets/jcb4_1001.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10-1\. java.io classes
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One topic *not* addressed in depth here is the reading/writing capabilities
+    of `Channel`s classes in the Java “new I/O” package.^([1](ch10.html#idm45290657814168))
+    This part of NIO is more complex to use than either `Files` or the input/output
+    streams, and the benefits accrue primarily in large-scale server-side processing.
+    [Recipe 4.5](ch04.html#javacook-regex-SECT-5) provides one example of using NIO.
+    The NIO package is given full coverage in the book *[Java NIO](http://shop.oreilly.com/product/9780596002886.do)*
+    by Ron Hitchens (O’Reilly).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another topic not covered here is that of having the read or write occur concurrently
+    with other program activity. This requires the use of threads, or multiple flows
+    of control within a single program. Threaded I/O is a necessity in many programs:
+    those reading from slow devices such as tape drives, those reading from or writing
+    to network connections, and those with a GUI. For this reason, the topic is given
+    considerable attention, in the context of multithreaded applications, in [Chapter 16](ch16.html#javacook-threads).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For traditional I/O topics, Elliotte Rusty Harold’s *[Java I/O](http://shop.oreilly.com/product/9780596527501.do)*,
+    although somewhat dated, should be considered the antepenultimate documentation.
+    The penultimate reference is the javadoc documentation, while the ultimate reference
+    is, if you really need it, the source code for the Java API. Due in part to the
+    quality of the javadoc documentation, I have not needed to refer to the source
+    code in writing this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.2 Reading a Text File
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The Java documentation doesn’t have methods for opening files. How do I open
+    and read a text file and then either process it a line at a time, or get a collection
+    of all the lines?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the `Files::lines()` method, which returns a `Stream` of `String`s. Or,
+    use `Files.newBufferedReader()`, `Files.newBufferedWriter()`, `Files.newInputStream()`,
+    and `Files.newOutputStream()`. Or, construct a `FileReader` or a `FileInputStream`.
+    Once you have that, construct a `BufferedReader`, and use the older `$$while ((line
+    == readLine()) != null)$$` pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There is no explicit open operation,^([2](ch10.html#idm45290657786632)) perhaps
+    as a kind of rhetorical flourish of the Java API’s object-oriented design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The quickest way to process a text file a line at a time is to use `Files.lines()`,
+    which takes a `Path` argument and returns a functional `Stream<String>` into which
+    it feeds the lines from the file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `Files` class has several other static methods which open a file and read
+    some or all of it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`List<String> Files.readAllLines(Path)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reads the whole file into a `List<String>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`byte[] Files.readAllBytes`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reads the whole file into an array of bytes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is a series of methods with names like `newReader()`, `newBufferedWriter()`,
+    etc., each of which takes a `Path` argument and return the appropriate `Reader/Writer`
+    or `InputStream/OutputStream`. A `Path` is a descriptor for an abstract path (filename)
+    that may or may not exist. The explicit constructors for a `FileReader`, `FileWriter`,
+    `FileInputStream`, or `FileOutputStream` take a filename or an instance of the
+    older `File` class containing the path. These operations correspond to the “open”
+    operation in most other languages’ I/O packages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Historically, Java used to require use of the code pattern `while ((line ==
+    readLine()) != null` to read lines from a `BufferedReader`. This still works,
+    of course, and will continue to work until the last JavaBean sets in the west,
+    in the far future.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Example 10-1](#javacook-CHAPTER-EX-readlines) shows the code for each of these
+    ways of reading lines from a file.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-1\. main/src/main/java/io/ReadLines.java (reading lines from a file)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Most of these methods can throw the checked exception `IOException`, so you
+    must have a `throws` clause or a `try/catch` around these invocations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you create an `InputStream`, `OutputStream`, `Reader`, or `Writer`, you
+    should close it when finished. This avoids memory leaks and, in the case of writing,
+    ensures that all buffered data is actually written to disk. One way to ensure
+    this is not forgotten is to use the try-with-resources syntax. This puts the declaration
+    and definition of a `Closeable` resource into the `try` statement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `lines()` and read-related methods in `Files` obviate the need for closing
+    the resource, but not the need for handling `IOException`; the compiler or IDE
+    will remind you if you forget those.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are options that can be passed to the `Files` methods that open a file;
+    these are discussed in the sidebar [“Understanding I/O Options: StandardOpenOptions,
+    FileAttribute, PosixFileAttribute, and More”](#javacook-ioOptions).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To read the entire contents of a file into single string, in Java 8+, use `Files.readString()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: In older Java versions, use my `FileIO.readerToString()` method. This will read
+    the entire named file into one long string, with embedded newline (*\n*) characters
+    between each line. To read a binary file, use `Files.readAllBytes()` instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There is formal documentation online for [`File`s](https://docs.oracle.com/javase/8/docs/api/java/nio/file/Files.html)
+    and [`Path`](https://docs.oracle.com/javase/8/docs/api/java/nio/file/Path.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.3 Reading from the Standard Input or from the Console/Controlling Terminal
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to read from the program’s standard input or directly from the program’s
+    controlling terminal or console terminal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For the standard input, read bytes by wrapping a `BufferedInputStream()` around
+    `System.in`. For reading text, use an `InputStreamReader` and a `BufferedReader`.
+    For the console or controlling terminal, use Java’s `System.console()` method
+    to obtain a `Console` object, and use its methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sometimes you really do need to read from the standard input, or console. One
+    reason is that simple test programs are often console-driven. Another is that
+    some programs naturally require a lot of interaction with the user and you want
+    something faster than a GUI (consider an interactive mathematics or statistical
+    exploration program). Yet another is piping the output of one program directly
+    to the input of another, a very common operation among Unix users and quite valuable
+    on other platforms, such as Windows, that support this operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Standard input
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Most desktop platforms support the notion of *standard input* (a keyboard, a
+    file, or the output from another program) and *standard output* (a terminal window,
+    a printer, a file on disk, or the input to yet another program). Most such systems
+    also support a standard error output so that error messages can be seen by the
+    user even if the standard output is being redirected. When programs on these platforms
+    start up, the three streams are preassigned to particular platform-dependent handles,
+    or *file descriptors*. The net result is that ordinary programs on these operating
+    systems can read the standard input or write to the standard output or standard
+    error stream without having to open any files or make any other special arrangements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java continues this tradition and enshrines it in the `System` class. The static
+    variables `System.in`, `System.out`, and `System.err` are connected to the three
+    operating system streams before your program begins execution (an application
+    is free to reassign these; see [Recipe 10.10](#javacook-io-SECT-10)). So, to read
+    the standard input, you need only refer to the variable `System.in` and call its
+    methods. For example, to read one byte from the standard input, you call the read
+    method of `System.in`, which returns the byte in an `int` variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But is that enough? No, because the `read()` method can throw an `IOException`.
+    So you must either declare that your program throws an `IOException`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Or you can put a `try`/`catch` block around the `read()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, it makes sense to print the results inside the `try` block because
+    there’s no point in trying to print the value you read, if the `read()` threw
+    an `IOException`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That code works and gives you the ability to read a byte at a time from the
+    standard input. But most applications are designed in terms of larger units, such
+    as integers, or a line of text. To read a value of a known type, such as `int`,
+    from the standard input, you can use the `Scanner` class (covered in more detail
+    in [Recipe 10.6](#javacook-io-SECT-5)):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For reading characters of text with an input character converter so that your
+    program will work with multiple input encodings around the world, use a `Reader`
+    class. The particular subclass that allows you to read lines of characters is
+    a `BufferedReader`. But there’s a hitch. Remember I mentioned those two categories
+    of input classes, `Stream`s and `Reader`s? But I also said that `System.in` is
+    a `Stream`, and you want a `Reader`. How do you get from a `Stream` to a `Reader`?
+    A crossover class called `InputStreamReader` is tailor-made for this purpose.
+    Just pass your `Stream` (like `System.in`) to the `InputStreamReader` constructor
+    and you get back a `Reader`, which you in turn pass to the `BufferedReader` constructor.
+    The usual idiom for writing this in Java is to nest the constructor calls:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can then read lines of text using the `readLine()` method. This method
+    takes no argument and returns a `String` that is made up for you by `readLine()`
+    containing the characters (converted to Unicode) from the next line of text in
+    the file. When there are no more lines of text, the literal value `null` is returned:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To read a single `Integer` from the standard input, read a line and parse it
+    using `Integer.parseInt()`. To read a series of integers, one per line, you could
+    combine these with a functional style, since the `BufferedReader` has a `lines()`
+    method that produces a `Stream<String>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The Console (Controlling Terminal)
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `Console` class is intended for reading directly from a program’s controlling
+    terminal. When you run an application from a *terminal window* or *command prompt
+    window* on most systems, its console and its standard input are both connected
+    to the terminal, by default. However, the standard input can be changed by piping
+    or redirection on most OSes. If you really want to read from wherever the user
+    is sitting, bypassing any indirections, then the `Console` class is usually your
+    friend.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You cannot instantiate `Console` yourself; you must get an instance from the
+    `System` class’s `console()` method. You can then call methods such as `readLine()`,
+    which behaves largely like the method of the same name in the `BufferedReader`
+    class used in the previous recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code shows an example of prompting for a name and reading it
+    from the console:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*main/src/main/java/io/ConsoleRead.java*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: One complication is that the `System.console()` method can return `null` if
+    the console isn’t connected. Annoyingly, some IDEs, including Eclipse, don’t manage
+    to set up a controlling terminal when you use the Run As→Java Application mechanism.
+    So production-quality code should always check for `null` before trying to use
+    the `Console`. If it fails, use a logger or just plain `System.out`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One facility the `Console` class is quite useful for is reading a password
+    without having it echo. This has been a standard facility of command-line applications
+    for decades, as the most obvious way of preventing *shoulder surfing*—somebody
+    looking over your shoulder to see your password. Nonecho password reading is now
+    supported in Java: the `Console` class has a `readPassword()` method that takes
+    a `prompt` argument, intended to be used like: `cons.readPassword("Password:")`.
+    This method returns an array of bytes, which can be used directly in some encryption
+    and security APIs, or can easily be converted into a `String`. It is generally
+    advised to overwrite the byte array after use to prevent security leaks when other
+    code can access the stack, although the benefits of this are probably reduced
+    when you’ve constructed a `String`. There’s an example of this in the online code
+    in *io/ReadPassword.java*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.4 Printing with Formatter and printf
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want an easy way to use `java.util.Formatter` class’s capability for simple
+    printing tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use `Formatter` for printing values with fine-grained control over the formatting.
+    Use `String.format()` or `PrintWriter.printf()` / `PrintStream.printf()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `Formatter` class is patterned after C’s `printf` routines. In fact, `PrintStream`
+    and `PrintWriter` have convenience routines named `printf()` that simply delegate
+    to the stream or writer’s `format()` method, which uses a default `Formatter`
+    instance. Unlike in C, however, Java is a strongly typed language, so invalid
+    arguments will throw an exception rather than generating gibberish. There are
+    also convenience routines `static String.format()` and `printf()` in `PrintWRiter/PrintStream`
+    for use when you want to format a `String` without the bother of creating the
+    `Formatter` explicitly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The underlying `Formatter` class in `java.util` works on a `String` containing
+    format codes. For each item that you want to format, you put a format code. The
+    format code consists of a percent sign, optionally an argument number followed
+    by a dollar sign, optionally a field width or precision, and a format type (e.g.,
+    `d` for decimal integer, that is, an integer with no decimal point, and `f` for
+    floating point). A simple use might look like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: As shown in [Figure 10-2](#javacook-io-FIG-2), the “%1$04d” controls formatting
+    of the year, and the “%2$f” controls formatting of the value of PI.^([3](ch10.html#idm45290656852712))
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jcb4 1002](assets/jcb4_1002.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10-2\. Format codes examined
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Many format codes are available; [Table 10-1](#javacook-io-TABLE-1) lists some
+    of the more common ones. For a complete description, refer to the javadoc for
+    `java.util.Formatter`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-1\. Formatter format codes
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Code | Meaning |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| c | Character (argument must be `char` or integral type containing valid
+    character value). |'
+  prefs: []
+  type: TYPE_TB
+- en: '| d | “decimal int”—integer to be printed as a decimal (radix 10) with no decimal
+    point (argument must be integral type). |'
+  prefs: []
+  type: TYPE_TB
+- en: '| f | Floating-point value with decimal fraction (must be numeric); field width
+    may be followed by decimal point and fractional digit field width; e.g., 7.2f.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| e | Floating-point value in scientific notation. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| g | Floating-point value, as per f or e, depending on magnitude. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| s | Generic format; if value is null, prints “null”; else if arg implements
+    `Formattable`, format as per `arg.formatTo()`; else format as per `arg.toString()`.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| t | Date codes; follow with secondary code. Common date codes are shown in
+    [Table 10-2](#javacook-io-TABLE-2). Argument must be `long`, `Long`, `Calendar`,
+    or `Date`. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| n | Newline; insert the platform-dependent line ending character. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| % | Insert a literal `%` character. |'
+  prefs: []
+  type: TYPE_TB
+- en: Note also that you may, but are not required to, put a *parameter order* number
+    between the `%` and the format code. For example, in “%2$04d”, the “2$” means
+    to format the *second* parameter, regardless of the order of the parameters. This
+    is primarily useful with dates (see the following example, where you need to format
+    several different portions of the same `Date` or `Calendar`, or any time you want
+    to format the same object more than once) and in internationalization, where different
+    languages may require words to be in a different order within a sentence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some examples of using a `Formatter` are shown in [Example 10-2](#javacook-io-EX-1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-2\. main/src/main/java/io/FormatterDemo.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running `FormatterDemo` produces this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: For formatting date and time objects, a large variety of format codes are available—about
+    40 in all. Date and time objects are discussed in [Chapter 6](ch06.html#javacook-dates).
+    [Table 10-3](#javacook-io-TABLE-3) shows the more common date/time format codes.
+    Each must be preceded by a `t`, so to format the first argument as a year, you
+    would use `%1$tY`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-2\. Formatting codes for dates and times
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Format code | Meaning |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Y | Year (at least four digits) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| m | Month as two-digit (leading zeros) number |'
+  prefs: []
+  type: TYPE_TB
+- en: '| B | Locale-specific month name (b for abbreviated) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| d | Day of month (two digits, leading zeros) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| e | Day of month (one or two digits) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| A | Locale-specific day of week (*a* for abbreviated) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| H or I | Hour in 24-hour (H) or 12-hour (I) format (two digits, leading zeros)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| M | Minute (two digits) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| S | Second (two digits) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| P/p | Locale-specific AM or PM in uppercase (if P) or lowercase (if p) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| R or T | 24-hour time combination: %tH:%tM (if R) or %tH:%tM:%tS (if T) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| D | Date formatted as *`%tm/%td/%ty`* |'
+  prefs: []
+  type: TYPE_TB
+- en: In my opinion, embedding these codes directly in applications that you distribute
+    or make available as web applications is often a bad idea, because any direct
+    use of them assumes that you know the correct order to print these fields in all
+    locales around the world. Trust me, you don’t. Instead of these, I recommend the
+    use of `DateTimeFormatter`, covered in [Recipe 6.2](ch06.html#javacook-dates-format),
+    to control the order of arguments. However, for quick-and-dirty work, as well
+    as for writing log or data files that must be in a given format because some other
+    program reads them, these are OK.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some date examples are shown in [Example 10-3](#javacook-io-EX-2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-3\. main/src/main/java/io/FormatterDates.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running this `FormatterDates` class produces the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 10.5 Scanning Input with StreamTokenizer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to scan a file with more fine-grained resolution than the `readLine()`
+    method of the `BufferedReader` class and its subclasses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use a `StreamTokenizer`, `readLine()` and a `StringTokenizer`, the `Scanner`
+    class (see [Recipe 10.6](#javacook-io-SECT-5)), regular expressions ([Chapter 4](ch04.html#javacook-regex)),
+    or one of several third-party parser generators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Though you could, in theory, read a file one character at a time and analyze
+    each character, that is a pretty low-level approach. The `read()` method in the
+    `Reader` class is defined to return `int` so that it can use the time-honored
+    value `-1` (defined as EOF in Unix *<stdio.h>* for years) to indicate that you
+    have read to the end of the file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*main/src/main/java/io/ReadCharsOneAtATime.java*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice the cast to `char`; the program compiles fine without it, but it does
+    not print correctly because `c` is declared as `int`. Variable `c` must be declared
+    `int` to be able to compare against the end-of-file value `-1`. For example, the
+    integer value corresponding to capital A treated as an `int` prints as 65, whereas
+    with `(char)` prints the character `A`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We discussed the `StringTokenizer` class extensively in [Recipe 3.1](ch03.html#javacook-strings-SECT-1).
+    The combination of `readLine()` and `StringTokenizer` provides a simple means
+    of scanning a file. Suppose you need to read a file in which each line consists
+    of a name like *user@host.domain*, and you want to split the lines into users
+    and host addresses. You could use this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `StreamTokenizer` class in `java.util` provides slightly more capabilities
+    for scanning a file. It reads characters and assembles them into words, or tokens.
+    It returns these tokens to you along with a type code describing the kind of token
+    it found. This type code is one of four predefined types (`StringTokenizer.TT_WORD`,
+    `TT_NUMBER`, `TT_EOF`, or `TT_EOL` for the end-of-line) or the `char` value of
+    an ordinary character (such as 32 for the space character). Methods such as `ordinaryCharacter()`
+    allow you to specify how to categorize characters, while others such as `slashSlashComment()`
+    allow you to enable or disable features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Example 10-4](#javacook-io-EX-3) shows a `StreamTokenizer` used to implement
+    a simple immediate-mode stack-based calculator:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'I read tokens as they arrive from the `StreamTokenizer`. Numbers are put on
+    the stack. The four operators (`+`, `-`, `\*`, and `/`) are immediately performed
+    on the two elements at the top of the stack, and the result is put back on the
+    top of the stack. The `=` operator causes the top element to be printed, but is
+    left on the stack so that you can say this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 10-4\. main/src/main/java/io/SimpleCalcStreamTok.java (simple calculator
+    using StreamTokenizer)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 10.6 Scanning Input with the Scanner Class
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to scan a simple input file consisting of various numbers and strings
+    in a known format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Read with `Scanner`’s `next()` methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `Scanner` class lets you read an input source by tokens, somewhat analogous
+    to the `StreamTokenizer` described in [Recipe 10.5](#javacook-io-SECT-4). The
+    `Scanner` is more flexible in some ways (it lets you break tokens based on spaces
+    or regular expressions) but less in others (you need to know the kind of token
+    you are reading). This class bears some resemblance to the C-language `scanf()`
+    function, but in the `Scanner` you specify the input token types by calling methods
+    like `nextInt()`, `nextDouble()`, and so on. Here is a simple example of scanning:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Scanner` recognizes Java’s eight built-in types, in addition to `BigInteger`
+    and `BigDecimal`. It can also return input tokens as `String`s or by matching
+    regular expressions (see [Chapter 4](ch04.html#javacook-regex)). [Table 10-3](#javacook-io-TABLE-3)
+    lists the “next” methods and corresponding “has” methods; the “has” method returns
+    true if the corresponding “next” method would succeed. There is no `nextString()`
+    method; just use `next()` to get the next token as a `String`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-3\. Scanner methods
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Returned type | “has” method | “next” method | Comment |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `String` | `hasNext()` | `next()` | The next complete token from this scanner
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `String` | `hasNext(Pattern)` | `next(Pattern)` | The next string that matches
+    the given regular expression (regex) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `String` | `hasNext(String)` | `next(String)` | The next token that matches
+    the regex pattern constructed from the specified string |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `BigDecimal` | `hasNextBigDecimal()` | `nextBigDecimal()` | The next token
+    of the input as a `BigDecimal` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `BigInteger` | `hasNextBigInteger()` | `nextBigInteger()` | The next token
+    of the input as a `BigInteger` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `boolean` | `hasNextBoolean()` | `nextBoolean()` | The next token of the
+    input as a `boolean` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `byte` | `hasNextByte()` | `nextByte()` | The next token of the input as
+    a `byte` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `double` | `hasNextDouble()` | `nextDouble()` | The next token of the input
+    as a `double` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `float` | `hasNextFloat()` | `nextFloat()` | The next token of the input
+    as a `float` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `int` | `hasNextInt()` | `nextInt()` | The next token of the input as an
+    `int` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `String` | N/A | `nextLine()` | Reads up to the end-of-line, including the
+    line ending |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `long` | `hasNextLong()` | `nextLong()` | The next token of the input as
+    a `long` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `short` | `hasNextShort()` | `nextShort()` | The next token of the input
+    as a `short` |'
+  prefs: []
+  type: TYPE_TB
+- en: The `Scanner` class is constructed with an input source, which can be an `InputStream`,
+    a `String`, or `Readable` (`Readable` is an interface that `Reader` and all its
+    subclasses implement).
+  prefs: []
+  type: TYPE_NORMAL
+- en: One way to use the `Scanner` class is based on the Iterator pattern, using `while
+    (scanner.hasNext())` to control the iteration. [Example 10-5](#javacook-io-EX-4)
+    shows the simple calculator from [Recipe 10.5](#javacook-io-SECT-4) rewritten^([4](ch10.html#idm45290655572552))
+    to use the `Scanner` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-5\. main/src/main/java/io/simpleCalcScanner.java (simple calculator
+    using java.util.Scanner)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 10.7 Scanning Input with Grammatical Structure
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to parse a file whose structure can be described as grammatical (in
+    the sense of computer languages, not natural languages).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use one of many parser generators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Although the `StreamTokenizer` class (see [Recipe 10.5](#javacook-io-SECT-4))
+    and `Scanner` (see [Recipe 10.6](#javacook-io-SECT-5)) are useful, they know only
+    a limited number of tokens and have no way of specifying that the tokens must
+    appear in a particular order. To do more advanced scanning, you need some special-purpose
+    scanning tools. Parser generators have a long history in computer science. The
+    best-known examples are the C-language `yacc` (Yet Another Compiler Compiler)
+    and `lex`, released with Seventh Edition Unix in the 1970s and discussed in *[lex
+    & yacc](http://shop.oreilly.com/product/9781565920002.do)* by Doug Brown et al.
+    (O’Reilly), and their open source clones *bison* and *flex*. These tools let you
+    specify the lexical structure of your input using some pattern language such as
+    regular expressions (see [Chapter 4](ch04.html#javacook-regex)). For example,
+    you might say that an email address consists of a series of alphanumerics, followed
+    by an at sign (@), followed by a series of alphanumerics with periods embedded,
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The tool then writes code that recognizes the characters you have described.
+    These tools also have a grammatical specification, which says, for example, that
+    the keyword `EMAIL` must appear, followed by a colon, followed by a `name` token,
+    as previously defined.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are several good third-party parser generator tools for Java. They vary
+    widely based on complexity, power, and ease of use:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the best known and most elaborate is [ANTLR](http://www.antlr.org).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: JavaCC is an open source project at [*https://javacc.org*](https://javacc.org).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: JParsec lets you write the parser in straight Java, so it’s all built at compile
+    time (most of the others require a separate parse generation step, with the build
+    and debugging issues that raises). JParsec is on [GitHub](https://github.com/abailly/jparsec).
+    * [JFlex](http://jflex.de) and [CUP](http://www2.cs.tum.edu/projects/cup) work
+    together like the original *yacc* and *lex*, as grammar parser and lexical scanner,
+    respectively.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Parboiled uses *Parsing Expression Grammar* (PEG) to also build the parser at
+    compile time. See [GitHub](https://github.com/sirthias/parboiled) for more information.
+    * The *Rats!* parser generator is part of the [eXTensible Compiler Project](http://cs.nyu.edu/rgrimm/xtc)
+    at New York University.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There are others; a more complete list is maintained at [Java Source](http://java-source.net/open-source/parser-generators).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These parser generators can be used to write grammars for a wide variety of
+    programs, from simple calculators—such as the one in [Recipe 10.6](#javacook-io-SECT-5)—through
+    HTML and CORBA/IDL, up to full Java and C/C++ parsers. Examples of these are included
+    with the downloads. Unfortunately, the learning curve for parsers in general precludes
+    providing a simple and comprehensive example here, let alone comparing them intelligently.
+    Refer to the documentation and the numerous examples provided with each distribution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As an alternative to using one of these, you could simply roll your own recursive
+    descent parser; and once you learn how to do so, you may find it’s not really
+    that difficult, quite possibly even less hassle than dealing with the extra parser
+    generator software (depending on the complexity of the grammar involved, obviously).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java developers have a range of choices, including simple line-at-a-time scanners
+    using `StringTokenizer`, fancier token-based scanners using `StreamTokenizer`,
+    a `Scanner` class to scan simple tokens (see [Recipe 10.6](#javacook-io-SECT-5)),
+    regular expressions (see [Chapter 4](ch04.html#javacook-regex)), and third-party
+    solutions including grammar-based scanners based on the parsing tools listed here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.8 Copying a File
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to copy a file in its entirety.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use one of the Java 11 `Files.copy()` methods. If on an older release, use the
+    explicit read and write methods in the `Readers/Writer`s or `InputStream/OutputStream`s.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `Files` class has several overloads of a `copy` method that makes quick
+    work of this requirement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Long ago, Java’s I/O facilities did not package a lot of the common operations
+    like copying one file to another or reading a file into a `String`. So back then
+    I wrote my own package of helper methods. Users of older JDK versions may want
+    to use `FileIO` from my utilities package `com.darwinsys.util`. Here’s a simple
+    demo program that uses `FileIO` to copy a source file to a backup file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*main/src/demo/java/io/FileIoDemo.java*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: My `copyFile` method takes several forms, depending on whether you have two
+    filenames, a filename and a `PrintWriter`, and so on. The code for `FileIO` itself
+    is not shown here but is online, in the darwinsys API download.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.9 Reassigning the Standard Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to reassign one or more of the standard streams `System.in`, `System.out`,
+    or `System.err`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Construct an `InputStream` or `PrintStream` as appropriate, and pass it to the
+    appropriate set method in the `System` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The ability to reassign these streams corresponds to what Unix (or DOS command
+    line) users think of as *redirection*, or *piping*. This mechanism is commonly
+    used to make a program read from or write to a file without having to explicitly
+    open it and go through every line of code changing the read, write, print, etc.
+    calls to refer to a different stream object. The open operation is performed by
+    the command-line interpreter in Unix or DOS or by the calling class in Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although you could just assign a new `PrintStream` to the variable `System.out`,
+    best practice is to use the defined method to replace it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The stream you use can be one that you’ve opened, as here, or one you inherited:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: It could also be a stream connected to or from another `Process` you’ve started
+    (see [Recipe 18.1](ch18.html#javacook-otherlang-SECT-1)), a network socket, or
+    a URL. Anything that gives you a stream can be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.10 Duplicating a Stream as It Is Written; Reassigning Standard Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want anything written to a stream, such as the standard output `System.out`
+    or the standard error `System.err`, to appear there but *also* be logged in to
+    a file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Subclass `PrintStream` and have its `write()` methods write to two streams.
+    Then use `system.setErr()` or `setOut()` to replace the existing standard stream
+    with a `PrintStream` subclass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Some classes are meant to be subclassed. Here we’re just subclassing `PrintStream`
+    and adding a bit of functionality: a second `PrintStream`! I wrote a class called
+    `TeePrintStream`, named after the ancient Unix command *tee*. That command allowed
+    you to duplicate, or tee off (from plumber’s pipe tee, not the game of golf or
+    the local pest) a copy of the data being written on a pipeline between two programs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The original Unix *tee* command is used like this: the `|` character creates
+    a pipeline in which the standard output of one program becomes the standard input
+    to the next. This often-used example of pipes shows how many users are logged
+    into a Unix server:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This runs the *who* program (which lists who is logged in to the system, one
+    name per line, along with the terminal port and login time) and sends its output,
+    not to the terminal, but rather into the standard input of the word count (*wc*)
+    program. Here, *wc* is being asked to count lines, not words, hence the `-l` option.
+    To *tee* a copy of the intermediate data into a file, you might say:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'which creates a file *wholist* containing the data. For the curious, the file
+    *wholist* might look something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: So both the previous command sequences would print `3` as their output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`TeePrintStream` is an attempt to capture the spirit of the *tee* command.
+    It can be used like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`System.setErr()` is a means of specifying the destination of text printed
+    to `System.err` (there are also `System.setOut()` and `System.setIn()`). This
+    code results in any messages that printed to `System.err` to print to wherever
+    `System.err` was previously directed (normally the terminal, but possibly a text
+    window in an IDE) and to the file *err.log*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This technique is not limited to the three standard streams. A `TeePrintStream`
+    can be passed to any method that wants a `PrintStream`. Or, for that matter, an
+    `OutputStream`. And you can adapt the technique for `BufferedInputStreams`, `PrintWriters`,
+    `BufferedReaders`, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Example 10-6](#javacook-io-TeePrintStream) shows the source code for `TeePrintStream`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-6\. main/src/main/java/io/TeePrintStream.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: It’s worth mentioning that I do *not* need to override all the polymorphic forms
+    of `print()` and `println()`. Because these all ultimately use one of the forms
+    of `write()`, if you override the `print` and `println` methods to do the *tee*-ing
+    as well, you can get several additional copies of the data written out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.11 Reading/Writing a Different Character Set
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to read or write a text file using a particular encoding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Convert the text to or from internal Unicode by specifying a converter when
+    you construct an `InputStreamReader` or `PrintWriter`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Classes `InputStreamReader` and `OutputStreamWriter` are the bridge from byte-oriented
+    `Stream`s to character-based `Reader`s. These classes read or write bytes and
+    translate them to or from characters according to a specified character encoding.
+    The UTF-16 character set used inside Java (`char` and `String` types) is a 16-bit
+    character set. But most character sets—such as ASCII, Swedish, Spanish, Greek,
+    Turkish, and many others—use only a small subset of that. In fact, many European
+    language character sets fit nicely into 8-bit characters. Even the larger character
+    sets (script-based and pictographic languages) don’t all use the same bit values
+    for each particular character. The encoding, then, is a mapping between Java characters
+    and an external storage format for characters drawn from a particular national
+    or linguistic character set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To simplify matters, the `InputStreamReader` and `OutputStreamWriter` constructors
+    are the only places where you can specify the name of an encoding to be used in
+    this translation. If you do not specify an encoding, the platform’s (or user’s)
+    default encoding is used. `PrintWriters`, `BufferedReaders`, and the like all
+    use whatever encoding the `InputStreamReader` or `OutputStreamWriter` class uses.
+    Because these bridge classes only accept `Stream` arguments in their constructors,
+    the implication is that if you want to specify a nondefault converter to read
+    or write a file on disk, you must start by constructing not a `FileReader` or
+    `FileWriter`, but a `FileInputStream` or `FileOutputStream`!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Not that it would necessarily make sense to read a single file from Kanji and
+    output it in a Swedish encoding. For one thing, most fonts would not have all
+    the characters of both character sets; and, at any rate, the Swedish encoding
+    certainly has far fewer characters in it than the Kanji encoding. Besides, if
+    that were all you wanted, you could use a JDK tool with the ill-fitting name *native2ascii*
+    (see its documentation for details). A list of the supported encodings is also
+    in the JDK documentation, in the file *docs/guide/internat/encoding.doc.html*.
+    A more detailed description is found in Appendix B of *[Java I/O](http://shop.oreilly.com/product/9780596527501.do)*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.12 Those Pesky End-of-Line Characters
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You really want to know about end-of-line characters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use `\r` and `\n` in whatever combination makes sense.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If you are reading text (or bytes containing ASCII characters) in line mode
+    using the `readLine()` method, you’ll never see the end-of-line characters, and
+    if you’re using a `PrintWriter` with its `println()` method, the same applies.
+    Thus you won’t be cursed with having to figure out whether `\n`, `\r`, or `\r\n`
+    appears at the end of each line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you want that level of detail, you have to read the characters or bytes
+    one at a time, using the `read()` methods. The only time I’ve found this necessary
+    is in networking code, where some of the line-mode protocols assume that the line
+    ending is `\r\n`. Even here, though, you can still work in line mode. When writing,
+    pass `\r\n` into the `print()` (not +deal with the characters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: For the curious, the strange spelling of “hello” is used in SMTP, the mail sending
+    protocol, where commands are four letters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.13 Beware Platform-Dependent File Code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Chastened by the previous recipe, you now wish to write only platform-independent
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use `readLine()` and `println()`. Avoid use of `\n` by itself; use `File.separator`
+    if you must.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As mentioned in [Recipe 10.12](#javacook-io-SECT-12), if you just use `readLine()`
+    and `println()`, you won’t have to think about the line endings. But a particular
+    problem, especially for former programmers of C and related languages, is using
+    the `\n` character in text strings to mean a newline. What is particularly distressing
+    about this code is that it works—sometimes—usually on the developer’s own platform.
+    But it will probably fail someday, on some other system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The real problem is not that it fails on some platforms, though. What’s really
+    wrong is that it mixes formatting and I/O, or tries to. Don’t mix line-based display
+    with `toString()`; avoid *multiline strings*—output from `toString()` or any other
+    string-returning method. If you need to write multiple strings, then say what
+    you mean:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, if you need multiple lines, you could return an array or `List`
+    of strings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.14 Reading/Writing Binary Data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to read or write binary data, as opposed to text.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use a `DataInputStream` or `DataOutputStream`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `Stream` classes have been in Java since the beginning of time and are
+    optimal for reading and writing bytes rather than characters. The data layer over
+    them, comprising `DataInputStream` and `DataOutputStream`, is configured for reading
+    and writing binary values, including all of Java’s built-in types. Suppose that
+    you want to write a binary integer plus a binary floating-point value into a file
+    and read it back later. This code shows the writing part:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: Should you need to write all the fields from an object, you should probably
+    use one of the methods described in [Recipe 12.6](ch12.html#javacook-netclient-SECT-5).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.15 Reading and Writing JAR or ZIP Archives
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to create and/or extract from a JAR archive or a file in the well-known
+    ZIP archive format, as established by PkZip and used by Unix zip/unzip and WinZip.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You could use the *jar* program in the Java Development Kit because its file
+    format is identical to the ZIP format with the addition of the *META-INF* directory
+    to contain additional structural information. But because this is a book about
+    programming, you are probably more interested in the `ZipFile` and `ZipEntry`
+    classes and the stream classes to which they provide access.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The class `java.util.zip.ZipFile` is not an I/O class *per se*, but a utility
+    class that allows you to read or write the contents of a JAR or ZIP-format file.^([5](ch10.html#idm45290653458856))
+    When constructed, it creates a series of `ZipEntry` objects, one to represent
+    each entry in the archive. In other words, the `ZipFile` represents the entire
+    archive, and the `ZipEntry` represents one entry, or one file that has been stored
+    (and compressed) in the archive. The `ZipEntry` has methods like `getName()`,
+    which returns the name that the file had before it was put into the archive, and
+    `getInputStream()`, which gives you an `InputStream` that will transparently uncompress
+    the archive entry by filtering it as you read it. To create a `ZipFile` object,
+    you need either the name of the archive file or a `File` object representing it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To see whether a given file is present in the archive, you can call the `getEntry()`
+    method with a filename. More commonly, you’ll want to process all the entries;
+    for this, use the `ZipFile` object to get a list of the entries in the archive,
+    in the form of an `Enumeration` (see [Recipe 7.6](ch07.html#javacook-structure-iterate)),
+    as is done here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then process each entry as we wish. A simple listing program could be
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A fancier version would extract the files. The program in [Example 10-7](#javacook-io-EX-8)
+    does both: it lists by default, but with the `-x` (extract) switch, it actually
+    extracts the files from the archive.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-7\. main/src/main/java/io/UnZip.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: People sometimes confuse the ZIP archive file format with the similarly named
+    gzip compression format. Gzip-compressed files can be read or written with the
+    `GZipInputStream` and `GZipOutputStream` classes from `java.io`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.16 Finding Files in a Filesystem-Neutral Way with getResource() and getResourceAsStream()
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'You want to load objects or files without referring to their absolute location
+    in the filesystem. You might want to do this for one of the following reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You are in a server (Java EE) environment.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You want to be independent of file paths.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You want to read a file in a unit test.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You expect users to deploy the resource “somewhere” on the `LASSPATH` (possibly
+    even inside a JAR file).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use `getClass()` or `getClassLoader()` and either `getResource()` or `getResourceAsStream()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There are three varieties of `getResource()` methods, some of which exist (with
+    the exact same signature) both in the `Class` class (see [Chapter 17](ch17.html#javacook-reflection))
+    and in the `ClassLoader` class (see [Recipe 17.5](ch17.html#javacook-reflection-SECT-4)).
+    The methods in `Class` delegate to the `ClassLoader`, so there is little difference
+    between them. The methods are summarized in [Table 10-6](#javacook-io-TABLE-getRes).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-6\. The getResource* methods
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method signature | In Class | In ClassLoader |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `public InputStream getResourceAsStream(String);` | Y | Y |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `public URL getResource(String);` | Y | Y |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `public Enumeration<URL> getResources(String) throws IOException;` | N |
+    Y |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The first method is designed to quickly and easily locate a resource, or file,
+    on your `CLASSPATH`. Using the `Class` version, or the other one with a standard
+    `ClassLoader` implementation, the resource can be a physical file or a file inside
+    a JAR file. If you define your own classloader, your imagination is the limit,
+    as long as it can be represented as an `InputStream`. This is commonly used as
+    shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: The second form returns a `URL`, which can be interpreted in various ways (see
+    the discussion of reading from a URL in [Recipe 12.1](ch12.html#javacook-netclient-rest-1)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The third form, only usable with a `ClassLoader` instance, returns an `Enumeration`
+    of `URL` objects. This is intended to return all the resources that match a given
+    string; remember that a `CLASSPATH` can consist of pretty much any number of directories
+    and/or JAR files, so this will search all of them. This is useful for finding
+    a series of configuration files and merging them, perhaps. Or for finding out
+    whether there is more than one resource/file of a given name on your `CLASSPATH`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that the resource name can be given as either a relative path or as an
+    absolute path. Assuming you are using Maven (see [Recipe 1.7](ch01.html#javacook-getstarted-maven)),
+    then for the absolute path, place the file relative to *src/main/resources/* directory.
+    For the relative path, place the file in the same directory as your source code.
+    The same rules apply in an IDE, assuming you have made *src/main/java* and *src/main/resources*
+    be treated as source folders in your IDE configuration. The idea is that resource
+    files get copied to your `CLASSPATH` folder. For example, if you have two resource
+    files, *src/main/resources/one.txt* and *src/main/java/MyPackage/two.txt*, and
+    your project is configured as described, these two lines would work, if accessed
+    from a program in `MyPackage`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In either case, `getResource()` and `getResourceAsStream()` will return `null`
+    if they don’t find the resource; you should always check for `null` to guard against
+    faulty deployment. If it doesn’t find anything matching, `getResources()` will
+    return an empty `Enumeration`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the file path has slashes between components (as in *package/subpackage*),
+    the name you path into any of the `getResource` methods should have a period in
+    place of the slash.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '10.17 Getting File Information: Files and Path'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to know all you can about a given file on disk.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use `java.nio.file.Files` methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `java.nio.file.Files` class has a plural name both to differentiate it from
+    the legacy `File` class that it replaces and to remind us that it sometimes works
+    on multiple files. There are two types of static methods in the `Files` class,
+    information and operational. The informational ones (see [Table 10-7](#javacook-dirfile-Files-Methods-1))
+    simply give you information about one file, such as `boolean exists()` or `long
+    size()`. The operational ones (see [Table 10-8](#javacook-dirfile-Files-Methods-2))
+    either make changes to the filesystem or open a file for reading or writing. Each
+    of the operational ones can throw the checked exception `IOException`; only a
+    few of the informational ones can.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The vast majority of these methods have argument(s) of type `java.nio.file.Path`.
+    A `Path` represents a path into the filesystem, that is, a set of directories
+    and possibly a file, like “C:\Users\user\Downloads” or “/home/ian/Downloads”.
+    The path may or may not exist as a file on disk at the time you create a `Path`
+    representing it. The `Files` class can tell you whether the file represented by
+    a given `Path` exists, can bring that `Path` into being as a file or as a directory,
+    and can either change the corresponding file’s attributes or even destroy it if
+    it does exist. `Path` objects are easily created with `Path.of(String name)`,
+    which has several overloads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Files` in conjunction with `Path` offers pretty well everything you’d need
+    to write a full-blown file manager application, let alone the needs of a more
+    typical application needing file information and/or directory access. The `Files`
+    class has a series of static `boolean` methods that give basic information.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-7\. Public static informational methods in java.nio.file.Files
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Return type | Method | Notes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | exists(Path, LinkOption…); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Object | getAttribute(Path, String, LinkOption…); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| <V extends FileAttributeView> V | getFileAttributeView(Path, Class<V>, LinkOption…);
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FileTime | getLastModifiedTime(Path, LinkOption…); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| UserPrincipal | getOwner(Path, LinkOption…); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Set<PosixFilePermission> | getPosixFilePermissions(Path, LinkOption…); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | isDirectory(Path, LinkOption…); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | isExecutable(Path); | If Executable by current user |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | isHidden(Path); | If a “dot file” on Unix, or “hidden” attribute
+    set on some OSes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | isReadable(Path); | If Readable by current user |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | isRegularFile(Path, LinkOption…); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | isSameFile(Path, Path) throws IOException; | Has to unwind filesys
+    complexities like “..”, symlinks, … |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | isSymbolicLink(Path); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | isWritable(Path); | If Writable by current user |'
+  prefs: []
+  type: TYPE_TB
+- en: '| long | mismatch(Path, Path); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | notExists(Path, LinkOption…); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| String | probeContentType(Path) throws IOException; | Tries to return MIME
+    type of data |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | readSymbolicLink(Path) throws IOException; |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| long | size(Path); |  |'
+  prefs: []
+  type: TYPE_TB
+- en: By “current user” we mean the account under which the current JVM instance is
+    being run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most of these methods are demonstrated in [Example 10-8](#javacook-ch10-EX-files-infos).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-8\. main/src/main/java/io/FilesInfos.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Obviously the paths chosen are somewhat system-specific, but when run on my
+    Unix system, the `boolean` methods all returned `true`, and the last three returned
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Table 10-8](#javacook-dirfile-Files-Methods-2) shows the methods that make
+    changes to filesystem entities.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-8\. Public static operational methods in java.nio.file.Files
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Return type | Method |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| long | copy(InputStream, Path, CopyOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| long | copy(Path, OutputStream); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | copy(Path, Path, CopyOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | createDirectories(Path, FileAttribute<?>…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | createDirectory(Path, FileAttribute<?>…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | createFile(Path, FileAttribute<?>…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | createLink(Path, Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | createSymbolicLink(Path, Path, FileAttribute<?>…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | createTempDirectory(Path, String, FileAttribute<?>…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | createTempDirectory(String, FileAttribute<?>…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | createTempFile(Path, String, String, FileAttribute<?>…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | createTempFile(String, String, FileAttribute<?>…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| void | delete(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | deleteIfExists(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Stream<Path> | find(Path, int, BiPredicate<Path, BasicFileAttributes>, FileVisitOption…);
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Stream<String> | lines(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Stream<String> | lines(Path, Charset); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Stream<Path> | list(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | move(Path, Path, CopyOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BufferedReader | newBufferedReader(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BufferedReader | newBufferedReader(Path, Charset); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BufferedWriter | newBufferedWriter(Path, Charset, OpenOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BufferedWriter | newBufferedWriter(Path, OpenOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SeekableByteChannel | newByteChannel(Path, OpenOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SeekableByteChannel | newByteChannel(Path, Set<? extends OpenOption>, FileAttribute<?>…);
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DirectoryStream<Path> | newDirectoryStream(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DirectoryStream<Path> | newDirectoryStream(Path, String); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| InputStream | newInputStream(Path, OpenOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OutputStream | newOutputStream(Path, OpenOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| byte[] | readAllBytes(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| List<String> | readAllLines(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| List<String> | readAllLines(Path, Charset); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| <A extends BasicFileAttributes> A | readAttributes(Path, Class<A>, LinkOption…);
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Map<String, Object> | readAttributes(Path, String, LinkOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| String | readString(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| String | readString(Path, Charset); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | setAttribute(Path, String, Object, LinkOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | setLastModifiedTime(Path, FileTime); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | setOwner(Path, UserPrincipal); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | setPosixFilePermissions(Path, Set<PosixFilePermission>); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | write(Path, Iterable<? extends CharSequence>, Charset, OpenOption…);
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | write(Path, Iterable<? extends CharSequence>, OpenOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | write(Path, byte[], OpenOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | writeString(Path, CharSequence, Charset, OpenOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Path | writeString(Path, CharSequence, OpenOption…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '`Path` is an interface whose implementation is provided by a provider class
+    called `Filesystem`. `Path` has many methods, listed in [Table 10-9](#javacook-dirfile-Path-Methods).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-9\. Public static operational methods in java.nio.file.Path
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Access | Return type | Method |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| static | Path | of(String, String…); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| static | Path | of(URI); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | FileSystem | getFileSystem(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | boolean | isAbsolute(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | getRoot(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | getFileName(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | getParent(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | int | getNameCount(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | getName(int); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | subpath(int, int); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | boolean | startsWith(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | boolean | startsWith(String); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | boolean | endsWith(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | boolean | endsWith(String); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | normalize(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | resolve(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | Path | resolve(String); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | Path | resolveSibling(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | Path | resolveSibling(String); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | relativize(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | URI | toUri(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | toAbsolutePath(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | Path | toRealPath(LinkOption…) throws IOException; |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | File | toFile(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | WatchKey | register(WatchService, WatchEvent$Kind<?>[], WatchEvent$Modifier…)
+    throws IOException; |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | WatchKey | register(WatchService, WatchEvent$Kind<?>…) throws IOException;
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | Iterator<Path> | iterator(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | int | compareTo(Path); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | boolean | equals(Object); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | int | hashCode(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| abstract | String | toString(); |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | int | compareTo(Object); |'
+  prefs: []
+  type: TYPE_TB
+- en: To find the information about one file, you can use the informational methods
+    in `Files` and `Path`, as shown in [Example 10-9](#javacook-dirfile-filestat).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-9\. main/src/main/java/dir_file/FileStatus.java (getting file information)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When run on MS Windows with the three arguments shown, it produces this output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, the so-called *canonical name* not only includes a leading
+    directory root of *C:\*, but also has had the name converted to uppercase. You
+    can tell I ran that on Windows. That version of Windows did not maintain timestamps
+    on directories; the value `0L` gets interpreted as January 1, 1970 (not accidentally
+    the same time base as used on Unix since that time). On Unix, it behaves differently:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A typical Unix system has no *autoexec.bat* file. And Unix filenames (like
+    those on a Mac) can consist of upper- and lowercase characters: what you type
+    is what you get.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Legacy compatibility
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To use a `Path` with legacy code that needs the older `java.io.File`, simply
+    use `File oldType = Path.toFile()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To go the other way, the `File` class has been retrofitted with a `toPath()`
+    method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 10.18 Creating a New File or Directory
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to create a new file on disk but not write any data into it; you need
+    to create a directory before you can create files in it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For an empty file, use a `java.nio.file.Files` object’s `createFile(Path)` method.
+    Use the `Files` class’s `createDirectory()` or `createDirectories()` method to
+    create a directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Files
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'You could easily create a new file by constructing a `FileOutputStream` or
+    `FileWriter` (see [Recipe 12.6](ch12.html#javacook-netclient-SECT-5)). But then
+    you’d have to remember to close it as well. Sometimes you want a file to exist,
+    but you don’t want to bother putting anything into it. This might be used, for
+    example, as a simple form of interprogram communication: one program could test
+    for the presence of a file and interpret that to mean that the other program has
+    reached a certain state. [Example 10-10](#javacook-dirfile-creation) is code that
+    simply creates an empty file for each name you give.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-10\. main/src/main/java/dir_file/Creat.java (creation of a file on
+    disk)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`java.nio.file.createFile()` has an overload that takes a second argument of
+    type `OpenOption`. This is an empty interface that is implemented by the `StandardOpenOption`
+    enumeration. These options are listed in [Table 10-5](#javacook-dir_file-OPEN-OPTIONS).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Directories
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Of the two methods used for creating directories, `createDirectory()` creates
+    just one directory, whereas `createDirectories()` creates any intermediate directories
+    that are needed. For example, if */home/ian* exists and is a directory, the call
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: will succeed (unless the directory is already there), but the call
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'will fail with a `java.nio.file.NoSuchFileException` because the directory
+    named *once* does not exist. To create this path of directories, as you might
+    expect by now, use `createDirectories()` (plural):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: Both variants return a `Path` object referring to the new directory if they
+    succeed and throw an exception if they fail. Notice that it is possible (but not
+    likely) for `createDirectories()` to create some of the directories and then fail;
+    in this case, the newly created directories are left in the filesystem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.19 Changing a File’s Name or Other Attributes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to change a file’s name on disk or some of its other attributes, such
+    as setting the file to read-only or changing its modification time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To change the name (or location), use a `java.nio.file.Files` static `move()`
+    method. For other attributes, use `setLastModifiedTime()` to change the timestamp,
+    or one of several other setters for mode or permission attributes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Similar to the Unix command line, there is no separate rename operation; the
+    move methods provide all functions for putting a file somewhere else, whether
+    that is to the same name in a different directory, a different name in the same
+    directory, or a different name on a different disk or filesystem. Accordingly,
+    the `Files.move()` method requires two `Path` objects, one referring to the existing
+    file and another referring to the new name. Then call the `Files.move()` method,
+    passing both path objects, first the existing and then the desired name. This
+    is easier to see than to explain, so here goes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: For changing the attributes, there are several methods available, listed in
+    [Table 10-10](#javacook-dir_file-filesetops). Each of these has a return value
+    of type `boolean`, with `true` meaning success.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-10\. Files attribute setters
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method signature | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `setExecutable(boolean executable)` | Convenience method to set owner’s execute
+    permission for this file |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `setExecutable(boolean executable, boolean ownerOnly)` | Sets the owner’s
+    or everybody’s execute permission for this file |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `setLastModified(long time)` | Sets the last-modified time of the file or
+    directory that this file names |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `setReadable(boolean readable)` | Convenience method to set owner’s read
+    permission for this file |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `setReadable(boolean readable, boolean ownerOnly)` | Sets the owner’s or
+    everybody’s read permission for this file |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `setReadOnly()` | Convenience for `setReadable(false)` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `setWritable(boolean writable)` | A convenience method to set the owner’s
+    write permission for this file |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `setWritable(boolean writable, boolean ownerOnly)` | Set owner’s or everybody’s
+    write permission for this file |'
+  prefs: []
+  type: TYPE_TB
+- en: For the methods that take two arguments, the first enables or disables the feature
+    on the given file that matches the method name, and the second controls whether
+    the operation applies to the owner only or to everyone. The second argument is
+    ignored if the file lives on a filesystem that doesn’t support multiuser permissions
+    or if the operating system doesn’t support that. All the methods described in
+    this recipe return `true` if they succeed and `false` otherwise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, `boolean setReadable(boolean readable, boolean ownerOnly)` lets
+    you specify who can read the given file. The `readable` argument is true or false
+    depending on whether you want it readable or not. The `ownerOnly` argument tries
+    to extend the readability choice to all users on a multiuser operating system,
+    and is ignored if not applicable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`setLastModified()` allows you to play games with the modification time of
+    a file. This is normally not a good game to play, but it is useful in some types
+    of backup/restore programs. This method takes an argument that is the number of
+    milliseconds (not seconds) since the beginning of Unix time (January 1, 1970).
+    You can get the original value for the file by calling `getLastModified()` (see
+    [Recipe 10.17](#javacook-dirfile-SECT-1)), or you can get the value for a given
+    date by calling the `ZonedDateTime`’s `toInstant().getEpochSecond()` method (see
+    [Recipe 6.3](ch06.html#javacook-dates-convert)) and multiplying by 1,000 to convert
+    seconds to milliseconds.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: I encourage you to explore the operation of these methods using JShell (see
+    [Recipe 1.4](ch01.html#javacook-getstarted-JSHELL)). I’d suggest having a second
+    window in which you can run `ls -l` or `dir` commands to see how the file is affected.
+    [Example 10-11](#javacook-filesdir-setfileattrs-1) shows some of these methods
+    being explored in JShell.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-11\. Exploring Files
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: 10.20 Deleting a File
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to delete one or more files from the disk.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use `java.nio.file.Files` object’s `delete(Path)` or `deleteIfExists(Path)`
+    method. These delete the files referred to by the `Path` argument (subject of
+    course to permissions) and directories (subject to permissions and to the directory
+    being empty).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This is not complicated. Simply construct a `Path` object for the file you
+    wish to delete, and call the static `Files.delete()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Recall the caveat about permissions in the introduction to this chapter: if
+    you don’t have permission, you can get a return value of false or, possibly, a
+    `SecurityException`. Note also that there are some differences between platforms.
+    Some versions of Windows allow Java to remove a read-only file, but Unix does
+    not allow you to remove a file unless you have write permission on the directory
+    it’s in. Nor does Unix allow you to remove a directory that isn’t empty (there
+    is even an exception, `DirectoryNotEmptyException`, for the latter case). Here
+    is a version of `Delete` with reporting of success or failure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `-h` option allows this program to switch between `delete()` and `deleteIfExists()`;
+    you can see the difference by running it on things that exist, don’t exist, and
+    are not empty, using both methods. The output looks something like this on my
+    Unix box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: 10.21 Creating a Transient/Temporary File
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to create a file with a unique temporary filename and/or or arrange
+    for a file to be deleted when your program is finished.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the `java.nio.file.Files` `createTempFile()` or `createTempDirectory()`
+    method. Use one of several methods to ensure your file is deleted on exit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `Files` class has static methods for creating temporary files and directories.
+    Note that a temporary file in this context is not deleted automatically; it is
+    simply created in a directory that is set aside for temporary files on that operating
+    system (e.g., /tmp on Unix). Here are the methods for creating tempory files and
+    directories:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Path createTempFile(Path dir, String prefix, String suffix, FileAttribute<?>…
+    attrs)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates a new empty file in the specified directory, using the given prefix
+    and suffix strings to generate its name
+  prefs: []
+  type: TYPE_NORMAL
+- en: Path createTempFile(String prefix, String suffix, FileAttribute<?>… attrs)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates an empty file in the default temporary-file directory, using the given
+    prefix and suffix to generate its name
+  prefs: []
+  type: TYPE_NORMAL
+- en: Path createTempDirectory(Path dir, String prefix, FileAttribute<?>… attrs)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates a new directory in the specified directory, using the given prefix to
+    generate its name
+  prefs: []
+  type: TYPE_NORMAL
+- en: Path createTempDirectory(String prefix, FileAttribute<?>… attrs)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates a new directory in the default temporary-file directory, using the given
+    prefix to generate its name
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The file attributes are discussed in the sidebar [“Understanding I/O Options:
+    StandardOpenOptions, FileAttribute, PosixFileAttribute, and More”](#javacook-ioOptions).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are various ways to arrange for a file to be deleted automatically. One
+    is to use the legacy `java.io.File` class, which has a explicit `deleteOnExit()`
+    method. This arranges for any file (no matter how it was created) to be deleted
+    if it still exists when the program exits. Here we arrange for a backup copy of
+    a program to be deleted on exit, and we also create a temporary file and arrange
+    for it to be removed on exit. Both files are gone after the program runs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When run on a Unix system, this program looked like this, proving that the
+    file was created but removed when the JVM exited:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `createTempFile()` method is like `createNewFile()` (see [Recipe 10.18](#javacook-dirfile-SECT-2))
+    in that it does create the file. Also be aware that, should the Java Virtual Machine
+    terminate abnormally, the deletion probably will not occur. There is no way to
+    undo the setting of `deleteOnExit()` short of renaming the file or something drastic
+    like powering off the computer before the program exits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another way to arrange for any file to be deleted when you are finished with
+    it is to create it with the `DELETE_ON_CLOSE` option (see [Table 10-5](#javacook-dir_file-OPEN-OPTIONS))
+    so it will be deleted when you close the file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A third, less likely method is to instead use a [JVM shutdown hook](https://darwinsys.com/java/shutdownhook.html).
+    `DELETE_ON_CLOSE` is probably the best option, particularly in a long-running
+    application, like most server-side apps. In these situations, the server could
+    be running for weeks, months, or even years. In the meantime all the temp files
+    would accumulate and the JVM would accumulate a large list of deferred work that
+    it needs to perform upon shutdown. You’d probably run out of disk space or server
+    memory or some other resource. For most long-running apps of this kind, it’s better
+    to use `DELETE_ON_CLOSE` or even the explicit `delete()` operation. Another alternative
+    is to use a scheduler service to periodically trigger removal of old temporary
+    files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.22 Listing a Directory
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to list the filesystem entries named in a directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the `java.nio.file.Files` static method `Stream<Path> list(Path dir)`, passing
+    the `Path` representing the directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `java.nio.file.Files` class contains several methods for working with directories.
+    If you just want to list the contents of a directory, use its `list(Path)` method.
+    For example, to list the filesystem entities named in the current directory, just
+    write the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This can become a complete program with as little as the following code. Note
+    that on many systems the `Path` objects are returned in the order they occur in
+    the directory, which isn’t sorted. In this simple example we use the `Stream.sorted()`
+    method to order the entries alphabetically:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs: []
+  type: TYPE_PRE
+- en: Of course, there’s lots of room for elaboration. You could print the names in
+    multiple columns across the page. Or even down the page because you know the number
+    of items in the list before you print. You could omit filenames with leading periods,
+    as does the Unix *ls* program. Or print the directory names first; I once used
+    a directory lister called *lc* that did this, and I found it quite useful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you want to process the directory recursively, you should *not* check each
+    entry to see if it’s a file or directory and recurse on directories. Instead,
+    you should use one of the `walk()` or `walkFileTree()` methods discussed in [Recipe
+    10.26](#javacook-dirfile-SECT-10); these handle recursion for you. There is also
+    a set of `Files.newDirectoryStream()` methods, with and without filter callbacks
+    and other arguments, that return a `DirectoryStream<Path>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.23 Getting the Directory Roots
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to know about the top-level directories, such as *C:\* and *D:\* on
+    Windows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the static method `FileSystems.getDefault().getRootDirectories()`, which
+    returns an `Iterable` of `Path` objects, one for each root directory. You can
+    print them or do other operations on them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Operating systems differ in how they organize filesystems out of multiple disk
+    drives or partitions. Microsoft Windows has a low-level device-oriented approach
+    in which each disk drive has a root directory named *A:\* for the first floppy
+    (if you still have one!), *C:\* for the first hard drive, and other letters for
+    CD-ROM and network drives. This approach requires you to know the physical device
+    that a file is on. Unix, Linux, and macOS have a high-level approach with a single
+    root directory */;* and different disks or partitions are mounted, or connected,
+    into a single unified tree. This approach sometimes requires you to figure out
+    where a device file is mounted. Perhaps neither is easier, though the Unix approach
+    is a bit more consistent. Either way, Java makes it easy for you to get a list
+    of the roots.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The static method `FileSystems.getDefault().getRootDirectories()` returns an
+    `Iterable<Path>` containing the available filesystem roots for whatever platform
+    you are running on. Here is a short program to list these:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE67]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, the program listed my floppy drive (even though the floppy drive
+    was not only empty, but left at home while I wrote this recipe on my notebook
+    computer in my car in a parking lot), the hard disk drive, and the CD-ROM drive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On Unix there is only one root directory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs: []
+  type: TYPE_PRE
+- en: One thing that is left out of the list of roots is the so-called *UNC filename*.
+    UNC filenames are used on some Microsoft platforms to refer to a network-available
+    resource that hasn’t been mounted locally on a particular drive letter. If your
+    system still uses these, be aware they will not show up in the `listDirectoryRoots()`
+    output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 10.24 Using the FileWatcher Service to Get Notified About File Changes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to be notified when some other application updates one or more of the
+    files in which you are interested.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the `java.nio.file.FileWatchService` to get notified of changes to files
+    automatically, instead of having to examine the files periodically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: It is fairly common for a large application to want to be notified of changes
+    to files, without having to go and look at them periodically. For example, a Java
+    Enterprise web server wants to know when Servlets and other components get updated.
+    An IDE wants to know when files were modified by an external editor or a build
+    script. Many modern operating systems have had this capability for some time,
+    and now it is available in Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These are the basic steps to using the `FileWatchService`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a `Path` object representing the directory you want to watch.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Get a `WatchService` by calling, for example, `FileSystems.getDefault().newWatchService()`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create an array of `Kind` enumerations for the things you want to watch (in
+    our example we watch for files being created or modified).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Register the `WatchService` and the `Kind` array onto the `Path` object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: From then on, you wait for the watcher to notify you. A typical implementation
+    is to enter a `while (true)` loop calling the `WatchService`’s `take()` method
+    to get an event and interpret the events to figure out what just happened.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[Example 10-12](#javacook-dirfile-fileWatchService-eg) is a program that does
+    just that. In addition, it starts another thread to actually do some filesystem
+    operations so that you can see the `WatchService` operating.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-12\. main/src/main/java/nio/FileWatchServiceDemo.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE69]'
+  prefs: []
+  type: TYPE_PRE
+- en: '10.25 Program: Save User Data to Disk'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to save user data to disk in a Java application. This may be in response
+    to File→Save in a GUI application, saving the file in a text editor, or saving
+    configuration data in a non-GUI application. You have heard (correctly) that a
+    well-behaved application should never lose data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Use this five-step plan, with appropriate variations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a temporary file; arrange for it to be removed automatically with `deleteOnExit(true)`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Write the user data to this file. Data format translation errors, if any, will
+    be thrown during this process, leaving the previous version of the user’s data
+    file intact.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Delete the backup file if it exists.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Rename the user’s previous file to **.bak*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Rename the temporary file to the saved file.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As developers, we have to deal with the fact that saving a file to disk is
+    full of risk. There are many things that can go wrong in saving data, yet it is
+    one of the most critical parts of most applications. If you lose data that a person
+    has spent hours inputting, or even lose a setting that a user feels strongly about,
+    she will despise your whole application. The disk might fill up while we’re writing
+    it, or it might be full before we start. This is a user’s error, but we have to
+    face it. So here’s a more detailed discussion of the little five-step dance we
+    should go through:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a temporary file that we will write to. Set this file to `deleteOnExit(true)`
+    so that if we fail in a later step we don’t clutter the disk. Because we are later
+    going to rename this file to become the user’s real file, and we don’t want to
+    run out of disk space during the rename, it is important that we create the file
+    on the same disk drive partition (*drive letter* or *mount point*) as the user’s
+    real file; otherwise the rename will silently morph into a copy-and-delete, which
+    could fail due to lack of disk space. See [Recipe 10.21](#javacook-dirfile-SECT-5)
+    for methods of deleting a file on exit.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Write the user data to this new temporary file. If we are transforming data—say,
+    getting it from a JDBC ResultSet or writing objects using a XML transformer—an
+    exception could be thrown. If we’re not careful, these exceptions can cause the
+    user’s data to be lost.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Delete the backup file if it exists. First time we do this it won’t exist; after
+    that it probably will. Be prepared either way.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Rename the user’s previous file to **.bak*_.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Rename the temporary file to the save file.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: This may seem like overkill, but it prevents career kill. I’ve done pretty much
+    this in numerous apps with various save file formats. This plan is the only really
+    safe way around all the problems that can occur. For example, the final step has
+    to be a rename not a copy, regardless of size considerations, to avoid the problem
+    of the disk filling up. So, to be correct, you have to ensure that the temp file
+    gets created on the same disk partition (drive letter or mount point) as the user’s
+    file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is the basic plan to use the `FileSaver`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instantiate it by calling the constructor.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Call the `getWriter()` or `getOutputStream()` method.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use the output file to write the data.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Call `finish()` on the `FileSaver` object.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*main/src/main/java/com/darwinsys/io/FileSaver.java*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE70]'
+  prefs: []
+  type: TYPE_PRE
+- en: Acknowledgments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The code in this program is my own, based on my experience in various applications.
+    I was prompted to package it up this way, and write it up, by a post by Brendon
+    McLean to the mailing list for the now-defunct [Java Application Framework JSR-296](http://jcp.org/en/jsr/detail?id=296).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '10.26 Program: Find—Walking a File Tree'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The program shown in [Example 10-13](#javacook-dirfile-SECT-10-ex) implements
+    a subset of the Windows *Find Files* dialog or the Unix *find* command. It has
+    most of the structure needed to build a more complete version of either of these.
+    It accepts the following options from standard Unix `find` (with limits):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-n *name*`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Name to look for. Can include shell wildcards if quoted from the shell.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-s *size*`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Size of file to look for. Can prefix with a plus sign to indicate greater than
+    or a minus sign to indicate less than.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-a`, `-o`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: And or or, but only one of these, between a `-n` and a `-s`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Files` class has four methods for walking a file tree. Two return a lazily
+    populated `Stream<Path>`, and the other two invoke a callback `FileVisitor` for
+    each file or directory found. My `find` implementation uses the first one; the
+    four are summarized in [Table 10-11](#javacook-dir_file-Files-Walkers).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-11\. Files tree walk methods
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Return | Signature |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Stream<Path>` | walk(Path start, FileVisitOption… options) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Stream<Path>` | walk(Path start, int maxDepth, FileVisitOption… options)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Path` | walkFileTree(Path start, FileVisitor<? super Path> visitor) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Path` | walkFileTree(Path start, Set<FileVisitOption> options, int maxDepth,
+    FileVisitor<? super Path> visitor) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Using the `walk()` methods is as simple as this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE71]'
+  prefs: []
+  type: TYPE_PRE
+- en: That code is near the start of the `startWalkingAt()` method in [Example 10-13](#javacook-dirfile-SECT-10-ex).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-13\. main/src/main/java/dir_file/Find.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE72]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 10-14](#javacook-dirfile-SECT-10-ex2) shows a class called `FindFilter`,
+    the backend implementation of `Find`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-14\. main/src/main/java/dir_file/FindFilter.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE73]'
+  prefs: []
+  type: TYPE_PRE
+- en: '^([1](ch10.html#idm45290657814168-marker)) A poor choice of name: it was new
+    in Java SE 1.4\. But newer than `InputStream`/`OutputStream` (Java 1.0) and `Reader`s/`Writer`s
+    (1.1).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch10.html#idm45290657786632-marker)) Not strictly true; there is, but
+    only in the `java.nio.FileChannel` class, which we’re not covering.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch10.html#idm45290656852712-marker)) The central character in Yann Martel’s
+    novel *Life of Pi* would have been born in 1956, according to information in [Wikipedia](http://en.wikipedia.org/wiki/Life_of_pi).
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([4](ch10.html#idm45290655572552-marker)) If this were code in a maintained
+    project, I might factor out some of the common code among these two calculators,
+    as well as the one in [Recipe 5.12](ch05.html#javacook-numbers-SECT-19), and divide
+    the code better using interfaces. However, this would detract from the simplicity
+    of self-contained examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([5](ch10.html#idm45290653458856-marker)) There is no support for adding files
+    to an existing archive, so make sure you put all the files in at once or be prepared
+    to re-create the archive from scratch.
+  prefs: []
+  type: TYPE_NORMAL

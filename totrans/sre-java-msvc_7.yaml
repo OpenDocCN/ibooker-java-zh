@@ -1,0 +1,1523 @@
+- en: Chapter 7\. Traffic Management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Cloud native applications expect failure and low availability from the other
+    services and resources they interact with. In this chapter, we introduce important
+    mitigation strategies involving load balancing (platform, gateway, and client-side)
+    and call resilience patterns (retrying, rate limiters, bulkheads, and circuit
+    breakers) that work together to ensure your microservices continue to perform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These patterns won’t be applicable for every organization. Often introducing
+    more complex traffic management trades off operational complexity for more predictable
+    user experience or a lower overall failure rate. In other words, it’s easy to
+    make a REST call to a downstream service with your HTTP client of choice; it’s
+    a little more complicated to wrap that call in a retry. And a little more complicated
+    still to provide a circuit breaker and fallback. But with greater complexity comes
+    greater reliability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Organizations should evaluate their need here based on the types of applications
+    they have (for example, where circuit breaking is applicable) and which application
+    frameworks microservices are primarily written in. Java has first-class library
+    support for these patterns and integration into popular frameworks like Spring,
+    but the lack of support in some other languages would make it preferable to use
+    sidecars or service meshes, even if there is some loss of flexibility as a result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microservices Offer More Potential Failure Points
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As the number of microservices involved in a user interaction grows, the likelihood
+    of encountering a service instance (in any given user interaction) that is in
+    a low availability state increases. A service can put load on a downstream service
+    that it cannot sustain and cause it to fail. Call resiliency patterns protect
+    a service from failures in the downstream services, as well as negatively impact
+    downstream services. They alter the call sequence with a goal of providing a reduced
+    service to end users, but a service nevertheless. For example, a personalized
+    list of Netflix movie recommendations can be replaced with generic movie recommendations
+    if the personalization service is suffering from low availability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Microservices are usually deployed in a horizontally scaled way across different
+    availability zones to increase resiliency of the distributed system. Microservices
+    are not static. At any given time several of them can be released (new versions
+    are being deployed or canaried), scaled, moved, or failed over. Some instances
+    may experience failures, but not all. They may be temporarily down or experiencing
+    reduced performance. This dynamic, frequently changed system requires adopting
+    a set of practices for dynamically routing traffic: from discovering where the
+    services are in the first place to picking which instance to send the traffic
+    to. This is covered by different load-balancing approaches.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Two approaches exist for implementing these patterns: the application framework
+    (code) and the supporting infrastructure (platform or gateway load balancers,
+    service mesh). A combination can also be used. Generally, implementing these in
+    application frameworks allows more flexibility and customization that’s specialized
+    to the business domain. For example, replacing personalized movie recommendations
+    with generic ones is acceptable, but there is no obvious fallback response to
+    a request to a payment or billing service—an understanding of the business domain
+    matters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrency of Systems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: By “concurrency” I am referring to the number of requests a microservice can
+    service at once. There is a natural bound to concurrency in any system, usually
+    driven by a resource like CPU or memory or the performance of a downstream service
+    when requests are satisfied in a blocking manner. Any attempted requests exceeding
+    this bound cannot be satisfied immediately and must be queued or rejected. In
+    the case of a typical Java microservice running on Tomcat, the number of threads
+    in Tomcat’s thread pool represents an upper bound on its concurrency limit (though
+    system resources may very well be exhausted by a number of concurrent requests
+    less than the Tomcat thread pool). The accept queue maintained by the operating
+    system effectively queues up requests in excess of that concurrency limit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Services fail when during prolonged periods of time the request rate exceeds
+    the response rate. As the queue grows, so will the latency (since requests don’t
+    even begin getting serviced until they are removed from the queue). Eventually
+    queued requests will start timing out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we will cover strategies to prevent a cascading failure from
+    occurring because a concurrency limit has been reached. The discussion on load
+    balancing, viewed from this perspective, is really a proactive approach to directing
+    traffic in such a way as to prevent load-related failure in the first place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Platform Load Balancing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Every modern runtime platform (e.g., IaaS offerings like AWS/GCP/Azure, a CaaS
+    offering such as any Kubernetes distribution, or a PaaS offering like Cloud Foundry)
+    has at least some basic cluster load balancer. These load balancers serve to distribute
+    traffic across the instances in a cluster one way or another (often round-robin),
+    but also have a wide range of other responsibilities. For example, AWS Elastic
+    Load Balancers also serve the interests of TLS termination, content-based routing,
+    sticky sessions, etc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In on-premises environments, even simpler configurations are still prevalent
+    with IIS, Nginx, Apache, etc., serving as statically configured load balancers
+    in front of a fixed set of named virtual machines or physical machines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before discussing more complex options, it’s worth noting that there is nothing
+    wrong with this setup for a particular level of scale. One regional casualty/property
+    insurer primarily serves a web application for its captive agents, so capacity
+    requirements for this user pool is incredibly stable. While such an organization
+    can benefit from an active-active deployment for greater resiliency to failure
+    in an individual datacenter, its traffic pattern doesn’t warrant the more complex
+    load balancing at a gateway or on the client side.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Gateway Load Balancing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Software-based gateways are readily available in open source. [Spring Cloud
+    Gateway](https://oreil.ly/yTMx-) is a reasonably modern incarnation of such a
+    gateway, influenced by experience learned from working with [Zuul](https://oreil.ly/fNqHm).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ability of a runtime platform to load balance traffic to optimize availability
+    is limited. For some availability signals like latency, the caller is the best
+    source of information. The load balancer and calling application are similarly
+    positioned to observe and react to latency as an availability signal. But for
+    other signals, especially those involving utilization, the server itself is the
+    best (and often only) source of this information. Combining these two sources
+    of availability signals yields the most effective load-balancing strategy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From the perspective of reliability, the goal of load balancing is to direct
+    traffic away from servers that have high error rates. The goal should *not* be
+    to optimize for the fastest response time. Optimizing for response time tends
+    to result in strategies that can *herd* traffic to a healthy instance or group
+    of instances, causing them to become overloaded and unavailable. Avoiding instances
+    with high error rates still allows traffic to be distributed to instances that
+    are not optimally performant, but available enough. If all instances in a cluster
+    are overloaded, choosing one instance over another offers no benefit no matter
+    how smart the load-balancing strategy. However, in many cases a subset of instances
+    are overloaded because of temporary conditions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A temporarily overloaded subset is found wherever there is a process whose execution
+    is likely to be staggered across the cluster. For example, not all instances are
+    likely to undergo GC or VM pauses, data updates, or cache swapping at the same
+    time. This staggering tends to be present whenever there is no cluster-wide coordination
+    of these processes. If all instances perform some sort of data update based on
+    a synchronized clock, cluster coordination exists. For an example of a lack of
+    coordination, consider what causes a GC pause to occur. Allocations incurred satisfying
+    any given request eventually lead to a GC event. Since traffic will almost certainly
+    be distributed nonuniformly across the cluster regardless of the load-balancing
+    strategy, allocations will be staggered, leading to staggered GC events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another example of a subset of low-availability instances is the set of cold
+    instances post-startup, such as instances brought into service by an autoscaling
+    event or a zero-downtime deployment. With the rising popularity of serverless
+    technologies, focus has been directed at application start time up to the point
+    where health checks pass (effectively when the application instance is placed
+    in service). But it’s important to note a second phase of cold start ill performance
+    that begins on the first request, as in [Figure 7-1](part0012_split_004.html#first_five_minutes_latency),
+    and ends when runtime optimizations have taken effect (i.e., the JVM’s JIT optimization,
+    or application-specific behaviors like memory mapping a working set of data into
+    memory). It’s this second phase that is so important to mitigate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The max will be much higher in the first few requests](../images/00070.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-1\. The max is more than an order of magnitude worse than P99 in the
+    first few requests
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The chart plots the two Prometheus queries shown in [Example 7-1](part0012_split_004.html#first_five_minutes_latency_prometheus).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-1\. Prometheus queries plotting max and P99 latency for a REST endpoint/persons
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Some instances will run slower than others more or less permanently because
+    of either bad underlying hardware or, increasingly, a noisy neighbor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clearly, round-robin load balancing can be improved upon. Architecturally, the
+    logic for this load balancer resides in the edge gateway, as shown in [Figure 7-2](part0012_split_004.html#gateway_load_balancer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0702](../images/00064.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-2\. Using an API gateway as a smarter load balancer
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: User-facing traffic comes in through a platform load balancer, which distributes
+    the traffic in a round-robin fashion to a cluster of gateway instances. In this
+    case, we’ve shown one gateway serving requests to multiple microservices behind
+    the edge. Gateway instances communicate directly with service instances by fetching
+    an instance list from a discovery service like Netflix Eureka or HashiCorp Consul.
+    There is no need for a platform load balancer in front of individual microservices
+    that are load balanced by the gateway.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With this general setup in mind, we can progressively come up with a load-balancing
+    strategy that takes into account application instances’ notion of their own availability.
+    Then we’ll consider its unintended side effects. The goal is for you to be exposed
+    to techniques that can be used in combination with domain-specific knowledge to
+    craft a load-balancing strategy that works well for you while learning to think
+    through and anticipate side effects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Join the Shortest Queue
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Perhaps the simplest “adaptive” load balancer that goes beyond simple round-robin
+    is “join the shortest queue.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: Join the shortest queue is implemented by comparing some instance availability
+    signal visible to the load balancer. A good example of this is in-flight requests
+    to each instance that the load balancer is aware of. Suppose the load balancer
+    is directing traffic to three application instances, two of which have an in-flight
+    request. When the load balancer receives a new request, it will direct the request
+    to the one instance that has no in-flight requests, as shown in [Figure 7-3](part0012_split_005.html#jsq_load_balancer).
+    This is computationally cheap (just minimizing/maximizing some statistic) and
+    easy to implement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The load balancer knows which instance to direct traffic to](../images/00058.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-3\. Join the shortest queue with one load balancer node
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: It starts to break down when there is more than one load balancer instance.
+    To this point, the algorithm described makes decisions based on in-flight requests
+    known to any one load balancer instance (those requests that passed through it).
+    In other words, in a pool of load balancers, each load balancer is making its
+    own independent decision, unaware of in-flight requests occurring on the others.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 7-4](part0012_split_005.html#jsq_many_load_balancers) shows how Load
+    Balancer 1 will make a bad decision to send an incoming request to Server 3 on
+    the basis of incomplete information it has about in-flight requests managed by
+    other load balancer nodes. The arrows indicate in-flight requests. So before a
+    new request comes in, Load Balancer 1 has an in-flight request to Service 1 and
+    2\. Load Balancer 2 has an in-flight request to Service 2 and 3\. Load Balancer
+    3 has three in-flight requests to Service 3\. As a new request comes in to Load
+    Balancer 1, since it only knows about its own in-flight requests, it will decide
+    to send the new request to Service 3, even though it is the busiest service instance,
+    with four in-flight requests coming from the other load balancers in the cluster.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The load balancer will make a bad decision based on incomplete information](../images/00024.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-4\. Join the shortest queue with several load balancer nodes
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Join the shortest queue is an example of load balancing based on only the load
+    balancer’s view of the situation. One consequence of this for low-throughput applications
+    is that a load balancer is managing only a few in-flight requests to a subset
+    of the instances in a cluster. The choice of which instance in the cluster is
+    least utilized can lead to a choice between two instances with zero in-flight
+    requests, a random choice since no other information is available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Avoid the Temptation to Coordinate!
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It may be tempting to consider sharing the state of each load balancer’s in-flight
+    requests with other load balancers, but distributed coordination like this is
+    difficult and should be avoided whenever possible. You wind up facing an engineering
+    choice between rigging a peer-based distributed state system or choosing a shared
+    datastore with the typical consistency, availability, and partitionability trade-offs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next pattern uses information from the instances being load balanced.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instance-Reported Availability and Utilization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If instead we can inform each load balancer of the instance’s perspective on
+    its own availability and utilization, then two load balancers using the same instance
+    have the same information regarding its availability. There are two available
+    solutions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Poll
+  prefs: []
+  type: TYPE_NORMAL
+- en: Poll each instance’s utilization, sampling data from health check endpoint detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Passively track
+  prefs: []
+  type: TYPE_NORMAL
+- en: Passively track a header on the responses coming from the server annotated with
+    current utilization data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both approaches are equally simple to implement, and each has trade-offs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Micrometer has a `MeterRegistry` implementation called `HealthMeterRegistry`
+    (available in the `io.micrometer:micrometer-registry-health` module) specifically
+    to convert metrics data into availability signals that can be mapped to health
+    indicators watched by load balancers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `HealthMeterRegistry` is configured with a set of service level objectives
+    that are then mapped to framework health indicators and sampled each time the
+    load balancer queries the health check endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Micrometer provides out-of-the-box service level objectives that are known to
+    be applicable to a broad range of Java applications. These can be manually configured,
+    as in [Example 7-2](part0012_split_007.html#oob_slos). Spring Boot Actuator also
+    autoconfigures these objectives when `micrometer-registry-health` is present.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-2\. Creating a HealthMeterRegistry with recommended service level
+    objectives
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: When this is bound to framework-level health indicators, these objectives are
+    incorporated into the overall determination of an application’s health. Spring
+    Boot Actuator’s health endpoint is shown configured with this default set of SLOs
+    in [Figure 7-5](part0012_split_007.html#slo_actuator_health).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0705](../images/00085.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-5\. Spring Boot Actuator health endpoint with service level objectives
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: You can define your own service level objectives as well, and in [Example 7-3](part0012_split_007.html#poll_instance_utilization_server)
+    we define an `api.utilization` service level objective to support sampling utilization
+    data from health check endpoint detail on the server. Spring Boot Actuator adds
+    this objective to the `HealthMeterRegistry` that it will automatically create;
+    or if you are wiring your own `HealthMeterRegistry`, you can add it directly at
+    construction time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-3\. A custom ServiceLevelObjective to report server utilization
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0012_split_007.html#co_traffic_management_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A name for the service level objective. This can be naming convention normalized
+    just like a meter name when exposing it as the name of a health indicator component.
+    Spring Boot would show this as a health component named `apiUtilization` (camel-cased)
+    based on its convention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](../images/00059.png)](part0012_split_007.html#co_traffic_management_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The unit of measure of utilization, which makes the output a little more human
+    readable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](../images/00067.png)](part0012_split_007.html#co_traffic_management_CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What it means for this objective to not be met, in plain language.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](../images/00016.png)](part0012_split_007.html#co_traffic_management_CO1-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are retrieving a measure of throughput (`count`) here. Also available are
+    `value` to retrieve a gauge value, `total` to retrieve timer total time, distribution
+    summary total amount, long task timer active tasks, and `percentile`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](../images/00100.png)](part0012_split_007.html#co_traffic_management_CO1-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A threshold that we are testing the measure against. When this service is receiving
+    more than 10,000 requests/second, it reports itself as out of service to anything
+    monitoring its health endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When this health indicator is being consumed by a gateway that can contain custom
+    code to respond to different conditions, it’s best to always report `UP` as the
+    status for this health indicator. We could hardcode some fixed threshold in the
+    application and report a different status like `OVERLOADED` when the utilization
+    exceeds the threshold. Better would be to fetch the threshold from a dynamic configuration
+    server such that the value can be changed on running instances in one stroke by
+    changing the config server. Best is to leave the determination of what utilization
+    is too much to the load balancer, which could be folding this decision into more
+    complex criteria.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Health Checks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sometimes, though, our “gateway” is something like a platform load balancer
+    (by platform load balancer I mean something like an AWS Application Load Balancer)
+    that can respond to coarser measures of availability for its decisions. For example,
+    many platform load balancers offer a means to configure a health check path and
+    port. This could easily be configured to `/actuator/health`, but the platform
+    load balancer will be responding only to whether the HTTP status of the response
+    is successful. There isn’t enough configurability to peek at the utilization detail
+    and make a decision relative to a threshold. In this case, it really is up to
+    the application code to set a threshold and return `Health.up()` or `Health.outOfService()`.
+    While there is nothing really inherently wrong with leaving this decision up to
+    the app, it does require some a priori knowledge of performance at the time the
+    app is being written, and of course is less flexible in the deployed environment.
+    As an example of a platform load balancer that looks at health checks, DigitalOcean
+    provides a “health check” [configuration](https://oreil.ly/yYBzh) for Kubernetes
+    load balancers, as shown in [Example 7-4](part0012_split_008.html#k8s_health_check_lb).
+    Health check configurations are also available for AWS Auto Scaling Groups and
+    Google Cloud load balancers. Azure load balancers offer a similar configuration
+    that is called a “health probe.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-4\. A Kubernetes load balancer configured to look at instance-reported
+    utilization
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: When setting up a health indicator like this, the task is to find some key performance
+    indicator that best summarizes the application’s availability. This performance
+    indicator should monitor whatever the weak spot is in the application where an
+    overabundance of traffic will eventually cause trouble. We are choosing to consider
+    the `/persons` API endpoint the key performance indicator of utilization availability
+    in this example. We could have selected more than one endpoint, multiple HTTP
+    response outcomes, or any other combination of factors for HTTP endpoint throughput.
+    Also, there are other measures of utilization that we could have used. If this
+    was an event-driven application, then the rate of messages consumed from a message
+    queue or Kafka topic would be reasonable. If multiple execution paths in the application
+    all led to an interaction with some utilization-constrained resources like a datasource
+    or the file system, as in [Figure 7-6](part0012_split_008.html#utilization_of_datasource),
+    then measuring the utilization on that resource would also seem reasonable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0706](../images/00052.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-6\. Measure throughput on a datasource when multiple execution paths
+    lead it to be a bottleneck
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This health indicator can be added to a new Spring Boot application generated
+    from [start.spring.io](https://start.spring.io) that includes a runtime dependency
+    on `io.micrometer:micrometer-core` and the configuration found in [Example 7-5](part0012_split_008.html#poll_instance_utilization_server_config).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-5\. Required application.yml configuration
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The response from `http://APP_HOST/actuator/health` includes the instance’s
+    view of its own utilization. Whether or not this utilization represents near full
+    capacity is not important from the perspective of the “choice of two” algorithm.
+    It is the algorithm’s choice to weight higher the lower of two such figures. It
+    is only when the gateway/load balancer needs to prefilter the list of instances
+    presented to the “choice of two” algorithm that it needs some domain-specific
+    knowledge of a reasonable cutoff threshold to use, being at that point imbued
+    with some understanding of whether a particular utilization level represents *too
+    much* utilization or not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By actively polling each instance, we are adding additional load on each instance
+    proportional to the number of load balancer nodes. But for a service with low
+    throughput, specifically when the utilization polling rate *exceeds* the request
+    rate through a particular load balancer, polling provides a more accurate picture
+    of utilization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The passive strategy provides as up-to-date a view of utilization as the last
+    request to arrive at a particular instance. The higher the throughput to an instance,
+    the more accurate the utilization measure is.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can use instance-reported utilization or health as an input to a more randomizing
+    heuristic, as described next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Choice of Two
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: “Choice of two” selects two servers randomly and selects one based on the maximization
+    of some criteria.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the criteria with multiple factors limits bias that could unintentionally
+    lead to herding. For example, suppose one server is failing on every request and
+    that (as is often the case) the failure mode is such that failed responses have
+    a lower response time than a successful response. The instance’s utilization will
+    appear lower. If utilization was the only factor used, then load balancers would
+    start sending *more* requests to the unhealthy instance!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compute an aggregate of these three factors and maximize on the aggregate for
+    the choice of two selection:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Client health
+  prefs: []
+  type: TYPE_NORMAL
+- en: A measure of connection-related errors for that instance
+  prefs: []
+  type: TYPE_NORMAL
+- en: Server utilization
+  prefs: []
+  type: TYPE_NORMAL
+- en: The most recent utilization measure provided by the instance
+  prefs: []
+  type: TYPE_NORMAL
+- en: Client utilization
+  prefs: []
+  type: TYPE_NORMAL
+- en: Count of in-flight requests to the instance from this load balancer
+  prefs: []
+  type: TYPE_NORMAL
+- en: To make this even more robust, consider prefiltering the list of servers from
+    which the two are chosen and compared. Make sure to bound the filtering in some
+    way to avoid high CPU cost in searching for relatively healthy instances in a
+    cluster with a large pool of instances that are unhealthy (e.g., by only attempting
+    so many times to select a relatively healthy instance). By filtering, we can present
+    the choice of two algorithm with a choice between relatively healthy instances
+    even when some portion of the cluster is persistently unavailable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can add one last tweak to our selection algorithm to accommodate cold starts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instance Probation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To avoid overloading new instances while they are still undergoing their second-phase
+    warmup, we can simply place a static limit on the number of requests that are
+    allowed to go to that new instance. The probationary period ends when the load
+    balancer receives one or more utilization responses from the new instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The concept of statically rate limiting new instances can be extended to include
+    a gradually ramping-up rate limit based on the instance’s age. Micrometer includes
+    a `process.uptime` metric out of the box that can be used to calculate instance
+    age.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have a toolbox of load-balancing strategies, let’s think about some
+    of the unintended side effects they can have.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Knock-On Effects of Smarter Load Balancing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The goal of developing the choice of two load balancers was to divert traffic
+    away from instances suffering from availability problems. This has some interesting
+    effects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When load balancing across two clusters in a blue/green deployment (or rolling
+    blue/green), if one of the clusters has relatively worse performance, then it
+    will receive less than an equal share of traffic.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In an automated canary analysis setup, the baseline and canary may receive different
+    proportions of traffic for the same reason.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Anomaly detection may not pick up on outliers as quickly, as early signals of
+    low reliability mean that fewer attempts are made against that instance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The request distribution will not be as uniform as a round-robin load balancer.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Availability signals are always decayed over time. In the instance-reported
+    utilization examples ([Example 7-3](part0012_split_007.html#poll_instance_utilization_server)),
+    this is why we used a rate-per-interval measure of utilization. As soon as the
+    interval rolls over, a period of instability is no longer reflected in utilization
+    data. The end result is if an instance recovers from a period of low availability,
+    it can win a choice-of-two comparison again and receive traffic from the load
+    balancer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not every microservice architecture is designed such that inter-microservice
+    requests always pass through a gateway (nor should they be).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Client-Side Load Balancing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A third option is to implement a client-side load balancer. This leaves load-balancing
+    decisions to the caller. Historically, client-side load balancing has been used
+    for novel load-balancing strategies like cloud platform zone avoidance or zone
+    affinity, preference for lowest weighted response times, etc. When these strategies
+    work well in general, they tend to reemerge as features of platform load balancers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 7-7](part0012_split_012.html#client_side_load_balancer) shows an interaction
+    between Service A and Service B where Service A is using a client-side load balancer
+    to distribute traffic to Service B. The client-side load balancer is part of Service
+    A’s application code. Typically, an instance list will be fetched from a discovery
+    service like Eureka or Consul, and because the client-side load balancer directs
+    traffic to Service B instances picked from the instance list fetched from discovery,
+    there is no need for a platform load balancer in front of Service B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0707](../images/00087.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-7\. Client-side load balancing
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Client-side load balancing can be used for different purposes. One of the original
+    purposes was to dynamically source a list of server IPs or host names from a central
+    service discovery mechanism like Eureka or Consul.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why Service Discovery Instead of a Cloud Load Balancer?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When Netflix first developed Eureka, AWS VPC did not yet exist, and Elastic
+    Load Balancers always had public, internet-facing host names. Not desiring to
+    expose internal microservices to the public internet, Netflix built Eureka to
+    achieve centrally what a private Application Load Balancer (ALBs being a replacement
+    for what is now considered a legacy ELB construct in AWS) can achieve on a per-microservice
+    basis. Perhaps if VPC was around when Netflix first migrated to AWS, Eureka would
+    never have come about. Nevertheless, its use has extended beyond just load balancing
+    to available instances in a cluster. [Table 5-1](part0010_split_011.html#eureka_api_availability)
+    showed how it is also used in blue/green deployments of event-driven microservices
+    to take the instances in a disabled cluster out of service. Not every enterprise
+    will take advantage of this kind of tooling, and if not, private cloud load balancers
+    are probably simpler to manage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spring Cloud Commons has a client-side load-balancing abstraction that makes
+    the configuration of these typical concerns fairly straightforward, as in [Example 7-6](part0012_split_013.html#load_balancing_zone_health_checks).
+    Any use of the `WebClient` generated from such a configuration will cache the
+    service listing for a period of time, preferring instances in the same zone, and
+    using the configured `DiscoveryClient` to fetch the list of available names.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-6\. Load balancing health checks
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Not all load balancing is about server selection, however. There is one particular
+    client-side load-balancing strategy used to cut off tail latencies above the 99th
+    percentile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hedge Requests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '[Chapter 2](part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73)
+    showed that for *N* requests, the chance that at least one of these requests is
+    in the top 1% of the latency distribution is <math alttext="left-parenthesis 1
+    minus 0.99 Superscript upper N Baseline right-parenthesis asterisk 100 percent-sign"><mrow><mo>(</mo>
+    <mn>1</mn> <mo>-</mo> <mn>0</mn> <mo>.</mo> <msup><mn>99</mn> <mi>N</mi></msup>
+    <mo>)</mo> <mo>*</mo> <mn>100</mn> <mo>%</mo></mrow></math> . Furthermore, we
+    saw how latency distributions are almost always multimodal, with the top 1% generally
+    one to two orders of magnitude worse than the 99th percentile. For even 100 individual
+    resource interactions, the chance of encountering one of these top 1% latencies
+    is <math alttext="left-parenthesis 1 minus 0.99 Superscript 100 Baseline right-parenthesis
+    asterisk 100 percent-sign equals 63.3 percent-sign"><mrow><mo>(</mo> <mn>1</mn>
+    <mo>-</mo> <mn>0</mn> <mo>.</mo> <msup><mn>99</mn> <mn>100</mn></msup> <mo>)</mo>
+    <mo>*</mo> <mn>100</mn> <mo>%</mo> <mo>=</mo> <mn>63</mn> <mo>.</mo> <mn>3</mn>
+    <mo>%</mo></mrow></math> .'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One well-tested strategy to mitigate the effects of the top 1% latency when
+    calling a downstream service or resource is to simply ship multiple requests downstream
+    and accept whichever response comes back first, discarding the others.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This approach may seem surprising because obviously it increases the load on
+    the downstream linearly according to the additional number of requests you include
+    in your hedge (and potentially this fans out more than linearly beyond the direct
+    downstream, as it in turn makes requests to *its* downstreams and so on). In many
+    enterprises, services experience a throughput that doesn’t come close to their
+    total capacity, and the most resilient services are scaled horizontally in some
+    sort of active-active capacity to limit the impact of an outage in any one region.
+    This has the effect of increasing capacity (generally unused) to improve resiliency.
+    At its best, hedge requesting can serve to simply use this excess capacity while
+    improving end-user response times by significantly reducing the frequency of the
+    worst latencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Obviously, the decision to employ hedge requesting requires some domain-specific
+    knowledge about the downstream service being called. It wouldn’t be appropriate
+    to ship three requests to a third-party payment system to charge a customer’s
+    credit card three times! For this reason, hedge requesting is typically performed
+    in application code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hedge Requests Can’t Be Implemented by Service Mesh Client-Side Load Balancers
+    (!!)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Since domain-specific knowledge essentially requires that the load-balancing
+    decision is made in the calling application, notice that shifting the responsibility
+    for client-side load balancing to a service mesh is unworkable for hedge requesting.
+    Given that hedge requesting is one of the simplest and most effective means of
+    compensating for long-tail latencies above the 99th percentile, the inability
+    of service mesh to replace application code for this purpose should be a trigger
+    to consider whether the service mesh pattern is really appropriate more generally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We now turn the discussion to patterns that compensate for failure in downstream
+    microservices or lessen the likelihood of such services being overwhelmed in the
+    first place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Call Resiliency Patterns
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Regardless of how well a load balancer makes a predictive decision about which
+    instance *should* handle traffic best, any prediction is based on a projection
+    of past performance. Past performance is never a guarantee of future results,
+    so there still is a need for another level of resiliency to handle failure. Additionally,
+    even a microservice cluster behind a load balancer that perfectly allocates traffic
+    to the most available instances at any given time has a limit for what it can
+    handle. The layers of a microservice architecture need to be guarded against overloading
+    that could lead to complete failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These mechanisms together form different basic “backpressure” schemes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Backpressure is the signaling of failure from a serving system to the requesting
+    system and how the requesting system handles those failures to prevent overloading
+    itself and the serving system. Designing for backpressure means bounding resource
+    use during times of overload and times of system failure. This is one of the basic
+    building blocks of creating a robust distributed system. Implementations of backpressure
+    usually involve either dropping new messages on the floor, or shipping errors
+    back to users (and incrementing a metric in both cases) when a resource becomes
+    limited or failures occur. Timeouts and exponential backoffs on connections and
+    requests to other systems are also essential. Without backpressure mechanisms
+    in place, cascading failure or unintentional message loss become likely. When
+    a system is not able to handle the failures of another, it tends to emit failures
+    to another system that depends on it.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Jeff Hodges
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'The caller can combine four patterns to improve resiliency:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retries
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rate limiters
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bulkheads
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Circuit breakers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Retries are an obvious first step to overcoming intermittent failure, but we
+    need to be cautious of creating “retry storms,” i.e., overwhelming parts of the
+    system that are already under duress with retries when the original requests begin
+    to fail. The other patterns will help compensate. Still, let’s start with retries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retries
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Expect transient failure in downstream services, caused by temporarily full
+    thread pools, slow network connections resulting in timeouts, or other temporary
+    conditions that lead to unavailability. This class of faults typically self-correct
+    after a short period of time. Callers should be prepared to handle transient failure
+    by wrapping calls to downstreams in retry logic. Consider three factors when adding
+    retries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whether retries are appropriate. This often requires domain-specific knowledge
+    of the called service. For example, should we retry a payment attempt on a downstream
+    service that returned a timeout? Will the timed-out operation eventually be processed,
+    making a retry a potential double charge?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The maximum number of retry attempts, and the duration (including backoffs,
+    as shown in [Example 7-7](part0012_split_017.html#retry_resilience4j)) to use
+    between attempts.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Which responses (and exception types) warrant a retry. For example, if a downstream
+    returns a 400 because the inputs are malformed for some reason, we cannot expect
+    a different result by retrying the same inputs.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Example 7-7\. Setting up an exponential backoff retry with Resilience4J
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Resilience4J has a built-in metric for retry logic, enabled by binding your
+    retry to a Micrometer meter registry, as in [Example 7-8](part0012_split_017.html#retry_metrics_bind).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-8\. Publishing metrics about retries via Micrometer
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: This exports a single gauge `resilience4j.retry.calls` with a `kind` tag segregating
+    successful (with and without retry) and failed (with and without retry) calls.
+    If you were to set an alert, it would be on a fixed threshold of calls where `kind`
+    equals `failed.with.retry`. In many cases, the code where the call is being made
+    is itself going to be timed. For example, a REST endpoint that, when invoked,
+    does some work, including making downstream service calls with retry logic, is
+    itself going to be timed with `http.server.requests`, and you should already be
+    alerting on failures of that endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nevertheless, if your application contains a common component guarding access
+    to a resource or downstream service with retry logic, then alerting on a high
+    failure rate to that resource can be a good signal that several pieces of your
+    application will be failing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rate Limiters
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The load on a microservice naturally varies over time based on user activity
+    patterns, scheduled batch processes, etc. An atypical event could result in sudden
+    and overwhelming bursts in activity. If increased load, maybe even for a particular
+    business function served by a microservice, causes a strain on resources that
+    could result in availability levels falling below an established SLO, rate limiting
+    (also known as throttling) can keep the service up and serving requests, albeit
+    at a defined rate of throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Resilience4J implements the rate limiter pattern with several options. In [Example 7-9](part0012_split_018.html#BE7EN-2d714b853a094e9a910510217e0e3d73),
+    a rate limiter is used in a microservice that needs to make calls against downstream
+    billing history and payment services. A diagram of the service interaction is
+    shown in [Figure 7-8](part0012_split_018.html#call_resiliency_sample_services).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0708](../images/00107.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-8\. Call resiliency example service interaction
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Example 7-9\. Implementing a rate limiter with Resilience4J
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0012_split_018.html#co_traffic_management_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrency limit allowed by the rate limiter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](../images/00059.png)](part0012_split_018.html#co_traffic_management_CO2-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Timeout for a blocked thread attempting to enter a saturated rate limiter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](../images/00067.png)](part0012_split_018.html#co_traffic_management_CO2-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A rate limiter for some service can be created with a configuration different
+    from the global one (e.g., because this service is capable of a higher concurrency
+    level than others).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Resilience4J has built-in metrics for rate limiters. Bind your rate limiter
+    registry to a Micrometer meter registry, as in [Example 7-10](part0012_split_018.html#rate_limiter_metrics_bind).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-10\. Publishing metrics about rate limiting via Micrometer
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The metrics in [Table 7-1](part0012_split_018.html#rate_limiter_metrics) are
+    then published.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The two metrics have different benefits. Available permissions is an interesting
+    *predictive* indicator. If permissions are reaching zero or near zero (where maybe
+    they previously did not), but waiting threads is low, then end-user experience
+    has not yet been degraded. A high number of waiting threads is a more *reactive*
+    measure that the downstream service may need to be scaled up because end-user
+    experience is being degraded (if response time is important and there are often
+    waiting threads).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-1\. Rate limiter metrics exposed by Resilience4J
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Metric name | Type | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| resilience4j.ratelimiter.available.permissions | Gauge | The number of available
+    permissions, or unused concurrency capacity |'
+  prefs: []
+  type: TYPE_TB
+- en: '| resilience4j.ratelimiter.waiting.threads | Gauge | The number of waiting
+    threads |'
+  prefs: []
+  type: TYPE_TB
+- en: In Atlas, the alert condition for waiting threads tests against a fixed threshold,
+    as shown in [Example 7-11](part0012_split_018.html#atlas_ratelimit).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-11\. Atlas rate limiter alert threshold
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: In Prometheus, the idea is similar, as shown in [Example 7-12](part0012_split_018.html#prometheus_ratelimit).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-12\. Prometheus rate limiter alert threshold
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Bulkheads
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Microservices commonly execute requests on multiple downstream services. When
+    a service suffers from low availability, it can cause dependent services to become
+    unresponsive as well. This is particularly true when the dependent service is
+    blocking and using a thread pool to make requests. For a microservice *A* with
+    multiple downstream services, it could be that only a small portion of the traffic
+    (requests of a certain type) cause a request to microservice *B*. If *A* is using
+    a common thread pool to execute requests not only against *B* but against all
+    of its other downstream services as well, then unavailability in *B* can gradually
+    block requests, saturating threads in the common thread pool to the point where
+    little or no work can happen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The bulkhead pattern isolates downstream services from one another, specifying
+    different concurrency limits for each downstream service. In this way, only requests
+    that require a service call to *B* become unresponsive, and the rest of the *A*
+    service continues to be responsive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Resilience4J implements the bulkhead pattern with several options, shown in
+    [Example 7-13](part0012_split_019.html#BE7NH-2d714b853a094e9a910510217e0e3d73).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-13\. Implementing the bulkhead pattern with Resilience4J
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0012_split_019.html#co_traffic_management_CO3-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrency limit allowed by the bulkhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](../images/00059.png)](part0012_split_019.html#co_traffic_management_CO3-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Timeout for a blocked thread attempting to enter a saturated bulkhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](../images/00067.png)](part0012_split_019.html#co_traffic_management_CO3-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A bulkhead for some service can be created with a configuration different from
+    the global one (e.g., because this service is capable of a higher concurrency
+    level than others).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Resilience4J has built-in metrics for bulkheads. Bind the bulkhead registry
+    to a Micrometer meter registry, as in [Example 7-14](part0012_split_019.html#bulkhead_metrics_bind).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-14\. Publishing metrics about bulkheads via Micrometer
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Table 7-2](part0012_split_019.html#bulkhead_metrics) shows the bulkhead metrics
+    shipped by Resilience4J. Alert when available concurrent calls frequently reach
+    zero or near zero.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-2\. Bulkhead metrics exposed by Resilience4J
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Metric name | Type | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| resilience4j.bulkhead.available.concurrent.calls | Gauge | The number of
+    available permissions, or unused capacity |'
+  prefs: []
+  type: TYPE_TB
+- en: '| resilience4j.bulkhead.max.allowed.concurrent.calls | Gauge | The maximum
+    number of available permissions |'
+  prefs: []
+  type: TYPE_TB
+- en: In Atlas, the alert condition for waiting threads tests against a fixed threshold,
+    as shown in [Example 7-15](part0012_split_019.html#bulkhead_atlas). This might
+    also be a good place to use a `:roll-count` to limit alert chattiness.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-15\. Atlas bulkhead alert criteria
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: In Prometheus, the idea is similar, as shown in [Example 7-16](part0012_split_019.html#bulkhead_prometheus).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-16\. Prometheus bulkhead alert criteria
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Circuit Breakers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Circuit breakers are a further extension of bulkheading with a twist. A circuit
+    breaker maintains a finite state machine, as shown in [Figure 7-9](part0012_split_020.html#circuit_breaker_states),
+    for an execution block that it guards with states of closed, half-open, and open.
+    In the closed and half-open states, executions are allowed. In the open state,
+    a fallback defined by the application is executed instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Closed, half-open, and open](../images/00099.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-9\. The states of a circuit breaker
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: One classic example of a circuit breaker is Netflix’s list of movie recommendations.
+    This is generally personalized to the subscriber based on past viewing history,
+    etc. A circuit breaker guarding a call to the personalization service might respond
+    with a generic list of content as a fallback when the circuit breaker is in an
+    open state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For some classes of business problems, a fallback that doesn’t ultimately present
+    the user with a failure is impossible. There is no reasonable fallback to accepting
+    a payment from a user (assuming it couldn’t be stored somewhere for later processing).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Successful and unsuccessful executions are maintained in a ring buffer. When
+    the ring buffer initially fills, the failure ratio is tested against a preconfigured
+    threshold. The state of the circuit breaker changes from closed to open when the
+    failure rate is above a configurable threshold. When the circuit breaker is tripped
+    and opens, it will stop allowing executions for a defined period of time, after
+    which the circuit half-opens, permits a small amount of traffic through, and tests
+    the failure ratio of that small amount of traffic against the threshold. If the
+    failure ratio falls below the threshold, the circuit is closed again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Netflix Hystrix](https://oreil.ly/By0-M) was the first major open source circuit
+    breaker library, and while still well known, it has now been deprecated. Resilience4J
+    implements the circuit breaker pattern with improvements to library hygiene and
+    support for more threading models. An example is shown in [Example 7-17](part0012_split_020.html#BE7VQ-2d714b853a094e9a910510217e0e3d73).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-17\. Implementing the circuit breaker pattern with Resilience4J
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0012_split_020.html#co_traffic_management_CO4-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A circuit breaker for some service can be created with a configuration different
+    from the global one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Resilience4J contains built-in metrics instrumentation for circuit breakers
+    that you should monitor for open circuits. Enable it by binding your circuit breaker
+    registry to a Micrometer meter registry, as in [Example 7-18](part0012_split_020.html#circuit_breaker_metrics_bind).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-18\. Bind circuit breaker metrics
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Table 7-3](part0012_split_020.html#circuit_breaker_metrics) shows the two
+    metrics exposed by Resilience4J for *each* circuit breaker.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-3\. Circuit breaker metrics exposed by Resilience4J
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Metric name | Type | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| resilience4j.circuitbreaker.calls | Timer | Total number of successful and
+    failed calls |'
+  prefs: []
+  type: TYPE_TB
+- en: '| resilience4j.circuitbreaker.state | Gauge | Set to 0 or 1 depending on whether
+    the state described by the state tag is active (open, closed, etc.) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| resilience4j.circuitbreaker.failure.rate | Gauge | The failure rate of the
+    circuit breaker |'
+  prefs: []
+  type: TYPE_TB
+- en: Since these are gauges, you can alert on whether *any* circuit breaker is currently
+    open by performing a `max` aggregation. At this point, end users are already experiencing
+    a degraded experience by receiving a fallback response or having the failure propagate
+    to them directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Atlas, the alert condition checks for the open state, as shown in [Example 7-19](part0012_split_020.html#atlas_circuitbreaker).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-19\. Atlas circuit breaker alert threshold
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0012_split_020.html#co_traffic_management_CO5-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If any circuit breaker is open, this alert will match on it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Prometheus, the idea is similar, as shown in [Example 7-20](part0012_split_020.html#prometheus_circuitbreaker).
+    We can use `sum(..) > 0` or `max(..) == 1` with the same effect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-20\. Prometheus circuit breaker alert threshold
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: It’s probably OK if circuits briefly open and then close again though, so to
+    limit alert chattiness, it may be better to instead set an error ratio indicator
+    on `resilience4j.circuitbreaker.calls`, allowing for a certain number of failed
+    requests going to the fallback before alerting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next we’ll discuss how we can improve the flexibility of the alert thresholds
+    themselves by responding to changing conditions in the code and environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adaptive Concurrency Limits
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Each of the call resiliency patterns presented so far (rate limiters, bulkheads,
+    and circuit breakers) effectively serve to guard, either proactively or reactively,
+    against load-related problems. They each have their own way of limiting concurrency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In each case, the pattern was configured with a threshold value determined in
+    advance of the microservice actually running in production. Rate limits are configured
+    to constrain the number of requests that can be executed inside an interval, bulkheads
+    limit instantaneous concurrency, and circuit breakers shed load away from instances
+    that are experiencing failure (including load-related failure). These thresholds
+    can be determined through careful performance testing, but their values tend to
+    diverge from the true limit over time as code changes, the size of downstream
+    clusters and their availability changes, etc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A common theme throughout this book is to replace fixed thresholds or manual
+    judgments with adaptive judgments. We saw this in [Chapter 2](part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73)
+    with thresholds set with forecasting algorithms, and in [Chapter 5](part0010_split_000.html#9H5K4-2d714b853a094e9a910510217e0e3d73)
+    with automated canary analysis. It is possible to adopt a similar adaptive approach
+    to concurrency limits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Choosing the Right Call Resiliency Pattern
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In code, the patterns for bulkheads, rate limiters, and circuit breakers look
+    remarkably similar. In fact, the three patterns have overlapping responsibilities,
+    as shown in [Figure 7-10](part0012_split_022.html#call_resiliency_pattern_relationship).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0710](../images/00081.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-10\. Overlapping responsibilities of three call resiliency patterns
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: All three patterns accomplish rate limiting, but with varying mechanisms, summarized
+    in [Table 7-4](part0012_split_022.html#call_resiliency_pattern_rate_limiting_mechanisms).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-4\. The rate-limiting mechanisms of different call resiliency patterns
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Pattern | Limiting mechanism | Notes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Rate limiter | Limits rate per interval | This does not limit instantaneous
+    concurrency (e.g., a spike of traffic inside of the interval) unless that instantaneous
+    concurrency exceeds the limit for the whole interval to be reached. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Bulkhead | Limits instantaneous concurrency level | Limits the concurrency
+    level at the time that a new request is attempted. This does not limit the number
+    of requests to the downstream inside an interval except indirectly since the downstream
+    service responds in a nonzero amount of time. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Circuit breaker | Responds to errors (some of which occur due to the natural
+    limit in the downstream’s concurrency) | Either the RPC request guarded by the
+    circuit breaker will time out or the downstream service (or its load balancer)
+    will respond with a failure, such as an HTTP 502 (unavailable). This does not
+    limit either the instantaneous or per-interval rate except indirectly when the
+    downstream begins to be saturated. |'
+  prefs: []
+  type: TYPE_TB
+- en: For this reason, it isn’t common to see a single block of code guarded by more
+    than one of the patterns of rate limiter, bulkhead, or circuit breaker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The implementations of the call resiliency patterns shown to this point have
+    all employed Resilience4J, making them an application development concern. Let’s
+    compare keeping this as an application concern with externalizing the responsibility
+    in service mesh.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation in Service Mesh
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Ultimately, the decision of whether to try to pry traffic management away from
+    application concern has to be made in each organization based on the weight it
+    places on several criteria shown in [Table 7-5](part0012_split_023.html#traffic_management_decision_matrix).
+    “Application responsibility” here means that the functionality is achieved through
+    application code or autoconfigured via a binary dependency on a shared library.
+    The weights assigned to each criterion across the header row are just an example
+    and will vary from organization to organization. For example, an organization
+    that has a large number of programming languages in use may assign a much higher
+    weight to language support. This should drive your decision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-5\. The service mesh versus application responsibility decision matrix
+    for traffic management (higher score = higher cost)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Service mesh | Application responsibility |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Language support = 5 | Low: only a thin client needed to connect to mesh
+    (1 x 5 = 5) | High: distinct implementation required for each language (5 x 5
+    = 25) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Runtime support = 5 | High: for example, Istio is a Kubernetes CRD, so bound
+    to a specific runtime (5 x 5 = 25) | Low: only has an impact if the library wants
+    to take advantage of some specific feature of the runtime (1 x 5 = 5) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Deployment complexity = 4 | Medium: requires changes to deployment practices
+    (3 x 4 = 12) | Very low: doesn’t alter deployment at all (0 x 4 = 0) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Anti-flexibility = 3 | Medium: as patterns become known, they are generalized
+    in the mesh, but not immediately (3 x 3 = 9) | Medium: introducing new patterns
+    requires dependency updates across the stack (4 x 3 = 12) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Operational cost = 2 | High: often much higher resource consumption (5 x
+    2 = 10) and operational experience upgrading the mesh independent of application
+    footprint | Low: no additional processes or containers allocated per application
+    (1 x 2 = 2) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Total cost | 5 + 25 + 12 + 9 + 10 = 61 | 25 + 5 + 0 + 12 + 2 = 44 (best option
+    with these weights) |'
+  prefs: []
+  type: TYPE_TB
+- en: The choice-of-two load balancer described earlier is an example of a sophisticated
+    load balancer that requires coordination with application code, so it could never
+    be fully encapsulated by a service mesh technology.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is one other complication of this lack of coordination with application
+    code. Consider a task like [request timeouts](https://oreil.ly/ZvOIn), handled
+    by a sidecar proxy. While the proxy may hang up on a caller after the configured
+    timeout, the application instance is still at work handling the request all the
+    way to completion. If the application is using a conventional blocking thread-pool
+    model like Tomcat, a thread continues to be consumed after the timeout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Currently, Istio only supports a “circuit breaker” that more closely resembles
+    a bulkhead as we’ve defined it, since it supports limiting instantaneous concurrency
+    to a service by controlling maximum connections or requests. Rather than this
+    being an application concern, with Istio the bulkhead would be applied with YAML
+    configuration from the Istio Kubernetes custom resource definition, as in [Example 7-21](part0012_split_023.html#istio_circuit_breaker).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-21\. Istio circuit breaker
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: This also demonstrates the anti-flexibility of service mesh. The sophistication
+    of your traffic management policy will be limited to what can be expressed in
+    YAML. It’s important to consider how this limited expressiveness is a *necessary*
+    condition of not being application code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If, for example, Istio CRD YAML follows the typical evolution of markup that
+    stretches to meet more diverse expectations, we would expect to see the imposition
+    of boolean logic (appearing already in [multi-match](https://oreil.ly/vA0ng))
+    for assembling more complex rules together, etc. It feels like looping is inevitable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Again, trends in software engineering are often cyclic. This desire to simplify
+    application development through static configuration or markup has happened before
+    with interesting consequences. Remember, way back in [“Configuration as Code”](part0005_split_013.html#configuration_as_code),
+    the example of how XSLT wandered gradually into becoming a Turing complete language.
+    This is significant, because the moment this happens, it becomes impossible to
+    verify all sorts of characteristics of the configuration (now full-blown software)
+    with static analysis. At that point, we’re far from the original stated goal of
+    keeping functionality out of code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation in RSocket
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Reactive Streams provides a standard for asynchronous stream processing with
+    nonblocking backpressure. [RSocket](https://rsocket.io) is a persistent bidirectional
+    remote procedure call protocol implementing Reactive Streams semantics. The goal
+    of backpressure was described in 2014 in the [Reactive Manifesto](https://oreil.ly/YLrAY):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When one component is struggling to keep up, the system as a whole needs to
+    respond in a sensible way. It is unacceptable for the component under stress to
+    fail catastrophically or to drop messages in an uncontrolled fashion. Since it
+    can’t cope and it can’t fail, it should communicate the fact that it is under
+    stress to upstream components and so get them to reduce the load. This backpressure
+    is an important feedback mechanism that allows systems to gracefully respond to
+    load rather than collapse under it. The backpressure may cascade all the way up
+    to the user, at which point responsiveness may degrade, but this mechanism will
+    ensure that the system is resilient under load, and will provide information that
+    may allow the system itself to apply other resources to help distribute the load…
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Reactive Manifesto
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: The concept of backpressure across the network layer may very well eliminate
+    the need for rate limiters, bulkheads, and circuit breakers in application code
+    (or in a sidecar process). As an application instance observes its own decline
+    in availability, it places backpressure on callers. Effectively, callers cannot
+    make a call to an unavailable application instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Expect to see the further evolution of infrastructure, extending backpressure
+    up and down the application stack. [R2DBC](https://r2dbc.io) has extended backpressure
+    down even to database interactions. [Netifi](https://www.netifi.com) has built
+    an entire control plane around this concept, a sort of alternative to service
+    mesh without many of the disadvantages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Failure and degradation of performance should be expected and planned for in
+    any production microservice architecture. In this chapter, we introduced a number
+    of strategies for dealing with these conditions, from load balancing to call resilience
+    patterns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Your organizational commitment to these patterns is almost entirely in application
+    code. As with other crosscutting concerns that impact application code like metrics
+    instrumentation and distributed tracing, there is an opportunity for an effective
+    platform engineering team to step in and provide some of this cross-organizationally
+    by shipping good default opinions in core libraries and configuration that are
+    consumed by all of the organization’s microservices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This book has described a journey toward more reliable systems. Go as far as
+    you can on this journey, recognizing that at each step your business is better
+    off. It starts with simply measuring the existing state of the system, building
+    a greater degree of awareness about what your end users are experiencing day to
+    day. Continue by adding debuggability signals that allow you to ask questions
+    about why failure is occurring as you become aware of it. Improve your software
+    delivery pipeline to limit the chances that you introduce more failure into the
+    system as you continue to build out your software. Build the capability to observe
+    the state of the deployed assets themselves so that you can begin to reason about
+    how to make change cross-organizationally when needed. These compensations for
+    expected failures are the last step in the journey toward building more reliable
+    distributed systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At each step, build guardrails instead of gates!
+  prefs: []
+  type: TYPE_NORMAL

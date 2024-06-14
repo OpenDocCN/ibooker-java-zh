@@ -1,0 +1,1682 @@
+- en: Chapter 5\. An Introduction to Garbage Collection
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter covers the basics of garbage collection within the JVM. Short of
+    rewriting code, tuning the garbage collector is the most important thing that
+    can be done to improve the performance of a Java application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because the performance of Java applications depends heavily on garbage collection
+    technology, it is not surprising that quite a few collectors are available. The
+    OpenJDK has three collectors suitable for production, another that is deprecated
+    in JDK 11 but still quite popular in JDK 8, and some experimental collectors that
+    will (ideally) be production-ready in future releases. Other Java implementations
+    such as Open J9 or the Azul JVM have their own collectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The performance characteristics of all these collectors are quite different;
+    we will focus only on those that come with OpenJDK. Each is covered in depth in
+    the next chapter. However, they share basic concepts, so this chapter provides
+    a basic overview of how the collectors operate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Garbage Collection Overview
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'One of the most attractive features of programming in Java is that developers
+    needn’t explicitly manage the life cycle of objects: objects are created when
+    needed, and when the object is no longer in use, the JVM automatically frees the
+    object. If, like me, you spend a lot of time optimizing the memory use of Java
+    programs, this whole scheme might seem like a weakness instead of a feature (and
+    the amount of time I’ll spend covering GC might seem to lend credence to that
+    position). Certainly it can be considered a mixed blessing, but I still recall
+    the difficulties of tracking down null pointers and dangling pointers in other
+    languages. I’d strongly argue that tuning garbage collectors is far easier (and
+    less time-consuming) than tracking down pointer bugs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: At a basic level, GC consists of finding objects that are in use and freeing
+    the memory associated with the remaining objects (those that are not in use).
+    This is sometimes described as finding objects that no longer have any references
+    to them (implying that references are tracked via a count). That sort of reference
+    counting is insufficient, though. Given a linked list of objects, each object
+    in the list (except the head) will be pointed to by another object in the list—but
+    if nothing refers to the head of the list, the entire list is not in use and can
+    be freed. And if the list is circular (e.g., the tail of the list points to the
+    head), every object in the list has a reference to it—even though no object in
+    the list can actually be used, since no objects reference the list itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So references cannot be tracked dynamically via a count; instead, the JVM must
+    periodically search the heap for unused objects. It does this by starting with
+    objects that are GC roots, which are objects that are accessible from outside
+    the heap. That primarily includes thread stacks and system classes. Those objects
+    are always reachable, so then the GC algorithm scans all objects that are reachable
+    via one of the root objects. Objects that are reachable via a GC root are live
+    objects; the remaining unreachable objects are garbage (even if they maintain
+    references to live objects or to each other).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the GC algorithm finds unused objects, the JVM can free the memory occupied
+    by those objects and use it to allocate additional objects. However, it is usually
+    insufficient simply to keep track of that free memory and use it for future allocations;
+    at some point, memory must be compacted to prevent memory fragmentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider the case of a program that allocates an array of 1,000 bytes, then
+    one of 24 bytes, and repeats that process in a loop. When that process fills up
+    the heap, it will appear like the top row in [Figure 5-1](#FigureGCHeap): the
+    heap is full, and the allocations of the array sizes are interleaved.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When the heap is full, the JVM will free the unused arrays. Say that all the
+    24-byte arrays are no longer in use, and the 1,000-byte arrays are still all in
+    use: that yields the second row in [Figure 5-1](#FigureGCHeap). The heap has free
+    areas within it, but it can’t allocate anything larger than 24 bytes—unless the
+    JVM moves all the 1,000-byte arrays so that they are contiguous, leaving all the
+    free memory in a region where it can be allocated as needed (the third row in
+    [Figure 5-1](#FigureGCHeap)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The implementations are a little more detailed, but the performance of GC is
+    dominated by these basic operations: finding unused objects, making their memory
+    available, and compacting the heap. Different collectors take different approaches
+    to these operations, particularly compaction: some algorithms delay compaction
+    until absolutely necessary, some compact entire sections of the heap at a time,
+    and some compact the heap by relocating small amounts of memory at a time. These
+    different approaches are why different algorithms have different performance characteristics.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jp2e 0501](assets/jp2e_0501.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-1\. Idealized GC heap during collection
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'It is simpler to perform these operations if no application threads are running
+    while the garbage collector is running. Java programs are typically heavily multithreaded,
+    and the garbage collector itself often runs multiple threads. This discussion
+    considers two logical groups of threads: those performing application logic (often
+    called *mutator threads*, since they are mutating objects as part of the application
+    logic) and those performing GC. When GC threads track object references or move
+    objects around in memory, they must make sure that application threads are not
+    using those objects. This is particularly true when GC moves objects around: the
+    memory location of the object changes during that operation, and hence no application
+    threads can be accessing the object.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The pauses when all application threads are stopped are called *stop-the-world
+    pauses*. These pauses generally have the greatest impact on the performance of
+    an application, and minimizing those pauses is one important consideration when
+    tuning GC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generational Garbage Collectors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Though the details differ somewhat, most garbage collectors work by splitting
+    the heap into generations. These are called the *old (or tenured) generation*
+    and the *young generation*. The young generation is further divided into sections
+    known as *eden* and the *survivor spaces* (though sometimes, eden is incorrectly
+    used to refer to the entire young generation).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The rationale for having separate generations is that many objects are used
+    for a very short period of time. Take, for example, the loop in the stock price
+    calculation that sums the square of the difference of price from the average price
+    (part of the calculation of standard deviation):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Like many Java classes, the `BigDecimal` class is immutable: the object represents
+    a particular number and cannot be changed. When arithmetic is performed on the
+    object, a new object is created (and often, the previous object with the previous
+    value is then discarded). When this simple loop is executed for a year’s worth
+    of stock prices (roughly 250 iterations), 750 `BigDecimal` objects are created
+    to store the intermediate values just in this loop. Those objects are discarded
+    on the next iteration of the loop. Within `add()` and other methods, the JDK library
+    code creates even more intermediate `BigDecimal` (and other) objects. In the end,
+    a lot of objects are created and discarded quickly in this small amount of code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This kind of operation is common in Java, so the garbage collector is designed
+    to take advantage of the fact that many (and sometimes most) objects are only
+    used temporarily. This is where the generational design comes in. Objects are
+    first allocated in the young generation, which is a subset of the entire heap.
+    When the young generation fills up, the garbage collector will stop all the application
+    threads and empty out the young generation. Objects that are no longer in use
+    are discarded, and objects that are still in use are moved elsewhere. This operation
+    is called a *minor GC* or a *young GC*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This design has two performance advantages. First, because the young generation
+    is only a portion of the entire heap, processing it is faster than processing
+    the entire heap. The application threads are stopped for a much shorter period
+    of time than if the entire heap were processed at once. You probably see a trade-off
+    there, since it also means that the application threads are stopped more frequently
+    than they would be if the JVM waited to perform GC until the entire heap were
+    full; that trade-off will be explored in more detail later in this chapter. For
+    now, though, it is almost always a big advantage to have the shorter pauses even
+    though they will be more frequent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second advantage arises from the way objects are allocated in the young
+    generation. Objects are allocated in eden (which encompasses the vast majority
+    of the young generation). When the young generation is cleared during a collection,
+    all objects in eden are either moved or discarded: objects that are not in use
+    can be discarded, and objects in use are moved either to one of the survivor spaces
+    or to the old generation. Since all surviving objects are moved, the young generation
+    is automatically compacted when it is collected: at the end of the collection,
+    eden and one of the survivor spaces are empty, and the objects that remain in
+    the young generation are compacted within the other survivor space.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Common GC algorithms have stop-the-world pauses during collection of the young
+    generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As objects are moved to the old generation, eventually it too will fill up,
+    and the JVM will need to find any objects within the old generation that are no
+    longer in use and discard them. This is where GC algorithms have their biggest
+    differences. The simpler algorithms stop all application threads, find the unused
+    objects, free their memory, and then compact the heap. This process is called
+    a *full GC*, and it generally causes a relatively long pause for the application
+    threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, it is possible—though more computationally complex—to find
+    unused objects while application threads are running. Because the phase where
+    they scan for unused objects can occur without stopping application threads, these
+    algorithms are called *concurrent collectors*. They are also called *low-pause*
+    (and sometimes, incorrectly, *pauseless*) collectors since they minimize the need
+    to stop all the application threads. Concurrent collectors also take different
+    approaches to compacting the old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When using a concurrent collector, an application will typically experience
+    fewer (and much shorter) pauses. The biggest trade-off is that the application
+    will use more CPU overall. Concurrent collectors can also be more difficult to
+    tune in order to get their best performance (though in JDK 11, tuning concurrent
+    collectors like the G1 GC is much easier than in previous releases, which reflects
+    the engineering progress that has been made since the concurrent collectors were
+    first introduced).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you consider which garbage collector is appropriate for your situation,
+    think about the overall performance goals that must be met. Trade-offs exist in
+    every situation. In an application (such as a REST server) measuring the response
+    time of individual requests, consider these points:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The individual requests will be impacted by pause times—and more importantly
+    by long pause times for full GCs. If minimizing the effect of pauses on response
+    times is the goal, a concurrent collector may be more appropriate.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the average response time is more important than the outliers (i.e., the
+    90th%) response time), a nonconcurrent collector may yield better results.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The benefit of avoiding long pause times with a concurrent collector comes at
+    the expense of extra CPU usage. If your machine lacks the spare CPU cycles needed
+    by a concurrent collector, a nonconcurrent collector may be the better choice.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Similarly, the choice of garbage collector in a batch application is guided
+    by the following trade-off:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If enough CPU is available, using the concurrent collector to avoid full GC
+    pauses will allow the job to finish faster.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If CPU is limited, the extra CPU consumption of the concurrent collector will
+    cause the batch job to take more time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: GC algorithms generally divide the heap into old and young generations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GC algorithms generally employ a stop-the-world approach to clearing objects
+    from the young generation, which is usually a quick operation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Minimizing the effect of performing GC in the old generation is a trade-off
+    between pause times and CPU usage.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GC Algorithms
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: OpenJDK 12 provides a variety of GC algorithms with varying degrees of support
+    in earlier releases. [Table 5-1](#TableGCAlgorithms) lists these algorithms and
+    their status in OpenJDK and Oracle Java releases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-1\. Support level of various GC algorithms^([a](ch05.html#idm45775555035960))
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| GC algorithm | Support in JDK 8 | Support in JDK 11 | Support in JDK 12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Serial GC | S | S | S |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Throughput (Parallel) GC | S | S | S |'
+  prefs: []
+  type: TYPE_TB
+- en: '| G1 GC | S | S | S |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Concurrent Mark-Sweep (CMS) | S | D | D |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZGC | - | E | E |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Shenandoah | E2 | E2 | E2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Epsilon GC | - | E | E |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ^([a](ch05.html#idm45775555035960-marker)) (S: Fully Supported D: Deprecated
+    E: Experimental E2: Experimental; in OpenJDK builds but not Oracle builds) |'
+  prefs: []
+  type: TYPE_TB
+- en: A brief description of each algorithm follows; [Chapter 6](ch06.html#Collectors)
+    provides more details on tuning them individually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The serial garbage collector
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The *serial garbage collector* is the simplest of the collectors. This is the
+    default collector if the application is running on a client-class machine (32-bit
+    JVMs on Windows) or on a single-processor machine. At one point, the serial collector
+    seemed like it was destined for the trash can, but containerization has changed
+    that: virtual machines and Docker containers with one core (even a hyper-threaded
+    core that appears as two CPUs) have made this algorithm more relevant again.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The serial collector uses a single thread to process the heap. It will stop
+    all application threads as the heap is processed (for either a minor or full GC).
+    During a full GC, it will fully compact the old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The serial collector is enabled by using the `-XX:+UseSerialGC` flag (though
+    usually it is the default in those cases where it might be used). Note that unlike
+    with most JVM flags, the serial collector is not disabled by changing the plus
+    sign to a minus sign (i.e., by specifying `-XX:-UseSerialGC`). On systems where
+    the serial collector is the default, it is disabled by specifying a different
+    GC algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The throughput collector
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In JDK 8, the *throughput collector* is the default collector for any 64-bit
+    machine with two or more CPUs. The throughput collector uses multiple threads
+    to collect the young generation, which makes minor GCs much faster than when the
+    serial collector is used. This uses multiple threads to process the old generation
+    as well. Because it uses multiple threads, the throughput collector is often called
+    the *parallel collector*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The throughput collector stops all application threads during both minor and
+    full GCs, and it fully compacts the old generation during a full GC. Since it
+    is the default in most situations where it would be used, it needn’t be explicitly
+    enabled. To enable it where necessary, use the flag `-XX:+UseParallelGC`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that old versions of the JVM enabled parallel collection in the young and
+    old generations separately, so you might see references to the flag `-XX:+UseParallelOldGC`.
+    This flag is obsolete (though it still functions, and you could disable this flag
+    to collect only the young generation in parallel if for some reason you really
+    wanted to).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The G1 GC collector
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The *G1 GC* (or *garbage first garbage collector*) uses a concurrent collection
+    strategy to collect the heap with minimal pauses. It is the default collector
+    in JDK 11 and later for 64-bit JVMs on machines with two or more CPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: G1 GC divides the heap into regions, but it still considers the heap to have
+    two generations. Some of those regions make up the young generation, and the young
+    generation is still collected by stopping all application threads and moving all
+    objects that are alive into the old generation or the survivor spaces. (This occurs
+    using multiple threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In G1 GC, the old generation is processed by background threads that don’t need
+    to stop the application threads to perform most of their work. Because the old
+    generation is divided into regions, G1 GC can clean up objects from the old generation
+    by copying from one region into another, which means that it (at least partially)
+    compacts the heap during normal processing. This helps keep G1 GC heaps from becoming
+    fragmented, although that is still possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The trade-off for avoiding the full GC cycles is CPU time: the (multiple) background
+    threads G1 GC uses to process the old generation must have CPU cycles available
+    at the same time the application threads are running.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: G1 GC is enabled by specifying the flag `-XX:+UseG1GC`. In most cases, it is
+    the default in JDK 11, and it is functional in JDK 8 as well—particularly in later
+    builds of JDK 8, which contains many important bug fixes and performance enhancements
+    that have been back-ported from later releases. Still, as you’ll see when we explore
+    G1 GC in depth, one major performance feature is missing from G1 GC in JDK 8 that
+    can make it unsuitable for that release.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The CMS collector
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The *CMS collector* was the first concurrent collector. Like other algorithms,
+    CMS stops all application threads during a minor GC, which it performs with multiple
+    threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CMS is officially deprecated in JDK 11 and beyond, and its use in JDK 8 is discouraged.
+    From a practical standpoint, the major flaw in CMS is that it has no way to compact
+    the heap during its background processing. If the heap becomes fragmented (which
+    is likely to happen at some point), CMS must stop all application threads and
+    compact the heap, which defeats the purpose of a concurrent collector. Between
+    that and the advent of G1 GC, CMS is no longer recommended.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CMS is enabled by specifying the flag `-XX:+UseConcMarkSweepGC`, which is `false`
+    by default. Historically, CMS used to require setting the `-XX:+UseParNewGC` flag
+    as well (otherwise, the young generation would be collected by a single thread),
+    though that is obsolete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Experimental collectors
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Garbage collection continues to be fertile ground for JVM engineers, and the
+    latest versions of Java come with the three experimental algorithms mentioned
+    earlier. I’ll have more to say about those in the next chapter; for now, let’s
+    continue with a look at choosing among the three collectors supported in production
+    environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The supported GC algorithms take different approaches toward minimizing the
+    effect of GC on an application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The serial collector makes sense (and is the default) when only one CPU is available
+    and extra GC threads would interfere with the application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The throughput collector is the default in JDK 8; it maximizes the total throughput
+    of an application but may subject individual operations to long pauses.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: G1 GC is the default in JDK 11 and beyond; it concurrently collects the old
+    generation while application threads are running, potentially avoiding full GCs.
+    Its design makes it less likely to experience full GCs than CMS.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The CMS collector can concurrently collect the old generation while application
+    threads are running. If enough CPU is available for its background processing,
+    this can avoid full GC cycles for the application. It is deprecated in favor of
+    G1 GC.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Choosing a GC Algorithm
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The choice of a GC algorithm depends in part on the hardware available, in part
+    on what the application looks like, and in part on the performance goals for the
+    application. In JDK 11, G1 GC is often the better choice; in JDK 8, the choice
+    will depend on your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will start with the rule of thumb that G1 GC is the better choice, but there
+    are exceptions to every rule. In the case of garbage collection, these exceptions
+    involve the number of CPU cycles the application needs relative to the available
+    hardware, and the amount of processing the background G1 GC threads need to perform.
+    If you are using JDK 8, the ability of G1 GC to avoid a full GC will also be a
+    key consideration. When G1 GC is not the better choice, the decision between the
+    throughput and serial collectors is based on the number of CPUs on the machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When to use (and not use) the serial collector
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: On a machine with a single CPU, the JVM defaults to using the serial collector.
+    This includes virtual machines with one CPU, and Docker containers that are limited
+    to one CPU. If you limit your Docker container to a single CPU in early versions
+    of JDK 8, it will still use the throughput collector by default. In that environment,
+    you should explore using the serial collector (even though you’ll have to set
+    it manually).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In these environments, the serial collector is usually a good choice, but at
+    times G1 GC will give better results. This example is also a good starting point
+    for understanding the general trade-offs involved in choosing a GC algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The trade-off between G1 GC and other collectors involves having available CPU
+    cycles for G1 GC background threads, so let’s start with a CPU-intensive batch
+    job. In a batch job, the CPU will be 100% busy for a long time, and in that case
+    the serial collector has a marked advantage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 5-2](#TableHardwareBatch) lists the time required for a single thread
+    to compute stock histories for 100,000 stocks over a period of three years.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-2\. Processing time on a single CPU for different GC algorithms
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| GC algorithm | Elapsed time | Time paused for GC |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Serial | 434 seconds | 79 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Throughput | 503 seconds | 144 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| G1 GC | 501 seconds | 97 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: The advantage of the single-threaded garbage collection is most readily apparent
+    when we compare the serial collector to the throughput collector. The time spent
+    doing the actual calculation is the elapsed time minus the time spent paused for
+    GC. In the serial and throughput collectors, that time is essentially the same
+    (roughly 355 seconds), but the serial collector wins because it spends much less
+    time paused for garbage collection. In particular, the serial collector takes
+    on average 505 ms for a full GC, whereas the throughput collector requires 1,392
+    ms. The throughput collector has a fair amount of overhead in its algorithm—that
+    overhead is worthwhile when two or more threads are processing the heap, but it
+    just gets in the way when only a single thread is available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now compare the serial collector to G1 GC. If we eliminate the pause time when
+    running with G1 GC, the application takes 404 seconds for its calculation—but
+    we know from the other examples that it should take only 355 seconds. What accounts
+    for the other 49 seconds?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The calculation thread can utilize all available CPU cycles. At the same time,
+    background G1 GC threads need CPU cycles for their work. Because there isn’t enough
+    CPU to satisfy both, they end up sharing the CPU: the calculation thread will
+    run some of the time, and a background G1 GC thread will run some of the time.
+    The net effect is the calculation thread cannot run for 49 seconds because a “background”
+    G1 GC thread is occupying the CPU.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: That’s what I mean when I say that when you choose G1 GC, sufficient CPU is
+    needed for its background threads to run. With a long-running application thread
+    taking the only available CPU, G1 GC isn’t a good choice. But what about something
+    different, like a microservice running simple REST requests on the constrained
+    hardware? [Table 5-3](#TableHardwareInteractive) shows the response time for a
+    web server that is handling roughly 11 requests per second on its single CPU,
+    which takes roughly 50% of the available CPU cycles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-3\. Response times for a single CPU with different GC algorithms
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| GC algorithm | Average response time | 90th% response time | 99th% response
+    time | CPU utilization |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Serial | 0.10 second | 0.18 second | 0.69 second | 53% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Throughput | 0.16 second | 0.18 second | 1.40 seconds | 49% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| G1 GC | 0.13 second | 0.28 second | 0.40 second | 48% |'
+  prefs: []
+  type: TYPE_TB
+- en: The default (serial) algorithm still has the best average time, by 30%. Again,
+    that’s because the collections of the young generation by the serial collector
+    are generally faster than those of the other algorithms, so an average request
+    is delayed less by the serial collector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some unlucky requests will get interrupted by a full GC of the serial collector.
+    In this experiment, the average time for a full GC by the serial collector took
+    592 milliseconds, and some took as long as 730 milliseconds. The result is that
+    1% of the requests took almost 700 milliseconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That’s still better than the throughput collector can do. The full GCs of the
+    throughput collector averaged 1,192 milliseconds with a 1,510-millisecond maximum.
+    Hence the 99th% response time of the throughput collector is twice that of the
+    serial collector. And the average time is skewed by those outliers as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: G1 GC sits somewhere in the middle. In terms of average response time, it is
+    worse than the serial collector, because the simpler serial collector algorithm
+    is faster. In this case, that applies primarily to the minor GCs, which took on
+    average 86 milliseconds for the serial collector but required 141 milliseconds
+    for G1 GC. So an average request will get delayed longer in the G1 GC case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Still, G1 GC has a 99th% response time that is significantly less than that
+    of the serial collector. In this example, G1 GC was able to avoid full GCs, so
+    it had none of the more than 500-millisecond delays of the serial collector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There’s a choice of what to optimize here: if average response time is the
+    most important goal, the (default) serial collector is the better choice. If you
+    want to optimize for the 99th% response time, G1 GC wins. It’s a judgment call,
+    but to me, the 30 ms difference in the average time is not as important as the
+    300 ms difference in the 99th% time—so in this case G1 GC makes sense over the
+    platform’s default collector.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This example is GC intensive; in particular, the non-concurrent collectors each
+    have to perform a significant amount of full GC operations. If we tweak the test
+    such that all objects can be collected without requiring a full GC, the serial
+    algorithm can match G1 GC, as [Table 5-4](#TableHardwareInteractiveNoFull) shows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-4\. Response times for a single CPU with different GC algorithms (no
+    full GCs)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| GC algorithm | Average response time | 90th% response time | 99th% response
+    time | CPU utilization |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Serial | 0.05 second | 0.08 second | 0.11 second | 53% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Throughput | 0.08 second | 0.09 second | 0.13 second | 49% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| G1 GC | 0.05 second | 0.08 second | 0.11 second | 52% |'
+  prefs: []
+  type: TYPE_TB
+- en: Because there are no full GCs, the advantage of the serial collector to G1 GC
+    is eliminated. When there is little GC activity, the numbers are all in the same
+    range, and all the collectors perform about the same. On the other hand, having
+    no full GCs is pretty unlikely, and that’s the case where the serial collector
+    will do best. Given sufficient CPU cycles, G1 GC will generally be better even
+    where the serial collector is the default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Single hyper-threaded CPU hardware
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: What about a single-core machine or Docker container where the CPU is hyper-threaded
+    (and hence appears to the JVM as a two-CPU machine)? In that case, the JVM will
+    not use the serial collector by default—it thinks there are two CPUs, so it will
+    default to the throughput collector in JDK 8 and G1 GC in JDK 11. But it turns
+    out that the serial collector is often advantageous on this hardware as well.
+    [Table 5-5](#TableGC1SerialHyperThread) shows what happens when we run the previous
+    batch experiment on a single hyper-threaded CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-5\. Processing time on a single hyper-threaded CPU for different GC
+    algorithms
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| GC algorithm | Elapsed time | Time paused for GC |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Serial | 432 seconds | 82 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Throughput | 478 seconds | 117 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| G1 GC | 476 seconds | 72 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: The serial collector won’t run multiple threads, so its times are essentially
+    unchanged from our previous test. The other algorithms have improved, but not
+    by as much as we might hope—the throughput collector will run two threads, but
+    instead of cutting the pause time in half, the pause time has been reduced by
+    about 20%. Similarly, G1 GC still cannot get enough CPU cycles for its background
+    threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So at least in this case—a long-running batch job with frequent garbage collection—the
+    default choice by the JVM will be incorrect, and the application will be better
+    off using the serial collector despite the presence of “two” CPUs. If there were
+    two actual CPUs (i.e., two cores), things would be different. The throughput collector
+    would take only 72 seconds for its operations, which is less than the time required
+    by the serial collector. At that point, the usefulness of the serial collector
+    wanes, so we’ll drop it from future examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One other point about the serial collector: an application with a very small
+    heap (say, 100 MB) may still perform better with the serial collector regardless
+    of the number of cores that are available.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When to use the throughput collector
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: When a machine has multiple CPUs available, more-complex interactions can occur
+    between GC algorithms, but at a basic level, the trade-offs between G1 GC and
+    the throughput collector are the same as we’ve just seen. For example, [Table 5-6](#TableGC1Batch)
+    shows how our sample application works when running either two or four application
+    threads on a machine with four cores (where the cores are not hyper-threaded).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-6\. Batch processing time with different GC algorithms
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Application threads | G1 GC | Throughput |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Two | 410 seconds (60.8%) | 446 seconds (59.7%) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Four | 513 seconds (99.5%) | 536 seconds (99.5%) |'
+  prefs: []
+  type: TYPE_TB
+- en: The times in this table are the number of seconds required to run the test,
+    and the CPU utilization of the machine is shown in parentheses. When there are
+    two application threads, G1 GC is significantly faster than the throughput collector.
+    The main reason is that the throughput collector spent 35 seconds paused for full
+    GCs. G1 GC was able to avoid those collections, at the (relatively slight) increase
+    in CPU time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even when there are four application threads, G1 still wins in this example.
+    Here, the throughput collector paused the application threads for a total of 176
+    seconds. G1 GC paused the application threads for only 88 seconds. The G1 GC background
+    threads did need to compete with the application threads for CPU cycles, which
+    took about 65 seconds away from the application threads. That still meant G1 GC
+    was 23 seconds faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When the elapsed time of an application is key, the throughput collector will
+    be advantageous when it spends less time pausing the application threads than
+    G1 GC does. That happens when one or more of these things occur:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are no (or few) full GCs. Full GC pauses can easily dominate the pause
+    times of an application, but if they don’t occur in the first place, the throughput
+    collector is no longer at a disadvantage.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The old generation is generally full, causing the background G1 GC threads to
+    work more.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The G1 GC threads are starved for CPU.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the next chapter, which details how the various algorithms work, the reasons
+    behind these points will be clearer (as well as ways to tune the collectors around
+    them). For now, we’ll look at a few examples that prove the point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let’s look at the data in [Table 5-7](#TableG1GCBatchFull). This test
+    is the same code we used before for batch jobs with long calculations, though
+    it has a few modifications: multiple application threads are doing calculations
+    (two, in this case), the old generation is seeded with objects to keep it 65%
+    full, and almost all objects can be collected directly from the young generation.
+    This test is run on a system with four CPUs (not hyper-threaded) so that there
+    is sufficient CPU for the G1 GC background threads to run.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-7\. Batch processing with long-lived objects
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Metric | G1 GC | Throughput |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Elapsed time | 212 seconds | 193 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CPU usage | 67% | 51% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Young GC pauses | 30 seconds | 13.5 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Full GC pauses | 0 seconds | 1.5 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: Because so few objects are promoted to the old generation, the throughput collector
+    paused the application threads for only 15 seconds, and only 1.5 seconds of that
+    was to collect the old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although the old generation doesn’t get many new objects promoted into it, the
+    test seeds the old generation such that the G1 GC threads will scan it for garbage.
+    This makes more work for the background GC threads, and it causes G1 GC to perform
+    more work collecting the young generation in an attempt to compensate for the
+    fuller old generation. The end result is that G1 GC paused the application for
+    30 seconds during the two-thread test—more than the throughput collector did.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another example: when there isn’t sufficient CPU for the G1 GC background thread
+    to run, the throughput collector will perform better, as [Table 5-8](#TableG1BatchCPU)
+    shows.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-8\. Batch processing with busy CPUs
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Metric | G1 GC | Throughput |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Elapsed time | 287 seconds | 267 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CPU usage | 99% | 99% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Young GC pauses | 80 seconds | 63 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Full GC pauses | 0 seconds | 37 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: 'This is really no different than the case with a single CPU: the competition
+    for CPU cycles between the G1 GC background threads and the application threads
+    means that the application threads were effectively paused even when GC pauses
+    weren’t happening.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we’re more interested in interactive processing and response times, the throughput
+    collector has a harder time beating G1 GC. If your server is short of CPU cycles
+    such that the G1 GC and application threads compete for CPU, then G1 GC will yield
+    worse response times (similar to the cases we’ve already seen). If the server
+    is tuned such that there are no full GCs, then G1 GC and the throughput collector
+    will generally turn out similar results. But the more full GCs that the throughput
+    collector has, the better the G1 GC average, 90th%, and 99th% response times will
+    be.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: G1 GC is currently the better algorithm to choose for a majority of applications.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The serial collector makes sense when running CPU-bound applications on a machine
+    with a single CPU, even if that single CPU is hyper-threaded. G1 GC will still
+    be better on such hardware for jobs that are not CPU-bound.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The throughput collector makes sense on multi-CPU machines running jobs that
+    are CPU bound. Even for jobs that are not CPU bound, the throughput collector
+    can be the better choice if it does relatively few full GCs or if the old generation
+    is generally full.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Basic GC Tuning
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Although GC algorithms differ in the way they process the heap, they share basic
+    configuration parameters. In many cases, these basic configurations are all that
+    is needed to run an application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sizing the Heap
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The first basic tuning for GC is the size of the application’s heap. Advanced
+    tunings affect the size of the heap’s generations; as a first step, this section
+    will discuss setting the overall heap size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Like most performance issues, choosing a heap size is a matter of balance. If
+    the heap is too small, the program will spend too much time performing GC and
+    not enough time performing application logic. But simply specifying a very large
+    heap isn’t necessarily the answer either. The time spent in GC pauses is dependent
+    on the size of the heap, so as the size of the heap increases, the duration of
+    those pauses also increases. The pauses will occur less frequently, but their
+    duration will make the overall performance lag.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A second danger arises when very large heaps are used. Computer operating systems
+    use virtual memory to manage the physical memory of the machine. A machine may
+    have 8 GB of physical RAM, but the OS will make it appear as if much more memory
+    is available. The amount of virtual memory is subject to the OS configuration,
+    but say the OS makes it look like there is 16 GB of memory. The OS manages that
+    by a process called *swapping* (or *paging*, though there is a technical difference
+    between those two terms that isn’t important for this discussion). You can load
+    programs that use up to 16 GB of memory, and the OS will copy inactive portions
+    of those programs to disk. When those memory areas are needed, the OS will copy
+    them from disk to RAM (usually, it will first need to copy something from RAM
+    to disk to make room).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This process works well for a system running lots of applications, because most
+    of the applications are not active at the same time. It does not work so well
+    for Java applications. If a Java program with a 12 GB heap is run on this system,
+    the OS can handle it by keeping 8 GB of the heap in RAM and 4 GB on disk (that
+    simplifies the situation a little, since other programs will use part of RAM).
+    The JVM won’t know about this; the swapping is transparently handled by the OS.
+    Hence, the JVM will happily fill up all 12 GB of heap it has been told to use.
+    This causes a severe performance penalty as the OS swaps data from disk to RAM
+    (which is an expensive operation to begin with).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Worse, the one time this swapping is guaranteed to occur is during a full GC,
+    when the JVM must access the entire heap. If the system is swapping during a full
+    GC, pauses will be an order of magnitude longer than they would otherwise be.
+    Similarly, when you use G1 GC and the background thread sweeps through the heap,
+    it will likely fall behind because of the long waits for data to be copied from
+    disk to main memory—resulting in an expensive concurrent mode failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Hence, the first rule in sizing a heap is never to specify a heap that is larger
+    than the amount of physical memory on the machine—and if multiple JVMs are running,
+    that applies to the sum of all their heaps. You also need to leave some room for
+    the native memory of the JVM, as well as some memory for other applications: typically,
+    at least 1 GB of space for common OS profiles.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The size of the heap is controlled by two values: an initial value (specified
+    with `-Xms`*`N`*) and a maximum value (`-Xmx`*`N`*). The defaults vary depending
+    on the operating system, the amount of system RAM, and the JVM in use. The defaults
+    can be affected by other flags on the command line as well; heap sizing is one
+    of the JVM’s core ergonomic tunings.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The goal of the JVM is to find a “reasonable” default initial value for the
+    heap based on the system resources available to it, and to grow the heap up to
+    a “reasonable” maximum if (and only if) the application needs more memory (based
+    on how much time it spends performing GC). Absent some of the advanced tuning
+    flags and details discussed later in this and the next chapters, the default values
+    for the initial and maximum sizes are given in [Table 5-9](#TableGCHeap). The
+    JVM will round these values down slightly for alignment purposes; the GC logs
+    that print the sizes will show that the values are not exactly equal to the numbers
+    in this table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-9\. Default heap sizes
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Operating system and JVM | Initial heap (`Xms`) | Maximum heap (`Xmx`) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Linux | Min (512 MB, 1/64 of physical memory) | Min (32 GB, 1/4 of physical
+    memory) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| macOS | 64 MB | Min (1 GB, 1/4 of physical memory) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Windows 32-bit client JVMs | 16 MB | 256 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Windows 64-bit server JVMs | 64 MB | Min (1 GB, 1/4 of physical memory) |'
+  prefs: []
+  type: TYPE_TB
+- en: On a machine with less than 192 MB of physical memory, the maximum heap size
+    will be half of the physical memory (96 MB or less).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that the values in [Table 5-9](#TableGCHeap) are one of those tunings
+    that will be incorrect for Docker containers in versions of JDK 8 prior to update
+    192 that specify a memory limit: the JVM will use the total amount of memory on
+    the machine to calculate the default sizes. In later JDK 8 versions and JDK 11,
+    the JVM will use the memory limit of the container.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Having an initial and maximum size for the heap allows the JVM to tune its behavior
+    depending on the workload. If the JVM sees that it is doing too much GC with the
+    initial heap size, it will continually increase the heap until the JVM is doing
+    the “correct” amount of GC, or until the heap hits its maximum size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For applications that don’t need a large heap, that means a heap size doesn’t
+    need to be set at all. Instead, you specify the performance goals for the GC algorithm:
+    the pause times you are willing to tolerate, the percentage of time you want to
+    spend in GC, and so on. The details will depend on the GC algorithm used and are
+    discussed in the next chapter (though even then, the defaults are chosen such
+    that for a wide range of applications, those values needn’t be tuned either).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a world where JVMs run in isolated containers, you will usually need to specify
+    a maximum heap. On a virtual machine running primarily a single JVM, the default
+    initial heap will be only one-quarter of the memory assigned to the virtual machine.
+    Similarly, in a JDK 11 Docker container with a memory limit, you typically want
+    the heap to consume most of that memory (leaving headroom as mentioned earlier).
+    The defaults here are better tailored to systems running a mix of applications
+    rather than containers dedicated to a specific JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'No hard-and-fast rule determines the size for the maximum heap value (other
+    than not specifying a size larger than the machine can support). A good rule of
+    thumb is to size the heap so that it is 30% occupied after a full GC. To calculate
+    this, run the application until it has reached a steady-state configuration: a
+    point at which it has loaded anything it caches, has created a maximum number
+    of client connections, and so on. Then connect to the application with `jconsole`,
+    force a full GC, and observe how much memory is used when the full GC completes.
+    (Alternately, for throughput GC, you can consult the GC log if it is available.)
+    If you take that approach, make sure to size your container (if applicable) to
+    have an additional 0.5–1 GB of memory for nonheap needs of the JVM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Be aware that automatic sizing of the heap occurs even if you explicitly set
+    the maximum size: the heap will start at its default initial size, and the JVM
+    will grow the heap in order to meet the performance goals of the GC algorithm.
+    There isn’t necessarily a memory penalty for specifying a larger heap than is
+    needed: it will grow only enough to meet the GC performance goals.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, if you know exactly what size heap the application needs,
+    you may as well set both the initial and maximum values of the heap to that value
+    (e.g., `-Xms4096m` `-Xmx4096m`). That makes GC slightly more efficient, because
+    it never needs to figure out whether the heap should be resized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The JVM will attempt to find a reasonable minimum and maximum heap size based
+    on the machine it is running on.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Unless the application needs a larger heap than the default, consider tuning
+    the performance goals of a GC algorithm (given in the next chapter) rather than
+    fine-tuning the heap size.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sizing the Generations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Once the heap size has been determined, the JVM must decide how much of the
+    heap to allocate to the young generation and how much to allocate to the old generation.
+    The JVM usually does this automatically and usually does a good job in determining
+    the optimal ratio between young and old generations. In some cases, you might
+    hand-tune these values, though mostly this section is here to provide an understanding
+    of how garbage collection works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The performance implication of different generation sizes should be clear:
+    if there is a relatively larger young generation, young GC pause times will increase,
+    but the young generation will be collected less often, and fewer objects will
+    be promoted into the old generation. But on the other hand, because the old generation
+    is relatively smaller, it will fill up more frequently and do more full GCs. Striking
+    a balance is key.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Different GC algorithms attempt to strike this balance in different ways. However,
+    all GC algorithms use the same set of flags to set the sizes of the generations;
+    this section covers those common flags.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The command-line flags to tune the generation sizes all adjust the size of
+    the young generation; the old generation gets everything that is left over. A
+    variety of flags can be used to size the young generation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-XX:NewRatio=`*`N`*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Set the ratio of the young generation to the old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-XX:NewSize=`*`N`*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Set the initial size of the young generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-XX:MaxNewSize=`*`N`*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Set the maximum size of the young generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-Xmn`*`N`*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shorthand for setting both `NewSize` and `MaxNewSize` to the same value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The young generation is first sized by the `NewRatio`, which has a default
+    value of 2\. Parameters that affect the sizing of heap spaces are generally specified
+    as ratios; the value is used in an equation to determine the percentage of space
+    affected. The `NewRatio` value is used in this formula:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Plugging in the initial size of the heap and the `NewRatio` yields the value
+    that becomes the setting for the young generation. By default, then, the young
+    generation starts out at 33% of the initial heap size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternately, the size of the young generation can be set explicitly by specifying
+    the `NewSize` flag. If that option is set, it will take precedence over the value
+    calculated from the `NewRatio`. There is no default for this flag since the default
+    is to calculate it from `NewRatio`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the heap expands, the young generation size will expand as well, up to the
+    maximum size specified by the `MaxNewSize` flag. By default, that maximum is also
+    set using the `NewRatio` value, though it is based on the maximum (rather than
+    initial) heap size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tuning the young generation by specifying a range for its minimum and maximum
+    sizes ends up being fairly difficult. When a heap size is fixed (by setting `-Xms`
+    equal to `-Xmx`), it is usually preferable to use `-Xmn` to specify a fixed size
+    for the young generation as well. If an application needs a dynamically sized
+    heap and requires a larger (or smaller) young generation, then focus on setting
+    the `NewRatio` value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adaptive sizing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The sizes of the heap, the generations, and the survivor spaces can vary during
+    execution as the JVM attempts to find the optimal performance according to its
+    policies and tunings. This is a best-effort solution, and it relies on past performance:
+    the assumption is that future GC cycles will look similar to the GC cycles in
+    the recent past. That turns out to be a reasonable assumption for many workloads,
+    and even if the allocation rate suddenly changes, the JVM will readapt its sizes
+    based on the new information.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adaptive sizing provides benefits in two important ways. First, it means that
+    small applications don’t need to worry about overspecifying the size of their
+    heap. Consider the administrative command-line programs used to adjust the operations
+    of things like a Java NoSQL server—those programs are usually short-lived and
+    use minimal memory resources. These applications will use 64 (or 16) MB of heap
+    even though the default heap could grow to 1 GB. Because of adaptive sizing, applications
+    like that don’t need to be specifically tuned; the platform defaults ensure that
+    they will not use a large amount of memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, it means that many applications don’t really need to worry about tuning
+    their heap size at all—or if they need a larger heap than the platform default,
+    they can just specify that larger heap and forget about the other details. The
+    JVM can autotune the heap and generation sizes to use an optimal amount of memory,
+    given the GC algorithm’s performance goals. Adaptive sizing is what allows that
+    autotuning to work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Still, adjusting the sizes takes a small amount of time—which occurs for the
+    most part during a GC pause. If you have taken the time to finely tune GC parameters
+    and the size constraints of the application’s heap, adaptive sizing can be disabled.
+    Disabling adaptive sizing is also useful for applications that go through markedly
+    different phases, if you want to optimally tune GC for one of those phases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At a global level, adaptive sizing can be disabled by turning off the `-XX:-UseAdaptiveSizePolicy`
+    flag (which is `true` by default). With the exception of the survivor spaces (which
+    are examined in detail in the next chapter), adaptive sizing is also effectively
+    turned off if the minimum and maximum heap sizes are set to the same value, and
+    the initial and maximum sizes of the new generation are set to the same value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To see how the JVM is resizing the spaces in an application, set the `-XX:+PrintAdaptiveSizePolicy`
+    flag. When a GC is performed, the GC log will contain information detailing how
+    the various generations were resized during a collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Within the overall heap size, the sizes of the generations are controlled by
+    how much space is allocated to the young generation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The young generation will grow in tandem with the overall heap size, but it
+    can also fluctuate as a percentage of the total heap (based on the initial and
+    maximum size of the young generation).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adaptive sizing controls how the JVM alters the ratio of young generation to
+    old generation within the heap.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adaptive sizing should generally be kept enabled, since adjusting those generation
+    sizes is how GC algorithms attempt to meet their pause-time goals.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For finely tuned heaps, adaptive sizing can be disabled for a small performance
+    boost.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sizing Metaspace
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When the JVM loads classes, it must keep track of certain metadata about those
+    classes. This occupies a separate heap space called the *metaspace*. In older
+    JVMs, this was handled by a different implementation called *permgen*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To end users, the metaspace is opaque: we know that it holds a bunch of class-related
+    data and that in certain circumstances the size of that region needs to be tuned.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the metaspace does not hold the actual instance of the class (the
+    `Class` objects), or reflection objects (e.g., `Method` objects); those are held
+    in the regular heap. Information in the metaspace is used only by the compiler
+    and JVM runtime, and the data it holds is referred to as *class metadata*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There isn’t a good way to calculate in advance the amount of space a particular
+    program needs for its metaspace. The size will be proportional to the number of
+    classes it uses, so bigger applications will need bigger areas. This is another
+    area where changes in JDK technology have made life easier: tuning the permgen
+    used to be fairly common, but tuning the metaspace is fairly rare these days.
+    The main reason is that the default values for the size of the metaspace are very
+    generous. [Table 5-10](#TablePermGen) lists the default initial and maximum sizes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 5-10\. Default sizes of the metaspace
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| JVM | Default initial size | Default maximum size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32-bit client JVM | 12 MB | Unlimited |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32-bit server JVM | 16 MB | Unlimited |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 64-bit JVM | 20.75 MB | Unlimited |'
+  prefs: []
+  type: TYPE_TB
+- en: The metaspace behaves similarly to a separate instance of the regular heap.
+    It is sized dynamically based on an initial size (`-XX:MetaspaceSize=`*`N`*) and
+    will increase as needed to a maximum size (`-XX:MaxMetaspaceSize=`*`N`*).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Resizing the metaspace requires a full GC, so it is an expensive operation.
+    If there are a lot of full GCs during the startup of a program (as it is loading
+    classes), it is often because permgen or metaspace is being resized, so increasing
+    the initial size is a good idea to improve startup in that case. Servers, for
+    example, typically specify an initial metaspace size of 128 MB, 192 MB, or more.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java classes can be eligible for GC just like anything else. This is a common
+    occurrence in an application server, which creates new classloaders every time
+    an application is deployed (or redeployed). The old classloaders are then unreferenced
+    and eligible for GC, as are any classes that they defined. Meanwhile, the new
+    classes of the application will have new metadata, and so there must be room in
+    the metaspace for that. This often causes a full GC because the metaspace needs
+    to grow (or discard old metadata).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One reason to limit the size of the metaspace is to guard against a classloader
+    leak: when the application server (or other program like an IDE) continually defines
+    new classloaders and classes while maintaining references to the old classloaders.
+    This has the potential to fill up the metaspace and consume a lot of memory on
+    the machine. On the other hand, the actual classloader and class objects in that
+    case are also still in the main heap—and that heap is likely to fill up and cause
+    an `OutOfMemoryError` before the memory occupied by the metaspace becomes a problem.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap dumps (see [Chapter 7](ch07.html#Memory)) can be used to diagnose what
+    classloaders exist, which in turn can help determine if a classloader leak is
+    filling up metaspace. Otherwise, `jmap` can be used with the argument `-clstats`
+    to print out information about the classloaders.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The metaspace holds class metadata (not class objects) and behaves like a separate
+    heap.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The initial size of this region can be based on its usage after all classes
+    have been loaded. That will slightly speed up startup.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Applications that define and discard a lot of classes will see an occasional
+    full GC when the metaspace fills up and old classes are removed. This is particularly
+    common for a development environment.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Controlling Parallelism
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'All GC algorithms except the serial collector use multiple threads. The number
+    of these threads is controlled by the `-XX:ParallelGCThreads=`*`N`* flag. The
+    value of this flag affects the number of threads used for the following operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collection of the young generation when using `-XX:+UseParallelGC`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Collection of the old generation when using `-XX:+UseParallelGC`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Collection of the young generation when using `-XX:+UseG1GC`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Stop-the-world phases of G1 GC (though not full GCs)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Because these GC operations stop all application threads from executing, the
+    JVM attempts to use as many CPU resources as it can in order to minimize the pause
+    time. By default, that means the JVM will run one thread for each CPU on a machine,
+    up to eight. Once that threshold has been reached, the JVM adds a new thread for
+    only every 1.6 CPUs. So the total number of threads (where *`N`* is the number
+    of CPUs) on a machine with more than eight CPUs is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Sometimes this number is too large. An application using a small heap (say,
+    1 GB) on a machine with eight CPUs will be slightly more efficient with four or
+    six threads dividing up that heap. On a 128-CPU machine, 83 GC threads is too
+    many for all but the largest heaps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you run the JVM inside a Docker container that has a CPU limit, that CPU
+    limit is used for this calculation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, if more than one JVM is running on the machine, it is a good idea
+    to limit the total number of GC threads among all JVMs. When they run, the GC
+    threads are quite efficient, and each will consume 100% of a single CPU (this
+    is why the average CPU usage for the throughput collector was higher than expected
+    in previous examples). In machines with eight or fewer CPUs, GC will consume 100%
+    of the CPU on the machine. On machines with more CPUs and multiple JVMs, too many
+    GC threads will still be running in parallel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Take the example of a 16-CPU machine running four JVMs; each JVM will have by
+    default 13 GC threads. If all four JVMs execute GC at the same time, the machine
+    will have 52 CPU-hungry threads contending for CPU time. That results in a fair
+    amount of contention; limiting each JVM to four GC threads will be more efficient.
+    Even though it may be unlikely for all four JVMs to perform a GC operation at
+    the same time, one JVM executing GC with 13 threads means that the application
+    threads in the remaining JVMs now have to compete for CPU resources on a machine
+    where 13 of 16 CPUs are 100% busy executing GC tasks. Giving each JVM four GC
+    threads provides a better balance in this case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that this flag does not set the number of background threads used by G1
+    GC (though it does affect that). Details are given in the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The basic number of threads used by all GC algorithms is based on the number
+    of CPUs on a machine.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When multiple JVMs are run on a single machine, that number will be too high
+    and must be reduced.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GC Tools
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Since GC is central to the performance of Java, many tools monitor its performance.
+    The best way to see the effect that GC has on the performance of an application
+    is to become familiar with the GC log, which is a record of every GC operation
+    during the program’s execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The details in the GC log vary depending on the GC algorithm, but the basic
+    management of the log is the same for all algorithms. The log management is not
+    the same, however, between JDK 8 and subsequent releases: JDK 11 uses a different
+    set of command-line arguments to enable and manage the GC log. We’ll discuss the
+    management of GC logs here, and more details on the contents of the log are given
+    in the algorithm-specific tuning sections in the next chapter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enabling GC Logging in JDK 8
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: JDK 8 provides multiple ways to enable the GC log. Specifying either of the
+    flags `-verbose:gc` or `-XX:+PrintGC` will create a simple GC log (the flags are
+    aliases for each other, and by default the log is disabled). The `-XX:+PrintGCDetails`
+    flag will create a log with much more information. This flag is recommended (it
+    is also `false` by default); it is often too difficult to diagnose what is happening
+    with GC using only the simple log.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In conjunction with the detailed log, it is recommended to include `-XX:+PrintGCTimeStamps`
+    or `-XX:+PrintGCDateStamps` so that the time between GC operations can be determined.
+    The difference in those two arguments is that the timestamps are relative to 0
+    (based on when the JVM starts), while the date stamps are an actual date string.
+    That makes the date stamps ever-so-slightly less efficient as the dates are formatted,
+    though it is an infrequent enough operation that its effect is unlikely to be
+    noticed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The GC log is written to standard output, though that location can (and usually
+    should) be changed with the `-Xloggc:`*`filename`* flag. Using `-Xloggc` automatically
+    enables the simple GC log unless `PrintGCDetails` has also been enabled.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The amount of data that is kept in the GC log can be limited using log rotation;
+    this is useful for a long-running server that might otherwise fill up its disk
+    with logs over several months. Logfile rotation is controlled with these flags:
+    `-XX:+UseGCLogFileRotation` `-XX:NumberOfGCLogFiles=`*`N`* `-XX:GCLogFileSize=*N*`.
+    By default, `UseGCLogFileRotation` is disabled. When that flag is enabled, the
+    default number of files is 0 (meaning unlimited), and the default logfile size
+    is 0 (meaning unlimited). Hence, values must be specified for all these options
+    in order for log rotation to work as expected. Note that a logfile size will be
+    rounded up to 8 KB for values less than that.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Putting that all together, a useful set of flags for logging is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: That will log GC events with timestamps to correlate to other logs and limit
+    the retained logs to 64 MB in eight files. This logging is minimal enough that
+    it can be enabled even on production systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enabling GC Logging in JDK 11
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'JDK 11 and later versions use Java’s new unified logging feature. This means
+    that all logging—GC related or not—is enabled via the flag `-Xlog`. Then you append
+    various options to that flag that control how the logging should be performed.
+    In order to specify logging similar to the long example from JDK 8, you would
+    use this flag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The colons divide the command into four sections. You can run `java -Xlog:help:`
+    to get more information on the available options, but here’s how they map for
+    this string.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first section (`gc*`) specifies which modules should enable logging; we
+    are enabling logging for all GC modules. There are options to log only a particular
+    section (e.g., `gc+age` will log information about the tenuring of an object,
+    a topic covered in the next chapter). Those specific modules often have limited
+    output at the default logging level, so you might use something like `gc*,gc+age=debug`
+    to log basic (info-level) messages from all *gc* modules and debug-level messages
+    from the tenuring code. Typically, logging all modules at info level is fine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second section sets the destination of the logfile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The third section (`time`) is a decorator: that decorator says to log messages
+    with a time-of-day stamp, the same as we specified for JDK 8\. Multiple decorators
+    can be specified.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the fourth section specifies output options; in this case, we’ve said
+    to rotate logs when they hit 8 MB, keeping eight logs altogether.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One thing to note: log rotation is handled slightly differently between JDK
+    8 and JDK 11\. Say that we have specified a log name of *gc.log* and that three
+    files should be retained. In JDK 8, the logs will be written this way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Start logging to *gc.log.0.current*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When full, rename that to *gc.log.0* and start logging to *gc.log.1.current*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When full, rename that to *gc.log.1* and start logging to *gc.log.2.current*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When full, rename that to *gc.log.2*, remove *gc.log.0*, and start logging to
+    a new *gc.log.0.current*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Repeat this cycle.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In JDK 11, the logs will be written this way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Start logging to *gc.log*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When that is full, rename it to *gc.log.0* and start a new *gc.log*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When that is full, rename it to *gc.log.1* and start a new *gc.log*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When that is full, rename it to *gc.log.2* and start a new *gc.log*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When that is full, rename it to *gc.log.0*, removing the old *gc.log.0*, and
+    start a new *gc.log*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'If you are wondering why we specified seven logs to retain in the previous
+    JDK 11 command, this is why: there will be eight active files in this case. Also
+    note in either case that the number appended to the file doesn’t mean anything
+    about the order in which the files were created. The numbers are reused in a cycle,
+    so there is some order, but the oldest logfile could be any one in the set.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The *gc* log contains a lot of information specific to each collector, so we’ll
+    step through the details in the next chapter. Parsing the logs for aggregate information
+    about your application is also useful: how many pauses it had, how long they took
+    on average and in total, and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, not a lot of good open source tools are available to parse logfiles.
+    As with profilers, commercial vendors have stepped in to provide support, like
+    the offerings from jClarity (Censum) and [GCeasy](https://www.gceasy.io). The
+    latter has a free service for basic log parsing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For real-time monitoring of the heap, use `jvisualvm` or `jconsole`. The Memory
+    panel of `jconsole` displays a real-time graph of the heap, as shown in [Figure 5-4](#FigureJConsoleMemory).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A graph of heap occupancy over GC cycles](assets/jp2e_0504.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-4\. Real-time heap display
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This particular view shows the entire heap, which is periodically cycling between
+    using about 100 MB and 160 MB. `jconsole` can instead display only eden, the survivor
+    spaces, the old generation, or the permanent generation. If I’d selected eden
+    as the region to chart, it would have shown a similar pattern, as eden fluctuated
+    between 0 MB and 60 MB (and, as you can guess, that means if I’d charted the old
+    generation, it would have been essentially a flat line at 100 MB).
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a scriptable solution, `jstat` is the tool of choice. `jstat` provides nine
+    options to print different information about the heap; `jstat -options` will provide
+    the full list. One useful option is `-gcutil`, which displays the time spent in
+    GC as well as the percentage of each GC area that is currently filled. Other options
+    to `jstat` will display the GC sizes in terms of KB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Remember that `jstat` takes an optional argument—the number of milliseconds
+    to repeat the command—so it can monitor over time the effect of GC in an application.
+    Here is some sample output repeated every second:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: When monitoring of process ID 23461 started, the program had already performed
+    98 collections of the young generation (`YGC`), which took a total of 1.985 seconds
+    (`YGCT`). It had also performed eight full GCs (`FGC`) requiring 2.397 seconds
+    (`FGCT`); hence the total time in GC (`GCT`) was 4.382 seconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All three sections of the young generation are displayed here: the two survivor
+    spaces (`S0` and `S1`) and eden (`E`). The monitoring started just as eden was
+    filling up (99.12% full), so in the next second there was a young collection:
+    eden reduced to 5.55% full, the survivor spaces switched places, and a small amount
+    of memory was promoted to the old generation (`O`), which increased to using 60.98%
+    of its space. As is typical, little or no change occurred in the permanent generation
+    (`P`) because all necessary classes have already been loaded by the application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you’ve forgotten to enable GC logging, this is a good substitute to watch
+    how GC operates over time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: GC logs are the key piece of data required to diagnose GC issues; they should
+    be collected routinely (even on production servers).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A better GC logfile is obtained with the `PrintGCDetails` flag.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Programs to parse and understand GC logs are readily available; they are helpful
+    in summarizing the data in the GC log.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`jstat` can provide good visibility into GC for a live program.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Performance of the garbage collector is one key feature of the overall performance
+    of any Java application. For many applications, though, the only tuning required
+    is to select the appropriate GC algorithm and, if needed, to increase the heap
+    size of the application. Adaptive sizing will then allow the JVM to autotune its
+    behavior to provide good performance using the given heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: More-complex applications will require additional tuning, particularly for specific
+    GC algorithms. If the simple GC settings in this chapter do not provide the performance
+    an application requires, consult the tunings.
+  prefs: []
+  type: TYPE_NORMAL

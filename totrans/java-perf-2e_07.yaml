@@ -1,0 +1,2001 @@
+- en: Chapter 7\. Heap Memory Best Practices
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Chapters [5](ch05.html#GC) and [6](ch06.html#Collectors) discussed the details
+    of how to tune the garbage collector so that it has as little effect on a program
+    as possible. Tuning the garbage collector is important, but often better performance
+    gains can be made by utilizing better programming practices. This chapter discusses
+    some of the best-practice approaches to using heap memory in Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have two conflicting goals here. The first general rule is to create objects
+    sparingly and to discard them as quickly as possible. Using less memory is the
+    best way to improve the efficiency of the garbage collector. On the other hand,
+    frequently re-creating some kinds of objects can lead to worse overall performance
+    (even if GC performance improves). If those objects are instead reused, programs
+    can see substantial performance gains. Objects can be reused in a variety of ways,
+    including thread-local variables, special object references, and object pools.
+    Reusing objects means they will be long-lived and impact the garbage collector,
+    but when they are reused judiciously, overall performance will improve.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter discusses both approaches and the trade-offs between them. First,
+    though, we’ll look into tools for understanding what is happening inside the heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap Analysis
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: GC logs and the tools discussed in [Chapter 5](ch05.html#GC) are great at understanding
+    the impact GC has on an application, but for additional visibility, we must look
+    into the heap itself. The tools discussed in this section provide insight into
+    the objects that the application is currently using.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most of the time, these tools operate only on live objects in the heap—objects
+    that will be reclaimed during the next full GC cycle are not included in the tools’
+    output. In some cases, tools accomplish that by forcing a full GC, so the application
+    behavior can be affected after the tool is used. In other cases, the tools walk
+    through the heap and report live data without freeing objects along the way. In
+    either case, though, the tools require time and machine resources; they are generally
+    not useful during measurement of a program’s execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap Histograms
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Reducing memory use is an important goal, but as with most performance topics,
+    it helps to target efforts to maximize the available benefits. Later in this chapter,
+    you’ll see an example around lazily initializing a `Calendar` object. That will
+    save 640 bytes in the heap, but if the application always initializes one such
+    object, no measurable difference in performance will occur. Analysis must be performed
+    to know which kinds of objects are consuming large amounts of memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The easiest way to do that is via a *heap histogram*. Histograms are a quick
+    way to look at the number of objects within an application without doing a full
+    heap dump (since heap dumps can take a while to analyze, and they consume a large
+    amount of disk space). If a few particular object types are responsible for creating
+    memory pressure in an application, a heap histogram is a quick way to find that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Heap histograms can be obtained by using `jcmd` (here with process ID 8898):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: In a histogram, we can usually expect to see character arrays (`[C`) and `String`
+    objects near the top, as these are the most commonly created Java objects. Byte
+    arrays (`[B`) and object arrays (`[Ljava.lang.Object;`) are also common, since
+    classloaders store their data in those structures. If you’re unfamiliar with this
+    syntax, it is described in the Java Native Interface (JNI) documentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this example, the inclusion of the `BigDecimal` class is something to pursue:
+    we know the sample code produces a lot of transient `BigDecimal` objects, but
+    having so many stay around in the heap is not what we might ordinarily expect.
+    The output from `GC.class_histogram` includes only live objects, as the command
+    normally forces a full GC. You can include the `-all` flag in the command to skip
+    the full GC, though then the histogram contains unreferenced (garbage) objects.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Similar output is available by running this command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output from `jmap` includes objects that are eligible to be collected (dead
+    objects). To force a full GC prior to seeing the histogram, run this command instead:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Histograms are small, so gathering one for every test in an automated system
+    can be helpful. Still, because they take a few seconds to obtain and trigger a
+    full GC, they should not be taken during a performance measurement steady state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap Dumps
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Histograms are great at identifying issues caused by allocating too many instances
+    of one or two particular classes, but for deeper analysis, a *heap dump* is required.
+    Many tools can look at heap dumps, and most of them can connect to a live program
+    to generate the dump. It is often easier to generate the dump from the command
+    line, which can be done with either of the following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: or
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Including the `live` option in `jmap` will force a full GC to occur before the
+    heap is dumped. That is the default for `jcmd`, though if for some reason you
+    want those other (dead) objects included, you can specify `-all` at the end of
+    the `jcmd` command line. If you use the command in a way that forces a full GC,
+    that will obviously introduce a long pause into the application, but even if you
+    don’t force a full GC, the application will be paused for the time it takes to
+    write the heap dump.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Either command creates a file named *heap_dump.hprof* in the given directory;
+    various tools can then be used to open that file. The most common of these are
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`jvisualvm`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Monitor tab of `jvisualvm` can take a heap dump from a running program or
+    open a previously produced heap dump. From there, you can browse through the heap,
+    examining the largest retained objects and executing arbitrary queries against
+    the heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`mat`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The open source EclipseLink Memory Analyzer tool (`mat`) can load one or more
+    heap dumps and perform analysis on them. It can produce reports that suggest where
+    problems are likely to be found, and it too can be used to browse through the
+    heap and execute SQL-like queries into the heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first-pass analysis of a heap generally involves retained memory. The retained
+    memory of an object is the amount of memory that would be freed if the object
+    itself were eligible to be collected. In [Figure 7-1](#FigureRetainedMemory),
+    the retained memory of the String Trio object includes the memory occupied by
+    that object as well as the memory occupied by the Sally and David objects. It
+    does not include the memory used by the Michael object, since that object has
+    another reference and won’t be eligible for GC if the String Trio is freed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Object graph showing that some objects have multiple references to them.](assets/jp2e_0701.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-1\. Object graph of retained memory
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Objects that retain a large amount of heap space are often called the *dominators*
+    of the heap. If the heap analysis tool shows that a few objects dominate the bulk
+    of the heap, things are easy: all you need to do is create fewer of them, retain
+    them for a shorter period of time, simplify their object graph, or make them smaller.
+    That may be easier said than done, but at least the analysis is simple.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: More commonly, detective work will be necessary because the program is likely
+    sharing objects. Like the Michael object in the previous figure, those shared
+    objects are not counted in the retained set of any other object, since freeing
+    one individual object will not free the shared object. Also, the largest retained
+    sizes are often classloaders over which you have little control. As an extreme
+    example, [Figure 7-2](#FigureRetainedMatDump) shows the top retained objects of
+    a heap from a version of the stock server that caches items strongly based on
+    a client connection, and weakly in a global hash map (so that the cached items
+    have multiple references).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Memory Analyzer chart showing the top objects that retain memory.](assets/jp2e_0702.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-2\. Retained Memory view in Memory Analyzer
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The heap contains 1.4 GB of objects (that value doesn’t appear on this tab).
+    Even so, the largest set of objects that is referenced singly is only 6 MB (and
+    is, unsurprisingly, part of the classloading framework). Looking at the objects
+    that directly retain the largest amount of memory isn’t going to solve the memory
+    issues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This example shows multiple instances of `StockPriceHistoryImpl` objects in
+    this list, each of which retains a fair amount of memory. It can be deduced from
+    the amount of memory consumed by those objects that they are the issue. In the
+    general case, though, objects might be shared in such a way that looking at the
+    retained heap won’t show anything obvious.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The histogram of objects is a useful second step (see [Figure 7-3](#FigureMatHisto)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Histogram of the objects in the stock server application.](assets/jp2e_0703.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-3\. Histogram view in Memory Analyzer
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The histogram aggregates objects of the same type, and in this example it is
+    much more apparent that the 1.4 GB of memory retained by the seven million `TreeMap$Entry`
+    objects is the key here. Even without knowing what is going on in the program,
+    it is straightforward enough to use the Memory Analyzer’s facility to trace those
+    objects to see what is holding onto them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap analysis tools provide a way to find the GC roots of a particular object
+    (or set of objects in this case)—though jumping directly to the GC roots isn’t
+    necessarily helpful. The GC roots are the system objects that hold a static, global
+    reference that (through a long chain of other objects) refers to the object in
+    question. Typically, these come from the static variables of a class loaded on
+    the system or bootstrap classpath. This includes the `Thread` class and all active
+    threads; threads retain objects either through their thread-local variables or
+    through references via their target `Runnable` object (or, in the case of a subclass
+    of the `Thread` class, any other references the subclass has).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In some cases, knowing the GC roots of a target object is helpful, but if the
+    object has multiple references, it will have many GC roots. The references here
+    are a tree structure in reverse. Say that two objects refer to a particular `TreeMap$Entry`
+    object. Each of those objects may be referred to by two other objects, each of
+    which may be referred to by three other objects, and so on. The explosion of references
+    as the roots are traced back means that multiple GC roots likely exist for any
+    given object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Instead, it can be more fruitful to play detective and find the lowest point
+    in the object graph where the target object is shared. This is done by examining
+    the objects and their incoming references and tracing those incoming references
+    until the duplicate path is identified. In this case, references to the `StockPriceHistoryImpl`
+    objects held in the tree map have two referents: the `ConcurrentHashMap`, which
+    holds attribute data for the session, and the `WeakHashMap`, which holds the global
+    cache.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Figure 7-4](#FigureMatTrace), the back traces are expanded enough to show
+    only a little data about the two of them. The way to conclude that it is the session
+    data is to continue to expand the `ConcurrentHashMap` path until it becomes clear
+    that path is the session data. A similar logic applies to the path for the `WeakHashMap`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Each TreeMap Object is referred to by two other objects.](assets/jp2e_0704.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-4\. Back traces of object references in Memory Analyzer
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The object types used in this example made the analysis a little easier than
+    is often the case. If the primary data in this application had been modeled as
+    `String` objects instead of `BigDecimal` objects, and stored in `HashMap` objects
+    instead of `TreeMap` objects, things would have been more difficult. Hundreds
+    of thousands of other strings and tens of thousands of other `HashMap` objects
+    are in the heap dump. Finding paths to the interesting objects, then, takes some
+    patience. As a general rule of thumb, start with collection objects (e.g., `HashMap`)
+    rather than the entries (e.g., `HashMap$Entry`), and look for the biggest collections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Knowing which objects are consuming memory is the first step in knowing which
+    objects to optimize in your code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Histograms are a quick and easy way to identify memory issues caused by creating
+    too many objects of a certain type.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Heap dump analysis is the most powerful technique to track down memory usage,
+    though it requires patience and effort to be utilized well.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Out-of-Memory Errors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The JVM throws an *out-of-memory* error under these circumstances:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: No native memory is available for the JVM.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The metaspace is out of memory.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The Java heap itself is out of memory: the application cannot create any additional
+    objects for the given heap size.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The JVM is spending too much time performing GC.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The last two cases—involving the Java heap itself—are more common, but don’t
+    automatically conclude from an out-of-memory error that the heap is the problem.
+    It is necessary to look at why the out-of-memory error occurred (that reason is
+    part of the output of the exception).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Out of native memory
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first case in this list—no native memory available for the JVM—occurs for
+    reasons unrelated to the heap at all. In a 32-bit JVM, the maximum size of a process
+    is 4 GB (3 GB on some versions of Windows, and about 3.5 GB on some older versions
+    of Linux). Specifying a very large heap—say, 3.8 GB—brings the application size
+    dangerously close to that limit. Even in a 64-bit JVM, the operating system may
+    not have sufficient virtual memory for whatever the JVM requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This topic is addressed more fully in [Chapter 8](ch08.html#NativeMemory).
+    Be aware that if the message for the out-of-memory error discusses allocation
+    of native memory, heap tuning isn’t the answer: you need to look into whatever
+    native memory issue is mentioned in the error. For example, the following message
+    tells you that the native memory for thread stacks is exhausted:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: However, be aware that the JVM will sometimes issue this error for things that
+    have nothing to do with memory. Users usually have constraints on the number of
+    threads they can run; this constraint can be imposed by the OS or by a container.
+    For example, in Linux, users are often allowed to create only 1,024 processes
+    (a value you can check by running `ulimit -u`). The attempt to create a 1,025th
+    thread will throw that same `OutOfMemoryError`, claiming insufficient memory to
+    create the native thread, when in reality, the OS limit on the number of processes
+    caused the error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Out of metaspace memory
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: An out-of-metaspace memory error is also not associated with the heap—it occurs
+    because the metaspace native memory is full. Because metaspace has no maximum
+    size by default, this error typically occurs because you’ve chosen to set the
+    maximum size (and the reason for doing so will become clear in this section).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This error can have two root causes: The first is simply that the application
+    uses more classes than can fit in the metaspace you’ve assigned (see [“Sizing
+    Metaspace”](ch05.html#GCMetaSpace)). The second case is trickier: it involves
+    a classloader memory leak. This occurs most frequently in a server that loads
+    classes dynamically. One such example is a Java EE application server. Each application
+    that is deployed to an app server runs in its own classloader (which provides
+    isolation so that classes from one application are not shared with—and do not
+    interfere with—classes from another application). In development, each time the
+    application is changed, it must be redeployed: a new classloader is created to
+    load the new classes, and the old classloader is allowed to go out of scope. Once
+    the classloader goes out of scope, the class metadata can be collected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the old classloader does not go out of scope, the class metadata cannot be
+    freed, and eventually the metaspace will fill up and throw an out-of-memory error.
+    In this case, increasing the size of the metaspace will help, but ultimately that
+    will simply postpone the error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If this situation occurs in an app server environment, there is little to do
+    but contact the app server vendor and get them to fix the leak. If you are writing
+    your own application that creates and discards lots of classloaders, ensure that
+    the class loaders themselves are discarded correctly (in particular, make sure
+    that no thread sets its context classloader to one of the temporary classloaders).
+    To debug this situation, the heap dump analysis just described is helpful: in
+    the histogram, find all the instances of the `ClassLoader` class, and trace their
+    GC roots to see what is holding onto them.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The key to recognizing this situation is again the full-text output of the
+    out-of-memory error. If the metaspace is full, the error text will appear like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Classloader leaks, by the way, are the reason you should consider setting the
+    maximum size of the metaspace. Left unbounded, a system with a classloader leak
+    will consume all the memory on your machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Out-of-heap memory
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'When the heap itself is out of memory, the error message appears like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The common cases in which an out-of-memory condition is triggered by a lack
+    of heap space are similar to the example of the metaspace we just discussed. The
+    application may simply need more heap space: the number of live objects that it
+    is holding onto cannot fit in the heap space configured for it. Or, the application
+    may have a memory leak: it continues to allocate additional objects without allowing
+    other objects to go out of scope. In the first case, increasing the heap size
+    will solve the issue; in the second case, increasing the heap size will merely
+    postpone the error.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In either case, heap dump analysis is necessary to find out what is consuming
+    the most memory; the focus can then be on reducing the number (or size) of those
+    objects. If the application has a memory leak, take successive heap dumps a few
+    minutes apart and compare them. `mat` has that functionality built into it: if
+    two heap dumps are open, `mat` has an option to calculate the difference in the
+    histograms between the two heaps.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 7-5](#FigureMatCompare) shows the classic case of a Java memory leak
+    caused by a collection class—in this case, `HashMap`. (Collection classes are
+    the most frequent cause of a memory leak: the application inserts items into the
+    collection and never frees them.) This is a comparison histogram view: it displays
+    the difference in the number of objects in two heap dumps. For example, 19,744
+    more `Integer` objects occur in the target heap dump compared to its baseline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The best way to overcome this situation is to change the application logic such
+    that items are proactively discarded from the collection when they are no longer
+    needed. Alternatively, a collection that uses weak or soft references can automatically
+    discard the items when nothing else in the application is referencing them, but
+    those collections come with a cost (as is discussed later in this chapter).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A comparison of histograms, showing that the number of hash map entries has
+    greatly increased.](assets/jp2e_0705.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-5\. Histogram comparison
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Often when this kind of exception is thrown, the JVM does not exit, because
+    the exception affects only a single thread in the JVM. Let’s look at a JVM with
+    two threads performing a calculation. One of them may get the `OutOfMemoryError`.
+    By default, the thread handler for that thread will print out the stack trace,
+    and that thread will exit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But the JVM still has another active thread, so the JVM will not exit. And
+    because the thread that experienced the error has terminated, a fair amount of
+    memory can likely now be claimed on a future GC cycle: all the objects that the
+    terminated thread referenced and that weren’t referenced by any other threads.
+    So the surviving thread will be able to continue executing and will often have
+    sufficient heap memory to complete its task.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Server frameworks with a thread pool handling requests will work essentially
+    the same way. They will generally catch the error and prevent the thread from
+    terminating, but that doesn’t affect this discussion; the memory associated with
+    the request that the thread was executing will still become eligible for collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So when this error is thrown, it will be fatal to the JVM only if it causes
+    the last non-daemon thread in the JVM to terminate. That will never be the case
+    in a server framework and often won’t be the case in a standalone program with
+    multiple threads. And usually that works out well, since the memory associated
+    with the active request will often become eligible for collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If instead you want the JVM to exit whenever the heap runs out of memory, you
+    can set the `-XX:+ExitOnOutOfMemoryError` flag, which by default is `false`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: GC overhead limit reached
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The recovery described for the previous case assumes that when a thread gets
+    the out-of-memory error, memory associated with whatever that thread is working
+    on will become eligible for collection and the JVM can recover. That’s not always
+    true, which leads us to the final case of the JVM throwing an out-of-memory error:
+    when it determines that it is spending too much time performing GC:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This error is thrown when all of the following conditions are met:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The amount of time spent in full GCs exceeds the value specified by the `-XX:GCTimeLimit=`*`N`*
+    flag. The default value is 98 (i.e., if 98% of the time is spent in GC).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The amount of memory reclaimed by a full GC is less than the value specified
+    by the `-XX:GCHeapFreeLimit=`*`N`* flag. The default value is 2, meaning that
+    if less than 2% of the heap is freed during the full GC, this condition is met.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The preceding two conditions have held true for five consecutive full GC cycles
+    (that value is not tunable).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The value of the `-XX:+UseGCOverheadLimit` flag is `true` (which it is by default).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note that all four of these conditions must be met. It is common to see more
+    than five consecutive full GCs occur in an application that does not throw an
+    out-of-memory error. That is because even if the application is spending 98% of
+    its time performing full GCs, it may be freeing more than 2% of the heap during
+    each GC. Consider increasing the value of `GCHeapFreeLimit` in that case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that as a last-ditch effort to free memory, if the first two conditions
+    hold for four consecutive full GC cycles, then all soft references in the JVM
+    will be freed before the fifth full GC cycle. That often prevents the error, since
+    that fifth cycle may free more than 2% of the heap (assuming that the application
+    uses soft references).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Out-of-memory errors are thrown for a variety of reasons; do not assume that
+    the heap space is the problem.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For both the metaspace and the regular heap, out-of-memory errors most frequently
+    occur because of memory leaks; heap analysis tools can help to find the root cause
+    of the leak.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using Less Memory
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The first approach to using memory more efficiently in Java is to use less
+    heap memory. That statement should be unsurprising: using less memory means the
+    heap will fill up less often, requiring fewer GC cycles. The effect can multiply:
+    fewer collections of the young generation means the tenuring age of an object
+    is increased less often—meaning that the object is less likely to be promoted
+    into the old generation. Hence, the number of full GC cycles (or concurrent GC
+    cycles) will be reduced. And if those full GC cycles can clear up more memory,
+    they will also occur less frequently.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This section investigates three ways to use less memory: reducing object size,
+    using lazy initialization of objects, and using canonical objects.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reducing Object Size
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Objects occupy a certain amount of heap memory, so the simplest way to use less
+    memory is to make objects smaller. Given the memory constraints on the machine
+    running your program, it may not be possible to increase the heap size by 10%,
+    but a 20% reduction of half the objects in the heap can achieve the same goal.
+    As discussed in [Chapter 12](ch12.html#Misc), Java 11 has just such an optimization
+    for `String` objects, which means that users of Java 11 can frequently set their
+    maximum heap 25% smaller than they required in Java 8—with no impact on GC or
+    performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The size of an object can be decreased by (obviously) reducing the number of
+    instance variables it holds and (less obviously) by reducing the size of those
+    variables. [Table 7-1](#TableObjSize) gives the size of an instance variable of
+    all Java types.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-1\. Size in bytes of Java instance variables
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Type | Size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `byte` | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `char` | 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `short` | 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `int` | 4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `float` | 4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `long` | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `double` | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `reference` | 8 (on 32-bit Windows JVMs, 4)^([a](ch07.html#idm45775553337304))
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ^([a](ch07.html#idm45775553337304-marker)) See [“Compressed Oops”](#CompressedOops)
+    for more details. |'
+  prefs: []
+  type: TYPE_TB
+- en: The `reference` type here is the reference to any kind of Java object—instances
+    of classes or arrays. That space is the storage only for the reference itself.
+    The size of an object that contains references to other objects varies depending
+    on whether we want to consider the shallow, deep, or retained size of the object,
+    but that size also includes some invisible object header fields. For a regular
+    object, the size of the header fields is 8 bytes on a 32-bit JVM, and 16 bytes
+    on a 64-bit JVM (regardless of heap size). For an array, the size of the header
+    fields is 16 bytes on a 32-bit JVM or a 64-bit JVM with a heap of less than 32
+    GB, and 24 bytes otherwise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, consider these class definitions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The actual sizes of a single instance of these objects (on a 64-bit JVM with
+    a heap size of less than 32 GB) is given in [Table 7-2](#TableObjectSizes).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-2\. Sizes in bytes of simple objects
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Shallow size | Deep size | Retained size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `A` | 16 | 16 | 16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `B` | 24 | 216 | 24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `C` | 24 | 200 | 200 |'
+  prefs: []
+  type: TYPE_TB
+- en: In class `B`, defining the `Locale` reference adds 8 bytes to the object size,
+    but at least in that example, the `Locale` object is shared among other classes.
+    If the `Locale` object is never needed by the class, including that instance variable
+    will waste only the additional bytes for the reference. Still, those bytes add
+    up if the application creates a lot of instances of class `B`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, defining and creating a `ConcurrentHashMap` consumed additional
+    bytes for the object reference, plus additional bytes for the hash-map object.
+    If the hash map is never used, instances of class `C` are wasteful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining only required instance variables is one way to save space in an object.
+    The less obvious case involves using smaller data types. If a class needs to keep
+    track of one of eight possible states, it can do so using a `byte` rather than
+    an `int`—potentially saving 3 bytes. Using `float` instead of `double`, `int`
+    instead of `long`, and so on, can help save memory, particularly in classes that
+    are frequently instantiated. As discussed in [Chapter 12](ch12.html#Misc), using
+    appropriately sized collections (or using simple instance variables instead of
+    collections) achieves similar savings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Eliminating instance fields in an object can help make the object smaller,
+    but a gray area exists: what about object fields that hold the result of a calculation
+    based on pieces of data? This is the classic computer science trade-off of time
+    versus space: is it better to spend the memory (space) to store the value or better
+    to spend the time (CPU cycles) to calculate the value as needed? In Java, though,
+    the trade-off applies to CPU time as well, since the additional memory can cause
+    GC to consume more CPU cycles.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The hash code for a `String`, for example, is calculated by summing an equation
+    involving each character of the string; it is somewhat time-consuming to calculate.
+    Hence, the `String` class stores that value in an instance variable so that the
+    hash code needs to be calculated only once: in the end, reusing that value will
+    almost always produce better performance than any memory savings from not storing
+    it. On the other hand, the `toString()` method of most classes does not cache
+    the string representation of the object in an instance variable, which would consume
+    memory both for the instance variable and for the string it references. Instead,
+    the time required to calculate a new string will usually give better performance
+    than the memory required to keep the string reference around. (It is also the
+    case that the hash value for a `String` is used frequently, and the `toString()`
+    representation of an object is often used rarely.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is definitely a your-mileage-may-vary situation and the point along the
+    time/space continuum where it makes sense to switch between using the memory to
+    cache a value and recalculating the value will depend on many factors. If reducing
+    GC is the goal, the balance will swing more to recalculating.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Reducing object sizes can often improve the efficiency of GC.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The size of an object is not always immediately apparent: objects are padded
+    to fit on 8-byte boundaries, and object reference sizes are different between
+    32- and 64-bit JVMs.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Even `null` instance variables consume space within object classes.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using Lazy Initialization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Much of the time, the decision about whether a particular instance variable
+    is needed is not as black-and-white as the previous section suggests. A particular
+    class may need a `Calendar` object only 10% of the time, but `Calendar` objects
+    are expensive to create, and it definitely makes sense to keep that object around
+    rather than re-create it on demand. This is a case where *lazy initialization*
+    can help.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So far, this discussion has assumed that instance variables are initialized
+    eagerly. A class that needs to use a `Calendar` object (and that doesn’t need
+    to be thread-safe) might look something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Initializing the fields lazily instead carries a small trade-off in terms of
+    computation performance—the code must test the state of the variable each time
+    the code is executed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Lazy initialization is best used when the operation in question is only infrequently
+    used. If the operation is commonly used, no memory will be saved (since it will
+    always be allocated), and there will be that slight performance penalty on a common
+    operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When the code involved must be thread-safe, lazy initialization becomes more
+    complicated. As a first step, it is easiest simply to add traditional synchronization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Introducing synchronization into the solution opens up the possibility that
+    the synchronization will become a performance bottleneck. That case should be
+    rare. The performance benefit from lazy initialization occurs only when the object
+    in question will rarely initialize those fields—since if it usually initializes
+    those fields, no memory has actually been saved. So synchronization becomes a
+    bottleneck for lazily initialized fields when an infrequently used code path is
+    suddenly subject to use by a lot of threads simultaneously. That case is not inconceivable,
+    but it isn’t the most common case either.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Solving that synchronization bottleneck can happen only if the lazily initialized
+    variables are themselves thread-safe. `DateFormat` objects are not thread-safe,
+    so in the current example, it doesn’t really matter if the lock includes the `Calendar`
+    object: if the lazily initialized objects are suddenly used heavily, the required
+    synchronization around the `DateFormat` object will be an issue no matter what.
+    The thread-safe code would have to look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Lazy initialization involving an instance variable that is not thread-safe can
+    always synchronize around that variable (e.g., using the `synchronized` version
+    of the method shown previously).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider a somewhat different example, in which a large `ConcurrentHashMap`
+    is lazily initialized:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Because `ConcurrentHashMap` can be safely accessed by multiple threads, the
+    extra synchronization in this example is one of the infrequent cases where properly
+    used lazy initialization could introduce a synchronization bottleneck. (Such a
+    bottleneck should still be rare, though; if access to the hash map is that frequent,
+    consider whether anything is really saved by initializing it lazily.) The bottleneck
+    is solved using the double-checked locking idiom:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Important threading issues exist: the instance variable must be declared `volatile`,
+    and a slight performance benefit results from assigning the instance variable
+    to a local variable. More details are given in [Chapter 9](ch09.html#ThreadPerformance);
+    in the occasional case where lazy initialization of threaded code makes sense,
+    this is the design pattern to follow.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Eager deinitialization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The corollary to lazily initializing variables is *eagerly deinitializing* them
+    by setting their value to `null`. That allows the object in question to be collected
+    more quickly by the garbage collector. While that sounds like a good thing in
+    theory, it is useful in only limited circumstances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A variable that is a candidate for lazy initialization might seem like a candidate
+    for eager deinitialization: in the preceding examples, the `Calendar` and `DateFormat`
+    objects could be set to `null` upon completion of the `report()` method. However,
+    if the variable isn’t going to be used in subsequent invocations of the method
+    (or elsewhere in the class), there is no reason to make it an instance variable
+    in the first place. Simply create the local variable in the method, and when the
+    method completes, the local variable will fall out of scope and the garbage collector
+    can free it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The common exception to the rule about not needing to eagerly deinitialize
+    variables occurs with classes like those in the Java collection framework: classes
+    that hold references to data for a long time and then are informed that the data
+    in question is no longer needed. Consider the implementation of the `remove()`
+    method in the `ArrayList` class of the JDK (some code is simplified):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The code comment about GC appears in the (otherwise sparsely commented) JDK
+    source itself: setting the value of a variable to `null` like that is an unusual
+    enough operation that some explanation is needed. In this case, trace through
+    what happens when the last element of the array is removed. The number of items
+    remaining in the array—the `size` instance variable—is decremented. Say that `size`
+    is decremented from 5 to 4\. Now whatever is stored in `elementData[4]` cannot
+    be accessed: it is beyond the valid size of the array.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`elementData[4]` is, in this case, a stale reference. The `elementData` array
+    is probably going to remain active for a long time, and so anything that it no
+    longer needs to reference needs to be actively set to `null`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This notion of stale references is the key: if a long-lived class caches and
+    then discards object references, care must be taken to avoid stale references.
+    Otherwise, explicitly setting an object reference to `null` will offer little
+    performance benefit.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Use lazy initialization only when the common code paths will leave variables
+    uninitialized.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lazy initialization of thread-safe code is unusual but can often piggyback on
+    existing synchronization.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use double-checked locking for lazy initialization of code using thread-safe
+    objects.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using Immutable and Canonical Objects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In Java, many object types are immutable. This includes objects that have a
+    corresponding primitive type—`Integer`, `Double`, `Boolean`, and so on—as well
+    as other numeric-based types, like `BigDecimal`. The most common Java object,
+    of course, is the immutable `String`. From a program design perspective, it is
+    often a good idea for custom classes to represent immutable objects as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When these objects are quickly created and discarded, they have a small effect
+    on young collections; as you saw in [Chapter 5](ch05.html#GC), that impact is
+    limited. But as is true of any object, if many immutable objects are promoted
+    to the old generation, performance can suffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, there is no reason to avoid designing and using immutable objects, even
+    if it may seem a little counterproductive that these objects cannot be changed
+    and must be re-created. But one optimization that is often possible when handling
+    these objects is to avoid creating duplicate copies of the same object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The best example of this is the `Boolean` class. Any Java application needs
+    only two instances of the `Boolean` class: one for true, and one for false. Unfortunately,
+    the `Boolean` class is badly designed. Because it has a `public` constructor,
+    applications can create as many of these objects as they like, even though they
+    are all exactly the same as one of the two canonical `Boolean` objects. A better
+    design would have been for the `Boolean` class to have only a private constructor,
+    and static methods to return either `Boolean.TRUE` or `Boolean.FALSE` based on
+    their parameter. If such a model can be followed for your own immutable classes,
+    you can prevent them from contributing to the heap usage of your application.
+    (Ideally, it is obvious that you should never create a `Boolean` object; you should
+    just use `Boolean.TRUE` or `Boolean.FALSE` as necessary.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These singular representations of immutable objects are known as the *canonical
+    version* of the object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating canonical objects
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Even if the universe of objects for a particular class is practically limitless,
+    using canonical values can often save memory. The JDK provides a facility to do
+    this for the most common immutable object: strings can call the `intern()` method
+    to find a canonical version of the string. More details of string interning are
+    examined in [Chapter 12](ch12.html#Misc); for now we’ll look at how to accomplish
+    the same thing for custom classes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To canonicalize an object, create a map that stores the canonical version of
+    the object. To prevent a memory leak, make sure that the objects in the map are
+    weakly referenced. The skeleton of such a class looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: In a threaded environment, the synchronization could become a bottleneck. There’s
+    no easy solution if you stick to JDK classes, since they do not provide a concurrent
+    hash map for weak references. However, there have been proposals to add a `CustomConcurrentHashMap`
+    to the JDK—originally as part of Java Specification Request (JSR)166—and you can
+    find various third-party implementations of such a class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Objects that are immutable offer the possibility of special lifecycle management:
+    canonicalization.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Eliminating duplicate copies of immutable objects via canonicalization can greatly
+    decrease the amount of heap an application uses.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Object Life-Cycle Management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The second broad topic of memory management discussed in this chapter is *object
+    life-cycle management*. For the most part, Java attempts to minimize the effort
+    developers must put into managing the life cycle of objects: the developer creates
+    the objects when needed, and when they are no longer needed, the objects fall
+    out of scope and are freed by the garbage collector.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sometimes this normal life cycle is not optimal. Some objects are expensive
+    to create, and managing the life cycle of those objects will improve the efficiency
+    of an application, even at the expense of requiring additional work by the garbage
+    collector. This section explores when and how the normal life cycle of objects
+    should be changed, either by reusing the objects or by maintaining special references
+    to them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Object Reuse
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Object reuse is commonly achieved in two ways: object pools and thread-local
+    variables. GC engineers around the world are now groaning, since either technique
+    hampers the efficiency of GC. Object pooling, in particular, is widely disliked
+    in GC circles for that reason, though for that matter, object pools are also widely
+    disliked in development circles for many other reasons.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At one level, the reason for this position seems obvious: objects that are
+    reused stay around for a long time in the heap. If the heap has a lot of objects,
+    there is less room to create new objects, and hence GC operations will occur more
+    frequently. But that is only part of the story.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you saw in [Chapter 6](ch06.html#Collectors), when an object is created,
+    it is allocated in eden. It will spend a few young GC cycles shuffling back and
+    forth between the survivor spaces, before finally getting promoted to the old
+    generation. Each time the newly (or recently) created pooled object is processed,
+    the GC algorithm must perform some work to copy it and adjust references to it
+    until it finally makes it into the old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although that seems like the end of it, once the object is promoted to the old
+    generation, it can cause even more performance problems. The length of time it
+    takes to perform a full GC is proportional to the number of objects that are still
+    alive in the old generation. The amount of live data is even more important than
+    the size of the heap; it is faster to process a 3 GB old generation with few surviving
+    objects than to process a 1 GB old generation where 75% of the objects survive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using a concurrent collector and avoiding full GCs doesn’t make the situation
+    that much better, since the time required by the marking phases of the concurrent
+    collectors similarly depends on the amount of still-live data. And for CMS in
+    particular, the objects in a pool are likely to be promoted at different times,
+    increasing the chance of a concurrent failure due to fragmentation. Overall, the
+    longer objects are kept in the heap, the less efficient GC will be.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So: object reuse is bad. Now we can discuss how and when to reuse objects.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The JDK provides some common object pools: the thread pool, which is discussed
+    in [Chapter 9](ch09.html#ThreadPerformance), and soft references. *Soft references*,
+    which are discussed later in this section, are essentially a big pool of reusable
+    objects. Java servers, meanwhile, depend on object pools for connections to databases
+    and other resources. The situation is similar for thread-local values; the JDK
+    is filled with classes that use thread-local variables to avoid reallocating certain
+    kinds of objects. Clearly, even Java experts understand the need for object reuse
+    in some circumstances.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The reason for reusing objects is that many objects are expensive to initialize,
+    and reusing them is more efficient than the trade-off in increased GC time. That
+    is certainly true of things like the JDBC connection pool: creating the network
+    connection, and possibly logging in and establishing a database session, is expensive.
+    Object pooling in that case is a big performance win. Threads are pooled to save
+    the time associated with creating a thread; random number generators are supplied
+    as thread-local variables to save the time require to seed them; and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One feature these examples share is that it takes a long time to initialize
+    the object. In Java, object *allocation* is fast and inexpensive (and arguments
+    against object reuse tend to focus on that part of the equation). Object *initialization*
+    performance depends on the object. You should consider reusing only objects with
+    a very high initialization cost, and only then if the cost of initializing those
+    objects is one of the dominant operations in your program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another feature these examples share is that the number of shared objects tends
+    to be small, which minimizes their impact on GC operations: there aren’t enough
+    of them to slow down those GC cycles. Having a few objects in a pool isn’t going
+    to affect the GC efficiency too much; filling the heap with pooled objects will
+    slow down GC significantly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here are just some examples of where (and why) the JDK and Java programs reuse
+    objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread pools
+  prefs: []
+  type: TYPE_NORMAL
+- en: Threads are expensive to initialize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JDBC pools
+  prefs: []
+  type: TYPE_NORMAL
+- en: Database connections are expensive to initialize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large arrays
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java requires that when an array is allocated, all individual elements in the
+    array must be initialized to a default zero-based value (`null`, `0`, or `false`
+    as appropriate). This can be time-consuming for large arrays.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Native NIO buffers
+  prefs: []
+  type: TYPE_NORMAL
+- en: Allocating a direct `java.nio.Buffer` (a buffer returned from calling the `allocateDirect()`
+    method) is an expensive operation regardless of the size of the buffer. It is
+    better to create one large buffer and manage the buffers from that by slicing
+    off portions as required and return them to be reused by future operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Security classes
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instances of `MessageDigest`, `Signature`, and other security algorithms are
+    expensive to initialize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: String encoder and decoder objects
+  prefs: []
+  type: TYPE_NORMAL
+- en: Various classes in the JDK create and reuse these objects. For the most part,
+    these are also soft references, as you’ll see in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`StringBuilder` helpers'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `BigDecimal` class reuses a `StringBuilder` object when calculating intermediate
+    results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Random number generators
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instances of either the `Random` or (especially) `SecureRandom` classes are
+    expensive to seed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Names obtained from DNS lookups
+  prefs: []
+  type: TYPE_NORMAL
+- en: Network lookups are expensive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ZIP encoders and decoders
+  prefs: []
+  type: TYPE_NORMAL
+- en: In an interesting twist, these are not particularly expensive to initialize.
+    They are, however, expensive to free, because they rely on object finalization
+    to ensure that the native memory they use is also freed. See [“Finalizers and
+    final references”](#Finalizers) for more details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Two options (object pools and thread-local variables) have differences in performance.
+    Let’s look at those in more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Object pools
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '*Object pools* are disliked for many reasons, only some of which have to do
+    with their performance. They can be difficult to size correctly. They also place
+    the burden of object management back on the programmer: rather than simply letting
+    an object go out of scope, the programmer must remember to return the object to
+    the pool.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The focus here, though, is on the performance of an object pool, which is subject
+    to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GC impact
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you’ve seen, holding lots of objects reduces (sometimes drastically) the
+    efficiency of GC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronization
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pools of objects are inevitably synchronized, and if the objects are frequently
+    removed and replaced, the pool can have a lot of contention. The result is that
+    access to the pool can become slower than initializing a new object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Throttling
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This performance impact of pools can be beneficial: pools allow access to scarce
+    resources to be throttled. As discussed in [Chapter 2](ch02.html#SampleApplications),
+    if you attempt to increase load on a system beyond what it can handle, performance
+    will decrease. This is one reason thread pools are important. If too many threads
+    run simultaneously, the CPUs will be overwhelmed, and performance will degrade
+    (an example is shown in [Chapter 9](ch09.html#ThreadPerformance)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This principle applies to remote system access as well and is frequently seen
+    with JDBC connections. If more JDBC connections are made to a database than it
+    can handle, performance of the database will degrade. In these situations, it
+    is better to throttle the number of resources (e.g., JDBC connections) by capping
+    the size of the pool—even if it means that threads in the application must wait
+    for a free resource.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread-local variables
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Reusing objects by storing them as *thread-local variables* results in various
+    performance trade-offs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Life-cycle management
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Thread-local variables are much easier and less expensive to manage than objects
+    in a pool. Both techniques require you to obtain the initial object: you check
+    it out of the pool, or you call the `get()` method on the thread-local object.
+    But object pools require that you return the object when you are done with it
+    (otherwise no one else can use it). Thread-local objects are always available
+    within the thread and needn’t be explicitly returned.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cardinality
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread-local variables usually end up with a one-to-one correspondence between
+    the number of threads and the number of saved (reused) objects. That isn’t strictly
+    the case. The thread’s copy of the variable isn’t created until the first time
+    the thread uses it, so it is possible to have fewer saved objects than threads.
+    But there cannot be any more saved objects than threads, and much of the time
+    it ends up being the same number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, an object pool may be sized arbitrarily. If a request sometimes
+    needs one JDBC connection and sometimes needs two, the JDBC pool can be sized
+    accordingly (with, say, 12 connections for 8 threads). Thread-local variables
+    cannot do this effectively; nor can they throttle access to a resource (unless
+    the number of threads itself serves as the throttle).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronization
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread-local variables need no synchronization since they can be used only within
+    a single thread; the thread-local `get()` method is relatively fast. (This wasn’t
+    always the case; in early versions of Java, obtaining a thread-local variable
+    was expensive. If you shied away from thread-local variables because of bad performance
+    in the past, reconsider their use in current versions of Java.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronization brings up an interesting point, because the performance benefit
+    of thread-local objects is often couched in terms of saving synchronization costs
+    (rather than in the savings from reusing an object). For example, Java supplies
+    a `ThreadLocalRandom` class; that class (rather than a single `Random` instance)
+    is used in the sample stock applications. Otherwise, many of the examples throughout
+    the book would encounter a synchronization bottleneck on the `next()` method of
+    the single `Random` object. Using a thread-local object is a good way to avoid
+    synchronization bottlenecks, since only one thread can ever use that object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, that synchronization problem would have been solved just as easily
+    if the examples had simply created a new instance of the `Random` class each time
+    one was needed. Solving the synchronization problem that way would not have helped
+    the overall performance, though: it is expensive to initialize a `Random` object,
+    and continually creating instances of that class would have had worse performance
+    than the synchronization bottleneck from many threads sharing one instance of
+    the class.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Better performance comes from using the `ThreadLocalRandom` class, as shown
+    in [Table 7-3](#TableThreadLocalReuse). This example calculates the time required
+    to create 10,000 random numbers in each of four threads under three scenarios:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each thread constructs a new `Random` object to calculate the 10,000 numbers.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All threads share a common, static `Random` object.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All threads share a common, static `ThreadLocalRandom` object.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Table 7-3\. Effect of `ThreadLocalRandom` on generating 10,000 random numbers
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Operation | Elapsed time |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Create new `Random` | 134.9 ± 0.01 microseconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ThreadLocalRandom` | 52.0 ± 0.01 microseconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Share `Random` | 3,763 ± 200 microseconds |'
+  prefs: []
+  type: TYPE_TB
+- en: Microbenchmarking threads that contend on a lock is always unreliable. In the
+    last row of this table, the threads are almost always contending for the lock
+    on the `Random` object; in a real application, the amount of contention would
+    be much less. Still, you can expect to see some contention with a shared object,
+    while creating a new object every time is more than two times as expensive as
+    using the `ThreadLocalRandom` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The lesson here—and in general for object reuse—is that when initialization
+    of objects takes a long time, don’t be afraid to explore object pooling or thread-local
+    variables to reuse those expensive-to-create objects. As always, though, strike
+    a balance: large object pools of generic classes will most certainly lead to more
+    performance issues than they solve. Leave these techniques to classes that are
+    expensive to initialize and for when the number of the reused objects will be
+    small.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Object reuse is discouraged as a general-purpose operation but may be appropriate
+    for small groups of objects that are expensive to initialize.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Trade-offs exist between reusing an object via an object pool or using a thread-local
+    variable. In general, thread-local variables are easier to work with, assuming
+    that a one-to-one correspondence between threads and reusable objects is desired.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Soft, Weak, and Other References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Soft and weak references in Java also allow objects to be reused, though as
+    developers, we don’t always think of it in those terms. These kinds of references—which
+    we will generally refer to as *indefinite references*—are more frequently used
+    to cache the result of a long calculation or a database lookup rather than to
+    reuse a simple object. For example, in the stock server, an indirect reference
+    could be used to cache the result of the `getHistory()` method (which entails
+    either a lengthy calculation or a long database call). That result is just an
+    object, and when it is cached via an indefinite reference, we are simply reusing
+    the object because it is otherwise expensive to initialize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Still, to many programmers this “feels” different. In fact, even the terminology
+    reflects that: no one speaks of “caching” a thread for reuse, but we will explore
+    the reuse of indefinite references in terms of caching the result of database
+    operations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The advantage to an indefinite reference over an object pool or a thread-local
+    variable is that indefinite references will be (eventually) reclaimed by the garbage
+    collector. If an object pool contains the last 10,000 stock lookups that have
+    been performed and the heap starts running low, the application is out of luck:
+    whatever heap space remains after those 10,000 elements are stored is all the
+    remaining heap the application can use. If those lookups are stored via indefinite
+    references, the JVM can free up some space (depending on the type of reference),
+    giving better GC throughput.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The disadvantage is that indefinite references have a slightly greater effect
+    on the efficiency of the garbage collector. [Figure 7-6](#FigureRefProc1) shows
+    a side-by-side comparison of the memory used without and with an indefinite reference
+    (in this case, a soft reference).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The object being cached occupies 512 bytes. On the left, that’s all the memory
+    consumed (absent the memory for the instance variable pointing to the object).
+    On the right, the object is being cached inside a `SoftReference` object, which
+    adds 40 bytes of memory consumption. Indefinite references are just like any other
+    object: they consume memory, and other things (the `cachedValue` variable on the
+    right side of the diagram) reference them strongly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So the first impact on the garbage collector is that indefinite references cause
+    the application to use more memory. A second, bigger impact on the garbage collector
+    is that it takes at least two GC cycles for the indefinite reference object to
+    be reclaimed by the garbage collector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Diagram of an indefinite reference''s memory use.](assets/jp2e_0706.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-6\. Memory allocated by indefinite reference
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '[Figure 7-7](#FigureRefProc2) shows what happens when a referent is no longer
+    strongly referenced (i.e., the `lastViewed` variable has been set to `null`).
+    If no references to the `StockHistory` object exist, it is freed during the next
+    GC that processes the generation where that object resides. So the left side of
+    the diagram now consumes 0 bytes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the right side of the diagram, memory is still consumed. The exact point
+    at which the referent gets freed varies by the type of the indefinite reference,
+    but for now let’s take the case of a soft reference. The referent will stick around
+    until the JVM decides that the object has not been used recently enough. When
+    that happens, the first GC cycle frees the referent—but not the indefinite reference
+    object itself. The application ends up with the memory state shown in [Figure 7-8](#FigureRefProc3).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Diagram of an indefinite reference''s memory use.](assets/jp2e_0707.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-7\. Indefinite references retain memory through GC cycles
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '![Diagram of an indefinite reference''s memory use.](assets/jp2e_0708.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-8\. Indefinite references are not cleared immediately
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The indefinite reference object itself now has (at least) two strong references
+    to it: the original strong reference(s) created by the application, and a new
+    strong reference (created by the JVM) on a reference queue. All of these strong
+    references must be cleared before the indefinite reference object itself can be
+    reclaimed by the garbage collector.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Typically, this cleanup is done by whatever code is processing the reference
+    queue. That code will get notified that a new object is on the queue and immediately
+    remove all strong references to that object. Then, during the next GC cycle, the
+    indefinite reference object (referent) will get freed. In the worst case, that
+    reference queue will not be processed immediately, and there can be many GC cycles
+    before everything is cleaned up. Even in the best case, though, the indefinite
+    reference has to go through two GC cycles before it is freed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Depending on the type of indefinite reference, some important variations to
+    this general algorithm exist, but all indefinite references have this penalty
+    to some degree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Soft references
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '*Soft references* are used when the object in question has a good chance of
+    being reused in the future, but you want to let the garbage collector reclaim
+    the object if it hasn’t been used recently (a calculation that also takes into
+    consideration the amount of memory the heap has available). Soft references are
+    essentially one large, least recently used (LRU) object pool. The key to getting
+    good performance from them is to make sure that they are cleared on a timely basis.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here is an example. The stock server can set up a global cache of stock histories
+    keyed by their symbol (or symbol and date). When a request comes in for the stock
+    history of `TPKS` from 9/1/19 to 12/31/19, the cache can be consulted to see if
+    the result from a similar request is already there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The reason to cache that data is that requests tend to come in for certain
+    items more often than for others. If `TPKS` is the most requested stock, it can
+    be expected to remain in the soft reference cache. On the other hand, a lone request
+    for `KENG` will live in the cache for a while but eventually be reclaimed. This
+    also accounts for requests over time: a cluster of requests for `DNLD` can reuse
+    the result from the first request. As users realize that `DNLD` is a bad investment,
+    those cached items will eventually age out of the heap.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When, exactly, is a soft reference freed? First the referent must not be strongly
+    referenced elsewhere. If the soft reference is the only remaining reference to
+    its referent, the referent is freed during the next GC cycle only if the soft
+    reference has not recently been accessed. Specifically, the equation functions
+    like this pseudocode:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code has two key values. The first value is set by the `-XX:SoftRefLRUPolicyMSPerMB=`*`N`*
+    flag, which has a default value of 1,000.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second value is the amount of free memory in the heap (once the GC cycle
+    has completed). The free memory in the heap is calculated based on the maximum
+    possible size of the heap minus whatever is in use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So how does that all work? Take the example of a JVM using a 4 GB heap. After
+    a full GC (or a concurrent cycle), the heap might be 50% occupied; the free heap
+    is therefore 2 GB. The default value of `SoftRefLRUPolicyMSPerMB` (1,000) means
+    that any soft reference that has not been used for the past 2,048 seconds (2,048,000
+    ms) will be cleared: the free heap is 2,048 (in megabytes), which is multiplied
+    by 1,000:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the 4 GB heap is 75% occupied, objects not accessed in the last 1,024 seconds
+    are reclaimed, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To reclaim soft references more frequently, decrease the value of the `SoftRefLRU``PolicyMSPerMB`
+    flag. Setting that value to 500 means that a JVM with a 4 GB heap that is 75%
+    full will reclaim objects not accessed in the past 512 seconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tuning this flag is often necessary if the heap fills up quickly with soft references.
+    Say that the heap has 2 GB free and the application starts to create soft references.
+    If it creates 1.7 GB of soft references in less than 2,048 seconds (roughly 34
+    minutes), none of those soft references will be eligible to be reclaimed. There
+    will be only 300 MB of space left in the heap for other objects; GC will occur
+    frequently as a result (yielding bad overall performance).
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the JVM completely runs out of memory or starts thrashing too severely, it
+    will clear all soft references, since the alternative would be to throw an `OutOfMemoryError`.
+    Not throwing the error is good, but indiscriminately throwing away all the cached
+    results is probably not ideal. Hence, another time to lower the `SoftRefLRUPolicyMSPerMB`
+    value is when the reference processing GC logs indicates that a very large number
+    of soft references are being cleared unexpectedly. As discussed in [“GC overhead
+    limit reached”](#GCOverhead), that will occur only after four consecutive full
+    GC cycles (and if other factors apply).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other side of the spectrum, a long-running application can consider
+    raising that value if two conditions are met:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A lot of free heap is available.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The soft references are infrequently accessed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'That is an unusual situation. It is similar to a situation discussed about
+    setting GC policies: you may think that if the soft reference policy value is
+    increased, you are telling the JVM to discard soft references only as a last resort.
+    That is true, but you’ve also told the JVM not to leave any headroom in the heap
+    for normal operations, and you are likely to end up spending too much time in
+    GC instead.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The caution, then, is not to use too many soft references, since they can easily
+    fill up the entire heap. This caution is even stronger than the caution against
+    creating an object pool with too many instances: soft references work well when
+    the number of objects is not too large. Otherwise, consider a more traditional
+    object pool with a bounded size, implemented as an LRU cache.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weak references
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '*Weak references* should be used when the referent in question will be used
+    by several threads simultaneously. Otherwise, the weak reference is too likely
+    to be reclaimed by the garbage collector: objects that are only weakly referenced
+    are reclaimed at every GC cycle.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that weak references never get into the state shown (for soft references)
+    in [Figure 7-7](#FigureRefProc2). When the strong references are removed, the
+    weak reference is immediately freed. Hence, the program state moves directly from
+    [Figure 7-6](#FigureRefProc1) to [Figure 7-8](#FigureRefProc3).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The interesting effect here, though, is where the weak reference ends up in
+    the heap. Reference objects are just like other Java objects: they are created
+    in the young generation and eventually promoted to the old generation. If the
+    referent of the weak reference is freed while the weak reference itself is still
+    in the young generation, the weak reference will be freed quickly (at the next
+    minor GC). (This assumes that the reference queue is quickly processed for the
+    object in question.) If the referent remains around long enough for the weak reference
+    to be promoted into the old generation, the weak reference will not be freed until
+    the next concurrent or full GC cycle.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the cache of the stock server as an example, let’s say we know that if
+    a particular client accesses `TPKS`, they are almost always likely to access it
+    again. It makes sense to keep the values for that stock as a strong reference
+    based on the client connection: it will always be there for them, and as soon
+    as they log out, the connection is cleared and the memory reclaimed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now when another user comes along and needs data for `TPKS`, how will they find
+    it? Since the object is in memory somewhere, we don’t want to look it up again,
+    but also the connection-based cache doesn’t work for this second user. So in addition
+    to keeping a strong reference to the `TPKS` data based on the connection, it makes
+    sense to keep a weak reference to that data in a global cache. Now the second
+    user will be able to find the `TPKS` data—assuming that the first user has not
+    closed their connection. (This is the scenario used in [“Heap Analysis”](#heap_analysis)
+    where the data had two references and wasn’t easily found by looking at objects
+    with the largest retained memory.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is what is meant by simultaneous access. It is as if we are saying to
+    the JVM: “Hey, as long as someone else is interested in this object, let me know
+    where it is, but if they no longer need it, throw it away and I will re-create
+    it myself.” Compare that to a soft reference, which essentially says: “Hey, try
+    to keep this around as long as there is enough memory and as long as it seems
+    that someone is occasionally accessing it.”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Not understanding this distinction is the most frequent performance issue that
+    occurs when using weak references. Don’t make the mistake of thinking that a weak
+    reference is just like a soft reference except that it is freed more quickly:
+    a softly referenced object will be available for (usually) minutes or even hours,
+    but a weakly referenced object will be available for only as long as its referent
+    is still around (subject to the next GC cycle clearing it).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finalizers and final references
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Every Java class has a `finalize()` method inherited from the `Object` class;
+    that method can be used to clean up data after the object is eligible for GC.
+    That sounds like a nice feature, and it is required in a few circumstances. In
+    practice, it turns out to be a bad idea, and you should try hard not to use this
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finalizers are so bad that the `finalize()` method is deprecated in JDK 11 (though
+    not in JDK 8). We’ll get into the details of why finalizers are bad in the rest
+    of this section, but first, a little motivation. *Finalizers* were originally
+    introduced into Java to address problems that can arise when the JVM manages the
+    life cycle of objects. In a language like C++, where you must explicitly destroy
+    an object when you no longer need it, the deconstructor for the object could clean
+    up the state of that object. In Java, when the object is automatically reclaimed
+    as it goes out of scope, the finalizer served as the deconstructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JDK, for example, uses a finalizer in its classes that manipulates ZIP files,
+    because opening a ZIP file uses native code that allocates native memory. That
+    memory is freed when the ZIP file is closed, but what happens if the developer
+    forgets to call the `close()` method? The finalizer can ensure that the `close()`
+    method has been called, even if the developer forgets that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Numerous classes in JDK 8 use finalizers like that, but in JDK 11, they all
+    use a different mechanism: `Cleaner` objects. Those are discussed in the next
+    section. If you have your own code and are tempted to use a finalizer (or are
+    running on JDK 8 where the cleaner mechanism is not available), read on for ways
+    to cope with them.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finalizers are bad for functional reasons, and they are also bad for performance.
+    Finalizers are actually a special case of an indefinite reference: the JVM uses
+    a private reference class (`java.lang.ref.Finalizer`, which in turn is a `java.lang.ref.FinalReference`)
+    to keep track of objects that have defined a `finalize()` method. When an object
+    that has a `finalize()` method is allocated, the JVM allocates two objects: the
+    object itself and a `Finalizer` reference that uses the object as its referent.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As with other indefinite references, it takes at least two GC cycles before
+    the indefinite reference object can be freed. However, the penalty here is much
+    greater than with other indefinite reference types. When the referent of a soft
+    or weak reference is eligible for GC, the referent itself is immediately freed;
+    that leads to the memory use previously shown in [Figure 7-8](#FigureRefProc3).
+    The weak or soft reference is placed on the reference queue, but the reference
+    object no longer refers to anything (that is, its `get()` method returns `null`
+    rather than the original referent). In the case of soft and weak references, the
+    two-cycle penalty for GC applies only to the reference object itself (and not
+    the referent).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is not the case for final references. The implementation of the `Finalizer`
+    class must have access to the referent in order to call the referent’s `finalize()`
+    method, so the referent cannot be freed when the finalizer reference is placed
+    on its reference queue. When the referent of a finalizer becomes eligible for
+    collection, the program state is reflected by [Figure 7-9](#FigureRefProc4).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the reference queue processes the finalizer, the `Finalizer` object (as
+    usual) will be removed from the queue and then be eligible for collection. Only
+    then will the referent also be freed. This is why finalizers have a much greater
+    performance effect on GC than other indefinite references—the memory consumed
+    by the referent can be much more significant than the memory consumed by the indefinite
+    reference object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Diagram of an indefinite reference''s memory use.](assets/jp2e_0709.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-9\. Finalizer references retain more memory
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'This leads to the functional problem with finalizers, which is that the `finalize()`
+    method can inadvertently create a new strong reference to the referent. That again
+    causes a GC performance penalty: now the referent won’t be freed until it is no
+    longer strongly referenced again. And functionally it creates a big problem, because
+    the next time the referent is eligible to be collected, its `finalize()` method
+    won’t be called, and the expected cleanup of the referent won’t happen. This kind
+    of error is reason enough for finalizers to be used as seldom as possible.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a rule, then, if you are in a situation where a finalizer is unavoidable,
+    make sure that the memory accessed by the object is kept to a minimum.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative to using finalizers exists that avoids at least some of these
+    problems—and in particular, allows the referent to be freed during normal GC operations.
+    This is accomplished by simply using another kind of indefinite reference rather
+    than implicitly using a `Finalizer` reference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is sometimes recommended to use yet another indefinite reference type for
+    this: the `PhantomReference` class. (In fact, that’s what JDK 11 does, and if
+    you’re on JDK 11, the `Cleaner` object will be much easier to use than the example
+    presented here, which is really useful only in JDK 8.) That’s a good choice, because
+    the reference object will be cleaned up relatively quickly after the referent
+    is no longer strongly referenced, and while debugging, the purpose of the reference
+    is clear. Still, the same goal can be achieved with a weak reference (plus, the
+    weak reference can be used in more places). And in certain circumstances, a soft
+    reference could be used if the caching semantics of the soft reference match the
+    need of the application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To create a substitute finalizer, you must create a subclass of the indefinite
+    reference class to hold any information that needs to be cleaned up after the
+    referent has been collected. Then you perform the cleanup in a method of the reference
+    object (as opposed to defining a `finalize()` method in the referent class).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here is the outline of such a class, which uses a weak reference. The constructor
+    here allocates a native resource. Under normal usage, the `setClosed()` method
+    is expected to be called; that will clean up the native memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: However, the weak reference is also placed on a reference queue. When the reference
+    is pulled from the queue, it can check to make sure the native memory has been
+    cleaned up (and clean it if it has not).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Processing of the reference queue happens in a daemon thread:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'All of that is in a `private` `static` inner class hidden from the developer
+    using the actual class, which looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Developers construct this object just as they would any other object. They are
+    told to call the `close()` method, which will clean up the native memory—but if
+    they don’t, it’s OK. The weak reference still exists behind the scenes, so the
+    `CleanupFinalizer` class has its own chance to clean up that memory when the inner
+    class processes the weak reference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The one tricky part of this example is the need for the `pendingRefs` set of
+    weak references. Without that, the weak references themselves will be collected
+    before there is the chance to put them onto the reference queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This example overcomes two limitations of the traditional finalizer: it offers
+    better performance, because the memory associated with the referent object (the
+    `data` hash map in this case) is released as soon as the referent is collected
+    (rather than doing that in the `finalizer()` method), and there is no way for
+    the referent object to be resurrected in the cleanup code, since it has already
+    been collected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Still, other objections that apply to the use of finalizers apply to this code
+    as well: you can’t ensure the garbage collector will ever get around to freeing
+    the referent, nor that the reference queue thread will ever process any particular
+    object on the queue. If there are a large number of these objects, processing
+    that reference queue will be expensive. Like all indefinite references, this example
+    should still be used sparingly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cleaner objects
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In JDK 11, it’s much easier to use the new `java.lang.ref.Cleaner` class in
+    place of the `finalize()` method. This class uses the `PhantomReference` class
+    to get notified when the object is no longer strongly reachable. This follows
+    the same concepts as the `CleanupFinalizer` class I just suggested for use in
+    JDK 8, but because it’s a core feature of the JDK, developers needn’t worry about
+    setting up thread processing and their own references: they simply register the
+    appropriate objects that the cleaner should process and let the core libraries
+    take care of the rest.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: From a performance standpoint, the tricky part here is getting the “appropriate”
+    object to register with the cleaner. The cleaner will keep a strong reference
+    to the registered object, so by itself, that object will never become phantom
+    reachable. Instead, you create a sort of shadow object and register that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As an example, let’s look at the `java.util.zip.Inflater` class. This class
+    needs some sort of cleanup because it must free the native memory it allocated
+    during its processing. This cleanup code is executed when the `end()` method is
+    called, and developers are encouraged to call that method when they are done with
+    the object. But when the object is discarded, we must ensure that the `end()`
+    method has been called; otherwise, we’ll end up with a native memory leak.^([1](ch07.html#idm45775550251208))
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In pseudocode, the `Inflater` class looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code is simpler than the actual implementation, which (for compatibility
+    reasons) has to keep track of subclasses that might override the `end()` method,
+    and of course the native memory allocation is more complex. The point to understand
+    here is that the inner class provides an object that `Cleaner` can strongly reference.
+    The outer class (the `owner`) argument that is also registered with the cleaner
+    provides the trigger: when it is only phantom reachable, the cleaner is triggered,
+    and it can use the saved strong reference as the hook to do the cleanup.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that the inner class here is `static`. Otherwise, it would contain an
+    implicit reference to the `Inflater` class itself, and then the `Inflater` object
+    could never become phantom reachable: there would always be a strong reference
+    from the `Cleaner` to the `InflaterZStreamRef` object and a strong reference from
+    that to the `Inflater` object. As a rule, the object that will be doing the cleanup
+    cannot contain a reference to the object that needs to be cleaned up. For that
+    reason, developers are discouraged from using a lambda rather than a class, as
+    it is again too easy for the lambda to reference the enclosing class.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Indefinite (soft, weak, phantom, and final) references alter the ordinary life
+    cycle of Java objects, allowing them to be reused in ways that may be more GC-friendly
+    than pools or thread-local variables.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Weak references should be used when an application is interested in an object
+    but only if that object is strongly referenced elsewhere in the application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Soft references hold onto objects for (possibly) long periods of time, providing
+    a simple GC-friendly LRU cache.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Indefinite references consume their own memory and hold onto memory of other
+    objects for long periods of time; they should be used sparingly.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finalizers are a special type of reference originally designed for object cleanup;
+    their use is discouraged in favor of the new `Cleaner` class.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compressed Oops
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Using simple programming, 64-bit JVMs are slower than 32-bit JVMs. This performance
+    gap is because of the 64-bit object references: the 64-bit references take up
+    twice the space (8 bytes) in the heap as 32-bit references (4 bytes). That leads
+    to more GC cycles, since there is now less room in the heap for other data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JVM can compensate for that additional memory by using compressed oops.
+    *Oops* stands for *ordinary object pointers*, which are the handles the JVM uses
+    as object references. When oops are only 32 bits long, they can reference only
+    4 GB of memory ( <math alttext="2 Superscript 32"><msup><mrow><mn>2</mn></mrow>
+    <mn>32</mn></msup></math> ), which is why a 32-bit JVM is limited to a 4 GB heap
+    size. (The same restriction applies at the operating system level, which is why
+    any 32-bit process is limited to 4 GB of address space.) When oops are 64 bits
+    long, they can reference exabytes of memory, or far more than you could ever actually
+    get into a machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is a middle ground here: what if there were 35-bit oops? Then the pointer
+    could reference 32 GB of memory ( <math alttext="2 Superscript 35"><msup><mrow><mn>2</mn></mrow>
+    <mn>35</mn></msup></math> ) and still take up less space in the heap than 64-bit
+    references. The problem is that there aren’t 35-bit registers in which to store
+    such references. Instead, though, the JVM can assume that the last 3 bits of the
+    reference are all 0. Now every reference can be stored in 32 bits in the heap.
+    When the reference is stored into a 64-bit register, the JVM can shift it left
+    by 3 bits (adding three zeros at the end). When the reference is saved from a
+    register, the JVM can right-shift it by 3 bits, discarding the zeros at the end.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This leaves the JVM with pointers that can reference 32 GB of memory while using
+    only 32 bits in the heap. However, it also means that the JVM cannot access any
+    object at an address that isn’t divisible by 8, since any address from a compressed
+    oop ends with three zeros. The first possible oop is 0x1, which when shifted becomes
+    0x8\. The next oop is 0x2, which when shifted becomes 0x10 (16). Objects must
+    therefore be located on an 8-byte boundary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It turns out that objects are already aligned on an 8-byte boundary in the JVM;
+    this is the optimal alignment for most processors. So nothing is lost by using
+    compressed oops. If the first object in the JVM is stored at location 0 and occupies
+    57 bytes, the next object will be stored at location 64—wasting 7 bytes that cannot
+    be allocated. That memory trade-off is worthwhile (and will occur whether compressed
+    oops are used or not), because the object can be accessed faster given that 8-byte
+    alignment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But that is the reason that the JVM doesn’t try to emulate a 36-bit reference
+    that could access 64 GB of memory. In that case, objects would have to be aligned
+    on a 16-byte boundary, and the savings from storing the compressed pointer in
+    the heap would be outweighed by the amount of memory that would be wasted between
+    the memory-aligned objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This has two implications. First, for heaps that are between 4 GB and 32 GB,
+    use compressed oops. Compressed oops are enabled using the `-XX:+UseCompressedOops`
+    flag; they are enabled by default whenever the maximum heap size is less than
+    32 GB. (In [“Reducing Object Size”](#ObjectSize), it was noted that the size of
+    an object reference on a 64-bit JVM with a 32 GB heap is 4 bytes—which is the
+    default case since compressed oops are enabled by default.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, a program that uses a 31 GB heap and compressed oops will usually be
+    faster than a program that uses a 33 GB heap. Although the 33 GB heap is larger,
+    the extra space used by the pointers in that heap means that the larger heap will
+    perform more-frequent GC cycles and have worse performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, it is better to use heaps that are less than 32 GB, or heaps that are
+    at least a few GB larger than 32 GB. Once extra memory is added to the heap to
+    make up for the space used by the uncompressed references, the number of GC cycles
+    will be reduced. No hard rule indicates the amount of memory needed before the
+    GC impact of the uncompressed oops is ameliorated—but given that 20% of an average
+    heap might be used for object references, planning on at least 38 GB is a good
+    start.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Compressed oops are enabled by default whenever they are most useful.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A 31 GB heap using compressed oops will often outperform slightly larger heaps
+    that are too big to use compressed oops.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Fast Java programs depend crucially on memory management. Tuning GC is important,
+    but to obtain maximum performance, memory must be utilized effectively within
+    applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For a while, hardware trends tended to dissuade developers from thinking about
+    memory: if my laptop has 16 GB of memory, how concerned need I be with an object
+    that has an extra, unused 8-byte object reference? In a cloud world of memory-limited
+    containers, that concern is again obvious. Still, even when we run applications
+    with large heaps on large hardware, it’s easy to forget that the normal time/space
+    trade-off of programming can swing to a time/space-and-time trade-off: using too
+    much space in the heap can make things slower by requiring more GC. In Java, managing
+    the heap is always important.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Much of that management centers around when and how to use special memory techniques:
+    object pools, thread-local variables, and indefinite references. Judicious use
+    of these techniques can vastly improve the performance of an application, but
+    overuse of them can just as easily degrade performance. In limited quantities—when
+    the number of objects in question is small and bounded—the use of these memory
+    techniques can be quite effective.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch07.html#idm45775550251208-marker)) If the `end()` method is not called
+    eagerly and we rely on GC to clear the native memory, we’ll still have the appearance
+    of a native memory leak; see [Chapter 8](ch08.html#NativeMemory) for more details.
+  prefs: []
+  type: TYPE_NORMAL

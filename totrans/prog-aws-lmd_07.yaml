@@ -1,0 +1,895 @@
+- en: Chapter 7\. Logging, Metrics, and Tracing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we’ll explore how to enhance the observability of Lambda functions
+    through logging, metrics, and tracing. Through logging, you’ll learn how to gain
+    information from specific events occuring during the execution of your Lambda
+    functions. Platform and business metrics will give insight into the operational
+    health of our serverless application. Finally, distributed tracing will let you
+    see how requests flow to the different managed services and components that make
+    up our architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ll use the Weather API from [Chapter 5](ch05.html#ch05) to explore the wide
+    variety of logging, metrics, and tracing options available for serverless applications
+    on AWS. Similar to the data pipeline changes we made in [Chapter 6](ch06.html#ch06),
+    you’ll notice that the Weather API Lambda functions have been refactored to use
+    the `aws-lambda-java-events` library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Logging
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Given the following log message, what can we infer about the state of the application
+    that generated it?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: We know the values of some of the data (the temperature measurement and location),
+    but not much else. When was this data received or processed? In the larger context
+    of our application, what request generated this data? Which Java class and method
+    produced this log message? How can we correlate this with other, possibly related,
+    log messages?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fundamentally, this is an unhelpful log message. It lacks context and specificity.
+    If a message like this was repeated hundreds or thousands of times (perhaps with
+    different temperature or location values), it would lose meaning. When our log
+    messages are prose (e.g., a sentence or phrase), they are more difficult to parse
+    without resorting to regular expressions or pattern matching.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we explore logging in our Lambda functions, keep in mind a few properties
+    of high-value log messages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data rich
+  prefs: []
+  type: TYPE_NORMAL
+- en: We want to capture as much data as is feasible and cost-effective. The more
+    data we have, the more questions we can ask without having to go back and add
+    more logging after that fact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: High cardinality
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data values that make a particular log message unique are especially important.
+    For example, a field like Request ID will have a large number of unique values,
+    whereas a field like Thread Priority may not (especially in a single-threaded
+    Lambda function).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Machine readable
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using JSON or another standardized format that is easily machine readable (without
+    custom parsing logic) will ease analysis by downstream tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CloudWatch Logs
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: CloudWatch Logs is, as the name would suggest, AWS’s log collection, aggregation,
+    and processing service. Through a variety of mechanisms, it receives log data
+    from applications and other AWS services and makes that data accessible through
+    a web console as well as via an API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The two main organizational components of CloudWatch Logs are log groups and
+    log streams. A log group is a top-level grouping for a set of related log streams.
+    A log stream is a list of log messages, usually originating from a single application
+    or function instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda and CloudWatch Logs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In a serverless application, by default there is one log group per Lambda function,
+    which contains many log streams. Each log stream contains the log messages for
+    all the function invocations for a particular function instance. Recall from [Chapter 3](ch03.html#ch03)
+    that the Lambda runtime captures anything written to standard output (`System.out`
+    in Java) or standard error (`System.err`), and forwards that information to CloudWatch
+    Logs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The log output for a Lambda function looks something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `START`, `END`, and `REPORT` lines are automatically added by the Lambda
+    platform. Of particular interest is the UUID value labeled `RequestId`. This is
+    an identifier that’s unique for each *requested* Lambda function invocation. The
+    most common source of repeated `RequestId` values in logs is when our functions
+    have an error and the platform retries the execution (see [“Error Handling”](ch08.html#error-handling)).
+    Aside from that, since the Lambda platform (like most distributed systems) has
+    “at least once” semantics, the platform may occasionally invoke a function with
+    the same `RequestId` more than once even when there are no errors (we examine
+    “at least once” behavior in [“At-Least-Once Delivery”](ch09.html#at-least-once-delivery)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: LambdaLogger
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The log line between the `START` and `END` lines above was generated using `System.out.println`.
+    This is a perfectly reasonable way to get started with logging from simple Lambda
+    functions, but there are several other options that provide a combination of sensible
+    behavior and customization. The first of these options is the [`LambdaLogger`](https://oreil.ly/lXGJB)
+    class that AWS provides.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This logger is accessed via the Lambda `Context` object, so we’ll have to alter
+    our `WeatherEvent` Lambda handler function to include that parameter, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output of this log statement looks just as if it had been generated using
+    `System.out.println`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can see the difference between `LambdaLogger` and the `System println`
+    methods when we have output that includes newlines, like a stack trace:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using `System.err.println` the stack trace is printed on multiple lines, as
+    multiple CloudWatch Logs entries ([Figure 7-1](#stack-trace-system-err)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image01.png](assets/awsl_0701.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-1\. Stack trace output in CloudWatch Logs using System.err.println
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Using LambdaLogger, that stack trace is a single entry (which can be expanded
+    in the web console, as shown in [Figure 7-2](#stack-trace-lambda-logger)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This feature alone is a compelling reason to use `LambdaLogger` instead of `System.out.println`
+    or `System.err.println`, especially when printing exception stack traces.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image02.png](assets/awsl_0702.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-2\. Stack trace output in CloudWatch Logs using LambdaLogger
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Java Logging Frameworks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '`LambdaLogger` is often sufficient for simple Lambda functions. However, as
+    you’ll see later in this chapter, it’s often useful to customize log output to
+    meet specific requirements, like capturing business metrics or generating application
+    alerts. While it’s certainly possible to generate this kind of output using Java’s
+    standard library, like [`String.format`](https://oreil.ly/9qlLO), it’s easier
+    to use an existing logging framework like Log4J or Java Commons Logging. These
+    frameworks provide conveniences like log levels, property or file-based configuration,
+    and a variety of output formats. They also make it easy to include relevant system
+    and application context (like the AWS request ID) with each log message.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When Lambda was first made available, AWS provided a custom appender for a very
+    old, unsupported version of Log4J. Using this old version of a popular logging
+    framework made it challenging to integrate newer logging features in Lambda-based
+    serverless applications. As a result, we spent a fair amount of time and effort
+    to build a more modern logging solution for Lambda functions called `lambda-monitoring`,
+    which uses SLF4J and Logback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, AWS now provides a [library](https://oreil.ly/rywdy) with a custom
+    log appender, [which uses `LambdaLogger` under the covers](https://oreil.ly/CrRoX),
+    for the most recent version of [Log4J2](https://oreil.ly/8UEaw). We now recommend
+    using this setup as AWS has outlined in the [Java logging section](https://oreil.ly/2YP8h)
+    of the Lambda documentation. Setting up this method of logging simply involves
+    adding a few additional dependencies, adding a *log4j2.xml* configuration file,
+    and then using `org.apache.logging.log4j.Logger` in our code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here are the *pom.xml* additions for our Weather API project:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The *log4j2.xml* configuration file should be familiar to anyone who has used
+    Log4J. It uses the `Lambda` appender provided by AWS, and allows customization
+    of the log pattern:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that the log pattern includes the Lambda request ID (`%X{AWSRequestId}`).
+    In our previous logging examples, that request ID wasn’t included in most output
+    lines—it just showed up at the beginning and end of an invocation. By including
+    it in every line, we can tie each piece of output to a specific request, which
+    is helpful if we inspect these logs using another tool or download them for offline
+    analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our Lambda function, we set up the logger and use its `error` method to
+    log out a message at [`ERROR` level](https://oreil.ly/pygbx), as well as the exception:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The output from the Lambda Log4J2 appender is shown in [Figure 7-3](#log4j2-logger-output).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image03.png](assets/awsl_0703.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-3\. Stack trace output in CloudWatch Logs using Log4J2
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: It includes the timestamp, the AWS request ID, the log level (`ERROR` in this
+    case), the file and line that called the logging method, and a correctly formatted
+    exception. We can use Log4J-provided bridge libraries to route log messages from
+    other logging frameworks to our Log4J appender. The most useful application of
+    this technique, at least for our `WeatherEventLambda`, is to gain insight into
+    the behavior of the AWS Java SDK, which uses Apache Commons Logging (previously
+    known as Jakarta Commons Logging, or JCL).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we add the Log4J JCL bridge library to the `dependencies` section of
+    our *pom.xml* file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we enable debug logging in the `Loggers` section of our *log4j2.xml*
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now we can see detailed log information from the AWS Java SDK ([Figure 7-4](#log4j2-jcl-bridge)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image04.png](assets/awsl_0704.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-4\. Detailed debug logging from the AWS SDK
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We probably don’t want this information all the time, but it’s useful for debugging
+    if there’s a problem—in this case we see exactly what the body of the DynamoDB
+    `PutItem` API call contains.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By using more sophisticated logging frameworks, we gain additional insight into
+    the context surrounding our log output. We can separate the logs for different
+    Lambda requests using the request ID. Using the log level, we can understand if
+    some log lines represent errors, or warnings about the state of our application,
+    or if other lines might be ignored (or analyzed later) because they contain voluminous
+    but less relevant debugging information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Structured Logging
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our logging system as described in the previous section is capturing a great
+    deal of useful information and context, ready to be used to inspect and improve
+    our application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, when it comes time to extract some value from this great store of log
+    data, it’s often difficult to access, it’s tricky to query, and because the actual
+    messages are still essentially free-form text, you usually have to resort to a
+    series of inscrutable regular expressions to find exactly the lines you’re looking
+    for. There are some standardized formats that have established conventions for
+    the values of certain space or tab-delimited fields, but inevitably the regexes
+    make an appearance in downstream processes and tooling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rather than continue with the free-text free-for-all, we can use a technique
+    called *structured logging* to standardize our log output and make all of it easily
+    searchable via a standard query language.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Take this JSON log entry as an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Rather than relying on an ordering of fields to extract information, we can
+    use JSON path specifications. For example, if we want to extract the `temperature`
+    field, we can use the JSON path `.message.temperature`. The CloudWatch Logs service
+    supports this both for searching in the web console (see [Figure 7-5](#cloudwatch-logs-web-console)),
+    and for creating Metric Filters, which we’ll discuss later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image05.png](assets/awsl_0705.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-5\. Using JSON Path expressions to search in the CloudWatch Logs web
+    console
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Structured Logging in Java
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Now that we understand the benefit of structured logging using the JSON format,
+    we unfortunately run into immediate difficulty in trying to log JSON from our
+    Java-based Lambda functions. JSON handling in Java is notoriously verbose, and
+    adding a large amount of boilerplate code to construct log output doesn’t feel
+    like the right way to go.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fortunately, we can use Log4J2 to generate JSON log output ([Log4J2 `JSONLayout`](https://oreil.ly/G4EYb)).
+    The following *log4j2.xml* configuration will enable JSON-formatted output to
+    `STDOUT`, which for our Lambda functions means that the output will be sent to
+    CloudWatch Logs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In our Lambda code, we set up the Log4J2 logger as a static field:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Rather than logging a string like `Recorded a temperature of 78 F from Brooklyn,
+    NY`, we’ll instead build up a `Map` with keys and values, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here’s the output from that log line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: A caveat worth noting—the information relevant to our application is there under
+    the `message` key, but it’s buried in a sea of other output. Unfortunately, most
+    of that output is baked into the Log4J2 `JsonLayout`, so we can’t remove it without
+    some work. As we’ll see in the next section, however, the benefits of JSON-formatted
+    log events are well worth the increase in verbosity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CloudWatch Logs Insights
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Structured logging enables us to use far more sophisticated tools to analyze
+    our logs, both in real time as well as after incidents. While the original CloudWatch
+    Logs web console has some support for using JSONPath expressions to query log
+    data (as shown earlier), truly sophisticated analysis has, until recently, required
+    either downloading logs directly, or forwarding them to another service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[CloudWatch Logs Insights](https://oreil.ly/mPqKe) is a new addition to the
+    CloudWatch Logs ecosystem, providing a powerful search engine and purpose-built
+    query language ideally suited to analyzing structured logs. Taking our example
+    JSON log line from the previous section, let’s now imagine that we had a month’s
+    worth of hourly data that has been logged out to CloudWatch Logs. We might want
+    to do some quick analysis of that log data to see what the minimum, average, and
+    maximum temperatures for each day was, but only for Brooklyn.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following CloudWatch Logs Insights query accomplishes just that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s look at what this query is doing, line by line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First we filter the data down to log events that have a value of `record` in
+    the `message.action` field, and a value of “Brooklyn, NY” in the `message.locationName`
+    field.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the second line, we pick out the `message.timestamp` field and add three
+    zeroes to the end before passing it to the `date_floor` method, which will replace
+    a timestamp value (in milliseconds, hence needing to add zeroes) with the earliest
+    timestamp value for the given day. We also pick out the `message.temperature`
+    field.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The third line calculates the minimum, average, and maximum value of the `message.temperature`
+    field, for a day’s worth of log events.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The last line orders the data by day, starting with the earliest day.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We can see the results of this query in the CloudWatch Logs Insights web console
+    ([Figure 7-6](#cw-logs-insights)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image06.png](assets/awsl_0706.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-6\. CloudWatch Logs Insights
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: These results can be exported as a CSV file, or graphed using the built-in visualization
+    tool ([Figure 7-7](#cw-logs-insights-visualization)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are a few caveats to keep in mind with regard to CloudWatch Logs Insights.
+    First, while the tool can be used quite effectively for ad hoc exploration of
+    log data, it cannot (yet) be used to directly generate additional custom metrics
+    or other data products (although we’ll see how to generate custom metrics from
+    JSON log data in the next section!). There is an API interface for running queries
+    and accessing results, however, so it is possible to roll your own solution. Last
+    but not least, pricing for queries is based on the amount of data scanned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image07.png](assets/awsl_0707.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-7\. CloudWatch Logs Insights visualization
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Metrics
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Log messages are discrete snapshots into the state of a system at a given point
+    in time. Metrics, on the other hand, are meant to produce a higher-level view
+    of the state of a system over a period of time. While an individual metric is
+    a snapshot in time, a series of metrics shows trends and behaviors of a system
+    as it runs, over long periods of time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CloudWatch Metrics
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: CloudWatch Metrics is AWS’s metrics repository service. It receives metrics
+    from most AWS services. At the most fundamental level, a metric is simply a set
+    of time-ordered data points. For example, at a given moment, the CPU load of a
+    traditional server might be 64%. A few seconds later, it might be 65%. Over a
+    given time period, a minimum, a maximum, and other statistics (such as percentiles)
+    can be calculated for the metric.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Metrics are grouped by namespace (e.g., `/aws/lambda`), and then by metric name
+    (e.g., `WeatherEventLambda`). Metrics can also have associated dimensions, which
+    are simply more granular identifiers—for example given a metric tracking application
+    errors in a nonserverless application, one dimension might be server IP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CloudWatch metrics are a primary tool for monitoring the behavior of AWS’s services
+    as well as our own applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda Platform Metrics
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Right out of the box, AWS provides a myriad of function and account-level metrics
+    with which to monitor the overall health and availability of your serverless applications.
+    We’ll refer to these as platform metrics, because they’re provided by the Lambda
+    platform without requiring any extra configuration from us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For individual functions, the Lambda platform provides the following metrics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Invocations`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The number of times a function is invoked (whether successful or not).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Throttles`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The number of times an invocation attempt is throttled by the platform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Errors`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The number of times a function invocation returns an error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Duration`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The number of milliseconds of “elapsed wall clock time” from when a function
+    begins executing to when it stops. This metric also supports [percentiles](https://oreil.ly/-Njgn).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ConcurrentExecutions`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How many concurrent executions of a function are happening at a given point
+    in time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For functions that are invoked by Kinesis or DynamoDB stream event sources,
+    an `IteratorAge` metric tracks the number of milliseconds between when the function
+    received a batch of records and the time the last record in that batch was written
+    to the stream. Effectively, this metric shows you how far behind the stream a
+    Lambda function is at a given point in time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For functions configured with a dead letter queue (DLQ), a `DeadLetterErrors`
+    metric is incremented when the function is unable to write a message to the DLQ
+    (see [“Error Handling”](ch08.html#error-handling) for more about DLQs).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, the platform aggregates the `Invocations`, `Throttles`, `Errors`,
+    `Duration`, and `ConcurrentExecutions` metrics across all functions in the account
+    and region. An `UnreservedConcurrentExecutions` metric aggregates the concurrent
+    executions for all functions in the account and region that do not have a custom
+    concurrency limit specified.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Metrics that are generated by the Lambda platform include the following extra
+    dimensions: `FunctionName`, `Resource` (e.g., function version or alias) and `ExecutedVersion`
+    (for alias invocations, which are discussed in the next chapter). Each of the
+    per-function metrics mentioned can have these dimensions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Business Metrics
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Platform metrics and application logging are important tools for monitoring
+    our serverless applications, but neither is useful in assessing whether our application
+    is performing its business functions correctly and completely. For example, a
+    metric capturing the duration of a Lambda execution is useful to catch unexpected
+    performance issues, but it doesn’t tell us if the Lambda function (or the application
+    as a whole) is processing events correctly for our customers. On the other hand,
+    a metric capturing the number of weather events successfully processed for our
+    most popular location tells us that the application (or at least the part related
+    to processing weather events) is working correctly, regardless of the underlying
+    technical implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These *business metrics* can serve not only as a finger on the pulse of our
+    business logic but also as an aggregate metric that’s not tied to specifics of
+    an implementation or platform. Using our earlier example, what does it mean if
+    Lambda execution time increases? Are we simply processing more data, or did a
+    configuration or code change impact the performance of our function? Does it even
+    matter? However, if the number of weather events our application processes decreases
+    unexpectedly, we know something is wrong and it warrants an immediate investigation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a traditional application, we might use the CloudWatch Metrics API directly,
+    by using the [`PutMetricData` API call](https://oreil.ly/zLHuA) to proactively
+    push these custom metrics as they’re generated. More sophisticated applications
+    might push small batches of metrics at regular intervals instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda functions have two qualities that make the `PutMetricData` approach untenable.
+    First, a Lambda function can scale to hundreds or thousands of concurrent executions
+    very quickly. The CloudWatch Metrics API will throttle the `PutMetricData` call
+    ([CloudWatch limits](https://oreil.ly/q2jmF)), so there’s a danger that the very
+    action that’s attempting to persist important data may in fact cause a dropout
+    of metrics. Second, because Lambda functions are ephemeral, there is little opportunity
+    or benefit to batching metrics during a single execution. There is no guarantee
+    that a subsequent execution will take place in the same runtime instance, so batching
+    across invocations isn’t reliable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fortunately, there are two features of CloudWatch metrics that handle this situation
+    in a scalable and reliable manner by moving the generation of CloudWatch metrics
+    data outside of the Lambda execution entirely. The first and newest, called the
+    [CloudWatch Embedded Metric Format](https://oreil.ly/pkNXB), uses a special log
+    format to automatically create metrics. This special log format isn’t yet supported
+    by Log4J (without a lot of extra work), so we won’t use it here, but in other
+    cases this is the preferred method for generating metrics in Lambda.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The other feature, [CloudWatch metric filters](https://oreil.ly/beOVU), can
+    also use CloudWatch Logs data to generate metrics. Unlike the embedded metric
+    format, it can access data in columnar and arbitrarily nested JSON structures.
+    This makes it a better choice for situations like ours where we can’t easily add
+    JSON keys to the top level of our log statements. It generates metric data by
+    scraping CloudWatch Logs and pushing metrics in batches to the CloudWatch Metrics
+    service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our use of structured logging makes setting up a metric filter trivial, using
+    the following addition to our *template.yaml* file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: This metric filter will increment the `BrooklynWeatherEventCount` metric every
+    time a JSON log line contains a `message.locationName` field with a “Brooklyn,
+    NY” value. We can access and visualize this metric via the CloudWatch Metrics
+    web console, and we can configure CloudWatch alarms and actions just as with regular
+    platform metrics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example we’re effectively incrementing a counter every time an event
+    occurs, but it’s also possible (when it makes sense to do so with the data) to
+    use an actual value from the captured log line. See the [`MetricFilter MetricTransformation`
+    documentation](https://oreil.ly/ksKJu) for more details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alarms
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As with all CloudWatch metrics, we can use the data to build out alarms to warn
+    us in case something is going wrong. At a minimum, we recommend setting alarms
+    for the `Errors` and `Throttles` platform metrics, if not on a per-account basis,
+    then certainly for production functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For functions invoked by Kinesis or DynamoDB stream event sources, the `IteratorAge`
+    metric is a critical indication of whether a function is keeping up with the number
+    of events in the stream (which is a function of the number of shards in the stream,
+    the batch size configured in the Lambda event source, the [`ParallelizationFactor`](https://oreil.ly/ogUdK),
+    and the performance of the Lambda function itself).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given the `BrooklynWeatherEventCount` metric we configured in the previous
+    section, here’s how the associated CloudWatch alarm is configured. This alarm
+    will alert us (via an SNS message) if that metric value drops to zero (indicating
+    we’ve stopped receiving weather events for “Brooklyn, NY”) for longer than 60
+    seconds:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Figure 7-8](#cloudwatch-alarm) shows a view of that alarm in the CloudWatch
+    web console.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image08.png](assets/awsl_0708.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-8\. BrooklynWeatherAlarm CloudWatch alarm
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The SNS message generated when the previous alarm is “breached” can be used
+    to send a notification email, or to trigger a third-party alert system like [PagerDuty](https://www.pagerduty.com).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As with application components like Lambda functions and DynamoDB tables, we
+    strongly recommend keeping CloudWatch metric filters, alarms, and all other infrastructure
+    in the same *template.yaml* file as everything else. This not only allows us to
+    take advantage of intra-template references and dependencies, but it also keeps
+    our metrics and alarm configurations tied closely to the application itself. If
+    you don’t want to generate these operational resources for development versions
+    of your stacks, you can use [CloudFormation’s `Conditions` functionality](https://oreil.ly/iXXkw).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Distributed Tracing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The metrics and logging capabilities that we’ve covered thus far provide insight
+    into individual application components like Lambda functions. However, in the
+    case of nontrivial applications with many components, we would have a hard time
+    piecing together the log output and metrics for a request flow that might involve
+    an API Gateway, two Lambda functions, and a DynamoDB table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fortunately, this use case is covered by AWS’s distributed tracing service,
+    X-Ray. This service will essentially “tag” events either coming into or generated
+    by our application and will keep track of those events as they flow through our
+    application. When a tagged event triggers a Lambda function, X-Ray can then keep
+    track of external service calls that the Lambda function makes and add information
+    about those calls to the trace. If the called service is also X-Ray enabled, the
+    tracing will continue through. In this way, X-Ray not only traces specific events
+    but generates a service map of all of the components in our application and how
+    they interact with each other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For AWS Lambda, there are two modes for [X-Ray tracing](https://oreil.ly/juSOL).
+    The first is `PassThrough`, which means that if an event triggering a Lambda function
+    has already been “tagged” by X-Ray, the invocation of the Lambda function will
+    be tracked by X-Ray. If a triggering event hasn’t been tagged, then no trace information
+    will be recorded from Lambda. Conversely, `Active` tracing proactively adds X-Ray
+    trace IDs to all Lambda invocations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following example, we’ve enabled tracing in our API Gateway, which will
+    tag incoming events with an X-Ray trace ID. The Lambda function is configured
+    in `PassThrough` mode, so when it’s triggered by a tagged event from the API Gateway,
+    it will propagate that trace ID to downstream services. Note that *PassThrough*
+    mode is enabled by default if the Lambda’s IAM execution role has permission to
+    send data to the X-Ray service; otherwise, it can be configured explicitly as
+    we’ve done here (in which case SAM adds the appropriate permissions to the Lambda
+    execution role).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here’s the `Globals` section from our SAM *template.yaml* file from [Chapter 5](ch05.html#ch05),
+    updated to enabled API Gateway tracing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: With tracing enabled, we can also add the X-Ray libraries to our *pom.xml* file.
+    By adding these libraries, we’ll get the benefit of X-Ray tracing for all of the
+    interactions our Lambda function has with services like DynamoDB and SNS, without
+    having to make any changes to our Java code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Like the AWS SDK, X-Ray provides a bill of materials (BOM), which keeps version
+    numbers in sync across whichever X-Ray libraries we end up using in our project.
+    To use the X-Ray BOM, add it to the `<dependencyManagement>` section of the top-level
+    *pom.xml* file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we need to add the three X-Ray libraries that will instrument our Java-based
+    Lambda functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Figure 7-9](#x-ray-service-map) shows the X-Ray service map for our API from
+    [Chapter 5](ch05.html#ch05), showing the API Gateway, Lambda platform, Lambda
+    function, and DynamoDB table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image09.png](assets/awsl_0709.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-9\. X-Ray service map
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We can also view a trace for an individual event (in this case, our HTTP POST),
+    which traversed the API Gateway, Lambda, and DynamoDB ([Figure 7-10](#x-ray-trace)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image10.png](assets/awsl_0710.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-10\. X-Ray trace
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Finding Errors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: What happens when our Lambda function throws an error? We can investigate errors
+    via the X-Ray console, through both the service map and the traces interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let’s introduce an error into the `WeatherEvent` Lambda, by removing
+    that Lambda’s permission to access DynamoDB:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: After deploying our serverless application stack, we can send an HTTP POST event
+    to the `/events` endpoint. When the `WeatherEvent` Lambda attempts to write that
+    event to DynamoDB, it fails and throws an exception. [Figure 7-11](#x-ray-service-map-error)
+    shows what the X-Ray service map looks like after that happens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image11.png](assets/awsl_0711.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-11\. X-Ray service map showing an error
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: And when we drill into the specific request that caused the error, we can see
+    that our POST request returned an HTTP 502 error ([Figure 7-12](#x-ray-trace-map-error)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image12.png](assets/awsl_0712.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-12\. X-Ray trace showing an error
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We can then easily see the specific Java exception that caused the Lambda function
+    to fail by hovering on the error icon next to the portion of the trace that shows
+    the Lambda invocation ([Figure 7-13](#x-ray-trace-hover-exception)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image13.png](assets/awsl_0713.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-13\. X-Ray trace showing a Java exception
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Clicking through will then show us the full stack trace, right from the X-Ray
+    trace console ([Figure 7-14](#x-ray-trace-stack)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch07_image14.png](assets/awsl_0714.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-14\. X-Ray showing a Java exception stack trace
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we covered the variety of ways we can gain insight into exactly
+    how our serverless application is performing and functioning, both at the individual
+    function or component level and as a complete application. We showed how using
+    structured JSON logging enables observability and gives us the ability to surface
+    meaningful business metrics from our highly scalable Lambda functions without
+    overwhelming the CloudWatch API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we added a few dependencies to our Maven *pom.xml* and unlocked fully
+    featured distributed tracing capabilities, which not only trace individual requests
+    but also automatically build out a map of all the components of our serverless
+    application and allow us to easily drill into errors or unexpected behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the basics now covered, in the next chapter we’ll dive into the advanced
+    Lambda techniques that will make our production serverless systems robust and
+    reliable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter builds on the API Gateway code from [Chapter 5](ch05.html#ch05).
+    Add X-Ray instrumentation to the updated data pipeline code from [Chapter 6](ch06.html#ch06),
+    and observe how the interactions with SNS and S3 show up in the X-Ray console.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In addition to incrementing a metric as we’ve done in this chapter, CloudWatch
+    Logs metric filters can parse a metric value from a log line. Use this technique
+    to generate a CloudWatch Logs metric for the temperature in Brooklyn, NY. For
+    extra credit, add an alarm for when the the temperature goes below 32 degrees
+    Fahrenheit!
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

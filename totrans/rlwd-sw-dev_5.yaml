@@ -1,0 +1,1031 @@
+- en: Chapter 5\. The Business Rules Engine
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Challenge
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Your business is now doing really well. In fact, you’ve now scaled to an organization
+    with thousands of employees. This mean you’ve hired many people for different
+    business functions: marketing, sales, operations, admin, accounting, and so on.
+    You realize that all the business functions have requirements for creating rules
+    that trigger actions depending on some conditions; for example, “notify sales
+    team if prospect’s job title is ‘CEO’.” You could be asking your tech team to
+    implement each new requirement with bespoke software, but your developers are
+    quite busy working on other products. In order to encourage collaboration between
+    the business team and the tech team, you’ve decided that you will develop a Business
+    Rules Engine that will enable developers and the business team to write code together.
+    This will allow you to increase productivity and reduce the time it takes to implement
+    new rules because your business team will be able to contribute directly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Goal
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter you’ll first learn about how to approach a new design problem
+    using test-driven development. You will get an overview about a technique called
+    mocking, which will help specify unit tests. You will then learn about a couple
+    of modern features in Java: local variable type inference and switch expressions.
+    Finally, you’ll learn how to develop a friendly API using the Builder pattern
+    and the Interface Segregation Principle.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: If at any point you want to look at the source code for this chapter, you can
+    look at the package `com.iteratrlearning.shu_book.chapter_05` in the book’s code
+    repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Business Rules Engine Requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Before you start, let’s think about what is it you want to achieve. You’d like
+    to enable nonprogrammers to add or change business logic in their own workflow.
+    For example, a marketing executive may wish to apply a special discount when a
+    prospect is making an inquiry about one of your products and fits certain criteria.
+    An accounting executive may wish to create an alert if expenses are unusually
+    high. These are examples of what you can achieve with a Business Rules Engine.
+    It’s essentially software that executes one or more business rules that are often
+    declared using a simple bespoke language. A Business Rules Engine can support
+    multiple different components:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Facts
+  prefs: []
+  type: TYPE_NORMAL
+- en: The available information to which rules have access
+  prefs: []
+  type: TYPE_NORMAL
+- en: Actions
+  prefs: []
+  type: TYPE_NORMAL
+- en: The operation you want to perform
+  prefs: []
+  type: TYPE_NORMAL
+- en: Conditions
+  prefs: []
+  type: TYPE_NORMAL
+- en: These specify when an action should be triggered
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rules
+  prefs: []
+  type: TYPE_NORMAL
+- en: These specify the business logic you want to execute, essentially grouping facts,
+    conditions, and actions together
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main productivity benefit of a Business Rules Engine is that it enables
+    rules to be maintained, executed, and tested within one place without having to
+    integrate with a main application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: There are many production-ready Java Business Rules Engine such as [Drools](https://www.drools.org).
+    Typically such an engine conforms to standards such as the *Decision Model and
+    Notation* (DMN) and comes with a centralized rule repository, an editor using
+    a *Graphical User Interface* (GUI), and visualization tools to help maintenance
+    of complex rules. In this chapter, you will develop a minimal viable product for
+    a Business Rules Engine and iterate over it to improve both its functionality
+    and accessibility.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Test Driven Development
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Where do you start? The requirements are not set in stone and are expected
+    to evolve so you begin by simply listing the basic features you will need your
+    users to undertake:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add an action
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Run the action
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Basic reporting
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This translates in the basic API shown in [Example 5-1](#business_rule_engine_basic_skeleton).
+    Each method throws an `UnsupportedOperationException` indicating it is yet to
+    be implemented.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-1\. Basic API for Business Rules Engine
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: An action is simply a piece of code that will be executed. We could use the
+    `Runnable` interface, but introducing a separate interface `Action` is more representative
+    of the domain at hand. The `Action` interface will allow the Business Rules Engine
+    to be decoupled from concrete actions. Since the `Action` interface only declares
+    a single abstract method, we can annotate it as a functional interface, as shown
+    in [Example 5-2](#action_interface).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-2\. The Action interface
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Where do we go from here? It’s now time to actually write some code—where is
+    the implementation? You will use an approach called *test-driven development*
+    (TDD). The TDD philosophy is to start writing some tests that are going to let
+    you guide the implementation of the code. In other words, you write tests first
+    before the actual implementation. It’s a bit like doing the opposite of what you’ve
+    been doing so far: you wrote the full code for a requirement and then tested it.
+    You will now focus more on the tests.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why Use TDD?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Why should you take this approach? There are several benefits:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing a test at a time will help you focus and refine the requirements by
+    correctly implementing one thing at a time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It’s a way to ensure a relevant organization for your code. For example, by
+    writing a test first, you need to think hard about the public interfaces for your
+    code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You are building a comprehensive test suite as you iterate through the requirements,
+    which increases confidence that you are matching the requirements and also reduces
+    the scope of bugs.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You don’t write code that you don’t need (over-engineer) because you’re just
+    writing code that passes the tests.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The TDD Cycle
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The TDD approach roughly consists of the following steps in a cycle, as depicted
+    in [Figure 5-1](#test_cycle):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Write a test that fails
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Run all tests
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Make the implementation work
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Run all tests
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![TDD Cycle](Images/rwsd_0501.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-1\. TDD cycle
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In practice, as part of this process, you must continuously *refactor* your
+    code or it will end up unmaintainable. At this moment you know you have a suite
+    of tests that you can rely on when you introduce changes. [Figure 5-2](#test_cycle_refactor)
+    illustrates this improved TDD process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![TDD Cycle with Refactoring](Images/rwsd_0502.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-2\. TDD with refactoring
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In the spirit of TDD, let’s start by writing our first tests to verify that
+    `addActions` and `count` behave correctly, as shown in [Example 5-3](#business_rule_engine_basic_tests).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-3\. Basic tests for the Business Rules Engine
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: When running the tests, you will see that they fail with an `UnsupportedOperationException`,
+    as shown in [Figure 5-3](#failing_tests).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Failing tests](Images/rwsd_0503.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-3\. Failing tests
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: All tests are failing, but that’s fine. It gives us a reproducible test suite
+    that will guide the implementation of the code. Now can add some implementation
+    code, as shown in [Example 5-4](#business_rule_engine_basic_impl).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-4\. Basic implementation for the Business Rules Engine
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can now rerun the tests and they are passing! However, there’s one crucial
+    operation missing. How do we write a test for the method run? Unfortunately, `run()`
+    does not return any result. We are going to need a new technique called *mocking*
+    to verify that the method `run()` operates correctly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mocking
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Mocking is a technique that will allow you to verify that when the method `run()`
+    is executed, each action that was added to the Business Rules Engine is actually
+    executed. At the moment it is difficult to do because both the methods `run()`
+    in `BusinessRuleEngine` and `perform()` in `Action` are returning `void`. We have
+    no way to write an assertion! Mocking is covered in detail in [Chapter 6](ch06.xhtml#chapter_06),
+    but you will get a brief overview now so you are able to progress with writing
+    a test. You’ll be using Mockito, which is a popular mocking library for Java.
+    At its simplest you can do two things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a mock.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Verify that a method is called.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'So how do you get started? You will need to import the library first:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: This import allows you to use the methods `mock()` and `verify()`. The static
+    method `mock()` allows you to create a mock object which you can then verify that
+    certain behaviors happen. The method `verify()` allows you to set up assertions
+    that a particular method is invoked. [Example 5-5](#mocking_verifying_interaction)
+    shows an example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-5\. Mocking and verifying interaction with an Action object
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The unit test creates a mock object for `Action`. This is done by passing the
+    class as argument to the mock method. Next, you have the *when* part of your test
+    where you invoke behaviors. Here we are adding the action and executing the method
+    `run()`. Finally, you have the *then* part of the unit tests, which sets up assertions.
+    In this case, we verify that the method `perform()` on the `Action` object was
+    invoked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you run this test it will fail as expected with a `UnsupportedOperationException`.
+    What if the body of `run()` is empty? You will receive a new exception trace:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: This error is coming from Mockito and tells you that the method `perform()`
+    was never invoked. It’s now time to write the correct implementation for the method
+    `run()`, as shown in [Example 5-6](#run_method_basic_impl).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-6\. The run() method implementation
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Re-run the tests and you will now see the test passing. Mockito was able to
+    verify that when the Business Rules Engine is running, the method `perform()`
+    on the `Action` object should be invoked. Mockito allows you to specify sophisticated
+    verification logic such as how many times a method should be invoked, with certain
+    arguments, etc. You will learn more about this in [Chapter 6](ch06.xhtml#chapter_06).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding Conditions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You have to admit that so far the Business Rules Engine is pretty limiting.
+    You can only declare simple actions. However, in practice, the users of the Business
+    Rules Engine will need to execute actions based on certain conditions. These conditions
+    will be dependent on some facts. For example, notify the sales team *only if the
+    prospect’s job title is CEO*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modeling State
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You may start by writing code that adds an action and refers to a local variable
+    using an anonymous class as shown in [Example 5-7](#anonm_add_action), or using
+    a lambda expression as shown in [Example 5-8](#lambda_add_action).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-7\. Adding an action using an anonymous class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 5-8\. Adding an action using a lambda expression
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, this approach is inconvenient for several reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How do you test the action? It’s not an independent piece of functionality;
+    it has a hardcoded dependency on the customer object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The customer object is not grouped with the action. It is a sort of external
+    state that is shared around, leading to a confusing mix of responsibilities.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: So what do we need? We need to encapsulate the state that is available to actions
+    within the Business Rules Engine. Let’s model these requirements by introducing
+    a new class called `Facts`, which will represent the state available as part of
+    the Business Rules Engine, and an updated `Action` interface that can operate
+    on facts. An updated unit test is shown in [Example 5-9](#test_action_facts).
+    The unit test checks that when the Business Rules Engine runs, the specified action
+    is actually invoked with the `Facts` object passed as an argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-9\. Testing an action with facts
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: To follow the TDD philosophy, this test will initially fail. You always need
+    to run the tests to begin with to ensure that they fail, otherwise you may write
+    a test that accidentally passes. To make the test pass you will need to update
+    the API and implementation code. First, you’ll introduce the `Facts` class, which
+    allows you to store a fact represented as a key and a value. The benefit of introducing
+    a separate `Facts` class for modeling state is that you can control the operations
+    available to your users by providing a public API, and also unit test the behavior
+    of the class. For the time being, the `Facts` class will only support `String`
+    keys and `String` values. The code for the `Facts` class is shown in [Example 5-10](#facts_class).
+    We chose the names `getFact` and `addFact` because they better represent the domain
+    at hand (working with facts) rather than `getValue` and `setValue`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-10\. The Facts class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: You’ll now need to refactor the `Action` interface so that the `perform()` method
+    can use a `Facts` object passed as an argument. This way it’s clear the facts
+    are available within the context of the single `Action` ([Example 5-11](#action_with_facts)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-11\. The Action interface that takes facts
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, you can now update the `BusinessRuleEngine` class to utilize the facts
+    and the updated `Action`’s `perform()` method as shown in [Example 5-12](#business_rule_engine_facts).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-12\. BusinessRuleEngine with facts
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that the `Facts` object is available to actions, you can specify arbitrary
+    logic in your code that looks up the `Facts` object as shown in [Example 5-13](#example_action_with_facts).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-13\. An action utilizing the facts
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s look at some more examples. This is also a good opportunity to introduce
+    two recent features in Java, which we explore in order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Local variable type inference
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Switch expressions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Local Variable Type Inference
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Java 10 introduced variable local type inference. Type inference is the idea
+    that the compiler can figure out the static types for you so you don’t have to
+    type them. You saw an example of type inference earlier in [Example 5-10](#facts_class)
+    when you wrote
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: instead of
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is a feature that was introduced in Java 7 called the *diamond operator*.
+    Essentially, you can omit the type parameters of generics (in this case `String,
+    String`) in an expression when its context determines them. In the preceding code,
+    the lefthand side of the assignment indicates the keys and values of the `Map`
+    should be `String`s.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since Java 10, type inference has been extended to work on local variables.
+    For example, the code in [Example 5-14](#local_variable_declarations) can be rewritten
+    using the `var` keyword and local variable type inference shown in [Example 5-15](#local_variable_type_inference).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-14\. Local variable declaration with explicit types
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 5-15\. Local variable type inference
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: By using the `var` keyword in the code shown in [Example 5-15](#local_variable_type_inference),
+    the variable `env` still has a static type `Facts` and the variable `businessRuleEngine`
+    still has the static type `BusinessRuleEngine`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'A variable declared using the `var` keyword is not made `final`. For example,
+    this code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'is not strictly equivalent to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can still assign another value to the variable `env` after declaring it
+    using `var`. You’d have to explicitly add the `final` keyword as follows in front
+    of the variable `env` for it to be final:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the rest of the chapters, we simply use the `var` keyword without `final`
+    for brevity as it is in the spirit of code conciseness. When we explicitly declare
+    the type of a variable, we use the `final` keyword.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type inference helps reduce the amount of time taken to write Java code. However,
+    should you use this feature all the time? It’s worth remembering that developers
+    spend more time reading code than writing it. In other words, you should think
+    about optimizing for ease of reading over ease of writing. The extent to which
+    `var` improves this will always be subjective. You should always be focusing on
+    what helps your teammates read your code, so if they are happy reading code with
+    `var` then you should use it, otherwise not. For example, here we can refactor
+    the code in [Example 5-13](#example_action_with_facts) to use local variable type
+    inference to tidy up the code as shown in [Example 5-16](#example_action_with_facts_var).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-16\. An action utilizing the facts and local variable type inference
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Switch Expressions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far you’ve only set up actions with exactly one condition to handle. This
+    is pretty limiting. For example, say you work with your sales team. They may record
+    on their *Customer Relationship Management* (CRM) system different deals with
+    different amounts that have different stages. A deal stage may be represented
+    as an enum `Stage` with values including `LEAD`, `INTERESTED`, `EVALUATING`, `CLOSED`,
+    as shown in [Example 5-17](#enum_stages).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-17\. Enum representing different deal stages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Depending on the stage of the deal you can assign a rule that gives you the
+    probability of winning the deal. Consequently, you can help the sales team with
+    generating a forecast. Say for a particular team, `LEAD` has 20% probability to
+    convert, then a deal at stage `LEAD` with amount of 1000USD will have a forecasted
+    amount of 200USD. Let’s create an action to model these rules and return a forecasted
+    amount for a particular deal as shown in [Example 5-18](#deal_stages_if).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-18\. A rule to calculate a forecast amount for a specific deal
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code shown in [Example 5-18](#deal_stages_if) is essentially providing a
+    value for each enum value available. A preferred language construct is the `switch`
+    statement as it’s more succinct. This is shown in [Example 5-19](#deal_stages_switch_statement).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-19\. A rule to calculate a forecast amount for a specific deal using
+    a switch statement
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note all the `break` statements in the code in [Example 5-19](#deal_stages_switch_statement).
+    The `break` statement ensures that the next block in the `switch` statement is
+    not executed. If you forget the `break` by accident, then the code still compiles
+    and you get what’s called a *fall-through* behavior. In other words, the next
+    block is executed and this can lead to subtle bugs. Since Java 12 (using the language
+    feature preview mode) you can rewrite this to avoid the fall-through behavior
+    and multiple breaks by using a different syntax for `switch`. `switch` can now
+    be used as an expression, as illustrated in [Example 5-20](#deal_stages_switch_statement_no_fall_through).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-20\. Switch expression with no fall-through behavior
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Another benefit of this enhanced switch form, besides increased readability,
+    is *exhaustiveness*. This means that when you use `switch` with an enum, the Java
+    compiler checks that for all enum values there’s a corresponding switch label.
+    For example, if you forget to handle the `CLOSED` case, the Java compiler would
+    produce the following error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can rewrite the overall action using a `switch` expression as shown in [Example 5-21](#deal_stages_switch_refactored).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-21\. A rule to calculate a forecast amount for a specific deal
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Interface Segregation Principle
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We would now like to develop an *inspector tool* that allows users of the Business
+    Rules Engine to inspect the status of possible actions and conditions. For example,
+    we would like to evaluate each action and associated condition in order to log
+    them without actually performing the action. How do we go about this? The current
+    `Action` interface is not sufficient because it doesn’t separate the code performed
+    versus the condition that triggers that code. At the moment there’s no way to
+    separate out the condition from the action code. To make up for this, we could
+    introduce an enhanced `Action` interface that has a built-in functionality for
+    evaluating the condition. For example, we could create an interface `ConditionalAction`
+    that includes a new method `evaluate()` as shown in [Example 5-22](#isp_violation_business_rule_engine).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-22\. ConditionalAction interface
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can now implement a basic `Inspector` class that takes a list of `ConditionalAction`
+    objects and evaluates them based on some facts, as shown in [Example 5-23](#inspector_conditions).
+    The `Inspector` returns a list of reports that captures the facts, the conditional
+    action, and the result. The implementation for the `Report` class is shown in
+    [Example 5-24](#report_class).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-23\. An Inspector of conditions
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 5-24\. The Report class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: How would we go about testing the `Inspector`? You may start by writing a simple
+    unit test as shown in [Example 5-25](#inspector_test). This test highlights a
+    fundamental issue with our current design. In fact, the `ConditionalAction` interface
+    breaks the *Interface Segregation Principle* (ISP).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-25\. Highlighting ISP violation
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: What is the Interface Segregation Principle? You may notice that the implementation
+    of the `perform` method is empty. In fact, it throws an `UnsupportedOperationException`.
+    This is a situation where you are coupled to an interface (`ConditionalAction`)
+    that provides more than what you need. In this case, we just want a way to model
+    a condition—something that evaluates to either true or false. Nonetheless, we
+    are forced to depend on the `perform()` method because it is part of the interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This general idea is the foundation of the Interface Segregation Principle.
+    It makes the case that no class should be forced to depend on methods it does
+    not use because this introduces unnecessary coupling. In [Chapter 2](ch02.xhtml#chapter_02),
+    you learned about another principle, the *Single Responsibility Principle* (SRP),
+    which promotes high cohesion. The SRP is a general design guideline that a class
+    has responsibility over a single functionality and there should be only one reason
+    for it to change. Although the ISP may sound like the same idea, it takes a different
+    view. The ISP focuses on the user of an interface rather than its design. In other
+    words, if an interface ends up very large, it may be that the user of that interface
+    sees some behaviors it doesn’t care for, which causes unnecessary coupling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To provide a solution that meets the Interface Segregation Principle, we are
+    encouraged to separate out concepts in smaller interface that can evolve separately.
+    This idea essentially promotes higher cohesion. Separating out interfaces also
+    provides an opportunity for introducing names that are closer to the domain at
+    hand, such as `Condition` and `Action`, which we explore in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing a Fluent API
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far we’ve provided a way for our users to add actions with complex conditions.
+    These conditions were created using the enhanced switch statement. However, for
+    business users the syntax isn’t as friendly as it could be to specify simple conditions.
+    We’d like to allow them to add rules (a condition and an action) in a way that
+    matches their domain and is simpler to specify. In this section, you will learn
+    about the Builder pattern and how to develop your own Fluent API to address this
+    problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What Is a Fluent API?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A Fluent API is an API that is explicitly tailored for a specific domain so
+    that you can solve a specific problem more intuitively. It also embraces the idea
+    of chaining method calls to specify a more complex operation. There are several
+    high-profile Fluent APIs you may be already familiar with:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The [Java Streams API](https://oreil.ly/549wN) allows you to specify data processing
+    queries in a way that reads more like the problem you need to solve.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[Spring Integration](https://oreil.ly/rMIMD) offers a Java API to specify enterprise
+    integration patterns using a vocabulary close to the domain of enterprise integration
+    patterns.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[jOOQ](https://www.jooq.org/) offers a library to interact with different databases
+    using an intuitive API.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Modeling the Domain
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'So what is it that we want to simply for our business users? We’d like to help
+    them specify a simple combination of “when some condition holds,” “then do something”
+    as a rule. There are three concepts in this domain:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Condition
+  prefs: []
+  type: TYPE_NORMAL
+- en: A condition applied on certain facts that will evaluate to either true or false.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Action
+  prefs: []
+  type: TYPE_NORMAL
+- en: A specific set of operations or code to execute.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rule
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is a condition and an action together. The action only runs if the condition
+    is true.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we’ve defined the concepts in the domain, we translate it into Java!
+    Let’s first define the `Condition` interface and reuse our existing `Action` interface
+    as shown in [Example 5-26](#condition_interface). Note that we could have also
+    used the `java.util.function.Predicate` interface available since Java 8, but
+    the name `Condition` better represents our domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Names are very important in programming because good names help you understand
+    the problem that your code is solving. Names are in many cases more important
+    than the “shape” of the interface (in terms of its parameters and return types),
+    because the names convey contextual information to humans reading the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-26\. The Condition interface
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now the remaining question is how to model the concept of a rule? We can define
+    a interface `Rule` with an operation `perform()`. This will allow you to provide
+    different implementations of a `Rule`. A suitable default implementation of this
+    interface is a class `DefaultRule`, which will hold a `Condition` and `Action`
+    object together with the appropriate logic to perform a rule as shown in [Example 5-27](#modeling_rule).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-27\. Modeling the concept of a rule
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: How do we create new rules using all these different elements? You can see an
+    example in [Example 5-28](#building_a_rule).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-28\. Building a rule
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Builder Pattern
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: However, even though the code uses names that are close to our domain (`Condition`,
+    `Action`, `Rule`), this code is fairly manual. The user has to instantiate separate
+    objects and assemble things together. Let’s introduce what’s called the *Builder
+    pattern* to improve the process of creating a `Rule` object with the appropriate
+    condition and action. The purpose of this pattern is to allow the creation of
+    an object in a simpler manner. The Builder pattern essentially deconstructs the
+    parameters of a constructor and instead provides methods to supply each of the
+    parameters. The benefit of this approach is that it allows you to declare methods
+    with names that are suitable to the domain at hand. For example, in our case we’d
+    like to use the vocabulary `when` and `then`. The code in [Example 5-29](#builder_pattern_declaration_v1)
+    shows how to set up the Builder pattern to build a `DefaultRule` object. We’ve
+    introduced a method `when()`, which supplies the condition. The method `when()`
+    returns `this` (i.e., the current instance), which will allow us to chain up further
+    methods. We’ve also introduced a method `then()`, which will supply the action.
+    The method `then()` also returns `this`, which allows us to further chain a method.
+    Finally, the method `createRule()` is responsible for the creation of the `DefaultRule`
+    object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-29\. Builder pattern for a Rule
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using this new class, you can create `RuleBuilder` and configure a `Rule` using
+    the methods `when()`, `then()`, and `createRule()` as shown in [Example 5-30](#builder_pattern_usage_v1).
+    This idea of chaining methods is a key aspect of designing a Fluent API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-30\. Using the RuleBuilder
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code looks more like a query and it leverages the domain at hand: the
+    notion of a rule, `when()`, and `then()` as built-in constructs. But it’s not
+    entirely satisfactory because there are still two awkward constructs the user
+    of your API will have to encounter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instantiate an “empty” `RuleBuilder`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Call the method `createRule()`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We can improve this by coming up with a slightly improved API. There are three
+    possible improvements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ll make the constructor private so that it can not be invoked explicitly
+    by a user. This means that we will need to come up with a different entry point
+    for our API.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We can make the method `when()` static so it’s invoked directly and essentially
+    short circuits the invocation to the old constructor. In addition, a static factor
+    method improves discoverability of what’s the right method to use to set up `Rule`
+    objects.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The method `then()` will become responsible for the final creation of our `DefaultRule`
+    object.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[Example 5-31](#builder_pattern_declaration_v2) shows the improved `RuleBuilder`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-31\. Improved RuleBuilder
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can now simply create rules by starting with the `RuleBuilder.when()` method
+    followed by the `then()` method as shown in [Example 5-32](#improvedRulebuilder).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-32\. Using the improved RuleBuilder
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we’ve refactored the `RuleBuilder`, we can refactor the Business Rules
+    Engine to support rules instead of just actions, as shown in [Example 5-33](#builder_pattern_usage_v2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-33\. Updated Business Rules Engine
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: Takeaways
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The test-driven development philosophy starts with writing some tests that are
+    going to let you guide the implementation of the code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mocking allows you to write unit tests that assert that certain behaviors are
+    triggered.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Java supports local variable type inferences and switch expressions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Builder pattern helps design a user-friendly API for instantiating complex
+    objects.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Interface Segregation Principle helps promote high cohesion by reducing
+    dependence on unnecessary methods. This is achieved by breaking up large interfaces
+    into smaller cohesive interfaces so that users only see what they need.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Iterating on You
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'If you want to extend and solidify the knowledge from this chapter you could
+    try one of these activities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enhance the `Rule` and `RuleBuilder` to support a name and description.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Enhance the `Facts` class so the facts can be loaded from a JSON file.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Enhance the Business Rules Engine to support rules having multiple conditions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Enhance the Business Rules Engine to support rules with different priorities.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Completing the Challenge
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Your business is booming and your company has adopted the Business Rules Engine
+    as part of its workflow! You are now looking for your next idea and want to put
+    your software development skills to something new that will help the world rather
+    than just your company. It’s time to jump to the next chapter—Twootr!
+  prefs: []
+  type: TYPE_NORMAL

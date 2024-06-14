@@ -1,0 +1,1215 @@
+- en: Chapter 13\. Network Programming in Java
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When you think about the web, you probably think of web-based applications and
+    services. If you are asked to go deeper, you may consider tools such as web browsers
+    and web servers that support those applications and move data around the network.
+    In this chapter, we’ll look at how Java interacts with web services. We’ll also
+    peek under the hood a bit and discuss some of the lower-level networking classes
+    of the *java.net* package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Uniform Resource Locators
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A *Uniform Resource Locator* (URL) points to an object on the internet. It’s
+    a text string that identifies an item, tells you where to find it, and specifies
+    a method for communicating with it or retrieving it from its source. A URL can
+    point to any kind of information source: static data, such as a file on a local
+    filesystem, a web server, or an FTP site. It can point to a more dynamic object,
+    such as an RSS news feed or a record in a database. URLs can also refer to other
+    resources, such as email addresses.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because there are many different ways to locate an item on the internet, and
+    different mediums and transports require different kinds of information, URLs
+    can have many forms. The most common form has four components as shown in [Figure 13-1](#learnjava6-CHP-13-FIG-annotated-url):
+    a network host or server, the name of the item, its location on that host, and
+    a protocol by which the host should communicate.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![ljv6 1301](assets/ljv6_1301.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 13-1\. Common elements of a URL
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '*`protocol`* (also called the “scheme”) is an identifier such as `http`, `https`,
+    or `ftp`; *`hostname`* is usually an internet host and domain name; and the *`path`*
+    and *`resource`* components form a unique path that identifies the object on that
+    host.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Variants of this form pack extra information into the URL. For example, you
+    can specify fragment identifiers (those suffixes that start with a “#” character)
+    that reference sections inside documents. Other, more specialized types of URLs
+    exist as well, such as “mailto” URLs for email addresses, or URLs for addressing
+    things like database components. These types of locators may not follow this format
+    precisely, but they generally contain a protocol, host, and path. Some are more
+    properly called *Uniform Resource Identifiers*, or URIs, which can specify more
+    information about the name or the location of a resource. URLs are a subset of
+    URIs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because most URLs have the notion of a hierarchy or path, we sometimes speak
+    of a URL that is relative to another URL, called a *base URL*. In that case, we
+    are using the base URL as a starting point and supplying additional information
+    to target an object relative to that URL. For example, the base URL might point
+    to a directory on a web server, and a relative URL might name a particular file
+    in that directory or in a subdirectory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The URL Class
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Java `java.net.URL` class represents a URL address and provides a simple
+    API for accessing web resources, such as documents and applications on servers.
+    It can use an extensible set of protocol and content handlers to perform the necessary
+    communication and, in theory, even data conversion. With the `URL` class, an application
+    can open a connection to a server and retrieve content with just a few lines of
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An instance of the `URL` class manages all the component information within
+    a URL string and provides methods for retrieving the object it identifies. We
+    can construct a `URL` object from a complete string or from component parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: These two `URL` objects point to the same network resource, the *homepage.html*
+    document on the server *foo.bar.com*. We can’t know whether the resource actually
+    exists and is available until we try to access it. A new `URL` object contains
+    only data about the object’s location and how to access it. Creating a `URL` object
+    does not make any network connections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Oracle deprecated the `URL` constructor in Java 20\. Deprecation doesn’t remove
+    methods or classes, but it does mean you should consider other means of accomplishing
+    your goal. The Javadoc for deprecated items often includes suggested alternatives.
+    In this case, the `URI` class has better validation code, so Oracle recommends
+    `new URI("http://your.url/").toURL()` as a replacement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are using Java 20 or later, feel free to update the code examples to
+    use `URI` if you want to get rid of the compiler’s deprecation warnings. As this
+    is a recent deprecation, though, you will still see the `URL` constructor used
+    widely in online examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can examine the parts of the `URL` with the `getProtocol()`, `getHost()`,
+    and `getFile()` methods. We can also compare it to another `URL` with the `sameFile()`
+    method (an unfortunate name for something that may not point to a file), which
+    determines whether two URLs point to the same resource. It’s not foolproof, but
+    `sameFile()` does more than compare the URL strings for equality; it takes into
+    account the possibility that one server may have several names, as well as other
+    factors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you create a `URL`, Java parses the URL’s specification to identify the
+    protocol component. It then tries to match what it parses from your URL with a
+    *protocol handler*. A protocol handler is essentially a helper that can speak
+    the given protocol and can retrieve a resource by following the protocol’s rules.
+    If the URL’s protocol doesn’t make sense, or if Java can’t find a compatible protocol
+    handler, the `URL` constructor throws a `MalformedURLException`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java provides URL protocol handlers for `http`, `https` (secure HTTP), and `ftp`,
+    as well as local `file` URLs and `jar` URLs that refer to files inside JAR archives.
+    Java also provides the necessary low-level structure for third-party libraries
+    to add support for other types of URLs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stream Data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The lowest-level and most general way to get data back from a `URL` is to ask
+    for an `InputStream` from the `URL` by calling `openStream()`. Getting data as
+    a stream may also be useful if you want to receive continuous updates from a dynamic
+    information source. Unfortunately, you have to parse the contents of this stream
+    yourself. Not all types of URLs support the `openStream()` method because not
+    all types of URLs refer to concrete data; you’ll get an `UnknownServiceException`
+    if the URL doesn’t.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code (a simplification of the *ch13/examples/Read.java* file)
+    prints the contents of an HTML file from an imaginary web server:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this snippet, we ask for an `InputStream` from our `url` with `openStream()`
+    and wrap it in a `BufferedReader` to read the lines of text. Because we specify
+    the `http` protocol in the URL, we enlist the services of an HTTP protocol handler.
+    We haven’t talked about content handlers yet. Because we’re reading directly from
+    the input stream, we don’t need a content handler to transform the content.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting the Content as an Object
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we said previously, `openStream()` is the most general way to access web
+    content, but it leaves the data parsing up to the programmer. The `URL` class
+    supports a more sophisticated, pluggable, content-handling mechanism, but the
+    Java community never really standardized the actual handlers, so its usefulness
+    is limited.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Many developers are curious about loading objects over the network because
+    they need to load images from URLs. Java provides a few alternative approaches
+    to accomplish this task. The simplest approach is to use the `javax.swing.ImageIcon`
+    class which has a constructor that accepts a URL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you need to turn a network stream into some other type of object, you can
+    look into the `getContent()` method of the `URL` class. You may need to write
+    your own handler, though. For that advanced topic, we recommend [*Java Network
+    Programming*](https://oreil.ly/1GwXT) by Elliotte Rusty-Harold (O’Reilly).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing Connections
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Upon calling `openStream()` on a `URL`, Java consults the protocol handler,
+    and a connection is made to the remote server or location. Connections are represented
+    by a `URLConnection` object, subtypes of which manage different protocol-specific
+    communications and offer additional metadata about the source. The `HttpURLConnection`
+    class, for example, handles basic web requests and also adds some HTTP-specific
+    capabilities, such as interpreting “404 Not Found” messages and other web server
+    errors. We’ll talk more about `HttpURLConnection` later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can get a `URLConnection` from our `URL` directly with the `openConnection()`
+    method. One of the things we can do with the `URLConnection` is ask for the object’s
+    content type before reading data. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Despite its name, a `URLConnection` object is initially created in a raw, unconnected
+    state. In this example, the network connection was not actually initiated until
+    we called the `getContentType()` method. The `URLConnection` does not talk to
+    the source until data is requested or its `connect()` method is explicitly invoked.
+    Prior to connection, we can set up network parameters and provide protocol-specific
+    details. For example, we can set timeouts on the initial connection to the server
+    and on read attempts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we’ll see in [“Using the POST Method”](#learnjava6-CHP-13-SECT-3.2), we can
+    get at the protocol-specific information by casting the `URLConnection` to its
+    specific subtype.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Talking to Web Applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Web browsers are the universal clients for web applications. They retrieve documents
+    for display and serve as a user interface, primarily through the use of HTML,
+    JavaScript, and linked documents such as images. In this section, we’ll write
+    client-side Java code that uses HTTP through the `URL` class. This combination
+    allows us to work with web applications directly using `GET` and `POST` operations
+    to retrieve and send data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The primary task we discuss here is sending data to the server, specifically
+    HTML form-encoded data. Browsers encode the name/value pairs of HTML form fields
+    in a special format and send them to the server (typically) using one of two methods.
+    The first method, using the HTTP `GET` command, encodes the user’s input into
+    the URL itself and requests the corresponding document. The server recognizes
+    that the first part of the URL refers to a program and invokes it, passing along
+    the information encoded in the other part of the URL as a parameter. The second
+    method uses the HTTP `POST` command to ask the server to accept the encoded data
+    and pass it to a web application as a stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the GET Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'You can get going with network resources quite quickly using the `GET` method
+    of encoding data in a URL. Just create a URL pointing to a server program and
+    use a simple convention to tack on the encoded name/value pairs that make up our
+    data. For example, the following code snippet opens a URL to an old-school CGI
+    program called *login.cgi* on the server *myhost* and passes it two name/value
+    pairs. It then prints whatever text the CGI sends back:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: To form the URL with parameters, we start with the base URL of *login.cgi*.
+    We add a question mark (`?`), which marks the beginning of the parameter data,
+    followed by the first “name=value” pair. We can add as many pairs as we want,
+    separated by ampersand (`&`) characters. The rest of our code simply opens the
+    stream and reads back the response from the server. Remember that creating a URL
+    doesn’t actually open the connection. In this case, the URL connection was made
+    implicitly when we called `openStream()`. Although we are assuming here that our
+    server sends back text, it could send anything, including images, audio, or PDFs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have skipped a step here. This example works because our name/value pairs
+    happen to be simple text. If any “nonprintable” or special characters (including
+    `?` or `&`) are in the pairs, they must be encoded first. The `java.net.URLEncoder`
+    class provides a utility for encoding the data. We’ll show how to use it in the
+    next example in [“Using the POST Method”](#learnjava6-CHP-13-SECT-3.2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although this small example sends a password field, you should never send sensitive
+    data using this simplistic approach. The data in this example is sent in clear
+    text across the network (it is not encrypted). Even using HTTPS (HTTP Secure)
+    won’t obscure the URL. And in this case, the password field would appear anywhere
+    the URL is printed as well, including server logs, browser history, and bookmarks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the POST Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For larger amounts of input data or for sensitive content, you’ll likely use
+    the `POST` option. Here’s a small application that acts like an HTML form. It
+    gathers data from two text fields—`name` and `password`—and posts the data to
+    the Postman Echo service^([1](ch13.html#id2506)) URL using the HTTP `POST` method.
+    This Swing-based client application works just like a web browser and connects
+    with a web application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here’s the key networking method that performs the request and handles the
+    response:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The beginning of the application creates the form using Swing elements, like
+    we did in [Chapter 12](ch12.html#learnjava6-CHP-12). All the magic happens in
+    the protected `postData()` method. First, we create a `StringBuilder` and load
+    it with name/value pairs, separated by ampersands. (We don’t need the initial
+    question mark when we’re using the `POST` method because we’re not appending to
+    the URL.) Each pair is first encoded using the static `URLEncoder.encode()` method.
+    We run the name fields through the encoder as well, even though they contain no
+    special characters in this example. This extra step is a best practice and simply
+    a good habit. The field names may not always be so plain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we set up the connection to the server. In our previous example, we weren’t
+    required to do anything special to send the data because the request was made
+    by the simple act of opening the URL on the server. Here, we have to carry some
+    of the weight of talking to the remote web server. Fortunately, the `HttpURLConnection`
+    object does most of the work for us; we just have to tell it what type of data
+    we are sending and how we want to send it. We get a `URLConnection` object via
+    the `openConnection()` method. We know that we are using the HTTP protocol, so
+    we should be able to cast it to an `HttpURLConnection` type, which has the support
+    we need. Because HTTP is one of the guaranteed protocols, we can safely make this
+    assumption. (Speaking of safety, we use HTTP here only for demonstration purposes.
+    So much data these days is considered sensitive. Industry guidelines have settled
+    on defaulting to HTTPS; more on that soon in [“SSL and Secure Web Communications”](#learnjava6-CHP-13-SECT-3.4).)
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use `setRequestMethod()` to tell the connection we want to do a `POST` operation.
+    We also use `setRequestProperty()` to set the `Content-Type` field of our HTTP
+    request to the appropriate type—in this case, the proper media type^([2](ch13.html#id2514))
+    for encoded form data. (This is necessary to tell the server what kind of data
+    we’re sending, `"application/x-www-form-urlencoded"` in our case.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the final configuration step, we use the `setDoOutput()` and `setDoInput()`
+    methods to tell the connection that we want to send *and* receive stream data.
+    The URL connection infers from this combination that we are going to do a `POST`
+    operation and expects a response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To send data, we get an output stream from the connection with `getOutputStream()`
+    and create a `PrintWriter` so that we can easily write our encoded form content.
+    After we post the data, our application calls `getResponseCode()` to see whether
+    the HTTP response code from the server indicates that the `POST` was successful.
+    Other response codes (defined as constants in `HttpURLConnection`) indicate various
+    failures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although form-encoded data (as indicated by the media type we specified for
+    the `Content-Type` field) is common, other types of communications are possible.
+    We could use the input and output streams to exchange arbitrary data types with
+    the server program. The `POST` operation could send any kind of data; the server
+    application simply has to know how to handle it. One final note: if you are writing
+    an application that needs to decode form data, you can use the `java.net.URLDecoder`
+    to undo the operation of the `URLEncoder`. Be sure to specify UTF-8 when calling
+    `decode()`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The HttpURLConnection
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Other information from the request is available from the `HttpURLConnection`
+    as well. We could use `getContentType()` and `getContentEncoding()` to determine
+    the MIME type and encoding of the response. We could also interrogate the HTTP
+    response headers by using `getHeaderField()`. (HTTP response headers are metadata
+    name/value pairs carried with the response.) Convenience methods can fetch integer-
+    and date-formatted header fields, `getHeaderFieldInt()` and `getHeaderFieldDate()`,
+    which return an `int` and a `long` type, respectively. The content length and
+    last modification date are provided through `getContentLength()` and `getLastModified()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SSL and Secure Web Communications
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Some of the previous examples sent sensitive data to the server. Standard HTTP
+    doesn’t provide encryption to hide our data. Fortunately, adding security for
+    `GET` and `POST` operations like this is easy (trivial, in fact, for the client-side
+    developer). Where available, you simply need to use a secure form of the HTTP
+    protocol—HTTPS. Consider the testing URL from the `Post` example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: HTTPS is a version of the standard HTTP protocol run over Secure Sockets Layer
+    (SSL), which uses public-key encryption techniques to encrypt the browser-to-server
+    communications. Most web browsers and servers currently come with built-in support
+    for HTTPS (or raw SSL sockets). Therefore, if your web server supports HTTPS and
+    has it configured, you can use a browser to send and receive secure data simply
+    by specifying the `https` protocol in your URLs. There is much more to learn about
+    SSL and related aspects of security, such as authenticating to whom you are actually
+    talking, but as far as basic data encryption goes, this is all you have to do.
+    It is not something your code has to deal with directly. Java ships with both
+    SSL and HTTPS support.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Network Programming
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The web dominates developer discussions of networking, but there is more out
+    there than just HTML pages! As Java’s networking APIs have matured, Java has also
+    become the language of choice for implementing traditional client/server applications
+    and services. In this section, we look at the `java.net` package, which contains
+    the fundamental classes for communications and working with networked resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The classes of `java.net` fall into two general categories: the Sockets API,
+    for working with low-level network protocols, and higher-level, web-oriented APIs
+    that work with URLs, as we saw in the previous section. [Figure 13-2](#learnjava6-CHP-13-FIG-3)
+    shows most of the `java.net` package hierarchy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![ljv6 1302](assets/ljv6_1302.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 13-2\. Main classes and interfaces of the `java.net` package
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Java’s Sockets API provides access to the standard protocols used for communications
+    between hosts. *Sockets* are the mechanism underlying all other kinds of portable
+    networked communications. Sockets are the lowest-level tool in the general networking
+    toolbox—you can use sockets for any kind of communications between client and
+    server or peer applications, but you have to implement your own application-level
+    protocols for handling and interpreting the data. Higher-level networking tools,
+    such as remote method invocation, HTTP, and web services, are implemented on top
+    of sockets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sockets
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Sockets are a low-level programming interface for networked communications.
+    They send streams of data between applications that may or may not be on the same
+    host.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sockets originated in BSD Unix and are, in some programming languages, messy,
+    complicated things with lots of small parts that can break off and cause havoc.
+    The reason for this is that most socket APIs can be used with almost any kind
+    of underlying network protocol. Since the protocols that transport data across
+    the network can have radically different features, the socket interface can be
+    quite complex.^([3](ch13.html#id2534))
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `java.net` package supports a simplified, object-oriented socket interface
+    that makes network communications considerably easier. If you’ve done network
+    programming using sockets in other languages, you should be pleasantly surprised
+    at how simple things can be when objects encapsulate the gory details. If this
+    is the first time you’ve come across sockets, you’ll find that talking to another
+    application over the network can be as simple as reading a file or getting user
+    input. Most forms of I/O in Java, including most network I/O, use the stream classes
+    described in [“Streams”](ch10.html#learnjava6-CHP-10-SECT-1). Streams provide
+    a unified I/O interface so that reading or writing across the internet is similar
+    to reading or writing on the local system. In addition to the stream-oriented
+    interfaces, the Java networking APIs can work with the Java NIO buffer-oriented
+    API for highly scalable applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java provides sockets to support three distinct classes of underlying protocols:
+    `Socket`, `DatagramSocket`, and `MulticastSocket`. In this section, we look at
+    Java’s basic `Socket` class, which uses a *connection-oriented* and *reliable*
+    protocol. A connection-oriented protocol provides the equivalent of a telephone
+    conversation. After establishing a connection, two applications can send streams
+    of data back and forth, and the connection stays in place even when no one is
+    talking. Because the protocol is reliable, it also ensures that no data is lost
+    (resending data, as necessary), and that whatever you send always arrives in the
+    order in which you sent it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ll have to leave the other two classes, which use a *connectionless*, *unreliable*
+    protocol, for you to explore on your own. (Again, see [*Java Network Programming*](https://oreil.ly/RzACA)
+    by Elliotte Rusty-Harold for a detailed discussion.) A connectionless protocol
+    is like the postal service. Applications can send short messages to each other,
+    but no end-to-end connection is set up in advance, and no attempt is made to keep
+    the messages in order. It’s not even guaranteed that the messages will arrive
+    at all. A `MulticastSocket` is a variation of a `DatagramSocket` that performs
+    *multicasting*—simultaneously sending data to multiple recipients. Think of the
+    postal service delivering flyers for the local grocery market to “Resident” addresses
+    throughout a large neighborhood. Working with multicast sockets is very much like
+    working with datagram sockets; there are simply more recipients.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In theory, just about any protocol can be used underneath the socket layer.
+    In practice, there’s only one important protocol family used on the internet,
+    and only one protocol family that Java supports: the Internet Protocol (IP). The
+    `Socket` class speaks *TCP*, Transmission Control Protocol, over IP (often lumped
+    together as TCP/IP); and the connectionless `DatagramSocket` class speaks *UDP*,
+    User Datagram Protocol, over IP.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clients and Servers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When writing network applications, it’s common to talk about clients and servers.
+    The distinction is increasingly vague, but the *client* usually initiates the
+    conversation. The *server* usually accepts incoming requests. There are many subtleties
+    to these roles,^([4](ch13.html#id2546)) but for simplicity we’ll use this definition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An important difference between a client and a server is that a client can create
+    a socket to initiate a conversation with a server application at any time, while
+    a server must be prepared in advance to listen for incoming conversation requests.
+    The `java.net.Socket` class represents one side of an individual socket connection
+    on both the client and server. In addition, the server uses the `java.net.ServerSocket`
+    class to listen for new connections from clients. In most cases, an application
+    acting as a server creates a `ServerSocket` object and waits, blocked in a call
+    to its `accept()` method, until a request arrives. When a client attempts to connect,
+    the `accept()` method creates a new `Socket` object that the server uses to communicate
+    with the client. The `ServerSocket` instance hands over details on the client
+    to the new `Socket`, as shown in [Figure 13-3](#learnjava6-CHP-13-FIG-4).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![ljv6 1303](assets/ljv6_1303.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 13-3\. Clients and servers using `Socket` and `ServerSocket`
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: That socket continues the conversation with the client, allowing the `ServerSocket`
+    to resume its listening task. In this way, a server can carry on conversations
+    with multiple clients at once. There is still only a single `ServerSocket`, but
+    the server has multiple `Socket` objects—one associated with each client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clients
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'At the socket level, a client needs two pieces of information to locate and
+    connect to a server on the internet: a *hostname* (used to find the host computer’s
+    network address) and a *port number*. The port number is an identifier that differentiates
+    between multiple network services or connections on the same host.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A server application listens on a prearranged port while waiting for connections.
+    Clients make a request to that prearranged port number. If you think of the host
+    computer as a hotel and the various services available as guests, the ports are
+    like the guests’ room numbers. To connect to a service, you must know the hotel
+    name and the right room number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A client application opens a connection to a server by constructing a `Socket`
+    that specifies those two bits of information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This client-side code fragment attempts to connect a `Socket` to port 25 (the
+    SMTP mail service) of the host *wupost.wustl.edu*. The client must handle the
+    possibility that the hostname can’t be resolved (`UnknownHostException`) and that
+    the server might not accept a new connection (`IOException`). Java uses DNS, the
+    standard *Domain Name Service* (DNS), to resolve the hostname to an *IP address*
+    for us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'IP addresses (from the Internet Protocol) are the phone numbers of the internet,
+    and DNS is the global phone book. Every machine connected to the internet has
+    an IP address. If you don’t know that address, you look it up with DNS. But if
+    you do know a server’s address, the `Socket` constructor can also accept a string
+    containing a raw IP address:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Regardless of which way you start, after `sock` connects, you can retrieve
+    input and output streams with the `getInputStream()` and `getOutputStream()` methods.
+    The following (rather arbitrary) code sends and receives some data with the streams:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this exchange, the client first creates a `Socket` for communicating with
+    the server. The `Socket` constructor specifies the server’s hostname (*foo.bar.com*)
+    and a prearranged port number (1234). Once the client connects, it writes a single
+    byte to the server using the `OutputStream`’s `write()` method. To send a string
+    of text more easily, it then wraps a `PrintWriter` around the `OutputStream`.
+    Next, it performs the complementary operations: reading a byte back from the server
+    using `InputStream`’s `read()` method and then creating a `BufferedReader` from
+    which to get a full string of text. The client then terminates the connection
+    with the `close()` method. All these operations have the potential to generate
+    `IOException`s; our snippet handles these checked exceptions by wrapping the entire
+    conversation in a `try/catch` block.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Servers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'On the other side of the conversation, after a connection is established, a
+    server application uses the same kind of `Socket` object for its communication
+    with a client. However, to accept a connection from a client, it must first create
+    a `ServerSocket`, bound to the correct port. Let’s re-create the previous conversation
+    from the server’s point of view:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: First, our server creates a `ServerSocket` attached to port 1234\. On most systems,
+    there are rules about which ports an application can use. Port numbers are unsigned,
+    16-bit integers, which means they can range from 0 to 65,535\. Port numbers below
+    1,024 are usually reserved for system processes and standard, “well-known” services,
+    so we pick a port number outside of this reserved range.^([5](ch13.html#id2559))
+    We need to create the `ServerSocket` only once; thereafter, it can accept as many
+    connections as arrive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we enter a loop, waiting for the `accept()` method of the `ServerSocket`
+    to return an active `Socket` connection from a client. When a connection has been
+    established, we perform the server side of our dialog, then close the connection
+    and return to the top of the loop to wait for another connection. Finally, when
+    the server application wants to stop listening for connections altogether, it
+    calls the `close()` method of the `ServerSocket`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This server is single threaded; it handles one connection at a time, finishing
+    a complete conversation with one client before returning to the top of the loop
+    and calling `accept()` to listen for another connection. A more realistic server
+    would have a loop that accepts connections concurrently and passes them off to
+    their own threads for processing. Even though we don’t plan on creating a MMORPG,^([6](ch13.html#id2561))
+    we do show how to conduct a conversation using the thread-per-client approach
+    in [“A Distributed Game”](#learnjava6-CHP-13-SECT-5.3). If you want to do a little
+    independent reading, you can also look up the nonblocking, NIO equivalent `ServerSocketChannel`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The DateAtHost Client
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the past, many networked computers ran a simple time service that dispensed
+    their clock’s local time on a well-known port. The time protocol is a precursor
+    of NTP, the more general Network Time Protocol. We’ll stick with the time protocol
+    for its simplicity, but if you do want to synchronize the clocks of networked
+    system, NTP is a better option.^([7](ch13.html#id2568))
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next example, `DateAtHost`, includes a subclass of `java.util.Date` that
+    fetches the time from a remote host instead of initializing itself from the local
+    clock. (See [Chapter 8](ch08.html#learnjava6-CHP-8) for a discussion of the `Date`
+    class, which is still good for some uses but has been largely replaced by its
+    newer, more flexible cousins, `LocalDate` and `LocalTime`.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`DateAtHost` connects to the time service (port 37) and reads four bytes representing
+    the time on the remote host. These four bytes have a peculiar specification that
+    we decode to get the time. Here’s the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: That’s all there is to it. It’s not very long, even with a few frills. We have
+    supplied two possible constructors for `DateAtHost`. Normally we’d expect to use
+    the first, which simply takes the name of the remote host as an argument. The
+    second constructor specifies the hostname and the port number of the remote time
+    service. (If the time service were running on a nonstandard port, we would use
+    the second constructor to specify the alternate port number.) This second constructor
+    does the work of making the connection and setting the time. The first constructor
+    simply invokes the second (using the `this()` construct) with the default port
+    as an argument. Supplying simplified constructors that invoke their siblings with
+    default arguments is a common and useful pattern in Java; that is the main reason
+    we’ve shown it here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second constructor opens a socket to the specified port on the remote host.
+    It creates a `DataInputStream` to wrap the input stream and then reads a four-byte
+    integer using the `readInt()` method. It’s no coincidence that the bytes are in
+    the right order. Java’s `DataInputStream` and `DataOutputStream` classes work
+    with the bytes of integer types in *network byte order* (most significant to least
+    significant). The time protocol (and other standard network protocols that deal
+    with binary data) also uses the network byte order, so we don’t need to call any
+    conversion routines. Explicit data conversions would probably be necessary if
+    we were using a nonstandard protocol, especially when talking to a non-Java client
+    or server. In that case, we’d have to read byte by byte and do some rearranging
+    to get our four-byte value. After reading the data, we’re finished with the socket,
+    so we close it, terminating the connection to the server. Finally, the constructor
+    initializes the rest of the object by calling `Date`’s `setTime()` method with
+    the calculated time value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The four bytes of the time value are interpreted as an integer representing
+    the number of seconds since the beginning of the 20th century. `DateAtHost` converts
+    this to Java’s notion of absolute time—the count of milliseconds since January
+    1, 1970 (an arbitrary date standardized by C and Unix). The conversion first creates
+    a `long` value, which is the unsigned equivalent of the integer `time`. It subtracts
+    an offset to make the time relative to the epoch (January 1, 1970) rather than
+    the century, and multiplies by 1,000 to convert to milliseconds. The converted
+    time is used to initialize the object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `DateAtHost` class can work with a time retrieved from a remote host almost
+    as easily as `Date` is used with the time on the local host. The only additional
+    overhead is dealing with the possible `IOException` that the `DateAtHost` constructor
+    can throw:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: This example fetches the time at the host *time.nist.gov* and prints its value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Distributed Game
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We can use our newfound networking skills to extend our apple tossing game and
+    go two-player. We’ll have to keep this foray simple, but you might be surprised
+    by how quickly we can get a proof of concept off the ground. While there are several
+    mechanisms two players could use to get connected for a shared experience, our
+    example uses the basic client/server model we’ve been discussing in this chapter.
+    One user will start the server, and the second user will be able to contact that
+    server as the client. Once both players are connected, they’ll race to see who
+    can clear the trees and hedges the fastest!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the UI
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let’s start by adding a menu to our game. Recall from [“Menus”](ch12.html#learnjava6-CHP-12-SECT-5.1)
+    that menus live in a menu bar and work with `ActionEvent` objects, much like buttons.
+    We need one option for starting a server and another for joining a game at a server
+    someone has already started. The core code for these menu items is straightforward;
+    we can use another helper method in the `AppleToss` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The use of lambdas for each menu’s `ActionListener` should look familiar. We
+    also use the `JOptionPane` discussed in [“Modals and Pop-Ups”](ch12.html#learnjava6-CHP-12-SECT-5.2)
+    to ask the second player for the name or IP address of the server where the first
+    player is waiting. The networking logic is handled in a separate class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ll look at the `Multiplayer` class in more detail in the coming sections,
+    but you can see the methods we’ll be implementing. The code for this version of
+    the game (in the *ch13/examples/game* folder) contains the `setupNetworkMenu()`
+    method, but the lambda listeners just pop up an info dialog to indicate which
+    menu item was selected. You get to build the `Multiplayer` class and call the
+    actual multiplayer methods in the exercises at the end of the chapter. But do
+    feel free to check out the completed game—including the networking parts—in the
+    *ch13/solutions/game* folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The game server
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As we did in [“Servers”](#learnjava6-CHP-13-SECT-5.1.2), we need to pick a
+    port and set up a socket that is listening for an incoming connection. We’ll use
+    port 8677—“TOSS” on a phone number pad. We can create a `Server` inner class in
+    our `Multiplayer` class to drive a thread ready for network communications. The
+    `reader` and `writer` variables will be used to send and receive the actual game
+    data. More on that in [“The game protocol”](#learnjava6-CHP-13-SECT-5.3.4):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: We set up our `ServerSocket` and then wait for a new client inside a loop. While
+    we plan to play only one opponent at a time, this allows us to accept subsequent
+    clients without going through all the network setup again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To actually start the server listening the first time, we just need a new thread
+    that uses our `Server` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We keep a reference to the instance of `Server` in our `Multiplayer` class
+    so that we have ready access to shut down the connections if the user selects
+    the “disconnect” option from the menu, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: We mainly use the `keepPlaying` flag once we’re inside our game loop, but it
+    comes in handy above, too. If we have a valid `server` reference but we’re not
+    currently playing a game (`keepPlaying` is false), we know to shut down the listener
+    socket.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `stopListening()` method in the `Server` inner class is straightforward:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: We do a quick check of our server and try to close `listener` only if it exists
+    and is still open.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The game client
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The setup and teardown of the client side is similar—without the listening
+    `ServerSocket`, of course. We’ll mirror the `Server` inner class with a `Client`
+    inner class and build a smart `run()` method to implement our client logic:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: We pass the name of the server to the `Client` constructor and rely on the common
+    `gamePort` variable used by `Server` to set up the socket. We use the “try with
+    resource” technique discussed in [“try with Resources”](ch06.html#learnjava6-CHP-6-SECT-1.9)
+    to create our socket and make sure it gets cleaned up when we’re done. Inside
+    that resource `try` block, we create our `reader` and `writer` instances for the
+    client’s half of the conversation, as shown in [Figure 13-4](#learnjava6-CHP-13-FIG-5).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![ljv6 1304](assets/ljv6_1304.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 13-4\. Game client and server connections
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'To get this going, we’ll add another helper method to our `Multiplayer` helper
+    class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: We don’t need a separate `disconnect()` method—we can use the same state variables
+    used by the server. For the client, the `server` reference will be `null`, so
+    we won’t attempt to shut down a nonexistent listener.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The game protocol
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You likely noticed we left out the bulk of the `run()` method for both the `Server`
+    and `Client` classes. After we build and connect our data streams, the remaining
+    work is all about collaboratively sending and receiving information about the
+    state of our game. This structured communication is the game’s *protocol*. Every
+    network service has a protocol. Think of the “P” in HTTP. Even our `DateAtHost`
+    example uses a (very simple) protocol so that clients and servers know who is
+    expected to talk and who must listen at any given moment. If both sides try to
+    talk at the same time, information will likely be lost. If both sides end up waiting
+    for the other side to say something (for instance, both the server and the client
+    are blocking on a `reader.readLine()` call), then the connection will appear to
+    hang.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing those communication expectations is the core of any protocol, but what
+    to say and how to respond are also important. This portion of a protocol often
+    requires the most effort from the developer. Part of the difficulty is that you
+    really need both sides to test your work as you go. You can’t test a server without
+    a client, and vice versa. Building up both sides as you go can feel tedious, but
+    it is worth the extra effort. As with other kinds of debugging, fixing a small
+    incremental change is much simpler than figuring out what might be wrong within
+    a large block of code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our game, we’ll have the server steer the conversation. This choice is arbitrary—we
+    could have used the client, or we could have built a fancier foundation and allowed
+    both the client and the server to be in charge of certain things simultaneously.
+    With the “server in charge” decision made, though, we can try a very simple first
+    step in our protocol. We’ll have the server send a `"NEW_GAME"` command and then
+    wait for the client to respond with an `"OK"` answer. The server-side code (after
+    the connection with the client is established) looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we get the expected `"OK"` response, we can proceed with setting up a new
+    game and sharing the tree and hedge locations with our opponent—more on that in
+    a minute. (If we don’t get an `"OK"`, we show an error and reset to wait for some
+    other attempt.) The corresponding client-side code for this first step flows similarly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you want to try things as they stand, you can start your server from one
+    system and then join that game from a second system. (You can also just launch
+    a second copy of the game from a separate terminal window. In that case, the name
+    of the “other host” would be the networking keyword `localhost`.) Almost immediately
+    after joining from the second game instance, you should see the “Starting a new
+    game!” confirmation printed in the terminal of the first game. Congratulations!
+    You’re on your way to designing a game protocol. Let’s keep going.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We need to even the playing field—quite literally. The server will tell its
+    game to build a new field, and then it can ship the coordinates of all the new
+    obstacles to the client. The client, in turn, can accept all the incoming trees
+    and hedges, and place them on a clean field. Once the server has sent all of the
+    trees, it can send a `"START"` command and play can begin. We’ll stick to using
+    strings to communicate our messages. Here’s one way we can pass our tree details
+    to the client:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'On the client side, we can call `readLine()` in a loop for `"TREE"` lines until
+    we see the `“START”` line, like so (with a little error handling thrown in):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, both games should have the same obstacles, and players can begin
+    clearing them. The server will enter a polling loop and send the current score
+    twice a second. The client will reply with its current score. Note that there
+    are certainly other options for how to share changes in the score. While polling
+    is straightforward, more advanced games, or games that require more immediate
+    feedback regarding remote players, will likely use more direct communication options.
+    For now, we mainly want to concentrate on a good network back-and-forth, so polling
+    keeps our code simpler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The server should keep sending the current score until the local player has
+    cleared everything or we see a game-ending response from the client. We’ll need
+    to parse the client’s response to update the other player’s score and watch for
+    their request to end the game. We also have to be prepared for the client to simply
+    disconnect. That loop looks something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The client will mirror these actions. Fortunately for the client, it is just
+    reacting to the commands coming from the server. We don’t need a separate polling
+    mechanism here. We block waiting to read a line, parse it, and then build our
+    response:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When a player has cleared all of their trees and hedges, they send (or respond
+    with) an `"END"` command that includes their final score. At that point, we ask
+    if the same two players want to play again. If so, we can continue using the same
+    `reader` and `writer` instances for both the server and the client. If not, we’ll
+    let the client disconnect and the server will go back to listening for another
+    player to join:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And one last reciprocal bit of code for the client:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Table 13-1](#learnjava6-CHP-13-TABLE-4) summarizes our simple protocol.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 13-1\. Apple tossing game protocol
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Server command | Args (optional) | Client response | Args (optional) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NEW_GAME |  | OK |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| TREE | x y |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| START |  | OK |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SCORE | score |'
+  prefs: []
+  type: TYPE_TB
+- en: SCORE
+  prefs: []
+  type: TYPE_NORMAL
+- en: END
+  prefs: []
+  type: TYPE_NORMAL
+- en: DISCONNECT
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: score
+  prefs: []
+  type: TYPE_NORMAL
+- en: score
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| END | score |'
+  prefs: []
+  type: TYPE_TB
+- en: SCORE
+  prefs: []
+  type: TYPE_NORMAL
+- en: DISCONNECT
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| score |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PLAY_AGAIN |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'YES'
+  prefs: []
+  type: TYPE_NORMAL
+- en: DISCONNECT
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DISCONNECT |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Much More to Explore
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We could spend much more time on our game. We could expand the protocol to allow
+    multiple opponents. We could change the objective to clear the obstacles and destroy
+    your opponent. We could make the protocol more bidirectional, allowing the client
+    to initiate some of the updates. We could use alternate lower-level protocols
+    supported by Java, such as UDP rather than TCP. Indeed, there are entire books
+    devoted to games, network programming, and programming networked games!
+  prefs: []
+  type: TYPE_NORMAL
+- en: But whew! You made it! Saying we covered a lot of ground is quite an understatement.
+    We hope you have a solid understanding of Java’s syntax and core classes. You
+    can use that understanding as you go forward and learn other interesting details
+    and advanced techniques. Pick an area that interests you and go a little deeper.
+    If you’re still curious about Java in general, try connecting parts of this book.
+    For example, you could try using regular expressions to parse our apple toss game
+    protocol. Or you could build a more sophisticated protocol altogether and pass
+    small chunks of binary data over the network rather than simple strings. For practice
+    writing more complex programs, you could rewrite some of the inner and anonymous
+    classes in the game to be separate, standalone classes, or even replace them with
+    lambda expressions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you want to explore other Java libraries and packages while sticking with
+    some of the examples you have already worked on, you could dig into the Java2D
+    API and make nicer looking apples and trees. You could try out some of the other
+    collection objects, like `TreeMap` or `Deque`. You could research the popular
+    [JSON format](https://oreil.ly/oEa0E) and try rewriting the multiplayer communication
+    code. Using JSON for the protocol will likely give you the opportunity to work
+    with a library as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you’re ready to branch out further, you could see how Java works off the
+    desktop by trying some Android development. Or look at large networked environments
+    and the Jakarta Enterprise Edition from the Eclipse Foundation. Maybe big data
+    is on your radar? The Apache Foundation has several projects, such as Hadoop or
+    Spark. Java has its detractors, but it remains a vibrant, vital part of the professional
+    developer world.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we’ve laid out some avenues for future research, we are ready to wrap
+    up the main part of our book. The [Glossary](glossary01.html#learnjava6-GLOSS)
+    contains a quick reference of many useful terms and topics we’ve covered. [Appendix A](app01.html#learnjava6-APP-A)
+    has some details on getting the code examples imported into IntelliJ IDEA. [Appendix B](app02.html#learnjava6-APP-B)
+    includes answers to all of the review questions as well as some hints and guidance
+    on the code exercises.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We hope that you’ve enjoyed this sixth edition of *Learning Java*. This is really
+    the eighth edition of the series that began over two decades ago with *Exploring
+    Java*. It has been a long and amazing trip watching Java develop in that time,
+    and we thank those of you who have come along with us over the years. As always,
+    we welcome your feedback to help us keep making this book better in the future.
+    Ready for another decade of Java? We are!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Review Questions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Which networking protocols does the `URL` class support by default?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Can you use Java to download binary data from an online source?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What are the high-level steps to send form data to a web server using Java?
+    Which classes are involved?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What class do you use to listen for incoming network connections?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When creating your own server like you did for the game, are there any rules
+    for picking a port number?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Can a server application written in Java support multiple, simultaneous clients?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How many simultaneous servers can a given client `Socket` instance connect to?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Code Exercises
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Create your own, human-friendly `DateAtHost` client (`FDClient`, Friendly Date
+    Client, in our solutions) and server (`FDServer`). Use the classes and formatters
+    from [“Dates and Times”](ch08.html#learnjava6-CHP-8-SECT-5) to produce a server
+    that sends one line of nicely formatted text containing the current date and time.
+    Your client should read that line after connecting and print it out. (Your client
+    does not need to extend `Instant` or even store the response beyond printing it
+    out.)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Our game protocol does not yet include support for the hedge obstacles. (Hedges
+    are still in the game, but they aren’t part of the network communications yet.)
+    Review [Table 13-1](#learnjava6-CHP-13-TABLE-4) and add support for a `HEDGE`
+    entry similar to our `TREE` lines. It may be easier to update the client side
+    first, although you will need to update both sides to have the hedges work like
+    the trees for both players.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Advanced Exercises
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Upgrade your `FDServer` class to handle multiple, simultaneous clients with
+    threads or virtual threads. You can put your client handling code in a lambda,
+    an (anonymous) inner class, or a separate helper class. You should be able to
+    use the same `FDClient` class from the first exercise without recompiling. If
+    you use virtual threads, remember that they may still be a preview feature in
+    your version of Java. Use the appropriate flags when compiling and running. (Our
+    solution for this exercise is in `FDServer2`.)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: This exercise is more of a nudge to go explore the world of web services now
+    that you have seen some examples of using Java to interact with online APIs. Search
+    online for a service with a free developer account option (signing up may still
+    be necessary), and write a Java client for that service. Many of the services
+    available online require some type of authentication, such as an *API token* or
+    *API key* (usually long strings that work like unique usernames). Sites like [random.org](https://oreil.ly/moEyN)
+    or [openweathermap.org](https://oreil.ly/8B4rl) could be fun places to start.
+    (We do provide a completed client, `NetworkInt`, for getting random integers from
+    *random.org* in the solutions. You’ll need to provide your own API key in the
+    source for the client to work.)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: ^([1](ch13.html#id2506-marker)) Postman is a fantastic tool for web developers.
+    You can learn more at the [Postman site](https://oreil.ly/3LKc6). The testing
+    service they host at [postman-echo.com](https://oreil.ly/hzZpS) accepts both GET
+    and POST requests, and echoes back the request and any form or URL parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch13.html#id2514-marker)) You may have heard the phrase “MIME type” before.
+    MIME has its roots in email, and the term “media” is meant to be more generic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch13.html#id2534-marker)) For a detailed discussion of these low-level
+    sockets, see *Unix Network Programming* by W. Richard Stevens et al. (Prentice-Hall).
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([4](ch13.html#id2546-marker)) A peer-to-peer environment, for example, has
+    machines that simultaneously perform both roles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([5](ch13.html#id2559-marker)) For more on well-known services and their standard
+    port numbers, see the [official list](https://oreil.ly/4WCON) hosted by the Internet
+    Assigned Numbers Authority.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([6](ch13.html#id2561-marker)) Massively Multiplayer Online Role-Playing Game,
+    if, like the authors, you’re too old to recognize the acronym. Sigh.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([7](ch13.html#id2568-marker)) Indeed, the publicly available site we use from
+    NIST strongly encourages users to upgrade. See the [introductory notes](https://oreil.ly/hYBSO)
+    for the NIST Internet Time Servers for more information.
+  prefs: []
+  type: TYPE_NORMAL

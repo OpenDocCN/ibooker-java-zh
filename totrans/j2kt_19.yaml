@@ -1,0 +1,1285 @@
+- en: Chapter 19\. Throwing to Returning
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java uses checked and unchecked exceptions to represent and handle errors. Kotlin
+    supports exceptions, but doesn’t build checked exceptions into the language in
+    the same way. Why did Kotlin reject Java’s approach, and what should we use instead?
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: You don’t have program computers for long to discover that things go wrong…
+  prefs: []
+  type: TYPE_NORMAL
+- en: …in *so many* ways.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Early in their careers, your authors tended to gloss over errors. We often still
+    do, at least early in a project. As the system grows, though, we learn how failures
+    affect the application and start to add code to cope—at first piecemeal, later
+    with some strategy informed by experience. In this respect our error handling
+    evolves in the same way as other aspects of our software design. Sometimes we
+    design up front, making use of our experience of similar systems; other times
+    we allow the writing of the software to teach us what it needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the absence of a more deliberate strategy, most systems default to raising
+    exceptions when something goes wrong, and catching and logging those exceptions
+    at some outer level. Command-line utilities will just exit in this case, hopefully
+    having provided enough information for the user to correct the problem and try
+    again. A server app, or a GUI with an event loop, will usually abort only the
+    current interaction and get on with the next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Often this is just a poor experience for our users, but sometimes the error
+    will corrupt the persistent state of the system, so correcting the initial problem
+    and retrying does not work. This is the source of the sage advice to “turn it
+    off and on again.” Our systems mainly start in a safe state, so that after a restart
+    a retry should succeed. If not, well, you’ve probably been in a situation where
+    the only solution has been to reinstall the operating system—the ultimate way
+    of removing corrupted persistent state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If errors are not well managed, but despite this the system becomes successful,
+    diagnosing and fixing corruption due to errors can expand to fill all the team’s
+    time. This is not a great place for a software project to be. Ask us how we know!
+  prefs: []
+  type: TYPE_NORMAL
+- en: So we don’t want errors because they annoy our users and may result in corruption
+    that takes a lot of effort to fix, if we can fix it at all. What sort of errors
+    do we see?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Programs can go wrong for many reasons. When we say *program*, we also mean
+    functions, methods, procedures—any code that we invoke. And when we say *go wrong*,
+    we mean fail to do the job that we expected them to do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Reasons for this failure include:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sometimes programs need to talk to other systems and that communication fails
+    in some way.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Often we don’t give software the correct input it needs to do its job.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Apparently some programmers make errors: even instructing their computers to
+    dereference null references or read past the ends of collections!'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The environment that we are running in fails for some reason; for example, it
+    might run out of memory or not be able to load a class.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There are failures that don’t fit into these categories, but most do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That doesn’t seem to be too long a list, and yet as an industry we don’t have
+    a great reputation for reliability. Error handling just seems to be hard. Why
+    is that?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Well, for a start we often don’t know whether an operation can fail and, if
+    so, how it can fail. If we do know, then knowledge about how to handle an error
+    may be in code a long way from where the problem is detected. Then the code that
+    detects an error, and the code that recovers from it, are hard to isolate from
+    the happy path and so are hard to test. Combine these with the tendency for errors
+    to leave our system in unrecoverable states, and we end up with a situation where
+    most developers would rather hope for the best than take on the hard work and
+    still get it wrong.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hard work *and* error-prone? Weren’t computers supposed to free us from tasks
+    like these, taking on the drudge work, so that we can focus on the fun creative
+    stuff? Yes they were, so we will focus on error handling through the lens of how
+    our programming language can make things safer and easier for programmers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error Handling Before Exceptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Most error handling these days is based on exceptions, but other techniques
+    have been used and are still applicable in some circumstances. We’ll look at the
+    pros and cons of those techniques first. The cons will show us why exceptions
+    now dominate; the pros may give us options when exceptions aren’t appropriate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ignoring errors
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can ignore errors. Either the failing routine does nothing to bring them
+    to the attention of the caller, or the caller doesn’t bother to check.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This may lead to corruption of persistent data and silent failure to do the
+    job, so in most cases we need to aim higher.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Just crashing
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some programs just exit when an error is detected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Combined with a supervisor to restart on error and careful coding to prevent
+    corruption of persistent state, this is a battle-tested strategy that may be appropriate.
+    Throwing an exception to abort an operation is the application of this technique
+    to a procedure rather than to a whole program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Returning a special value
+  prefs: []
+  type: TYPE_NORMAL
+- en: Returning a special value to signify an error can be a useful technique. For
+    example, a function can return `-1` instead of an index when an item is not found
+    in a list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This technique cannot be used when all return values are valid results for a
+    function. It can also be dangerous, because the caller has to know (and remember)
+    the convention. If we try to calculate the distance between two items in a list
+    by subtracting their indices, when one of them is not found and returns -1, our
+    calculation will be incorrect unless we explicitly handle the special case. We
+    can’t lean on the type checker to help us avoid errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A special case of returning a special value is returning null on error. This
+    is quite dangerous in most languages, because if the caller doesn’t explicitly
+    check for null, then using the result will throw a `NullPointerException`, which
+    may be worse than the initial problem. In Kotlin, though, the type checker forces
+    callers to deal with null, making this a safe and effective technique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting a global flag
+  prefs: []
+  type: TYPE_NORMAL
+- en: One problem with returning special values is that they make it hard to signal
+    which of several possible errors occurred. To solve this we can combine the special
+    value with setting a global variable. When the special value is detected, the
+    caller can read `errno`, for example, to establish what the problem was.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This technique was popular in C but was largely superseded by exception-based
+    error handling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Returning a status code
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another technique from the days before exceptions is returning a status code.
+    This is possible when a function either returns no value (it is entirely side
+    effect) or returns a value in another way, often by mutating a parameter passed
+    by reference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Invoking a special function
+  prefs: []
+  type: TYPE_NORMAL
+- en: Invoking a special function when an error occurs is sometimes a good strategy.
+    Usually the error function is passed as a parameter to the invoked function. If
+    a problem is detected, the error function is invoked with a value representing
+    the error as a parameter. Sometimes the error function can signal by its return
+    value if the failed operation should be retried or aborted. Another technique
+    is for the error function to provide the value that should be returned by the
+    invoked function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This technique is an example of the strategy pattern applied to error handling.
+    Even when exceptions are available, it is a useful tool in niche situations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error Handling with Exceptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: All these techniques suffer from the drawback that the calling code is able,
+    to a greater or lesser extent, to ignore that an error occurred.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exceptions solve this problem. The operation automatically aborts on error,
+    and the caller explicitly handles the exception. If the caller does not handle
+    it, the exception propagates further down the call stack until something does,
+    and if nothing handles the exception, the thread terminates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java and Checked Exceptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Exceptions were relatively new when Java was released, and the language designers
+    decided to innovate in this area. They made the exceptions that a method could
+    throw part of its signature. This way, callers could know that, for example, a
+    method might fail because the network resource that it was reading was no longer
+    available. If a method declared that it could fail in this way, then every caller
+    of that method would either have to deal with the failure (by specifying in a
+    `catch` block how it should be handled) or declare that it, too, was liable to
+    fail with the same exception. This ensures that the programmer takes account of
+    the possibility of these errors. Such exceptions are called *checked exceptions*,
+    because the compiler checks that they are handled (or redeclared to be thrown
+    by the calling method).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Checked exceptions were designed for when the programmer might reasonably be
+    able to find a way to recover: retrying a database write or reopening a socket,
+    for example. The language designers identified two other types: errors and runtime
+    exceptions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Errors
+  prefs: []
+  type: TYPE_NORMAL
+- en: Subclasses of `java.lang.Error` are reserved for failures so severe that the
+    JVM can no longer guarantee the correct functioning of the runtime. Maybe a class
+    cannot be loaded, or the system runs out of memory. These conditions can happen
+    at any point in the execution of a program, and so could cause any function to
+    fail. Because any method could fail in this way, there is no value in including
+    them in every method signature, so `Error`s do not have to be declared.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Runtime Exceptions
+  prefs: []
+  type: TYPE_NORMAL
+- en: Subclasses of `RuntimeException` represent other errors. The intention was that
+    these would be reserved for problems caused by programmer mistakes, such as accessing
+    a null reference or trying to read outside the bounds of a collection. In both
+    these cases the programmer could have been more careful. Again though, every piece
+    of code is subject to programmer error, so `RuntimeExceptions` are also exempted
+    from having to be declared.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This scheme forces developers to deal with operations that can fail due to I/O
+    errors or other things that are out of their control (the checked exceptions),
+    allowing defensive programming where it is economical. At the other extreme, if
+    an `Error` is thrown, the best default approach is exit the process as quickly
+    as possible, before any more damage can be done to persistent state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`RuntimeException`s are a middle ground. If they represent a programmer error,
+    we should probably assume that we have just proved that we don’t really know what
+    is going on in our program and abort the current operation or whole application.
+    Otherwise, we might try to recover, especially if our system has been designed
+    to limit the damage that can be done to persistent state.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Your authors both really liked checked exceptions, but it seems they were in
+    the minority, because checked exceptions fell out of favor in Java over the years.
+    Checked exceptions were hampered from the start by the odd decision to make the
+    unchecked `RuntimeException` a subclass of the otherwise checked `Exception`,
+    so that code that wanted to handle all checked exceptions found itself catching
+    unchecked ones as well, hiding programming errors. They were also not helped by
+    the fact that the Java APIs used them inconsistently. Take extracting data from
+    a string for example: the `URL` constructor `URL(String)` throws the *checked*
+    `MalformedURLException`, while `Integer.​par⁠seInt(String)` throws the *unchecked*
+    `NumberFormatException`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Confusion over what type of exception to use multiplied, and it wasn’t long
+    before the default was that the only checked exceptions that most Java libraries
+    declared were `IOExceptions`. Even then, database libraries such as Hibernate,
+    which were definitely talking over the network and definitely subject to `IOExceptions`,
+    would throw only `RuntimeExceptions`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once a good proportion of the code that you call just uses unchecked exceptions,
+    the game is up. You can’t rely on checked exceptions to warn you about how a function
+    might fail. Instead, you are reduced to some tactical defensive programming and
+    the age-old technique of putting it into production, seeing what errors you log,
+    and adding code to handle those you don’t like the look of.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final nail in the coffin of checked exceptions was the introduction of lambdas
+    in Java 8. The decision was taken not to declare an exception type in the signature
+    of the functional interfaces introduced to support lambdas (`Producer`, `Consumer`,
+    etc.), so these cannot propagate checked exceptions. This wasn’t an insurmountable
+    problem, but to be fair, your authors would probably have given up there too.
+    The net result, though, is that the old standard Java API declares checked exceptions
+    (in particular, `IOException`) that the new standard API (in particular streams)
+    forces developers to deny.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kotlin and Exceptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Kotlin has exceptions, because it runs on the JVM, and exceptions are built
+    into the platform. It does not treat checked exceptions specially though, because
+    Java had already lost that fight, and, as with Java, they are hard to reconcile
+    with higher-order functions. Kotlin is able to largely ignore checked exceptions
+    because they are not a feature of the JVM but, rather, of the Java compiler. The
+    compiler does record in the bytecode what checked exceptions a method declares
+    (to be able to check them), but the JVM itself does not care.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The result is that Kotlin programs are by default no better or worse than most
+    Java programs when it comes to error handling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An exception (lowercase e) to this is that, as we observed earlier, Kotlin
+    can use `null` to indicate an error, safe in the knowledge that callers will have
+    to take the possibility of `null` into consideration. An example of this is the
+    `<T> Iterable<T>.firstOrNull(): T?` in the runtime. Tellingly, though, the runtime
+    also defines `first()`, which throws `NoSuchElementException` if the collection
+    is empty.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Beyond Exceptions: Functional Error Handling'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Statically typed functional programming languages often reject exceptions in
+    favor of another error handling technique based on *Either Types*. We’ll see what
+    an Either Type is shortly, but why don’t functional programmers like exceptions?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A distinguishing feature of functional programming is *referential transparency*.
+    When an expression is referentially transparent, we can safely replace it with
+    the result of its evaluation. So if we write:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: then we can replace `60 * 60` with `3600` or `60 * 24` with `1440` without affecting
+    the results. In fact, the compiler may decide to replace the whole expression
+    with `86400` for us, and (unless we examine the bytecode or use a debugger) we
+    will be none the wiser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In contrast:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: is not referentially transparent, because `today()` will yield a different result
+    than it did yesterday, and any day may have a leap second applied. As a result,
+    the value of `secondsIn(today())` may differ depending on when we call it, and
+    we can’t just substitute the same value for the expression every time we use it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the same concept as we saw in [Chapter 7](ch07.html#actions-to-calculations).
+    [“Calculations”](ch07.html#calculations) are referentially transparent; [“Actions”](ch07.html#actions)
+    are not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why should we care? Because referential transparency makes it a lot easier to
+    reason about the behavior of a program, which in turn leads to fewer errors and
+    more opportunities to refactor and optimize. If we want these things (and at the
+    very least we don’t want more errors and fewer opportunities), then we should
+    strive for referential transparency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What does this have to do with error handling? Let’s return to our `Integer.​par⁠seInt(String)`
+    example and see. For a given valid input, `parseInt` will always return the same
+    value, so it could be referentially transparent. In the cases where the `String`
+    doesn’t represent an integer, though, `parseInt` throws an exception rather than
+    returning a result. We can’t replace the result of the function invocation with
+    an exception, because the type of the expression is `Int`, and an `Exception`
+    isn’t an `Int`. Exceptions break referential transparency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If instead of using exceptions we returned to the old trick of using a special
+    value to represent errors, we would have referential transparency, because that
+    error value can replace the expression. In Kotlin, `null` would be great here,
+    so we could define `parseInt` to return `Int?`. But what if we needed to know
+    which was the first character that wasn’t a digit? We can convey that information
+    in an exception but not in a return type of `Int?`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Can we find a way for our function to return *either* the `Int`, or the way
+    that it failed?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The answer, as they say, is in the question. We define a type `Either`, which
+    can hold one of two types, but only one at a time:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: In Kotlin, sealed classes ([Chapter 18](ch18.html#open-to-sealed-classes)) are
+    excellent for this, because we can define our own subtypes but know that no one
+    else can.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When `Either` is used for error handling, the convention is that `Right` is
+    used for a result, `Left` for an error. If we stick to this convention, we could
+    define:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'How would we use this? As we saw in [Chapter 18](ch18.html#open-to-sealed-classes),
+    `when` expressions and smart casting work really nicely to let us write things
+    like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By returning an `Either`, we force our clients to deal with the fact that we
+    may have failed. This gives some of the advantages of checked exceptions in a
+    functional form. To embrace this style, we make all functions that in Java we
+    would have declared to throw a checked exception return an `Either`. The callers
+    then either unwrap the success and act on it or pass on any failure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Although using `when` to unwrap an `Either` is logical, it is also verbose.
+    This particular pattern occurs so much that we define `map` to be:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This allows us to write the previous function as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Why is that function called `map` and not `invokeUnlessLeft`? Well, if you squint
+    you may be able to see that it is kind of the same thing as `List.map`. It applies
+    a function to the contents of a container, returning the result in another container.
+    In the case of `Either`, `map` applies the function only if it is a `Right` (nonerror);
+    otherwise, it passes `Left`s on unchanged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Practice that squinting, because we are now going to define:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This unpacks our value and uses it to invoke a function that in turn might
+    fail (as it returns `Either`). What can we do with that? Well, let’s say we want
+    to read from a `Reader` and print double the result. We can define a wrapper for
+    `readLine` that returns an `Either` rather than failing with an exception:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This lets us combine `eitherReadLine` and `doubleString` with `flatMap`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code will return a `Left` with the failure if `eitherReadLine` fails; otherwise,
+    it will return the result of `doubleString`, which may itself be either a `Left`
+    for failure or a `Right` with the final `Int` result. In this way a chain of `map`
+    and/or `flatMap` calls acts like a series of expressions, which might throw an
+    exception; the first failure aborts the rest of the computation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you come from an object-oriented background, this style does take some getting
+    used to. In our experience no amount of reading helps; you just have to knuckle
+    down and start writing code this way until it becomes less strange. We’ll share
+    your pain by pairing with you in the worked example later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error Handling in Kotlin
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we know the error handling options open to us, which should we use
+    in our Kotlin projects, and how do we migrate our Java code?
+  prefs: []
+  type: TYPE_NORMAL
+- en: As usual, it depends.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using nullable types to represent failure is very effective, provided that you
+    don’t need to convey any information about the reason for failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You won’t be fired for using exceptions as your default strategy. The lack of
+    type checking makes it hard to communicate what code is subject to what failure,
+    though, which in turn makes it hard to build reliable systems. Adding insult to
+    this injury, you will lose the benefits of referential transparency, making it
+    harder to refactor and fix your unreliable system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our preference is to return an `Either` type from those operations that would
+    have thrown a checked exception in Java, either because of I/O problems, or because,
+    like `parseInt`, they cannot give a result for all inputs. This allows us to reserve
+    the use of exceptions for more pernicious problems. `Errors` are still appropriate
+    for unrecoverable program errors: in this case we should design our systems so
+    that the program exits and is restarted by some other process. `RuntimeExceptions`
+    are still good for signaling when we have made an error as programmers: `IndexOutOfBounds`
+    and the like. If we have carefully designed our system, it should be able to survive
+    these issues and process other inputs that do not run into the same problem.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Which `Either` type should you choose? The built-in Kotlin `Result` type is,
+    at the time of writing, a frustrating placeholder which just teases and gets in
+    the way. It is designed for coroutines, is restricted to an `Exception` (actually
+    `Throwable`) as its error value, and IntelliJ moans if you use it as a property
+    type. This would be reasonable if it wasn’t published in the `kotlin` package.
+    It is, though, so if you try to use a more useful type called `Result`, you get
+    strange error messages until you remember that the compiler is assuming that `Result`
+    refers to the `kotlin.Result` type that you aren’t supposed to use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Plenty of other result types are available, but for this book we will use [Result4k](https://oreil.ly/F5Y4M),
+    not coincidentally written by Nat. Compared to the generic `Either` type we introduced
+    earlier, Result4k defines `Result<SuccessType, FailureType>`, with subtypes `Success`
+    and `Failure` rather than `Left` and `Right`. Because it is specialized for representing
+    errors, Result4k reverses the `Either` convention by having the success type as
+    the first of the generic parameters. It can also offer operations, such as `onFailure`
+    and `recover`, that would not make sense on `Either`. We’ll see some of these
+    operations as we refactor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refactoring Exceptions to Errors
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we know the error handling options available to us, let’s refactor
+    some Java code to Kotlin, converting the error handling as we go.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is an HTTP endpoint in Travelator that allows the client app to register
+    a `Customer`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.1 [errors.0:src/main/java/travelator/handlers/CustomerRegistrationHandler.java]](https://java-to-kotlin.dev/code.html?ref=19.1&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.1&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CustomerRegistrationHandler`’s job is to extract data from the request body,
+    pass it to `registration` for processing, and return a response with either a
+    JSON representation of a `Customer` or a suitable error status code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CustomerRegistration` implements the business rules, which is that potential
+    customers should be vetted against an `ExclusionList`. We don’t want to allow
+    known undesirables to register and abuse our services, so we reject them at this
+    point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.2 [errors.0:src/main/java/travelator/CustomerRegistration.java]](https://java-to-kotlin.dev/code.html?ref=19.2&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.2&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Look at the `throws` clause of `register`. It tells us that the method can
+    fail because of the explicit exclusion, but also that `customers.add` can fail
+    with a `DuplicateException`. Here is the `Customers` interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.3 [errors.0:src/main/java/travelator/Customers.java]](https://java-to-kotlin.dev/code.html?ref=19.3&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.3&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, `Customer` is another value type. Here it is after conversion to Kotlin:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.4 [errors.1:src/main/java/travelator/Customer.kt]](https://java-to-kotlin.dev/code.html?ref=19.4&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.4&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is typical of your authors’ Java style. It expresses the things that might
+    reasonably go wrong as the checked `ExcludedException` and `DuplicateException`,
+    and these are all caught at the top level in `handle`, where they are reported
+    to the caller, in this case as HTTP status codes. Your style might be to use unchecked
+    exceptions, in which case this code would be similar but without the exceptions
+    as part of the method signatures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One thing we don’t see is any checked exception related to failures to persist
+    a `Customer` in `Customers::add`. This method will be talking across the network
+    to a database, but our query code is evidently swallowing `IOException` at some
+    point and raising a `RuntimeException` in its place. These will propagate out
+    of `Customer​Regis⁠tration::register`, be caught at the top level of `CustomerRegistrationHandler`,
+    and passed back to clients as `HTTP_INTERNAL_ERROR` (500). It’s a shame that we
+    aren’t logging any information about those stray `RuntimeException`s, because
+    they might reveal systematic connection issues or be hiding a frequent `NullPointer​Excep⁠tion`
+    in some lower-level code. Someone should probably address that, but in the meantime
+    at least we have a shorter example to show in this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our Conversion Strategy
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If we were just to convert this code to Kotlin, we would lose the advantages
+    of checked exceptions to tell us what could go wrong and show where we are handling
+    those problems. So as we convert, we will replace exception-based error handling
+    with a functional alternative using Result4k.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, we’ll start at the lowest level and work our way up, keeping
+    higher levels working until the predictable error cases (those that are currently
+    expressed as checked exceptions) no longer use exceptions. At the same time, we
+    have to be mindful that pretty much any instruction in the JVM can fail, so we
+    need to defend against these runtime issues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Starting at the Bottom
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If we convert `Customers` to Kotlin, we get:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.5 [errors.3:src/main/java/travelator/Customers.kt]](https://java-to-kotlin.dev/code.html?ref=19.5&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.5&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO42-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although Kotlin doesn’t have checked exceptions, the `@Throws` annotation allows
+    interop with Java code by adding the exception to the method’s signature in the
+    bytecode. Without it, a Java implementation of `Customers` that does throw `DuplicateException`
+    cannot implement the method. Worse, Java code that calls the method on the interface
+    would not be able to catch the exception or declare that it is passed on, because
+    it is a compile error for Java code to handle a checked exception that the compiler
+    cannot see is possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our strategy is to add to our interface a version of `Customers::add` that,
+    instead of throwing an exception, returns `Result<Customer, DuplicateException>`.
+    If we were starting from scratch, we wouldn’t use `DuplicateException` as the
+    error type, but here it lets us interoperate with Java easily. We are going to
+    keep the current throwy version around for now so that we don’t break existing
+    callers. Then we will convert those callers to use the `Result` version and then
+    remove the old version when we can. That’s right, it’s our old friend [“Expand-and-Contract
+    Refactoring”](ch04.html#expand-contract).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What should we call the method that works like `Customers::add` but returns
+    a `Result`? We can’t name it `add` too, because both have the same parameters,
+    so we call it `addToo` for now. If the new method delegates to `add`, we can make
+    it a default method so that it is available to all implementations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.6 [errors.5:src/main/java/travelator/Customers.kt]](https://java-to-kotlin.dev/code.html?ref=19.6&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.6&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have both exception and result versions of the method, we can migrate
+    the callers of the exception version. Although we can use Result4k from Java,
+    it’s a lot more convenient from Kotlin. So let’s take `CustomerRegistration` (the
+    caller of `add`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.7 [errors.5:src/main/java/travelator/CustomerRegistration.java]](https://java-to-kotlin.dev/code.html?ref=19.7&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.7&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Converting this to Kotlin gives:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.8 [errors.6:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.8&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.8&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That `customers.add` expression is the one that can throw `DuplicateException`.
+    We’re going to replace it with a call to `addToo` but keeping the behavior the
+    same. So we pull out `result` as a local:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.9 [errors.7:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.9&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.9&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we now call `addToo` instead, it will no longer throw, but the exception
+    will be returned in the `Result`. This won’t compile yet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.10 [errors.8:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.10&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.10&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO43-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Type mismatch. Required: Customer Found: Result<Customer,` `Duplicate​Excep⁠tion>`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We have a `Result`, so we need to unpack it. When it is `Success`, we want
+    to return the wrapped value; when `Failure`, throw the wrapped `DuplicateException`
+    (to keep the current behavior of `register`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.11 [errors.9:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.11&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.11&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As it happens, where the error type is an `Exception`, Result4k has a function
+    to shortcut this case: `Result::orThrow`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.12 [errors.10:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.12&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.12&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we can inline to get back to a shorter form:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.13 [errors.11:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.13&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.13&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, that nesting is too confusing for comfort, so let’s simplify it by
+    using “Replace ‘if’ with ‘when’”, “Replace return with ‘when’ expression”, and
+    “Remove braces from all ‘when’ entries”. Alt-Enter all the things!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.14 [errors.12:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.14&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.14&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Splendid. We’ve replaced one of the uses of exceptions with a result type; let’s
+    have a little rest.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Contract
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Ready to go again? Good.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We now have to choose whether to proceed depth- or breadth-first. Depth-first
+    would address the caller of `CustomerRegistration::register`; breadth-first would
+    first fix up the other callers of `Customers::add` so that we can remove it. As
+    it happens, our example code has no other callers of `add`, so breadth-first isn’t
+    an option, and we can get on with the contract phase of expand and contract.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We currently have two implementations of `Customers::add`. One is the production
+    implementation that talks to the database, the other a test implementation. Our
+    code now calls them via the default implementation of `Customers::addToo` that
+    we added to the interface. We want to delete the `add` implementations, so we
+    need to implement `addToo` directly. Let’s look at the (not thread-safe) test
+    version:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.15 [errors.12:src/test/java/travelator/InMemoryCustomers.java]](https://java-to-kotlin.dev/code.html?ref=19.15&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.15&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The easiest way to implement `addToo` here is probably just to duplicate `add`
+    and fix it up, returning `Failure` where we had thrown and `Success` for the happy
+    path:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.16 [errors.13:src/test/java/travelator/InMemoryCustomers.java]](https://java-to-kotlin.dev/code.html?ref=19.16&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.16&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can also use this strategy to add `addToo` to our production implementations
+    of `Customers`; we’ll skip the details. Once we are done, we can delete the unused
+    `add` from the implementations and the interface and then rename `addToo` to `add`,
+    leaving us with:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.17 [errors.14:src/main/java/travelator/Customers.kt]](https://java-to-kotlin.dev/code.html?ref=19.17&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.17&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The clients of `Customers` are now back to calling `add`, albeit the version
+    returning a `Result` rather than declaring checked exceptions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.18 [errors.14:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.18&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.18&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We left `InMemoryCustomers` as Java really just to demonstrate that we could
+    return Result4k types from our old code, but we can’t resist the conversion, because
+    the code now has a number of warnings of the type `Not annotated [X] overrides
+    @NotNull [X]`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After conversion, including moving from streams to Kotlin collection operations
+    ([Chapter 13](ch13.html#streams-to-sequences)), we have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.19 [errors.15:src/test/java/travelator/InMemoryCustomers.kt]](https://java-to-kotlin.dev/code.html?ref=19.19&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.19&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s recap where we are now. `Customers` is now Kotlin, and `add` returns
+    a `Result` instead of throwing `DuplicateException`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.20 [errors.15:src/main/java/travelator/Customers.kt]](https://java-to-kotlin.dev/code.html?ref=19.20&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.20&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`IRegisterCustomers` is still Java and still throws two types of exception:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.21 [errors.15:src/main/java/travelator/IRegisterCustomers.java]](https://java-to-kotlin.dev/code.html?ref=19.21&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.21&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CustomerRegistration` is now Kotlin and is where we now thunk between `Result.Error`
+    and `DuplicateException`, using `orThrow`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.22 [errors.15:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.22&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.22&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have converted a whole layer of our interaction to use a result type and
+    can move out to the next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stepping Out
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If we are to follow the same pattern with `IRegisterCustomers::register` as
+    we did with `Customers`—providing a default implementation of an adapter between
+    exception-throwing and error-returning—we will have to address the issue of how
+    to express the result of a function that can fail for two reasons. That’s because
+    `register` is currently declaring that it throws both `ExcludedException` and
+    `DuplicateException` checked exceptions. In code, we want something like `Result<Customer,`
+    `Either​<Exclu⁠dedException,` `DuplicateException>>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We *could* use a generic `Either` type, but that only gets us so far as a strategy.
+    Unlike Java, where the order that we declare exceptions doesn’t matter, `Either<Exclu⁠ded​Excep⁠tion,
+    DuplicateException>` is not the same thing as `Either<DuplicateException,` `ExcludedException>`.
+    The `Either` is at best really confusing and will get even worse if we ever have
+    more than two exceptions: `OneOf<ExcludedException, Duplicate​Ex⁠cep⁠tion, SomeOtherProblem>`
+    is just horrible.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another option is to move up to the common superclass of the two exceptions
+    and declare the return type as `Result<Customer, Exception>`. This fails the communication
+    test: we can’t look at the signature and gain any clues about what types of errors
+    we are expecting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead, our best strategy here is not to try to express the error in terms
+    of existing types, but to map to a new type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As *exception* and *error* are all overloaded terms, we’ve chosen `RegistrationProblem`,
+    with subtypes of `Excluded` (which carries no additional information and so can
+    be an `object`), and `Duplicate` (which carries any message from the original
+    `DuplicateException`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.23 [errors.16:src/main/java/travelator/IRegisterCustomers.kt]](https://java-to-kotlin.dev/code.html?ref=19.23&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.23&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: By making `RegistrationProblem` a sealed class, we know at compile time what
+    subclasses can exist and, hence, what errors have to be handled—very much like
+    the checked exception signature of a method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can use this `RegistrationProblem` when we follow the pattern from earlier,
+    adding a default implementation of `registerToo` to the interface that returns
+    `Result<Customer, RegistrationProblem>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.24 [errors.16:src/main/java/travelator/IRegisterCustomers.kt]](https://java-to-kotlin.dev/code.html?ref=19.24&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.24&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we can migrate callers of `register` to `registerToo`. We’ll start with
+    `Customer​Regis⁠trationHandler`, converting it to Kotlin first:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.25 [errors.17:src/main/java/travelator/handlers/CustomerRegistrationHandler.kt]](https://java-to-kotlin.dev/code.html?ref=19.25&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.25&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, as we did before, we swap to calling the new method (`registerToo`) instead
+    of the old one (`register`) and interpret the return type with a `when` expression:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.26 [errors.18:src/main/java/travelator/handlers/CustomerRegistrationHandler.kt]](https://java-to-kotlin.dev/code.html?ref=19.26&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.26&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we can remove the unnecessary exception cases and simplify the error
+    case with `map` and `recover`. `Result::recover` is a Result4k extension function
+    that unwraps the result if it is `Success`, otherwise returning the result of
+    mapping the failure’s `reason`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.27 [errors.19:src/main/java/travelator/handlers/CustomerRegistrationHandler.kt]](https://java-to-kotlin.dev/code.html?ref=19.27&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.27&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that this code is still not exception-free. First, the `ObjectMapper`
+    can still throw `JSONProcessingException`. That is the reality of Java (and frankly
+    most Kotlin) APIs, but the code is safe and communicates well, because the throwing
+    and catching are in the same method. Second, we still have to consider other `RuntimeException`s
+    that could be thrown from anywhere: `NullPointerException` and so on. These could
+    have crossed function boundaries and leaked up to here, where the buck stops at
+    the top-level catch-all, which returns `HTTP_INTERNAL_ERROR`. The reality is that
+    we can still have *unexpected* exceptions, but the *expected* failure cases are
+    now expressed by `Results` and communicated in our code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: More Fixup
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We can now confess that the `RegistrationHandlerTests` got broken a few steps
+    ago. Ordinarily we would have fixed them straightaway, but that would have interrupted
+    our explanation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The problem is that the tests are mock tests, which expect calls to `IRegister.register`,
+    but we are now calling `registerToo`. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.28 [errors.20:src/test/java/travelator/handlers/CustomerRegistrationHandlerTests.java]](https://java-to-kotlin.dev/code.html?ref=19.28&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.28&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To fix the tests, we need to change the call from `register`, returning `Customer`
+    or throwing, to `registerToo`, returning `Result<Customer, RegistrationProblem>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.29 [errors.21:src/test/java/travelator/handlers/CustomerRegistrationHandlerTests.java]](https://java-to-kotlin.dev/code.html?ref=19.29&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.29&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The tests are actually simplified, because instead of having to choose `thenReturn`
+    or `thenThrow`, we are now always mocking with `thenReturn`, with `Success` or
+    `Failure`, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that our tests are passing again, we can return to production code and
+    implement `CustomerRegistration::registerToo` directly. In lieu of any cleverer
+    idea, we do this by duplicating the `register` method and fettling the error handling.
+    We do this using `Result::mapFailure` (part of Result4k) to convert `DuplicateException`
+    to `Duplicate`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.30 [errors.22:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.30&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.30&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO44-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that we explicitly specify the type of the lambda parameter in `mapFailure`.
+    As we will see later, this way if we change the return type of `add` to have a
+    different failure type, the compiler will force us to change how we handle it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two problems with this. First, `registerToo` has no test code, and
+    second, we have the duplicate logic caused by our duplicating `register` to create
+    `registerToo`. We can fix both by implementing `register` in terms of `registerToo`—the
+    opposite of what we did in `Customers`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.31 [errors.23:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.31&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.31&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO45-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Delegate to `registerToo` and process `Error` type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now our `CustomerRegistrationTests`, which work in terms of `register`, will
+    be testing `registerToo` for us:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.32 [errors.23:src/test/java/travelator/CustomerRegistrationTests.java]](https://java-to-kotlin.dev/code.html?ref=19.32&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.32&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This would be a good way to keep both `register` and `registerToo` while we
+    migrate away from Java and exceptions to Kotlin and an error type. In this case,
+    though, the tests are actually the last callers of `register`, so let’s convert
+    them to call `registerToo`. We could take the time to show how to use Result4k
+    in Java, but we’re all pretty tired of this example now, so we’ll convert the
+    tests to Kotlin and then have them call `register` with the immortal words, “Here’s
+    one I made earlier”:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.33 [errors.24:src/test/java/travelator/CustomerRegistrationTests.kt]](https://java-to-kotlin.dev/code.html?ref=19.33&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.33&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have no callers of `register`, we can finally remove it and rename
+    `registerToo` to `register`, ending up with exception-free Kotlin:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.34 [errors.25:src/main/java/travelator/IRegisterCustomers.kt]](https://java-to-kotlin.dev/code.html?ref=19.34&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.34&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.35 [errors.25:src/main/java/travelator/Customers.kt]](https://java-to-kotlin.dev/code.html?ref=19.35&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.35&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hmm, not quite exception-free because of that `DuplicateException`. It is not
+    actually *thrown* from anywhere anymore, just created and put into a `Failure`.
+    We can fix this either by renaming the class to `DuplicateCustomerProblem` and
+    stop it from extending `Exception`, or reuse the existing `Duplicate` subclass
+    of `RegistrationProblem`. Which is better?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Layers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If we think in terms of layers, `Customers` is in a lower layer than `Registration`,
+    which depends on it. So `Customers` should not depend on the higher-level `Registration​Pro⁠blem`.
+    We could try to invert the dependency so that the `Duplicate` subclass of `RegistrationProblem`
+    is a subtype (or even just the same type) of `DuplicateCustomer​Pro⁠blem` declared
+    in the repository layer. That would work here, but is a bit of a dead-end if `Customers::add`
+    ever needs to declare another way that it might fail. If, for example, we want
+    to show in our result that database communications might fail, we can’t (well,
+    shouldn’t) make that a subtype of `DuplicateCustomerProblem`. So we will be back
+    to the problem of expressing more than one error type in a single result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s chase that through. If `Customers::add` needs to declare more than one
+    way that it can fail—our previous `DuplicateCustomerProblem` and our new `DatabaseCustomer​Pro⁠blem`—we
+    introduce a sealed `CustomersProblem` as the error type and make the two known
+    problems its only subclasses:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.36 [errors.27:src/main/java/travelator/Customers.kt]](https://java-to-kotlin.dev/code.html?ref=19.36&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.36&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CustomerRegistration` was calling `Customers::add` and handling just `DuplicateCustomerProblem`
+    in `mapFailure`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.37 [errors.26:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.37&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.37&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This no longer compiles, because the type of the failure is now the `CustomersProblem`
+    base class. You can see that we are getting the advantages of checked exceptions:
+    code is communicating the ways in which it can fail and forcing us to deal with
+    the cases.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that `Customers::add` admits that it can fail in a new and interesting
+    way, `register` is also forced to handle the truth. It decides to pass the knowledge
+    on to its callers (well OK, we decide for it) by adding a new `DatabaseProblem`
+    subtype of the existing `RegistrationProblem` sealed class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.38 [errors.27:src/main/java/travelator/IRegisterCustomers.kt]](https://java-to-kotlin.dev/code.html?ref=19.38&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.38&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we can fix `register` by converting between the ways that `add` can fail
+    (`DuplicateCustomerProblem` and `DatabaseCustomerProblem`) and the ways that `register`
+    can fail (`Duplicate` and `DatabaseProblem`, respectively). This now makes the
+    choice of `map​Fai⁠lure` clear:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.39 [errors.27:src/main/java/travelator/CustomerRegistration.kt]](https://java-to-kotlin.dev/code.html?ref=19.39&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.39&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, because we’ve added to the `RegistrationProblem` sealed hierarchy,
+    the compiler now forces us to consider the `DatabaseProblem` in the next layer
+    up by failing to compile `CustomerRegistrationHandler`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 19.40 [errors.27:src/main/java/travelator/handlers/CustomerRegistrationHandler.kt]](https://java-to-kotlin.dev/code.html?ref=19.40&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=19.40&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO46-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have to add a case for `DatabaseProblem` to get the `when` expression to
+    compile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because the `CustomerRegistrationHandler` is the entry point for this interaction,
+    our work is now done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Moving On
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This has been a long chapter, but its length is in proportion to its importance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Your Java project may already have declared exception bankruptcy, with no systematic
+    use of checked exceptions. In this case, Kotlin’s policy of treating everything
+    as an unchecked exception will be fine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you do lean on checked exceptions and want to translate to Kotlin, or want
+    to raise your error handling game as part of the conversion, then using a result
+    type is the best strategy. Where an operation can fail in multiple ways, we can
+    use sealed classes to enumerate the failure modes, at the expense of not being
+    able to propagate the same type through multiple layers. When we have multiple
+    layers, things return to being tedious, but at least they are not very error prone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We could (and maybe should) write a whole book on error handling, but in the
+    meantime you can follow Duncan’s journey down the rabbit hole on [his blog](https://oreil.ly/kfvAn).
+    As well as the material covered here, this shows how to reduce the number of functions
+    that are subject to failure because they are [partial functions](https://oreil.ly/8RoO4).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Reducing the number of our functions that can fail is important, because code
+    that is subject to error is very similar to the actions that we saw in [Chapter 7,
+    *Actions to Calculations*](ch07.html#actions-to-calculations). Actions pollute
+    their callers: by default, code that calls an action becomes an action. In the
+    same way, code that calls code that is subject to failure is itself subject to
+    failure. We can mitigate the effects of both actions and errors by moving them
+    as close as we can to the entry points to our system, so that they taint the least
+    code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We touched briefly in this chapter on making our code robust to errors when
+    they occur. Actions are a problem here too, because they affect the state of our
+    system. State can be corrupted when two things need to be updated, and the first
+    action writes, but the second doesn’t because an error happened before it was
+    invoked. A rigorous focus on the difference between actions and calculations is
+    the key to making robust software.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will return to error handling in [Chapter 21, *Exceptions to Values*](ch21.html#exceptions-to-values).
+  prefs: []
+  type: TYPE_NORMAL

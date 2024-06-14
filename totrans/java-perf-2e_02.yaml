@@ -1,0 +1,1469 @@
+- en: Chapter 2\. An Approach to Performance Testing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter discusses four principles of getting results from performance
+    testing: test real applications; understand throughput, batching, and response
+    time; understand variability; and test early and often. These principles form
+    the basis of the advice given in later chapters. The science of performance engineering
+    is covered by these principles. Executing performance tests on applications is
+    fine, but without scientific analysis behind those tests, they can too often lead
+    to incorrect or incomplete analysis. This chapter covers how to make sure that
+    testing produces valid analysis.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Many of the examples given in later chapters use a common application that emulates
+    a system of stock prices; that application is also outlined in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Test a Real Application
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The first principle is that testing should occur on the actual product in the
+    way the product will be used. Roughly speaking, three categories of code can be
+    used for performance testing: microbenchmarks, macrobenchmarks, and mesobenchmarks.
+    Each has its own advantages and disadvantages. The category that includes the
+    actual application will provide the best results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microbenchmarks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A *microbenchmark* is a test designed to measure a small unit of performance
+    in order to decide which of multiple alternate implementations is preferable:
+    the overhead in creating a thread versus using a thread pool, the time to execute
+    one arithmetic algorithm versus an alternate implementation, and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microbenchmarks may seem like a good idea, but the features of Java that make
+    it attractive to developers—namely, just-in-time compilation and garbage collection—make
+    it difficult to write microbenchmarks correctly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microbenchmarks must use their results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Microbenchmarks differ from regular programs in various ways. First, because
+    Java code is interpreted the first few times it is executed, it gets faster the
+    longer it is executed. For this reason, all benchmarks (not just microbenchmarks)
+    typically include a warm-up period during which the JVM is allowed to compile
+    the code into its optimal state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That optimal state can include a lot of optimizations. For example, here’s
+    a seemingly simple loop to calculate an implementation of a method that calculates
+    the 50th Fibonacci number:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code wants to measure the time to execute the `fibImpl1()` method, so it
+    warms up the compiler first and then measures the now-compiled method. But likely,
+    that time will be 0 (or more likely, the time to run the `for` loop without a
+    body). Since the value of `l` is not read anywhere, the compiler is free to skip
+    its calculation altogether. That depends on what else happens in the `fibImpl1()`
+    method, but if it’s just a simple arithmetic operation, it can all be skipped.
+    It’s also possible that only parts of the method will be executed, perhaps even
+    producing the incorrect value for `l`; since that value is never read, no one
+    will know. (Details of how the loop is eliminated are given in [Chapter 4](ch04.html#JustInTimeCompilation).)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is a way around that particular issue: ensure that each result is read,
+    not simply written. In practice, changing the definition of `l` from a local variable
+    to an instance variable (declared with the `volatile` keyword) will allow the
+    performance of the method to be measured. (The reason the `l` instance variable
+    must be declared as `volatile` can be found in [Chapter 9](ch09.html#ThreadPerformance).)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microbenchmarks must test a range of input
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Even then, potential pitfalls exist. This code performs only one operation:
+    calculating the 50th Fibonacci number. A smart compiler can figure that out and
+    execute the loop only once—or at least discard some iterations of the loop since
+    those operations are redundant.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, the performance of `fibImpl1(1000)` is likely to be very different
+    from the performance of `fibImpl1(1)`; if the goal is to compare the performance
+    of different implementations, a range of input values must be considered.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A range of inputs could be random, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: That likely isn’t what we want. The time to calculate the random numbers is
+    included in the time to execute the loop, so the test now measures the time to
+    calculate a Fibonacci sequence `nLoops` times, plus the time to generate `nLoops`
+    random integers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is better to precalculate the input values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Microbenchmarks must measure the correct input
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'You probably noticed that now the test has to check for an exception when calling
+    the `fibImpl1()` method: the input range includes negative numbers (which have
+    no Fibonacci number) and numbers greater than 1,476 (which yield a result that
+    cannot be represented as a `double`).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When that code is used in production, are those likely input values? In this
+    example, probably not; in your own benchmarks, your mileage may vary. But consider
+    the effect here: let’s say that you are testing two implementations of this operation.
+    The first is able to calculate a Fibonacci number fairly quickly but doesn’t bother
+    to check its input parameter range. The second immediately throws an exception
+    if the input parameter is out of range, but then executes a slow, recursive operation
+    to calculate the Fibonacci number, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Comparing this implementation to the original implementation over a wide range
+    of input values will show this new implementation is much faster than the original
+    one—simply because of the range checks at the beginning of the method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If, in the real world, users are always going to pass values less than 100 to
+    the method, that comparison will give us the wrong answer. In the common case,
+    the `fibImpl1()` method will be faster, and as [Chapter 1](ch01.html#Introduction)
+    explained, we should optimize for the common case. (This is obviously a contrived
+    example, and simply adding a bounds test to the original implementation makes
+    it a better implementation anyway. In the general case, that may not be possible.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microbenchmark code may behave differently in production
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: So far, the issues we’ve looked at can be overcome by carefully writing our
+    microbenchmark. Other things will affect the end result of the code after it is
+    incorporated into a larger program. The compiler uses profile feedback of code
+    to determine the best optimizations to employ when compiling a method. The profile
+    feedback is based on which methods are frequently called, the stack depth when
+    they are called, the actual type (including subclasses) of their arguments, and
+    so on—it is dependent on the environment in which the code actually runs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, the compiler will frequently optimize code differently in a microbenchmark
+    than it optimizes that same code when used in a larger application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Microbenchmarks may also exhibit very different behavior in terms of garbage
+    collection. Consider two microbenchmark implementations: the first one produces
+    fast results but also produces many short-lived objects. The second is slightly
+    slower but produces fewer short-lived objects.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we run a small program to test these, the first will likely be faster.
+    Even though it will trigger more garbage collections, they will be quick to discard
+    the short-lived objects in collections of the young generation, and the faster
+    overall time will favor that implementation. When we run this code in a server
+    with multiple threads executing simultaneously, the GC profile will look different:
+    the multiple threads will fill up the young generation faster. Hence, many of
+    the short-lived objects that were quickly discarded in the case of the microbenchmark
+    may end up getting promoted into the old generation when used in the multithreaded
+    server environment. This, in turn, will lead to frequent (and expensive) full
+    GCs. In that case, the long times spent in the full GCs will make the first implementation
+    perform worse than the second, “slower” implementation that produces less garbage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, there is the issue of what the microbenchmark actually means. The overall
+    time difference in a benchmark such as the one discussed here may be measured
+    in seconds for many loops, but the per iteration difference is often measured
+    in nanoseconds. Yes, nanoseconds add up, and “death by 1,000 cuts” is a frequent
+    performance issue. But particularly in regression testing, consider whether tracking
+    something at the nanosecond level makes sense. It may be important to save a few
+    nanoseconds on each access to a collection that will be accessed millions of times
+    (for example, see [Chapter 12](ch12.html#Misc)). For an operation that occurs
+    less frequently—for example, maybe once per request for a REST call—fixing a nanosecond
+    regression found by a microbenchmark will take away time that could be more profitably
+    spent on optimizing other operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Still, for all their pitfalls, microbenchmarks are popular enough that the
+    OpenJDK has a core framework to develop microbenchmarks: the Java Microbenchmark
+    Harness (`jmh`). `jmh` is used by the JDK developers to build regression tests
+    for the JDK itself, as well as providing a framework for the development of general
+    benchmarks. We’ll discuss `jmh` in more detail in the next section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Macrobenchmarks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The best thing to use to measure performance of an application is the application
+    itself, in conjunction with any external resources it uses. This is a *macrobenchmark*.
+    If the application normally checks the credentials of a user by making calls to
+    a directory service (e.g., via Lightweight Directory Access Protocol, or LDAP),
+    it should be tested in that mode. Stubbing out the LDAP calls may make sense for
+    module-level testing, but the application must be tested in its full configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As applications grow, this maxim becomes both more important to fulfill and
+    more difficult to achieve. Complex systems are more than the sum of their parts;
+    they will behave quite differently when those parts are assembled. Mocking out
+    database calls, for example, may mean that you no longer have to worry about the
+    database performance—and hey, you’re a Java person; why should you have to deal
+    with the DBA’s performance problem? But database connections consume lots of heap
+    space for their buffers; networks become saturated when more data is sent over
+    them; code is optimized differently when it calls a simpler set of methods (as
+    opposed to the complex code in a JDBC driver); CPUs pipeline and cache shorter
+    code paths more efficiently than longer code paths; and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The other reason to test the full application is one of resource allocation.
+    In a perfect world, there would be enough time to optimize every line of code
+    in the application. In the real world, deadlines loom, and optimizing only one
+    part of a complex environment may not yield immediate benefits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consider the data flow shown in [Figure 2-1](#FigureBenchmark). Data comes in
+    from a user, a proprietary business calculation is made, data based on that is
+    loaded from the database, more proprietary calculations are made, changed data
+    is stored back to the database, and an answer is sent back to the user. The number
+    in each box is the number of requests per second (RPS) that the module can process
+    when tested in isolation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From a business perspective, the proprietary calculations are the most important
+    thing; they are the reason the program exists, and the reason we are paid. Yet
+    making them 100% faster will yield absolutely no benefit in this example. Any
+    application (including a single, standalone JVM) can be modeled as a series of
+    steps like this, where data flows out of a box (module, subsystem, etc.) at a
+    rate determined by the efficiency of that box. Data flows into a subsystem at
+    a rate determined by the output rate of the previous box.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jp2e 0201](assets/jp2e_0201.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2-1\. Typical program flow
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Assume that an algorithmic improvement is made to the business calculation
+    so that it can process 200 RPS; the load injected into the system is correspondingly
+    increased. The LDAP system can handle the increased load: so far, so good, and
+    200 RPS will flow into the calculation module, which will output 200 RPS.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: But the data loading can still process only 100 RPS. Even though 200 RPS flow
+    into the database, only 100 RPS flow out of it and into the other modules. The
+    total throughput of the system is still only 100 RPS, even though the efficiency
+    of the business logic has doubled. Further attempts to improve the business logic
+    will prove futile until time is spent improving other aspects of the environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The time spent optimizing the calculations in this example isn’t entirely wasted:
+    once effort is put into the bottlenecks elsewhere in the system, the performance
+    benefit will finally be apparent. Rather, it is a matter of priorities: without
+    testing the entire application, it is impossible to tell where spending time on
+    performance work will pay off.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mesobenchmarks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Mesobenchmarks* are tests that occupy a middle ground between a microbenchmark
+    and a full application. I work with developers on the performance of both Java
+    SE and large Java applications, and each group has a set of tests they characterize
+    as microbenchmarks. To a Java SE engineer, that term connotes an example even
+    smaller than that in the first section: the measurement of something quite small.
+    Application developers tend to use that term to apply to something else: benchmarks
+    that measure one aspect of performance but that still execute a lot of code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An example of an application microbenchmark might be something that measures
+    how quickly the response from a simple REST call can be returned from a server.
+    The code for such a request is substantial compared to a traditional microbenchmark:
+    there is a lot of socket-management code, code to read the request, code to write
+    the answer, and so on. From a traditional standpoint, this is not microbenchmarking.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This kind of test is not a macrobenchmark either: there is no security (e.g.,
+    the user does not log in to the application), no session management, and no use
+    of a host of other application features. Because it is only a subset of an actual
+    application, it falls somewhere in the middle—it is a mesobenchmark. That is the
+    term I use for benchmarks that do some real work but are not full-fledged applications.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Mesobenchmarks have fewer pitfalls than microbenchmarks and are easier to work
+    with than macrobenchmarks. Mesobenchmarks likely won’t contain a large amount
+    of dead code that can be optimized away by the compiler (unless that dead code
+    exists in the application, in which case optimizing it away is a good thing).
+    Mesobenchmarks are more easily threaded: they are still more likely to encounter
+    more synchronization bottlenecks than the code will encounter when run in a full
+    application, but those bottlenecks are something the real application will eventually
+    encounter on larger hardware systems under larger load.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Still, mesobenchmarks are not perfect. A developer who uses a benchmark like
+    this to compare the performance of two application servers may be easily led astray.
+    Consider the hypothetical response times of two REST servers shown in [Table 2-1](#TableMesoBenchmark).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 2-1\. Hypothetical response times for two REST servers
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Test | Server 1 | Server 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Simple REST call | 19 ± 2.1 ms | 50 ± 2.3 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| REST call with authorization | 75 ± 3.4 ms | 50 ± 3.1 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: The developer who uses only a simple REST call to compare the performance of
+    the two servers might not realize that server 2 is automatically performing authorization
+    for each request. They may then conclude that server 1 will provide the fastest
+    performance. Yet if their application always needs authorization (which is typical),
+    they will have made the incorrect choice, since it takes server 1 much longer
+    to perform that authorization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Even so, mesobenchmarks offer a reasonable alternative to testing a full-scale
+    application; their performance characteristics are much more closely aligned to
+    an actual application than are the performance characteristics of microbenchmarks.
+    And there is, of course, a continuum here. A later section in this chapter presents
+    the outline of a common application used for many of the examples in subsequent
+    chapters. That application has a server mode (for both REST and Jakarta Enterprise
+    Edition servers), but those modes don’t use server facilities like authentication,
+    and though it can access an enterprise resource (i.e., a database), in most examples
+    it just makes up random data in place of database calls. In batch mode, it mimics
+    some actual (but quick) calculations: for example, no GUI or user interaction
+    occurs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mesobenchmarks are also good for automated testing, particularly at the module
+    level.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Good microbenchmarks are hard to write without an appropriate framework.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Testing an entire application is the only way to know how code will actually
+    run.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Isolating performance at a modular or operational level—via a mesobenchmark—offers
+    a reasonable approach but is no substitute for testing the full application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understand Throughput, Batching, and Response Time
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The second principle is to understand and select the appropriate test metric
+    for the application. Performance can be measured as throughput (RPS), elapsed
+    time (batch time), or response time, and these three metrics are interrelated.
+    Understanding those relationships allows you to focus on the correct metric, depending
+    on the goal of the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Elapsed Time (Batch) Measurements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The simplest way to measure performance is to see how long it takes to accomplish
+    a certain task. We might, for example, want to retrieve the history of 10,000
+    stocks for a 25-year period and calculate the standard deviation of those prices,
+    produce a report of the payroll benefits for the 50,000 employees of a corporation,
+    or execute a loop 1,000,000 times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In statically compiled languages, this testing is straightforward: the application
+    is written, and the time of its execution is measured. The Java world adds a wrinkle
+    to this: just-in-time compilation. That process is described in [Chapter 4](ch04.html#JustInTimeCompilation);
+    essentially it means that it takes anywhere from a few seconds to a few minutes
+    (or longer) for the code to be fully optimized and operate at peak performance.
+    For that (and other) reasons, performance studies of Java are concerned about
+    warm-up periods: performance is most often measured after the code in question
+    has been executed long enough for it to have been compiled and optimized.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, in many cases the performance of the application from start
+    to finish is what matters. A report generator that processes ten thousand data
+    elements will complete in a certain amount of time; to the end user, it doesn’t
+    matter if the first five thousand elements are processed 50% more slowly than
+    the last five thousand elements. And even in something like a REST server—where
+    the server’s performance will certainly improve over time—the initial performance
+    matters. It will take some time for a server to reach peak performance; to the
+    users accessing the application during that time, the performance during the warm-up
+    period does matter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For those reasons, many examples in this book are batch-oriented (even if that
+    is a little uncommon).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Throughput Measurements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A *throughput measurement* is based on the amount of work that can be accomplished
+    in a certain period of time. Although the most common examples of throughput measurements
+    involve a server processing data fed by a client, that is not strictly necessary:
+    a single, standalone application can measure throughput just as easily as it measures
+    elapsed time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a client/server test, a throughput measurement means that clients have no
+    think time. If there is a single client, that client sends a request to the server.
+    When the client receives a response, it immediately sends a new request. That
+    process continues; at the end of the test, the client reports the total number
+    of operations it achieved. Typically, the client has multiple threads doing the
+    same thing, and the throughput is the aggregate measure of the number of operations
+    all clients achieved. Usually, this number is reported as the number of operations
+    per second, rather than the total number of operations over the measurement period.
+    This measurement is frequently referred to as *transactions per second* (TPS),
+    *requests per second* (RPS), or *operations per second* (OPS).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The configuration of the client in client/server tests is important; you need
+    to ensure that the client can send data quickly enough to the server. This may
+    not occur because there aren’t enough CPU cycles on the client machine to run
+    the desired number of client thread, or because the client has to spend a lot
+    of time processing the request before it can send a new request. In those cases,
+    the test is effectively measuring the client performance rather than the server
+    performance, which is usually not the goal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This risk depends on the amount of work that each client thread performs (and
+    the size and configuration of the client machine). A zero-think-time (throughput-oriented)
+    test is more likely to encounter this situation, since each client thread is performing
+    more requests. Hence, throughput tests are typically executed with fewer client
+    threads (less load) than a corresponding test that measures response time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tests that measure throughput also commonly report the average response time
+    of requests. That is an interesting piece of information, but changes in that
+    number don’t indicate a performance problem unless the reported throughput is
+    the same. A server that can sustain 500 OPS with a 0.5-second response time is
+    performing better than a server that reports a 0.3-second response time but only
+    400 OPS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Throughput measurements are almost always taken after a suitable warm-up period,
+    particularly because what is being measured is not a fixed set of work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Response-Time Tests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The last common test is one that measures *response time*: the amount of time
+    that elapses between the sending of a request from a client and the receipt of
+    the response.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The difference between a response-time test and a throughput test (assuming
+    the latter is client/server based) is that client threads in a response-time test
+    sleep for a period of time between operations. This is referred to as *think time*.
+    A response-time test is designed to mimic more closely what a user does: the user
+    enters a URL in a browser, spends time reading the page that comes back, clicks
+    a link in the page, spends time reading that page, and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When think time is introduced into a test, throughput becomes fixed: a given
+    number of clients executing requests with a given think time will always yield
+    the same TPS (with slight variance; see the following sidebar). At that point,
+    the important measurement is the response time for the request: the effectiveness
+    of the server is based on how quickly it responds to that fixed load.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can measure response time in two ways. Response time can be reported as
+    an average: the individual times are added together and divided by the number
+    of requests. Response time can also be reported as a *percentile request*; for
+    example, the 90th% response time. If 90% of responses are less than 1.5 seconds
+    and 10% of responses are greater than 1.5 seconds, then 1.5 seconds is the 90th%
+    response time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One difference between average response time and a percentile response time
+    is in the way outliers affect the calculation of the average: since they are included
+    as part of the average, large outliers will have a large effect on the average
+    response time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 2-2](#FigureRT) shows a graph of 20 requests with a somewhat typical
+    range of response times. The response times range from 1 to 5 seconds. The average
+    response time (represented by the lower heavy line along the x-axis) is 2.35 seconds,
+    and 90% of the responses occur in 4 seconds or less (represented by the upper
+    heavy line along the x-axis).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the usual scenario for a well-behaved test. Outliers can skew that analysis,
+    as the data in [Figure 2-3](#FigureRTOutlier) shows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This data set includes a huge outlier: one request took one hundred seconds.
+    As a result, the positions of the 90th% and average response times are reversed.
+    The average response time is a whopping 5.95 seconds, but the 90th% response time
+    is 1.0 second. Focus in this case should be given to reducing the effect of the
+    outlier (which will drive down the average response time).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Graph of Typical Response Times](assets/jp2e_0202.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2-2\. Typical set of response times
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '![Graph of Response Times with Outlier](assets/jp2e_0203.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2-3\. Set of response times with an outlier
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Outliers like that can occur for multiple reasons, and they can more easily
+    occur in Java applications because of the pause times introduced by GC.^([1](ch02.html#idm45775552311416))
+    In performance testing, the usual focus is on the 90th% response time (or even
+    the 95th% or 99th% response time; there is nothing magical about 90%). If you
+    can focus on only one number, a percentile-based number is the better choice,
+    since achieving a smaller number there will benefit a majority of users. But it
+    is even better to look at both the average response time and at least one percentile-based
+    response time, so you do not miss cases with large outliers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Batch-oriented tests (or any test without a warm-up period) have been infrequently
+    used in Java performance testing but can yield valuable results.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Other tests can measure either throughput or response time, depending on whether
+    the load comes in at a fixed rate (i.e., based on emulating think time in the
+    client).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understand Variability
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The third principle is to understand how test results vary over time. Programs
+    that process exactly the same set of data will produce a different answer each
+    time they are run. Background processes on the machine will affect the application,
+    the network will be more or less congested when the program is run, and so on.
+    Good benchmarks also never process exactly the same set of data each time they
+    are run; random behavior will be built into the test to mimic the real world.
+    This creates a problem: when comparing the result from one run to the result from
+    another run, is the difference due to a regression or to the random variation
+    of the test?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This problem can be solved by running the test multiple times and averaging
+    those results. Then when a change is made to the code being tested, the test can
+    be rerun multiple times, the results averaged, and the two averages compared.
+    It sounds so easy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, it isn’t as simple as that. Understanding when a difference is
+    a real regression and when it is a random variation is difficult. In this key
+    area, science leads the way, but art will come into play.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When averages in benchmark results are compared, it is impossible to know with
+    absolute certainty whether the difference in the averages is real or due to random
+    fluctuation. The best that can be done is to hypothesize that “the averages are
+    the same” and then determine the probability that such a statement is true. If
+    the statement is false with a high degree of probability, we are comfortable believing
+    the difference in the averages (though we can never be 100% certain).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testing code for changes like this is called *regression testing*. In a regression
+    test, the original code is known as the *baseline*, and the new code is called
+    the *specimen*. Take the case of a batch program in which the baseline and specimen
+    are each run three times, yielding the times given in [Table 2-2](#TableTTest1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 2-2\. Hypothetical times to execute two tests
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Baseline | Specimen |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| First iteration | 1.0 second | 0.5 second |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Second iteration | 0.8 second | 1.25 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Third iteration | 1.2 seconds | 0.5 second |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **Average** | **1 second** | **0.75 second** |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The average of the specimen indicates a 25% improvement in the code. How confident
+    can we be that the test really reflects a 25% improvement? Things look good: two
+    of the three specimen values are less than the baseline average, and the size
+    of the improvement is large. Yet when the analysis described in this section is
+    performed on those results, it turns out that the probability of the specimen
+    and the baseline having the same performance is 43%. When numbers like these are
+    observed, 43% of the time the underlying performance of the two tests are the
+    same, and performance is different only 57% of the time. This, by the way, is
+    not exactly the same thing as saying that 57% of the time the performance is 25%
+    better, but you’ll learn more about that later in this section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The reason these probabilities seem different than might be expected is due
+    to the large variation in the results. In general, the larger the variation in
+    a set of results, the harder it is to guess the probability that the difference
+    in the averages is real or due to random chance.^([2](ch02.html#idm45775552239592))
+  prefs: []
+  type: TYPE_NORMAL
+- en: This number—43%—is based on the result of *Student’s t-test*, which is a statistical
+    analysis based on the series and their variances.^([3](ch02.html#idm45775552237160))
+    The *t*-test produces a number called the *p-value*, which refers to the probability
+    that the null hypothesis for the test is true.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The *null hypothesis* in regression testing is the hypothesis that the two tests
+    have equal performance. The *p*-value for this example is roughly 43%, which means
+    the confidence we can have that the series converge to the same average is 43%.
+    Conversely, the confidence we have that the series do not converge to the same
+    average is 57%.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What does it mean to say that 57% of the time, the series do not converge to
+    the same average? Strictly speaking, it doesn’t mean that we have 57% confidence
+    that there is a 25% improvement in the result—it means only that we have 57% confidence
+    that the results are different. There may be a 25% improvement, there may be a
+    125% improvement; it is even conceivable that the specimen has worse performance
+    than the baseline. The most probable likelihood is that the difference in the
+    test is similar to what has been measured (particularly as the *p*-value goes
+    down), but certainty can never be achieved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The *t*-test is typically used in conjunction with an *α-value*, which is a
+    (somewhat arbitrary) point at which the result is assumed to have statistical
+    significance. The *α*-value is commonly set to 0.1—which means that a result is
+    considered statistically significant if the specimen and baseline will be the
+    same only 10% (0.1) of the time (or conversely, that 90% of the time the specimen
+    and baseline differ). Other commonly used *α*-values are 0.05 (95%) or 0.01 (99%).
+    A test is considered statistically significant if the *p*-value is larger than
+    1 – *α*-value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, the proper way to search for regressions in code is to determine a level
+    of statistical significance—say, 90%—and then to use the *t*-test to determine
+    if the specimen and baseline are different within that degree of statistical significance.
+    Care must be taken to understand what it means if the test for statistical significance
+    fails. In the example, the *p*-value is 0.43; we cannot say that there is statistical
+    significance within a 90% confidence level that the result indicates that the
+    averages are different. The fact that the test is not statistically significant
+    does not mean that it is an insignificant result; it simply means that the test
+    is inconclusive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The usual reason a test is statistically inconclusive is that the samples don’t
+    have enough data. So far, our example has looked at a series with three results
+    in the baseline and the specimen. What if three additional results are added,
+    yielding the data in [Table 2-3](#TableTTest2)?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 2-3\. Increased sample size of hypothetical times
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Baseline | Specimen |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| First iteration | 1.0 second | 0.5 second |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Second iteration | 0.8 second | 1.25 second |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Third iteration | 1.2 seconds | 0.5 second |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fourth iteration | 1.1 seconds | 0.8 second |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fifth iteration | 0.7 second | 0.7 second |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sixth iteration | 1.2 seconds | 0.75 second |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **Average** | **1 second** | **0.75 second** |'
+  prefs: []
+  type: TYPE_TB
+- en: 'With the additional data, the *p*-value drops from 0.43 to 0.11: the probability
+    that the results are different has risen from 57% to 89%. The averages haven’t
+    changed; we just have more confidence that the difference is not due to random
+    variation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running additional tests until a level of statistical significance is achieved
+    isn’t always practical. It isn’t, strictly speaking, necessary either. The choice
+    of the *α*-value that determines statistical significance is arbitrary, even if
+    the usual choice is common. A *p*-value of 0.11 is not statistically significant
+    within a 90% confidence level, but it is statistically significant within an 89%
+    confidence level.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Regression testing is important, but it’s not a black-and-white science. You
+    cannot look at a series of numbers (or their averages) and make a judgment that
+    compares them without doing some statistical analysis to understand what the numbers
+    mean. Yet even that analysis cannot yield a completely definitive answer, because
+    of the laws of probabilities. The job of a performance engineer is to look at
+    the data, understand the probabilities, and determine where to spend time based
+    on all the available data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Correctly determining whether results from two tests are different requires
+    a level of statistical analysis to make sure that perceived differences are not
+    the result of random chance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The rigorous way to accomplish that is to use Student’s *t*-test to compare
+    the results.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Data from the *t*-test tells us the probability that a regression exists, but
+    it doesn’t tell us which regressions should be ignored and which must be pursued.
+    Finding that balance is part of the art of performance engineering.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Test Early, Test Often
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Fourth and, finally, performance geeks (including me) like to recommend that
+    performance testing be an integral part of the development cycle. In an ideal
+    world, performance tests would be run as part of the process when code is checked
+    into the central repository; code that introduces performance regressions would
+    be blocked from being checked in.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some inherent tension exists between that recommendation and other recommendations
+    in this chapter—and between that recommendation and the real world. A good performance
+    test will encompass a lot of code—at least a medium-sized mesobenchmark. It will
+    need to be repeated multiple times to establish confidence that any difference
+    found between the old code and the new code is a real difference and not just
+    random variation. On a large project, this can take a few days or a week, making
+    it unrealistic to run performance tests on code before checking it into a repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The typical development cycle does not make things any easier. A project schedule
+    often establishes a feature-freeze date: all feature changes to code must be checked
+    into the repository at an early point in the release cycle, and the remainder
+    of the cycle is devoted to shaking out any bugs (including performance issues)
+    in the new release. This causes two problems for early testing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developers are under time constraints to get code checked in to meet the schedule;
+    they will balk at having to spend time fixing a performance issue when the schedule
+    has time for that after all the initial code is checked in. The developer who
+    checks in code causing a 1% regression early in the cycle will face pressure to
+    fix that issue; the developer who waits until the evening of the feature freeze
+    can check in code that causes a 20% regression and deal with it later.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Performance characteristics of code will change as the code changes. This is
+    the same principle that argued for testing the full application (in addition to
+    any module-level tests that may occur): heap usage will change, code compilation
+    will change, and so on.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Despite these challenges, frequent performance testing during development is
+    important, even if the issues cannot be immediately addressed. A developer who
+    introduces code causing a 5% regression may have a plan to address that regression
+    as development proceeds: maybe the code depends on an as-yet-to-be integrated
+    feature, and when that feature is available, a small tweak will allow the regression
+    to go away. That’s a reasonable position, even though it means that performance
+    tests will have to live with that 5% regression for a few weeks (and the unfortunate
+    but unavoidable issue that said regression is masking other regressions).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, if the new code causes a regression that can be fixed with
+    only architectural changes, it is better to catch the regression and address it
+    early, before the rest of the code starts to depend on the new implementation.
+    It’s a balancing act, requiring analytic and often political skills.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Early, frequent testing is most useful if the following guidelines are followed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Automate everything
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All performance testing should be scripted (or programmed, though scripting
+    is usually easier). Scripts must be able to install the new code, configure it
+    into the full environment (creating database connections, setting up user accounts,
+    and so on), and run the set of tests. But it doesn’t stop there: the scripts must
+    be able to run the test multiple times, perform *t*-test analysis on the results,
+    and produce a report showing the confidence level that the results are the same,
+    and the measured difference if they are not the same.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The automation must make sure that the machine is in a known state before tests
+    are run: it must check that no unexpected processes are running, that the OS configuration
+    is correct, and so on. A performance test is repeatable only if the environment
+    is the same from run to run; the automation must take care of that.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measure everything
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The automation must gather every conceivable piece of data that will be useful
+    for later analysis. This includes system information sampled throughout the run:
+    CPU usage, disk usage, network usage, memory usage, and so on. It includes logs
+    from the application—both those the application produces, and the logs from the
+    garbage collector. Ideally, it can include Java Flight Recorder (JFR) recordings
+    (see [Chapter 3](ch03.html#Tools)) or other low-impact profiling information,
+    periodic thread stacks, and other heap analysis data like histograms or full heap
+    dumps (though the full heap dumps, in particular, take a lot of space and cannot
+    necessarily be kept long-term).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The monitoring information must also include data from other parts of the system,
+    if applicable: for example, if the program uses a database, include the system
+    statistics from the database machine as well as any diagnostic output from the
+    database (including performance reports like Oracle’s Automatic Workload Repository,
+    or AWR, reports).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This data will guide the analysis of any regressions that are uncovered. If
+    the CPU usage has increased, it’s time to consult the profile information to see
+    what is taking more time. If the time spent in GC has increased, it’s time to
+    consult the heap profiles to see what is consuming more memory. If CPU time and
+    GC time have decreased, contention somewhere has likely slowed performance: stack
+    data can point to particular synchronization bottlenecks (see [Chapter 9](ch09.html#ThreadPerformance)),
+    JFR recordings can be used to find application latencies, or database logs can
+    point to something that has increased database contention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When figuring out the source of a regression, it is time to play detective,
+    and the more data that is available, the more clues there are to follow. As discussed
+    in [Chapter 1](ch01.html#Introduction), it isn’t necessarily the case that the
+    JVM is the regression. Measure everything, everywhere, to make sure the correct
+    analysis can be done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Run on the target system
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A test that is run on a single-core laptop will behave differently than a test
+    run on a machine with 72 cores. That should be clear in terms of threading effects:
+    the larger machine is going to run more threads at the same time, reducing contention
+    among application threads for access to the CPU. At the same time, the large system
+    will show synchronization bottlenecks that would be unnoticed on the small laptop.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other performance differences are just as important, even if they are not as
+    immediately obvious. Many important tuning flags calculate their defaults based
+    on the underlying hardware the JVM is running on. Code is compiled differently
+    from platform to platform. Caches—software and, more importantly, hardware—behave
+    differently on different systems and under different loads. And so on…
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, the performance of a particular production environment can never be fully
+    known without testing the expected load on the expected hardware. Approximations
+    and extrapolations can be made from running smaller tests on smaller hardware,
+    and in the real world, duplicating a production environment for testing can be
+    quite difficult or expensive. But extrapolations are simply predictions, and even
+    in the best case, predictions can be wrong. A large-scale system is more than
+    the sum of its parts, and there can be no substitute for performing adequate load
+    testing on the target platform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Frequent performance testing is important, but it doesn’t occur in a vacuum;
+    there are trade-offs to consider regarding the normal development cycle.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An automated testing system that collects all possible statistics from all machines
+    and programs will provide the necessary clues to any performance regressions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Benchmark Examples
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Some examples in this book use `jmh` to provide a microbenchmark. In this section,
+    we’ll look in depth at how one such microbenchmark is developed as an example
+    of how to write your own `jmh` benchmark. But many examples in this book are based
+    on variants of a mesobenchmark—a test that is complex enough to exercise various
+    JVM features but less complex than a real application. So following our exploration
+    of `jmh`, we’ll look through some of the common code examples of the mesobenchmark
+    used in later chapters so that those examples have some context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java Microbenchmark Harness
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '`jmh` is a set of classes that supply a framework for writing benchmarks. The
+    *m* in `jmh` used to stand for *microbenchmark*, though now `jmh` advertises itself
+    as suitable for nano/micro/milli/macro benchmarks. Its typical usage, though,
+    remains small (micro) benchmarks. Although `jmh` was announced in conjunction
+    with Java 9, it isn’t really tied to any specific Java release, and no tools in
+    the JDK support `jmh`. The class libraries that make up `jmh` are compatible with
+    JDK 8 and later releases.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`jmh` takes some of the uncertainty out of writing a good benchmark, but it
+    is not a silver bullet; you still must understand what you’re benchmarking and
+    how to write good benchmark code. But the features of `jmh` are designed to make
+    that easier.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`jmh` is used for a few examples in the book, including a test for JVM parameters
+    that affect string interning presented in [Chapter 12](ch12.html#Misc). We’ll
+    use that example here to understand how to write a benchmark using `jmh`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is possible to write a `jmh` benchmark from scratch, but it is easier to
+    start with a `jmh`-provided main class and write only the benchmark-specific code.
+    And while it is possible to get the necessary `jmh` classes by using a variety
+    of tools (and even certain IDEs), the basic method is to use Maven. The following
+    command will create a Maven project that we can add our benchmark code to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: This creates the Maven project in the *string-intern-benchmark* directory; there,
+    it creates a directory with the given `groupId` name, and a skeleton benchmark
+    class called `MyBenchmark`. There’s nothing special about that name; you can create
+    a different (or several different) classes, since `jmh` will figure out which
+    classes to test by looking for an annotation called `Benchmark`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We’re interested in testing the performance of the `String.intern()` method,
+    so the first benchmark method we would write looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The basic outline of the `testIntern()` method should make sense: we are testing
+    the time to create 10,000 interned strings. The `Blackhole` class used here is
+    a `jmh` feature that addresses one of the points about microbenchmarking: if the
+    value of an operation isn’t used, the compiler is free to optimize out the operation.
+    So we make sure that the values are used by passing them to the `consume()` method
+    of the `Blackhole`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this example, the `Blackhole` isn’t strictly needed: we’re really interested
+    in only the side effects of calling the `intern()` method, which is going to insert
+    a string into a global hash table. That state change cannot be compiled away even
+    if we don’t use the return value from the `intern()` method itself. Still, rather
+    than puzzle through whether it’s necessary to consume a particular value, it’s
+    better to be in the habit of making sure the operation will execute as we expect
+    and consume calculated values.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To compile and run the benchmark:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: From the output, we can see how `jmh` helps avoid the pitfalls that we discussed
+    earlier in this chapter. First, see that we execute five warm-up iterations of
+    10 seconds each, followed by five measurement iterations (also of 10 seconds each).
+    The warm-up iterations allow the compiler to fully optimize the code, and then
+    the harness will report information from only the iterations of that compiled
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then see that there are different forks (five in all). The harness is repeating
+    the test five times, each time in a separate (newly forked) JVM in order to determine
+    the repeatability of the results. And each JVM needs to warm up and then measure
+    the code. A forked test like this (with warm-up and measurement intervals) is
+    called a *trial*. In all, each test takes one hundred seconds for 5 warm-up and
+    5 measurement cycles; that is all repeated 5 times, and the total execution time
+    is 8:20 minutes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we have the summary output: on average, the `testIntern()` method
+    executed 177 times per second. With a confidence interval of 99.9%, we can say
+    that the statistical average lies between 167 and 187 operations per second. So
+    `jmh` also helps us with the necessary statistical analysis we need to understand
+    if a particular result is running with acceptable variance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: JMH and parameters
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Often you want a range of input for a test; in this example, we’d like to see
+    the effect of interning 1 or 10,000 (or maybe even 1 million) strings. Rather
+    than hardcoding that value in the `testIntern()` method, we can introduce a parameter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now `jmh` will report results for both values of the parameter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Predictably, with a loop size of 10,000, the number of times the loop is run
+    per second is reduced by a factor of 10,000\. In fact, the result for 10,000 strings
+    is less than something around 283 as we might hope, which is due to the way the
+    string intern table scales (which is explained when we use this benchmark in [Chapter 12](ch12.html#Misc)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s usually easier to have a single simple value for the parameter in the
+    source code and use that for testing. When you run the benchmark, you can give
+    it a list of values to use for each parameter, overriding the value that is hardcoded
+    in the Java code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Comparing tests
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The genesis of this benchmark is to figure out if we can make string interning
+    faster by using different JVM tunings. To do that, we’ll run the benchmark with
+    different JVM arguments by specifying those arguments on the command line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Then we can manually inspect and compare the difference the tuning has made
+    in our result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'More commonly, you want to compare two implementations of code. String interning
+    is fine, but could we do better by using a simple hash map and managing that?
+    To test that, we would define another method in the class and annotate that with
+    the `Benchmark` annotation. Our first (and suboptimal) pass at that would look
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`jmh` will run all annotated methods through the same series of warm-up and
+    measurement iterations (always in newly forked JVMs) and produce a nice comparison:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Managing the interned objects by hand has given a nice improvement here (though
+    beware: issues with the benchmark as written remain; this isn’t the final word).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setup code
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The previous output is abbreviated for this format, but when you run `jmh`
+    tests, you’ll see a long caveat before the results are printed. The gist of this
+    caveat is “just because you put some code into `jmh`, don’t assume you’ve written
+    a good benchmark: test your code and make sure it’s testing what you expect.”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look again at the benchmark definition. We wanted to test how long it
+    took to intern 10,000 strings, but what we are testing is the time it takes to
+    create (via concatenation) 10,000 strings plus the time it takes to intern the
+    resulting strings. The range of those strings is also fairly limited: they are
+    the same initial 17 characters followed by an integer. In the same way we pre-created
+    input for the handwritten Fibonacci microbenchmark, we should pre-create input
+    in this case.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It could be argued that the range of strings doesn’t matter to this benchmark
+    and the concatenation is minor and that hence the original test is completely
+    accurate. That is possibly true, but proving that point requires some work. Better
+    just to write a benchmark where those questions aren’t an issue than to make assumptions
+    about what’s going on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We also have to think deeply about what is going on in the test. Essentially,
+    the table holding the interned strings is a cache: the interned string might be
+    there (in which case it is returned), or it might not (in which case it is inserted).
+    And now we have a problem when we compare the implementations: the manually managed
+    concurrent hash map is never cleared during a test. That means that during the
+    first warm-up cycle, the strings are inserted into the map, and in subsequent
+    measurement cycles, the strings are already there: the test has a 100% hit rate
+    on the cache.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The string intern table doesn’t work that way: the keys in the string intern
+    table are essentially weak references. Hence, the JVM may clear some or all entries
+    at any point in time (since the interned string goes out of scope immediately
+    after it is inserted into the table). The cache hit rate in this case is indeterminate,
+    but it is likely not anywhere close to 100%. So as it stands now, the intern test
+    is going to do more work, since it has to update the internal string table more
+    frequently (both to delete and then to re-add entries).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both of these issues will be avoided if we pre-create the strings into a static
+    array and then intern them (or insert them into the hash map). Because the static
+    array maintains a reference to the string, the reference in the string table will
+    not be cleared. Then both tests will have a 100% hit rate during the measurement
+    cycles, and the range of strings will be more comprehensive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We need to do this initialization outside the measurement period, which is
+    accomplished using the `Setup` annotation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `Level` value given to the `Setup` annotation controls when the given method
+    is executed. `Level` can take one of three values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Level.Trial`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The setup is done once, when the benchmark code initializes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Level.Iteration`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The setup is done before each iteration of the benchmark (each measurement cycle).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Level.Invocation`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The setup is done before each time the test method is executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A similar `Teardown` annotation could be used in other cases to clear state
+    if required.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`jmh` has many additional options, including measuring single invocations of
+    a method or measuring average time instead of throughput, passing additional JVM
+    arguments to a forked JVM, controlling thread synchronization, and more. My goal
+    isn’t to provide a complete reference for `jmh`; rather, this example ideally
+    shows the complexity involved even in writing a simple microbenchmark.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Controlling execution and repeatability
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Once you have a correct microbenchmark, you’ll need to run it in such a way
+    that the results make statistical sense for what you are measuring.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you’ve just seen, by default `jmh` will run the target method for a period
+    of 10 seconds by executing it as many times as necessary over that interval (so
+    in the previous example, it was executed an average of 1,772 times over 10 seconds).
+    Each 10-second test is an iteration, and by default there were five warm-up iterations
+    (where the results were discarded) and five measurement iterations each time a
+    new JVM was forked. And that was all repeated for five trials.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All of that is done so `jmh` can perform the statistical analysis to calculate
+    the confidence interval in the result. In the cases presented earlier, the 99.9%
+    confidence interval has a range of about 10%, which may or may not be sufficient
+    when comparing to other benchmarks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can get a smaller or larger confidence interval by varying these parameters.
+    For example, here are the results from running the two benchmarks with a low number
+    of measurement iterations and trials:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That result makes it look like using the `intern()` method is far worse than
+    using a map, but look at the range: it is possible that the real result of the
+    first case is close to 330 ops/s, while the real result of the second case is
+    close to 200 ops/s. Even if that’s unlikely, the ranges here are too broad to
+    conclusively decide which is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That result is from having only two forked trials of two iterations each. If
+    we increase that to 10 iterations each, we get a better result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now the ranges are discrete, and we can confidently conclude that the map technique
+    is superior (at least with respect to a test with a 100% cache hit-rate and 10,000
+    unchanging strings).
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is no hard-and-fast rule as to how many iterations, how many forked trials,
+    or what length of execution will be needed to get enough data so that the results
+    are clear like this. If you are comparing two techniques that have little difference
+    between them, you’ll need a lot more iterations and trials. On the other hand,
+    if they’re that close together, perhaps you’re better off looking at something
+    that will have a greater impact on performance. This again is a place where art
+    influences science; at some point, you’ll have to decide for yourself where the
+    boundaries lie.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All of these variables—number of iterations, length of each interval, etc.—are
+    controlled via command-line arguments to the standard `jmh` benchmark. Here are
+    the most relevant ones:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-f 5`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Number of forked trials to run (default: 5).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-wi 5`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Number of warm-up iterations per trial (default: 5).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-i 5`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Number of measurement iterations per trial (default: 5).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-r 10`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Minimum length of time (in seconds) of each iteration; an iteration may run
+    longer than this, depending on the actual length of the target method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Increasing these parameters will generally lower the variability of a result
+    until you have the desired confidence range. Conversely, for more stable tests,
+    lowering these parameters will generally reduce the time required to run the test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '`jmh` is a framework and harness for writing microbenchmarks that provides
+    help to properly address the requirements of such benchmarks.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`jmh` isn’t a replacement for deeply thinking about writing the code that you
+    measure; it’s simply a useful tool in its development.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Common Code Examples
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Many of the examples in this book are based on a sample application that calculates
+    the “historical” high and low price of a stock over a range of dates, as well
+    as the standard deviation during that time. *Historical* is in quotes here because
+    in the application, all the data is fictional; the prices and the stock symbols
+    are randomly generated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The basic object within the application is a `StockPrice` object that represents
+    the price range of a stock on a given day, along with a collection of option prices
+    for that stock:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The sample applications typically deal with a collection of these prices, representing
+    the history of the stock over a period of time (e.g., 1 year or 25 years, depending
+    on the example):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The basic implementation of this class loads a set of prices from the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The architecture of the samples is designed to be loaded from a database, and
+    that functionality will be used in the examples in [Chapter 11](ch11.html#Database).
+    However, to facilitate running the examples, most of the time they will use a
+    mock entity manager that generates random data for the series. In essence, most
+    examples are module-level mesobenchmarks that are suitable for illustrating the
+    performance issues at hand—but we would have an idea of the actual performance
+    of the application only when the full application is run (as in [Chapter 11](ch11.html#Database)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: One caveat is that numerous examples are therefore dependent on the performance
+    of the random number generator in use. Unlike the microbenchmark example, this
+    is by design, as it allows the illustration of several performance issues in Java.
+    (For that matter, the goal of the examples is to measure the performance of an
+    arbitrary thing, and the performance of the random number generator fits that
+    goal. That is quite different from a microbenchmark, where including the time
+    for generating random numbers would affect the overall calculation.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The examples also heavily depend on the performance of the `BigDecimal` class,
+    which is used to store all the data points. This is a standard choice for storing
+    currency data; if the currency data is stored as primitive `double` objects, rounding
+    of half-pennies and smaller amounts becomes quite problematic. From the perspective
+    of writing examples, that choice is also useful as it allows some “business logic”
+    or lengthy calculation to occur—particularly in calculating the standard deviation
+    of a series of prices. The standard deviation relies on knowing the square root
+    of a `BigDecimal` number. The standard Java API doesn’t supply such a routine,
+    but the examples use this method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is an implementation of the Babylonian method for estimating the square
+    root of a number. It isn’t the most efficient implementation; in particular, the
+    initial guess could be much better, which would save some iterations. That is
+    deliberate because it allows the calculation to take some time (emulating business
+    logic), though it does illustrate the basic point made in [Chapter 1](ch01.html#Introduction):
+    often the better way to make Java code faster is to write a better algorithm,
+    independent of any Java tuning or Java coding practices that are employed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The standard deviation, average price, and histogram of an implementation of
+    the `StockPriceHistory` interface are all derived values. In different examples,
+    these values will be calculated eagerly (when the data is loaded from the entity
+    manager) or lazily (when the method to retrieve the data is called). Similarly,
+    the `StockPrice` interface references a `StockOptionPrice` interface, which is
+    the price of certain options for the given stock on the given day. Those option
+    values can be retrieved from the entity manager either eagerly or lazily. In both
+    cases, the definition of these interfaces allows these approaches to be compared
+    in different situations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These interfaces also fit naturally into a Java REST application: users can
+    make a call with parameters indicating the symbol and date range for a stock they
+    are interested in. In the standard example, the request will go through a standard
+    calling using the Java API for RESTful Web Services (JAX-RS) call that parses
+    the input parameters, calls an embedded JPA bean to get the underlying data, and
+    forwards the response:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: This class can inject different implementations of the history bean (for eager
+    or lazy initialization, among other things); it will optionally cache the data
+    retrieved from the backend database (or mock entity manager). Those are the common
+    options when dealing with the performance of an enterprise application (in particular,
+    caching data in the middle tier is sometimes considered the big performance advantage
+    of an application server). Examples throughout the book examine those trade-offs
+    as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Performance testing involves trade-offs. Making good choices among competing
+    options is crucial to successfully tracking the performance characteristics of
+    a system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Choosing what to test is the first area where experience with the application
+    and intuition will be of immeasurable help when setting up performance tests.
+    Microbenchmarks are helpful to set a guideline for certain operations. That leaves
+    a broad continuum of other tests, from small module-level tests to a large, multitiered
+    environment. Tests all along that continuum have merit, and choosing the tests
+    along that continuum is one place where experience and intuition will come into
+    play. However, in the end there can be no substitute for testing a full application
+    as it is deployed in production; only then can the full effect of all performance-related
+    issues be understood.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, understanding what is and is not an actual regression in code is
+    not always a black-and-white issue. Programs always exhibit random behavior, and
+    once randomness is injected into the equation, we will never be 100% certain about
+    what data means. Applying statistical analysis to the results can help turn the
+    analysis to a more objective path, but even then some subjectivity will be involved.
+    Understanding the underlying probabilities and what they mean can help to reduce
+    that subjectivity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, with these foundations in place, an automated testing system can be
+    set up to gather full information about everything that occurred during the test.
+    With the knowledge of what’s going on and what the underlying tests mean, the
+    performance analyst can apply both science and art so that the program can exhibit
+    the best possible performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch02.html#idm45775552311416-marker)) Not that garbage collection should
+    be expected to introduce a hundred-second delay, but particularly for tests with
+    small average response times, the GC pauses can introduce significant outliers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch02.html#idm45775552239592-marker)) And though three data points makes
+    it easier to understand an example, it is too small to be accurate for any real
+    system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch02.html#idm45775552237160-marker)) *Student*, by the way, is the pen
+    name of the scientist who first published the test; it isn’t named that way to
+    remind you of graduate school, where you (or at least I) slept through statistics
+    class.
+  prefs: []
+  type: TYPE_NORMAL

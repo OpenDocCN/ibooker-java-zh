@@ -1,0 +1,1154 @@
+- en: Chapter 12\. Application Secrets Management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Every application has information that needs to be kept confidential. This information
+    could include database credentials, external service authentication, or even the
+    location of certain resources. All of these are collectively called *secrets*.
+    Your application needs a secure place to store these secrets both during application
+    startup and at rest. In this chapter, we will discuss secret management using
+    Kubernetes and Vault.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 12.1 Storing Data Using Kubernetes Secrets
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to store secrets in Kubernetes in a safer way than directly on the
+    Pod or container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use Kubernetes secrets to store and retrieve sensitive data such as passwords,
+    tokens, or SSH keys in plain text on a container. Kubernetes has the concept of
+    `secret` objects that can be used to store sensitive data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is important to know that storing sensitive data in a secret object does
+    not automatically make it secure because Kubernetes does not encrypt data but
+    instead encodes it in Base64 by default. Using secrets gives you some features
+    that are not provided by the standard configuration process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can define the authorization policies to access the secret.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You can configure Kubernetes to encrypt sensitive data (this is known as *encryption
+    at rest*).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You can grant access to a specific container instance using lists.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Important
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: None of these features are enabled by default, and they require some knowledge
+    about Kubernetes. In the book, we explain only how Quarkus integrates with other
+    tools like Kubernetes; we do not explain the operational side of the tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The secrets can be injected into the container as an environment variable or
+    as a volume. The environment variable approach is less secure because anyone with
+    access to the container instance could dump the content easily. The volume approach,
+    on the other hand, easily becomes complex when there are a large number of keys
+    because Kubernetes creates one file per key to store inside the value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both approaches are shown, so you can choose the one that works better for your
+    use case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The example covers the use case in which an API token (e.g., GitHub Personal
+    Access Token) needs to be set as secret in the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To enable the generation of Kubernetes resources with the `secrets` injection
+    in the `Pod`, you need to register the `quarkus-kubernetes` extension:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Create a secret by creating a Kubernetes resource of the kind `Secret` or by
+    using the `kubectl` CLI tool. Open a new terminal and run the following command
+    to register a new secret with `greeting-security` ID and a key `github.api.key.token`
+    with a token (this token is invalid and is used only for example purposes):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that the secret is created, let’s see how to set it as an environment variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A configuration property is required to get the property from the environment
+    variable. In this case, the property is called `github.api.key.token`, but of
+    course you could also access it directly by using `System.getenv()`. The former
+    approach is better because it relies on the MicroProfile Config spec to read the
+    configuration properties and not some custom solution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Set extra properties for the Kubernetes extension in the *application.properties*
+    so that the generated Kubernetes deployment file contains the segments needed
+    to inject the secret as an environment variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configures Docker image
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the environment variable to override the `github.api.key.token` property
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](Images/3.png)](#co_application_secrets_management_CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the secret name to load
+  prefs: []
+  type: TYPE_NORMAL
+- en: The generation of the Kubernetes file will contain a new entry in the container
+    definition called `secretKeyRef` that defines all the key/value pairs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The MicroProfile Config spec permits the override of any configuration property
+    using the equivalent environment variable (in uppercase and changing dots [`.`]
+    to underscores [`_`]). The `Secrets` contains the configuration properties as
+    secrets. In *application.properties*, the Kubernetes extension is configured to
+    generate a deployment descriptor that sets these secrets as environment variables
+    so that when the container is started inside the Kubernetes cluster, the secrets
+    are injected into the container as environment variables and are read by MicroProfile
+    Config as configuration properties.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To deploy the application, open a new terminal window, package the application,
+    create the Docker container, and apply the generated Kubernetes resources:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But secrets can also be mounted as volumes instead of being set as environment
+    variables. Set the Kubernetes extension properties in the *application.properties*
+    so that the generated Kubernetes deployment file contains the segments to mount
+    the secret file as a volume:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mounts the volume with `github-token` name
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO2-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the path where the volume is mounted inside the container
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](Images/3.png)](#co_application_secrets_management_CO2-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the volume as read-only
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](Images/4.png)](#co_application_secrets_management_CO2-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the secret name to load
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](Images/5.png)](#co_application_secrets_management_CO2-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the mode to be readable from the process
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last step is to read the secret from the code. Since the secret is mounted
+    in the file system, it needs to be read as any other file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO3-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The location of the secret is the mount path plus the secret key
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To deploy the application, package it, create the Docker container, and apply
+    the generated Kubernetes resources:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Kubernetes secrets have some problems that need to be addressed externally.
+    The following are some of these problems:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Secrets are not encrypted but just encoded in Base64 by default.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You need to use SSL to communicate with `etcd`. This is the place where the
+    secrets are stored.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The disk needs to be encrypted because `etcd` might store the data on the disk.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You need to correctly define the RBAC to prevent anyone from accessing a secret.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To learn more about Kubernetes Secrets, visit the following pages on the Kubernetes
+    website:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Secrets](https://oreil.ly/dFTgh)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[Encrypting Secret Data at Rest](https://oreil.ly/_auK1)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[Authorization Overview](https://oreil.ly/ctlyn)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[Using RBAC Authorization](https://oreil.ly/WrcaP)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 12.2 Store Configuration Secrets Securely with Vault
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to store configuration secrets securely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the Quarkus [Vault](https://oreil.ly/UMKuH) extension to retrieve secrets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The key aspects when dealing with secrets are storing them so they cannot be
+    read by forbidden users and protecting access to them so only the services that
+    require the secrets can access them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vault is a tool that simplifies these use cases by providing a unified interface
+    for storing and consuming secrets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Vault supports multiple authentication methods to authenticate against the
+    Vault service and start consuming the secrets. At the time of writing, the following
+    authentication methods are supported by the Quarkus Vault extension:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`token`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Directly pass the user token to bypass the authentication process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`user`/`password`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Authenticate with Vault using a username and password credentials.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`approle`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Authenticate using a `role_id` and a `secret_id`. This method is oriented to
+    automated workflows (machines and services). `role_id` is usually embedded into
+    a Docker container, and `secret_id` is obtained by a Kubernetes cluster as a cubbyhole
+    response, wrapping it (single use) and delivering it to the target service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`kubernetes`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Authenticate with Vault using the Kubernetes Service Account Token.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To get started, register the `quarkus-vault` extension to use Vault:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The Quarkus Vault extension integrates with the MicroProfile Configuration
+    spec so that a secret can be injected using the `@ConfigProperty` annotation.
+    Configure the application to use username and password as the authentication method
+    for Vault, and set the base path where secrets are stored:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO7-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The base URL of the Vault server
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO7-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The credentials to authenticate
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](Images/3.png)](#co_application_secrets_management_CO7-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The path where the secrets are stored
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Access the secret value of the `foo` key by using the `@org.eclipse.microprofile.config.inject.ConfigProperty`
+    annotation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO8-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Secret value for the `foo` key is injected
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Start the application and send a request to the endpoint:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If the path is known only at runtime, secrets can also be retrieved programmatically
+    by injecting the `io.quarkus.vault.VaultKVSecretEngine` interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO9-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Provides the values stored in the Vault key/value secret engine
+  prefs: []
+  type: TYPE_NORMAL
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To learn more about Vault, visit the following website:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Vault: Documentation](https://oreil.ly/ke_Q5)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 12.3 Cryptography as a Service
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to avoid spreading all cryptographic operations across all the services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the *transit* engine of Vault to have all cryptographic operations executed
+    in the same place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Open a shell inside the Vault container created in the previous recipe to configure
+    Vault and add keys to encrypt and sign messages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO10-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the token to access
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO10-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enables `transit` engine
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](Images/3.png)](#co_application_secrets_management_CO10-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates an encryption key of type `AES-256-GCM96`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](Images/4.png)](#co_application_secrets_management_CO10-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates a signing key of type `ECDSA-P256`
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a policy that gives access to transit operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The last step is to enable credentials (`userpass` engine) for accessing secrets
+    from the service:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO11-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates a user with ID `alex` and password `alex`
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Register `quarkus-vault` extension to use Vault:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Configure the application to use username and password as the authentication
+    method for Vault:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO12-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The base URL of the Vault server
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO12-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The credentials to authenticate
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Inject the `io.quarkus.vault.VaultTransitSecretEngine` instance to use transit
+    operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO13-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transit operations interface
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO13-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Encrypts using the encryption key
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](Images/3.png)](#co_application_secrets_management_CO13-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Decrypts using the encryption key
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](Images/4.png)](#co_application_secrets_management_CO13-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Signs the text with the given signature
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Start the application and send a request to the endpoint:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Cryptography operations such as encrypt, decrypt, sign, or hash-based message
+    authentication codes (HMACs) of data are commonly required in services. These
+    operations are usually implemented in each of the services, which means that you
+    are duplicating this sensitive logic as well as the management of the keys in
+    each of the services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Vault Transit engine handles all cryptographic functions for you without
+    storing the resulted data. You can think of Vault as a *cryptographic-as-a-service*
+    model in which data is sent, manipulated, and returned back without being stored
+    internally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Everything is managed internally by Vault, freeing developers to focus on implementing
+    the important business logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following operations are supported by the Vault extension:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`encrypt`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Encrypts a regular string with a Vault key configured in the transit secret
+    engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`decrypt`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Decrypts the encrypted data with the specified key and returns unencrypted data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`rewrap`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reencrypts into a new cipher text a cipher text that was obtained from encryption
+    using an old key version with the last key version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`sign`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Signs an input string with the specified key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`verifySignature`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checks that the signature was obtained from signing the input with the specified
+    key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'For more information, visit the following website:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Vault: Transit Secrets Engine](https://oreil.ly/rloOa)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 12.4 Generate Database Password as Secret
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to store the database password securely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Read the database password as a secret.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The database password is something that needs to be protected and should not
+    be set directly to the configuration file. The Quarkus Vault extension integrates
+    with persistence configuration to read the database password as a secret from
+    Vault.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Open a shell inside the Vault container created in the previous recipe to configure
+    Vault and add the database password as a secret:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO14-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the token to access
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO14-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates a new secret with a key `password` and the value `alex`
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a policy that gives read access to the secret:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The last step is to enable credentials (`userpass` engine) for accessing secrets
+    from the service:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO15-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates a user with ID `alex` and password `alex`
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For this example, the PostgreSQL server is used as database. Start a new Docker
+    instance in a new terminal by running the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that the password is the same as the one set in the *secret/myapps/vault-service/db*
+    path.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Register the `quarkus-vault` and persistence extensions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The datasource configuration is slightly different than the one shown in [Chapter 7](ch07.xhtml#persistence_chapter).
+    Instead of having the password hardcoded in the configuration file, the password
+    is retrieved from Vault as a secret and is used to make the connection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Apart from Vault configuration parameters such as the URL and the authenticated
+    method (i.e., user/password), you need to define the key/value path inside Vault,
+    where the database configuration is stored. More specifically, it is the path
+    where the key named `password` is stored with the database password. In the following
+    example, to set this information into Vault, you run the command `vault kv put
+    secret/myapps/vault-service/db password=alex`, but if you have followed this section,
+    you’ve already done this when configuring Vault.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also, overriding the credentials provider used when establishing the connection
+    to the database is required to indicate that the password comes from Vault and
+    not as a configuration property. This is done by using the `q⁠u⁠a⁠r⁠k⁠u⁠s⁠.⁠d⁠a⁠t⁠a​s⁠o⁠u⁠r⁠c⁠e⁠.⁠c⁠r⁠e⁠d⁠e⁠n⁠t⁠i⁠a⁠l⁠s⁠-⁠p⁠r⁠o⁠v⁠i⁠d⁠e⁠r`
+    property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Configure the application with the datasource and Vault parameters and override
+    the credentials provider:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO16-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the credentials provider to a custom name (`mydatabase`)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO16-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the key/value path where the password is stored for the `mydatabase` provider
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](Images/3.png)](#co_application_secrets_management_CO16-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configures Vault parameters
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is important to note that there is no `quarkus.datasource.password` property
+    because the password is retrieved from Vault.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At this time, when the Quarkus application is started, the following steps
+    are executed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Service authenticates to the Vault service.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Key/Value is retrieved from `secret/myapps/vault-service/db` path.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The value of the key `password` is used as password credentials for the database.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The key name can be changed from `password` to any other key name by using
+    the `kv-key` property: `quarkus.vault.credentials-provider.mydatabase.kv-key=pass`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Vault can generate database credentials dynamically and configure the database
+    instances to use them as credentials instead of having to manually configure the
+    credentials and set them in Vault and/or in the service that requires access to
+    the database. This implies that no credentials are hardcoded in any place, as
+    they are requested from Vault. The generated pair of username and password are
+    subject to Vault’s leasing mechanism, which makes the credentials invalid after
+    a reasonable time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Take the following steps to configure Vault to generate database credentials
+    dynamically:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enable the database secret engine.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Set connection parameters to the database, and set the vendor database (at this
+    time most of SQL and NoSQL databases are supported).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Configure a role that maps a name in Vault to an SQL statement to create the
+    database credential:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The Vault extension also supports using dynamic database credentials through
+    the `database-credentials-role` property on the `credentials-provider`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO17-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: No password set
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO17-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configures dynamic credentials
+  prefs: []
+  type: TYPE_NORMAL
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To learn more about dynamic database credentials with Vault, visit the following
+    website:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Vault: Databases](https://oreil.ly/RDaes)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 12.5 Authenticating Services Using Vault Kubernetes Auth
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to authenticate services against Vault without using a username/password.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the Vault Kubernetes Auth method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, you’ve used credentials with the username/password approach to authenticating
+    the Quarkus service against the Vault service. This method might be good in some
+    circumstances (testing purposes, internal applications, etc.), but notice that
+    you are introducing a new secret (the password) to get more secrets. One way to
+    fix this problem is by using Kubernetes Secrets to set the Vault password using,
+    for example, the `approle` authentication method. Another way is to use the Vault
+    Kubernetes Auth, which makes it a perfect fit for authenticating services deployed
+    in a Kubernetes cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Vault Kubernetes `auth` method uses the Kubernetes service account token
+    and a defined role to authenticate against a Vault service. With this method,
+    Vault does not store the credentials; it uses a trusted third party (the Kubernetes
+    cluster) to validate them. When the Pod with the service is instantiated, the
+    service account token is mounted inside the container, so it is accessible by
+    the application. The default mounting point of the secret token is */var/run/secrets/kubernetes.io/serviceaccount/token*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The application then attempts to authenticate using this token by sending it
+    to the Vault server. After that, Vault makes a call to Kubernetes API to ensure
+    the validity of the token. If the token is valid, then an internal Vault token
+    is returned to be used in future requests to get secrets. The process is summarized
+    in [Figure 12-1](#vaultk8sauth).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![qucb 1201](Images/qucb_1201.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-1\. Kubernetes authentication method
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: To configure the Kubernetes auth mode, you need to set two parameters to Vault
+    to connect to Kubernetes API. The first one is the token to access, and the second
+    one is the certificate authority to validate the communication between Vault and
+    the Kubernetes API. These values are retrieved from the secret that starts with
+    `vault-token`. When Vault was first set up for this example, the value was `vault-token-mm5qx`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To get the token and store it in a file, open a terminal window and run the
+    following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO18-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Substitute the secret name to your secret name starting with `vault-token`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO18-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Secrets are stored in Base64, so they need to be decoded
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To get the certificate authority and store it in a file, run the following
+    in the terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO19-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pod is named `vault-0`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO19-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `vault-token` is set as a secret
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before deploying the application, you need to enable Kubernetes `auth` method,
+    configure it, and insert some secrets to test it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Expose the Vault service out of the Kubernetes cluster so that it can be configured
+    from your local machine. Open a new terminal window and run the command to forward
+    the traffic from `localhost:8200` into the Vault instance running inside the Kubernetes
+    cluster:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Get back to the terminal window where you run the commands to get the token
+    and the certificate authority, and run the following commands to insert a secret:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO20-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configure Vault connection parameters
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO20-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates a policy called `vault-service-policy` to `myapps/vault-service/*` secrets
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](Images/3.png)](#co_application_secrets_management_CO20-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets a new secret
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last step is enabling the Kubernetes `auth` method and configuring it to
+    validate the token using the Kubernetes API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Execute the following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO21-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enables Kubernetes `auth` method
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO21-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configures the `auth` method
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](Images/3.png)](#co_application_secrets_management_CO21-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the token file retrieved in the previous step
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](Images/4.png)](#co_application_secrets_management_CO21-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the Kubernetes API host
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](Images/5.png)](#co_application_secrets_management_CO21-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the CA file retrieved in the previous step
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![6](Images/6.png)](#co_application_secrets_management_CO21-6)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creates a new role (`example`) to authenticate from the application
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![7](Images/7.png)](#co_application_secrets_management_CO21-7)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the service account name that in our deployment is `vault`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![8](Images/8.png)](#co_application_secrets_management_CO21-8)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the namespace where services are running
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![9](Images/9.png)](#co_application_secrets_management_CO21-9)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Binds the user authenticating with this method to the created policy
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s develop a Quarkus service that authenticates using the Vault Kubernetes
+    `auth` method and get the secret named `foo`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Add the Vault and Kubernetes extensions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Configure the application to use the Kubernetes Vault `auth` method and the
+    Kubernetes extension to generate the correct deployment file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO22-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configures Vault location and secrets
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO22-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the `example` role to be used by the user (created in the previous step)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](Images/3.png)](#co_application_secrets_management_CO22-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the `serviceaccount` name to set in the generated deployment file
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](Images/4.png)](#co_application_secrets_management_CO22-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sets the group name of Docker image
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notice that the `quarkus.vault.authentication.kubernetes.jwt-token-path` property
+    is not set. The reason is that the default value (`/var/run/secrets/kubernetes.io/serviceaccount/token`)
+    works perfectly with the defaults. If the secret was mounted on a different path,
+    then this property should be set to the new location.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To deploy the application, open a new terminal window, package the application,
+    create the Docker container, and apply the generated Kubernetes resources:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: When the Pod is deployed, the application is authenticated with Vault, and Vault
+    validates that the token is valid using the Kubernetes API. The application is
+    then authenticated and can get the secrets from the configured path.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The big difference between this example and the previous ones is that in this
+    case no secret like the Vault password is set, meaning that the secrets can be
+    accessed securely but without having to add any new secret.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our intention isn’t to show how to deploy Vault in Kubernetes for production
+    purposes. For this reason, a deployment file is provided to deploy a Vault service
+    with the minimal requirements to run this example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This deployment file is located at *src/main/kubernetes/vault-dev-deployment.yaml*
+    and provides the following elements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vault with `dev` mode and root token set to `root`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exposes Vault at port 8200.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ServiceAccount` with the name set to `vault`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ClusterRoleBinding` and `ClusterRole` bound to `vault`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All resources applied to the `default` namespace.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Deploy the Vault service by running the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](Images/1.png)](#co_application_secrets_management_CO23-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pod is named `vault-0`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](Images/2.png)](#co_application_secrets_management_CO23-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `vault-token` is set as a secret
+  prefs: []
+  type: TYPE_NORMAL
+- en: To configure Vault, you need to install the Vault CLI locally on your computer.
+    The Vault CLI is a single file that can be downloaded from [Vault](https://oreil.ly/fTB0x)
+    and set in your `PATH` variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Assuming you’ve got the Vault client installed locally and available in your
+    PATH variable, you can configure Vault.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To learn more about Vault Kubernetes `auth` method, visit the following websites:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Vault: Kubernetes Auth Method](https://oreil.ly/AV3D_)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[Vault Agent with Kubernetes](https://oreil.ly/WGbUx)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

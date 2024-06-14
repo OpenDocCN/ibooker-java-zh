@@ -1,0 +1,967 @@
+- en: 'Chapter 12\. Reactive REST Client: Connecting with HTTP Endpoints'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The previous two chapters focused on messaging, the connective tissue of reactive
+    systems. Modern message brokers provide the perfect feature set to implement the
+    internal communication of reactive systems. However, at the frontier of your system,
+    where you need to integrate remote services, there’s a good chance you need to
+    use HTTP. So let’s be pragmatic and see how we can consume HTTP services without
+    breaking the reactive principles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [Chapter 8](ch08.html#http), you saw how to *expose* reactive HTTP endpoints.
+    This chapter presents the other side: how to *consume* HTTP endpoints. Quarkus
+    offers a nonblocking way to consume HTTP endpoints. In addition, it provides resilience
+    features to protect the integration points against failures and slowness. It’s
+    important to notice that the called service does not have to be a reactive application.
+    That’s up to the implementation of that service.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s see what Quarkus offers to consume HTTP endpoints.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interacting with an HTTP Endpoint
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Quarkus provides multiple ways to consume HTTP endpoints:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vert.x Web Client
+  prefs: []
+  type: TYPE_NORMAL
+- en: This low-level HTTP client is implemented on top of Vert.x and Netty (and so
+    is inherently asynchronous and based on nonblocking I/O).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive Messaging connector
+  prefs: []
+  type: TYPE_NORMAL
+- en: This connector sends HTTP requests for each processed message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: REST client
+  prefs: []
+  type: TYPE_NORMAL
+- en: This type-safe approach eases the consumption of HTTP-based APIs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vert.x Web Client is convenient when you don’t want to bother being exposed
+    to low-level HTTP details, such as verbs, headers, bodies, and response status.
+    The web client is flexible, and you have complete control over the HTTP request
+    and the response processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To use Vert.x Web Client, you need to add the dependency shown in [Example 12-1](#dep-vertx-client)
+    in your project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-1\. Dependency for Mutiny Vert.x Web Client
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Then you can use it as shown in [Example 12-2](#http-vertx-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-2\. Vert.x Web Client example
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, you need to create and close `WebClient` yourself. It exposes
+    a Mutiny API, so it integrates perfectly within your Quarkus application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The HTTP reactive connector integrates with Reactive Messaging (see [Chapter 10](ch10.html#messaging))
+    and allows sending HTTP requests for each message. It’s convenient when you design
+    a message-processing pipeline where the outbound is an HTTP endpoint. It handles
+    the backpressure and controls the amount of concurrency (number of in-flight requests)
+    but does not allow processing the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To use this HTTP connector, you need the dependency shown in [Example 12-3](#dep-http-connect).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-3\. Dependency for the HTTP connector
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Then you can configure the connector as shown in [Example 12-4](#http-send-messages).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-4\. Use the HTTP connector to send messages using HTTP POST requests
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_reactive_rest_client__connecting___span_class__keep_together__with_http_endpoints__span__CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instruct Quarkus to use the `quarkus-http` connector to manage the `my-http-endpoint`
+    channel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_reactive_rest_client__connecting___span_class__keep_together__with_http_endpoints__span__CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configure the HTTP method to use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_reactive_rest_client__connecting___span_class__keep_together__with_http_endpoints__span__CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configure the URL of the service to invoke.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By default, the connector encodes the received messages to JSON. You can also
+    configure a custom serializer. The connector also supports retries and time-out
+    but, as said earlier, does not allow processing the response. Any non-2*XX* HTTP
+    response is considered a failure and will nack the message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last approach, the REST client, offers a declarative way to invoke an HTTP
+    service. It implements the [MicroProfile REST Client specification](https://oreil.ly/dX0Lv).
+    Instead of dealing with the HTTP requests and responses, you map the HTTP API
+    in a Java interface. Thanks to a couple of annotations, you express how to send
+    the request and process the response. The client uses the same JAX-RS annotations
+    as the server side; see [Example 12-5](#eg-rest-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-5\. Example of REST client
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The application uses the method from the interface directly. The rest of this
+    chapter focuses on the REST client and how to integrate it in reactive applications,
+    including how to handle failure gracefully.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The REST Client Reactive
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We need to be careful. Lots of *asynchronous* HTTP and REST clients do not use
+    nonblocking I/O and instead delegate the HTTP requests to an internal thread pool.
+    This is not the case with the reactive REST client from Quarkus. It relies on
+    the reactive architecture of Quarkus. Note that it’s not because it’s reactive
+    that you can’t use it in a blocking manner. As with most Quarkus features, you
+    have the choice. Even if you decide to use the blocking way, Quarkus would continue
+    using I/O threads and delegate the calls on a worker thread for your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To use the reactive REST client in Quarkus, add the dependency in [Example 12-6](#dep-react-rest-client)
+    to your project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-6\. Dependency for the reactive REST client (*chapter-12/rest-client-example/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you plan to use JSON, which is often the case when using HTTP services, also
+    add the dependency in [Example 12-7](#dep-jackson-support).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-7\. Dependency for the Jackson support for the reactive REST client
+    (*chapter-12/rest-client-example/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The dependency adds the ability to serialize the request body into JSON and
+    deserialize JSON payloads into objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mapping HTTP APIs to Java Interfaces
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The cornerstone of the REST client is a Java interface that represents the consumed
+    HTTP endpoint. This interface represents the HTTP API your application consumes.
+    It acts as a facade, enabling your application to avoid dealing with HTTP directly.
+    On each method of the interface, you use JAX-RS annotations to describe how to
+    handle the HTTP request and response. Let’s consider an example. Imagine that
+    you need to integrate the [`httpbin`](https://httpbin.org) service. To call the
+    */uuid* endpoint (which returns a UUID), you need to create a Java interface with
+    the method representing the call; see [Example 12-8](#client-httpbin).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-8\. REST client for the `httpbin` service (*chapter-12/rest-client-example/src/main/java/org/acme/restclient/HttpApi.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first important fact about this interface is the `@RegisterRestClient` annotation.
+    It indicates that the interface represents an HTTP endpoint. The `configKey` attribute
+    defines the key we will use to configure the HTTP endpoint, such as the location.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For now, this interface has a single method: `getUUID`. When the application
+    calls this method, it sends a `GET` request to `/uuid`, waits for the response,
+    and reads the response body as `String`. We define this behavior by using the
+    `@GET` and `@Path` annotations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s add a method by using another HTTP method, as shown in [Example 12-9](#send-json-payloads).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-9\. Send JSON payloads
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Calling this method sends a `POST` request on `/anything` with a JSON payload
+    as the body. The reactive REST client maps the instance of `Person` to JSON. You
+    can also use the `@Consume` annotation to set `content-type` explicitly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The REST client also lets you configure the request headers. These headers can
+    be constant and defined by using the `@ClientHeaderParam` annotation or can be
+    passed as a method parameter by using the `@HeaderParam` annotation; see [Example 12-10](#pass-headers).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-10\. Pass headers
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: To pass query parameters, use the `@QueryParameter` annotation ([Example 12-11](#pass-query-params)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-11\. Pass query parameters
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s now look at the response. So far, we used only `String`, but the REST
+    client can map the response to objects. If we go back to the initial example (`/uuid`),
+    it returns a JSON object with a single field: `uuid`. We can map this response
+    into an object, as shown in [Example 12-12](#receive-json-objs).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-12\. Receive JSON objects
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: By default, the REST client uses JSON to map the responses to objects. You can
+    use the `@Produces` annotation to configure the `Accept` header.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you want to handle the HTTP response yourself, to retrieve the status code
+    or headers, you can return a `Response`, as shown in [Example 12-13](#use-responses).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-13\. Use responses
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: It’s the same `Response` as in [“Dealing with Failure and Customizing the Response”](ch08.html#response).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mapping an HTTP API to a Java interface introduces a clear contract and avoids
+    having HTTP code everywhere in the application code. It also improves testability
+    as you can quickly mock the remote service. Finally, note that you don’t have
+    to map all the endpoints of the remote service, only the one you use in your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Invoking the Service
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To use the interface we defined in the previous section in your application,
+    we need to do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inject the REST client in the application code.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Configure the URL of the service.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The first step is straightforward; we just need to inject the client, as shown
+    in [Example 12-14](#use-httpbin-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-14\. Use the HTTPBin REST client (*chapter-12/rest-client-example/src/main/java/org/acme/restclient/HttpEndpoint.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `@RestClient` qualifier indicates that the injected object is a REST client.
+    Once it’s injected, you can use any of the methods you have defined on the interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To configure the client, open the *application.properties* file and add the
+    following property:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `httpbin` part is the configuration key used in the `@RegisterRestClient`
+    interface. Here we configure only the location, but you can configure [a lot more](https://oreil.ly/rD1tL).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, the URL can also be passed at runtime by using the `httpbin/mp-rest/url`
+    system property or the `HTTPBIN_MP_REST_URL` environment property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blocking and Nonblocking
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As said previously, the reactive REST client from Quarkus supports both imperative
+    (blocking) methods and reactive (nonblocking) methods. The distinction is made
+    by using the return type. In [“Mapping HTTP APIs to Java Interfaces”](#http-client-mapping),
+    all our returned types are synchronous. So Quarkus blocks the caller thread until
+    the reception of the HTTP responses. This is not great in terms of Reactive. Fortunately,
+    you can avoid this by changing the return types to `Uni`, as shown in [Example 12-15](#mutiny-rest-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-15\. Use Mutiny in the REST client interfaces
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: By returning `Uni` instead of the direct result type, you instruct the REST
+    client not to block the caller thread. Even better, it will use the current I/O
+    thread, embrace the asynchronous execution model, and avoid additional thread
+    switches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the consumer side, you just use `Uni` and append the processing of the response
+    to your pipeline ([Example 12-16](#http-client-reactive-api)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-16\. Use the reactive API of the REST client
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, we handle the subscription ourselves. Don’t forget that you
+    often rely on Quarkus to take care of this. For example, returning `Uni` from
+    a RESTEasy Reactive endpoint subscribes on the returned `Uni`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling Failures
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If you look at [Example 12-16](#http-client-reactive-api), you can see that
+    calling the REST client can emit a failure, and you need to handle it. Quarkus
+    provides multiple ways to handle failure gracefully. You can use the Mutiny API
+    to handle the failure, execute retries, or recover gracefully, as shown in [Chapter 7](ch07.html#mutiny).
+    Also, Quarkus provides a declarative way to express how to handle failures. This
+    approach is particularly convenient when integrating remote systems (as with the
+    REST client), because it combines the integration point and the failure management
+    in a single location.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `quarkus-smallrye-fault-tolerance` extension provides a set of annotations
+    to configure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fallback methods
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Retries
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Circuit breakers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bulkheads
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`quarkus-smallrye-fault-tolerance` works for both imperative and reactive APIs.
+    In this section, we focus only on the latter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, to use the Fault-Tolerance extension, add the dependency in [Example 12-17](#dep-fault-tolerance)
+    to your project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-17\. Dependency for fault-tolerance support (*chapter-12/api-gateway-example/api-gateway/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Fallback
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A *fallback* is a method that provides an alternative result if the original
+    invocation fails. Let’s reuse the example we have seen before, shown again here
+    in [Example 12-18](#uuid-method).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-18\. The `uuid` method
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the interaction with the remote service fails, we can generate a fallback
+    (local) UUID, as shown in [Example 12-19](#declare-fallback).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-19\. Declare a fallback for the `uuid` method
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `@Fallback` annotation indicates the name of the method to call. This method
+    must have the same signature as the original method. So, in our case, it must
+    return `Uni<UUID>`. Our fallback implementation is simple, but you can imagine
+    more complex scenarios such as calling an alternative service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you need more control on the fallback, you can also provide a `FallbackHandler`;
+    see [Example 12-20](#fallback-handler).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-20\. Use a fallback handler
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The configured fallback handler is called with an `ExecutionContext` encapsulating
+    the original method and the exception.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retries
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Fallback allows recovering gracefully with a local value. The Fault-Tolerance
+    extension also allows retrying. Remember, retries should be used only when the
+    called service is idempotent. So, before using this feature, be sure it won’t
+    harm your system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `@Retry` annotation instructs Quarkus to retry the invocation multiple times,
+    hoping that the next call would be successful ([Example 12-21](#http-client-retry)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-21\. Declare a retry strategy
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, you can configure the number of retries, as well as a delay
+    and jitter to avoid retrying immediately. You could combine `@Retry` and `@Fallback`
+    to invoke the fallback method if all the attempts failed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Time-out
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Failing fast is always better than having users waiting a long time. The `@Timeout`
+    annotation enforces that an invocation completes in a timely fashion; see [Example 12-22](#config-timeout).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-22\. Configure a time-out
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the invocation does not produce a result in the configured time-out, it fails.
+    Combining `@Timeout` with `@Fallback` allows using a fallback result if the original
+    call was unable to complete in the expected time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bulkheads and Circuit Breaker
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The Quarkus fault-tolerance feature also provides circuit breakers and bulkheads.
+    While the other patterns protect your application against remote failures and
+    slowness, these two last patterns avoid hammering unhealthy or brittle services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first pattern, popularized a few years ago with libraries such as [Hystrix](https://oreil.ly/eLHn0)
+    or [Resilience4j](https://oreil.ly/yr4dO), detects failing services and gives
+    them time to recover (instead of continuously calling them). The circuit breaker
+    allows your application to fail immediately to prevent repeated calls that are
+    likely going to fail. The circuit breaker operates much like an electrical circuit
+    breaker. A closed circuit represents a fully functional system, and an open circuit
+    means an incomplete system. If a failure occurs, the circuit breaker triggers
+    to open the circuit, removing the point of failure from the system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The software circuit breaker has one more state: the half-open state. After
+    the circuit is opened, it periodically changes to the half-open state. It checks
+    whether the failed component is restored and closes the circuit after being considered
+    safe and functional. To use a circuit breaker in Quarkus, just use the `@CircuitBreaker`
+    annotation, as shown in [Example 12-23](#use-circuit-breaker).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-23\. Use a circuit breaker
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can also configure the circuit breaker; see [Example 12-24](#config-circuit-breaker).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-24\. Configure a circuit breaker
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Protecting your integration point with a circuit breaker not only allows you
+    to prevent slow responses and failures in your application, but also gives the
+    failing service time to recover. Using a circuit breaker is handy when the service
+    you interact with is under maintenance or heavy load.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The idea behind the bulkhead pattern is to limit the propagation of failure.
+    You protect your application from failures happening in the remote service and
+    avoid cascading them to the entire system and causing widespread issues. The `@Bulkhead`
+    annotation limits the number of concurrent requests and saves an unresponsive
+    remote service from wasting system resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the annotation helps you avoid having to deal with too many failures and
+    avoids flooding a remote service with a high number of concurrent requests. The
+    latter aspect is essential. With the reactive principles enabling high concurrency,
+    you should never forget that the service you are calling may not be prepared for
+    that load. So using the `@Bulkhead` annotation allows controlling the outbound
+    concurrency. Yes, it will increase your response time and reduce your concurrency,
+    but that’s for the sake of the global system state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can configure the bulkhead with the max concurrency (`value`), and the maximum
+    number of requests waiting for their turn, as demonstrated in [Example 12-25](#http-client-bulkhead).
+    If the queue is full, it rejects any new invocations immediately, avoiding slow
+    response time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-25\. Declare a bulkhead
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Building API Gateways with the RESTEasy Reactive Client
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 8](ch08.html#http), we showed how to implement HTTP endpoints relying
+    on nonblocking I/O and how this implementation can use Mutiny (covered in [Chapter 7](ch07.html#mutiny))
+    to orchestrate asynchronous tasks and avoid blocking. This approach enables high
+    concurrency and efficient resource usage. This is the perfect combination for
+    building API gateways.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An *API gateway* is a service that sits in front of a set of backend services.
+    The gateway handles external requests and orchestrates other services. For example,
+    it can delegate a request to a single service and implement more complex processes
+    involving multiple backend services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can build highly concurrent, responsive, and resilient API gateways by combining
+    Mutiny, RESTEasy Reactive, the reactive REST client, and the fault-tolerance annotations.
+    In this section, we explain the basics of implementing such a gateway by exploring
+    an example. Three applications compose our system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Greeting service
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exposes an HTTP API returning `Hello *{name}*`, the name being a query parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quote service
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exposes another HTTP API returning a random funny quote about coffee.
+  prefs: []
+  type: TYPE_NORMAL
+- en: API gateway
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exposes an HTTP API that delegates requests on `/quote` to the quote service.
+    Requests made to `/` will call the greeting and quote services and build a JSON
+    object encapsulating both.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can find the full code of the system in the *chapter-12/api-gateway-example*
+    directory. This section focuses on the API gateway component. We do not cover
+    the code of the greeting and quote services here as they are simple. The source
+    code of these components is available in the *chapter-12/api-gateway-example/greeting-service*
+    and *chapter-12/api-gateway-example/quote-service* directories. The API gateway
+    application that you can find in *chapter-12/api-gateway-example/api-gateway*
+    is more interesting, and we explore it together.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let’s build and run this system. To build this example, in a terminal,
+    navigate into *chapter-12/api-gateway-example* and run `mvn package`. Then you
+    will need three terminals:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the first one, run `java -jar target/quarkus-app/quarkus-run.jar` from the
+    *chapter-12/api-gateway-example/greeting-service* directory.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the second one, run `java -jar target/quarkus-app/quarkus-run.jar` from the
+    *chapter-12/api-gateway-example/quote-service* directory.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, in the third one, run `java -jar target/quarkus-app/quarkus-run.jar`
+    from the *chapter-12/api-gateway-example/api-gateway* directory.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Ensure that ports 9010 (greeting service) and 9020 (quote service) are not used
+    on your system. The API gateway uses port 8080.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once all services are running, you can use `curl` to invoke the API gateway,
+    which orchestrates the other backend services ([Example 12-26](#invoke-greeting)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-26\. Invoke the greeting endpoint
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: The cornerstone of the API gateway is the `Gateway` class, shown in [Example 12-27](#gateway-class).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-27\. The `Gateway` class (*chapter-12/api-gateway-example/api-gateway/src/main/java/org/acme/gateway/Gateway.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Gateway` class retrieves the two REST clients and handles the HTTP requests
+    using them. As an API gateway can be under heavy load and high concurrency, we
+    use RESTEasy Reactive and its Mutiny integration, so we don’t need worker threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `getQuote` method is straightforward. It delegates the calls to the `QuoteService`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `getBoth` method is more interesting. It needs to call both services and
+    aggregate the response. As both services are unrelated, we can call them concurrently.
+    As you have seen in [Chapter 7](ch07.html#mutiny), this can be easily achieved
+    with Mutiny by using the `Uni.combine` construct. Once we have both responses
+    encapsulated in a tuple, we build the `Greeting` structure and emit it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at the REST clients. `GreetingService` uses the fault-tolerance annotation
+    to be sure we handle failures or slow responses appropriately; see [Example 12-28](#greeting-service-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-28\. The `GreetingService` REST client (*chapter-12/api-gateway-example/api-gateway/src/main/java/org/acme/gateway/GreetingService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that the greeting method combines the circuit breaker, time-out, and
+    fallback annotations. `QuoteService` is similar but does not use the fallback
+    annotation, as you can see in [Example 12-29](#quote-service-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-29\. The `QuoteService` REST client (*chapter-12/api-gateway-example/api-gateway/src/main/java/org/acme/gateway/QuoteService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead, as you may have noticed, we handle failure by using the Mutiny API
+    in the `Gateway` class ([Example 12-30](#mutiny-fail-recover)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-30\. Recover from failures by using the Mutiny API (*chapter-12/api-gateway-example/api-gateway/src/main/java/org/acme/gateway/Gateway.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: While, in general, we choose between using the fault-tolerance annotation or
+    using the Mutiny API, we wanted to highlight that you have the choice and can
+    combine the two easily. However, the `getQuote` method does not handle the failure
+    and propagate the error. So, when using Mutiny to handle the failure, make sure
+    you cover all entry points. Now, if you stop the quote service (by pressing Ctrl-C
+    in the second terminal), you get the output in [Example 12-31](#invoke-endpoint).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-31\. Invoke the endpoint
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you also stop the greeting service, by pressing Ctrl-C in the first terminal,
+    you get [Example 12-32](#invoke-greeting-wo-service).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-32\. Invoke the greeting endpoint when there’s no greeting service
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: This section explored the fundamental constructs to build a highly concurrent
+    API gateway. Combining RESTEasy Reactive, the reactive REST client, fault tolerance,
+    and Mutiny provides all the features you need to expose robust APIs to your users
+    and handle failure gracefully. The following section illustrates how the REST
+    client can also be used in messaging applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the REST Client in Messaging Applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The REST client can also be helpful in messaging applications. For example,
+    a message-processing pipeline can call a remote HTTP API for each message or forward
+    the messages to a remote HTTP endpoint. We can use the REST client in a processing
+    pipeline modeled with Reactive Messaging to achieve this. In this section, we
+    explore an application receiving simple orders from an HTTP endpoint, process
+    them, and persist them in a database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`OrderEndpoint` receives `Order` and emits it into the `new-orders` channel.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: An `OrderProcessing` component consumes the orders from the `new-order` channel
+    and invokes the remote validation service. If the order gets validated successfully,
+    it is sent to the `validated-orders` channel. Otherwise, the order is acknowledged
+    negatively.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`OrderStorage` receives the order from the `validated-orders` channel and stores
+    it in the database.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: For the sake of simplicity, the validation endpoint runs in the same process,
+    but invocations still use the REST client. You can find the complete code of the
+    application in *chapter-12/http-messaging-example*, but let’s go through it quickly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see in [Example 12-33](#http-client-order), the `Order` structure
+    is simple. It contains just the name of a product and a quantity. Note that the
+    `Order` class is a Panache entity. We will use that to store the validated orders
+    in the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-33\. The `Order` structure (*chapter-12/http-messaging-example/src/main/java/org/acme/http/model/Order.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`OrderEndpoint` is also straightforward, as you can see in [Example 12-34](#order-endpoint-class).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-34\. The `OrderEndpoint` class (*chapter-12/http-messaging-example/src/main/java/org/acme/http/OrderEndpoint.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `order` method emits the received order to the `new-orders` channel. When
+    the message gets acknowledged, it produces a `202 - ACCEPTED` response. If the
+    message is nacked, it creates a `400 - BAD REQUEST` response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `getAllValidatedOrders` method lets us check what has been written in the
+    database. The `OrderProcessing` component consumes the orders from the `new-orders`
+    channel and invokes the validation service, as shown in [Example 12-35](#order-processing-class).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-35\. The `OrderProcessing` class (*chapter-12/http-messaging-example/src/main/java/org/acme/http/OrderProcessing.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: The validation service fails if the order is invalid. As a result, the message
+    is nacked. If the order is valid, it sends the order to the `validated-orders`
+    channel. The `OrderStorage` component consumes this channel and writes each order
+    in the database ([Example 12-36](#persist-orders)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-36\. Persist orders in a database (*chapter-12/http-messaging-example/src/main/java/org/acme/http/OrderStorage.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run the application with `mvn quarkus:dev` from the *chapter-12/http-messaging-example*
+    directory. As it uses Quarkus Dev Services, you don’t need to provision a database
+    in dev mode; Quarkus does it for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the application is running, add an order as shown in [Example 12-37](#add-new-order).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-37\. Invoke the endpoint to add a new order
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can verify that the order has been processed by using [Example 12-38](#retrieve-persisted-orders).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-38\. Invoke the endpoint to retrieve the persisted orders
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now try to insert an invalid order (using a negative quantity), as shown in
+    [Example 12-39](#invalid-order).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-39\. Invoke the endpoint to introduce an invalid order
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: The response is `400`. You can verify that it was not inserted in the database
+    by using code in [Example 12-40](#invalid-not-listed).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example 12-40\. Invoke the endpoint to retrieve the persisted orders: the invalid
+    order is not listed'
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: The validation step of the processing can use the fault-tolerance annotations
+    to improve the reliability of the application ([Example 12-41](#ft-annotations)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 12-41\. Use fault-tolerance annotations
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using the REST client in the messaging application allows you to smoothly integrate
+    remote services in a processing workflow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter focused on integrating a remote HTTP API into your reactive application
+    without breaking the reactive principles. You learned how to do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Integrate a remote HTTP endpoint with your reactive application by using the
+    reactive REST client
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Protect your integration point by using the fault-tolerance annotations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Build API gateways by combining Mutiny, RESTEasy Reactive, and the REST client
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Integrate remote HTTP APIs in message-processing pipelines
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The next chapter focuses on observability and how to keep your reactive system
+    running under fluctuating load and when facing failures.
+  prefs: []
+  type: TYPE_NORMAL

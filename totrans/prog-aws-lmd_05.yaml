@@ -1,0 +1,1821 @@
+- en: Chapter 5\. Building Serverless Applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far we’ve talked a lot about Lambda functions—how to program them, how to
+    package and deploy them, how to process input and output, etc. One important aspect
+    to Lambda, however, that we haven’t covered much so far, is that Lambda functions
+    are rarely invoked directly from code we write in a different system. Instead,
+    for the *vast majority* of usages of Lambda, we configure an *event source*, or
+    *trigger*, that is *another AWS service*, and let AWS invoke our Lambda function
+    for us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We looked at a couple of examples of this in [“What Does a Lambda Application
+    Look Like?”](ch01.html#what_does_a_lambda_application_look_like):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To implement an HTTP API, we configure AWS API Gateway as the event source.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To implement file processing, we configure S3 as the event source.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There are many different AWS services that directly integrate with Lambda, and
+    even more that integrate indirectly. This means that we can build *serverless
+    applications*, using Lambda as the compute platform, that can perform a vast range
+    of tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we look at how to tie event sources to Lambda and then explore
+    how to build specific types of application with this technique. Along the way,
+    you’ll learn more about how to architect, build, package, and deploy Lambda-based
+    applications, building on our knowledge from the previous chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you haven’t done so already, you’ll likely want to download the [example
+    source code](https://oreil.ly/8DQe_) before trying any of the examples in this
+    chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda Event Sources
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As you just learned, the typical usage pattern for Lambda is to tie a function
+    to an event source. In this section, we describe the workflow to follow when you
+    build a Lambda function to integrate with a particular upstream service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing Code to Work with Input and Output for Event Sources
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When programming a Lambda function to respond to a particular event source,
+    the first thing you’ll typically want to do is understand the format of events
+    that your Lambda function will receive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The SAM CLI tool that we’ve already used has an interesting command to help
+    with this exercise—`sam local generate-event`. If you run this command, `sam`
+    lists all the services it can generate stub events for, which you can then examine
+    and use to drive your code. For example, part of the output for `sam local generate-event`
+    looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s say we’re interested in building a serverless HTTP API. In this case,
+    we use AWS API Gateway as our upstream event source. If we run `sam local generate-event
+    apigateway` the output includes the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: It turns out that API Gateway can integrate with Lambda in multiple ways. The
+    one we typically want from this list is the aws-proxy event, where API Gateway
+    acts as a proxy server in front of a Lambda function, so let’s give that a try.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: This JSON object is a fully baked sample of a typical event a Lambda function
+    receives from API Gateway. In other words, when you set up API Gateway as a trigger
+    for your Lambda function, the event argument that is passed to the Lambda function
+    has this structure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This sample event doesn’t necessarily help you with the *semantics* of the integration
+    with API Gateway, but it does give you the shape of the event that your Lambda
+    function receives, which in turn gives you a solid start to writing your code.
+    You can use this JSON object as inspiration, or you can take it a step further
+    and actually embed it in a test—more on that in [Chapter 6](ch06.html#ch06)!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because you now know the format of the data that your Lambda function receives,
+    you are able to create a handler signature to process this format. Remember [“POJOs
+    and Ecosystem Types”](ch03.html#pojos_and_ecosystem_types)? That’s going to come
+    into play now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One option you have in setting up your handler is to create your own POJO input
+    type that fits the structure of the inbound event but only creates fields for
+    the properties you care about. For instance, if you cared only about the `path`
+    and `queryStringParameters` properties of the aws-proxy event, you could create
+    a POJO as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: A second option is to use a library of types that AWS provides in a Java library
+    precisely for this purpose—the “AWS Lambda Java Events Library.” If you use this
+    library, refer to the [documentation](https://oreil.ly/5DMvp) and look to find
+    the latest versions in [Maven Central](https://oreil.ly/8WvbA).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you want to use this library to handle aws-proxy events, then you need to
+    first include a library in your Maven dependencies. Add the `<dependencies>` section
+    to the root of your *pom.xml* file if it isn’t already there. Otherwise, add this
+    `<dependency>` subsection to the preexisting `<dependencies>` section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: With that update made, we can use the [`APIGatewayProxyRequestEvent` class](https://oreil.ly/S1y95)
+    as our input POJO.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we have a class to represent the event that our Lambda function is going
+    to receive. Next, let’s look at how to perform the same activity for the event
+    that will be our function’s response. As you know from [“Input, Output”](ch03.html#input-output),
+    this is where POJOs come into play again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The SAM CLI can’t help us this time, so alternatively you can look up the [AWS
+    documentation](https://oreil.ly/RnyUg) to find valid output event structures and
+    generate your own output POJO type, or you can use the AWS Lambda Java Events
+    Library again. This time, use the `APIGatewayProxyResponseEvent` class if responding
+    to an API Gateway proxy event (see [“API Gateway Proxy Events”](#api-gateway-proxy-events)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s say that you want to build your own POJO class and want to return just
+    an HTTP Status code and a `body` in the HTTP response. In that case, your POJO
+    might look as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Whether you use the AWS-provided POJO types or code them yourself is not a
+    particularly clear-cut choice. At the present time, we default to using the AWS
+    library for a couple of reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: While in the past the library has lagged behind significantly with what’s actually
+    available in the Lambda platform, these days AWS does a decent job keeping it
+    up-to-date.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Similarly, this library used to bring in a huge number of SDK dependencies,
+    and so would significantly increase the size of your artifact. This is much improved
+    now, and the base JAR (which is sufficient for quite a few event sources, including
+    API Gateway and SNS) is less than 100KB.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: That said, coding your own POJOs is a perfectly reasonable approach—it means
+    your deployed artifact will be even smaller, it reduces the number of library
+    dependencies your code has (including transitive dependencies), and it adds a
+    succinctness to your code, aiding maintainability later. In this chapter, we give
+    examples of both approaches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once your basic Lambda function is coded, it’s time to move on to the next step—configuring
+    the event source for deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configuring a Lambda Event Source
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Just as there are multiple ways of deploying and configuring a Lambda function
+    (remember that long list of deployment tools from [“Deploy”](ch04.html#lambda-deployment-tools)?),
+    there are multiple ways of configuring an event source. However, since in this
+    book we are using SAM to deploy our code, it makes sense, as much as possible,
+    to use SAM to configure our event sources too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s continue our API Gateway example. The simplest way of defining an API
+    Gateway event source in SAM is to update your Lambda function definition in your
+    *template.yaml* as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Take a look at the `Events` key—that’s where the magic happens. What SAM does
+    in this case is create a whole bunch of resources, including a globally accessible
+    API endpoint (which we get to later in the chapter), but part of what it also
+    does is configure API Gateway to trigger your Lambda function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SAM can directly configure [many different event sources](https://oreil.ly/s_4W2).
+    However, if it doesn’t do enough for your requirements, you can always drop down
+    to lower-level CloudFormation resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding Different Event Source Semantics
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Back in [Chapter 1](ch01.html#ch01) we described that Lambda functions can be
+    invoked in two ways—synchronously and asynchronously—and showed how those different
+    invocation types were used in different scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unsurprisingly, that means there are at least two different kinds of event source—those,
+    like API Gateway, that invoke a Lambda function synchronously and wait for the
+    reply (“synchronous event sources”), and others that invoke a Lambda function
+    asynchronously, and don’t wait for the reply (“asynchronous event sources”).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case of the former group, your Lambda function needs to return the appropriate
+    type of response, just like we did with the API Gateway earlier. For the latter
+    group, your handler function can have a return type of `void`, showing that you
+    don’t return a response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It would be convenient to say, in fact, that *all* event sources fit into one
+    of these two kinds, but unfortunately there’s a slight complication—there’s a
+    third kind, and that’s Stream/queue event sources, such as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kinesis Data Streams
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: DynamoDB Streams
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Simple Queue Service (SQS)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In all three of these cases, we configure the Lambda *platform* to reach out
+    to the upstream service to *poll* for events, as opposed to all the other event
+    sources where we configure a Lambda trigger directly from the upstream service
+    to *push* events to Lambda.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This reversal for stream/queue sources has no impact on the Lambda handler
+    programming model—the method signature is precisely the same. For example, here
+    is the format of a Lambda handler event for SQS (note the array of `Records`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Table 5-1\. Lambda event source types
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Event Source Type | Event Sources |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Synchronous |'
+  prefs: []
+  type: TYPE_TB
+- en: API Gateway, Amazon CloudFront (Lambda@Edge), Elastic Load Balancing (Application
+    Load Balancer), Cognito, Lex, Alexa, Kinesis Data Firehose
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Asynchronous |'
+  prefs: []
+  type: TYPE_TB
+- en: S3, SNS, Amazon SES, CloudFormation, CloudWatch Logs, CloudWatch Events, CodeCommit,
+    Config
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Stream/Queue |'
+  prefs: []
+  type: TYPE_TB
+- en: Kinesis Data Streams, DynamoDB Streams, Simple Queue Service (SQS)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stream/queue event sources are also a little different when it comes to error
+    handling (see [“Error Handling”](ch08.html#error-handling)). But for now, we know
+    enough about event sources to explore a couple of detailed examples. Let’s dig
+    into our serverless HTTP API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example: Building a Serverless API'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 1](ch01.html#ch01), we briefly discussed how Lambda can be used
+    as part of a web API. In this section, we will show how this is built.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Behavior
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This application allows a client to upload weather data to an API, and then
+    allows other clients to retrieve that data ([Figure 5-2](#web-api-again)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch01_image05.png](assets/awsl_0105.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-2\. Web API using AWS Lambda
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The write path consists of making an HTTP POST request to the endpoint `/events`,
+    with the following JSON data structure in the `body` of the request:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The read path consists of making a GET request to the endpoint `/locations`,
+    which returns the latest weather data for each location that we’ve saved data
+    for. The format of this data is a JSON list of objects in the same format as the
+    write path. An optional query string parameter `limit` can be added to the GET
+    request to specify a maximum number of records to return.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Architecture
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We use AWS API Gateway to implement all of the HTTP elements of this application.
+    The read path and write path are implemented using two different Lambda functions.
+    These are triggered by API Gateway. We store our data in a DynamoDB table. DynamoDB
+    is Amazon’s “NoSQL” database service. It’s a great fit for many serverless systems
+    because:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It offers the same “lightweight operations” model as Lambda—we configure the
+    table structure we want and Amazon handles all runtime considerations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It can be used in a full “on-demand” scaling mode that scales up and down in
+    reaction to actual usage, just like Lambda does.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Because DynamoDB is a NoSQL technology, it isn’t the right choice for all applications,
+    but it’s definitely a quick way to get started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For our DynamoDB table in this example, we declare a primary key named `locationName`
+    and use “on-demand” capacity control.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We treat all of these resources—an API Gateway definition, two Lambda functions,
+    and a DynamoDB table as one unified “serverless application.” We treat the code,
+    configuration, and infrastructure definitions as one, collectively deployed, unit.
+    This is not a particularly new idea just for serverless, though—encapsulating
+    a database within a service is a fairly common idea of microservice architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Apart from adding a useful grouping, using the idea of a serverless application
+    also helps solve a concern that some people have when they consider how many Lambda
+    functions they might have in their organization—it’s tough enough herding hundreds
+    of microservices, but a company may end up with thousands or tens of thousands
+    of Lambda functions. How can we manage all of those functions? By namespaceing
+    functions within a serverless application, and by tagging or locating the deployed
+    versions of those applications by their environment/stage, we can start bringing
+    some order to the chaos. This concept of a serverless application is not just
+    a design-time consideration—AWS actually supports it directly (see [“Deployment”](#ch05-deployment)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda Code
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: At this point in the book we don’t discuss error checking or testing—we’ve done
+    that for clarity of example. Don’t worry—both of these important subjects are
+    addressed later in the book!
+  prefs: []
+  type: TYPE_NORMAL
+- en: We mentioned earlier that one of the first things you need to do when implementing
+    an application using Lambda is to understand the format of the events that your
+    Lambda function will receive, and the format of the response your Lambda function
+    should return (if any).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We already examined the API Gateway proxy types earlier. In this weather API,
+    we write our own classes for POJO serialization and deserialization, rather than
+    using the AWS-supplied library. Examples [5-1](#EX5-1) and [5-2](#EX5-2) are sufficient
+    for our needs for both Lambda functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-1\. For deserializing API requests
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 5-2\. For serializing API responses
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: We wouldn’t actually recommend this approach in general—see earlier about whether
+    or not to use the AWS POJO type library ([“Writing Code to Work with Input and
+    Output for Event Sources”](#code-for-event-sources))—but we wanted to show examples
+    of both approaches. The second example in this chapter uses the AWS Library. When
+    you build your own production implementation of an HTTP API with Lambda, you can
+    substitute the `APIGatewayProxyRequestEvent` and `APIGatewayProxyResponseEvent`
+    classes in the `com.amazonaws.services.lambda.runtime.events` package for these
+    DIY classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now let’s look in detail at the code necessary to implement this application.
+    We start with the write path.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Uploading weather data with WeatherEventLambda
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We know that the rough skeleton of our code to process uploaded data is going
+    to be the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first thing we need to do is capture the input of our event. Lambda deserialization
+    starts this work for us, and the structure of the `ApiGatewayRequest` object that
+    is passed to our function is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: We don’t care about the `queryStringParameters` field in this Lambda function—that
+    will be used in the querying function—so we can ignore that for now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That `body` field, though, is a little tricky—the JSON object uploaded by the
+    client is still serialized as a string value. That’s because Lambda only deserialized
+    the event that API Gateway created; it also can’t deserialize the “next level
+    in” of the weather data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: No matter, we can perform our own deserialization for `body`, and one way we
+    can do that is to use the [Jackson library](https://github.com/FasterXML/jackson).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once we’ve deserialized the weather data, we’re ready to save it to the database.
+    [Example 5-3](#EX5-3) shows the full code for the Lambda function—you may also
+    want to open up the example code in the *chapter5-api* directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-3\. WeatherEventLambda handler class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: First you can see we create a few instance variables outside of the handler
+    function. We talk about why we do that in [“Scaling”](ch08.html#lambda-scaling),
+    but the summary is that the Lambda platform typically uses the same instance of
+    a Lambda function several times (although never concurrently), so we can optimize
+    performance a little by only creating certain things once for the lifetime of
+    the Lambda function instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first instance variable is Jackson’s `ObjectMapper`, and the second is the
+    DynamoDB SDK. The third and final instance variable is the table name within DynamoDB
+    that we want to use. The precise value of that comes from our infrastructure template,
+    so we use an environment variable to configure our Lambda function, just as we
+    discussed in [“Environment Variables”](ch03.html#environment-variables).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The remainder of the class is our Lambda handler function. First of all, you
+    can see the signature, with the types that you’d expect given the event source
+    that we’re dealing with. One slight addition here, though, is that our Lambda
+    handler declares that it may throw an exception—this is completely valid, and
+    we discuss error handling more in [“Error Handling”](ch08.html#error-handling).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first line of the handler deserializes the weather event embedded within
+    the `body` field of the original HTTP request. `WeatherEvent` is defined in [Example 5-4](#EX5-4)
+    in its own class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-4\. WeatherEvent class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, Jackson uses the no-argument constructor, and populates the fields
+    of the object based on the value passed in the `body` field of the original Lambda
+    event.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we’ve captured our full weather event, we can save this to the database.
+    We’re not going to go into detail of how to use DynamoDB here, but you can see
+    from the code that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use the environment variable of the table name to connect to our desired
+    table.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We use the DynamoDB Java SDK’s “Document model” to save data to the table, using
+    the location name as the primary key.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finally, we need to return a response. Since we got this far, we assume (for
+    now!) that everything worked successfully, in which case returning an HTTP 200
+    (“OK”) response is the right thing to do, and to make it clearer to the client
+    what we actually did, we return the location name that was saved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That’s all the code that we need to handle the write path of our API. Now let’s
+    look at the read path.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reading weather data with WeatherQueryLambda
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: As you’d expect, `WeatherQueryLambda` is similar to `WeatherEventLambda`, but
+    reversed. [Example 5-5](#EX5-5) shows the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-5\. WeatherQueryLambda handler class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: We see a similar set of instance variables. The DynamoDB one is slightly different
+    because of the DynamoDB SDK’s API, but the Jackson one is the same, and again
+    we capture the environment variable that specifies the table name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the `WeatherEventLambda` handler, we cared about the input event’s `body`
+    field. This time we care about the `queryStringParameters` field, and specifically
+    the `limit` parameter, if it’s set. If it is set, we use it. Otherwise, we default
+    to 50 as the maximum number of records we want to retrieve from DynamoDB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next couple of statements read the data from DynamoDB, and after those,
+    we convert the DynamoDB results back into `WeatherEvent` objects. With the weather
+    events captured, we use Jackson again to create a JSON string response to return
+    to the client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we send our API response—again setting 200 OK as the status code, but
+    this time putting the useful response in the `body` field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: And that’s it for code! With very little code, even with the verbosity of Java,
+    we have a full HTTP API that reads and writes values to a database. But, of course,
+    our code isn’t all there is to defining the app. As we saw in [Chapter 4](ch04.html#ch04),
+    we also need to build and package our code. And we actually need to define our
+    infrastructure too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We look at building and packaging next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Build and Package Using the AWS SDK BOM
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In [Chapter 4](ch04.html#ch04) we showed how to build and package a Lambda application
+    using Maven. In this example, we’re going to use the ZIP format that we described
+    there, so we need a *pom.xml* file, and an assembly description file. The latter
+    of those is no different to what we’ve seen before, so we ignore that here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s take a quick look at the *pom.xml* file, cut down a little for brevity:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-6\. Partial Maven POM file for HTTP API
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: An element that we’ve added here since [Chapter 4](ch04.html#ch04) is the `<dependencyManagement>`
+    section. In this tag we reference a dependency named `aws-java-sdk-bom`. This
+    useful element is a feature of Maven known as a “bill of materials” (BOM), and
+    in essence it groups all the version dependencies for a set of libraries. We use
+    it here so that any AWS Java SDK dependencies that we use are guaranteed to be
+    in sync with each other with respect to versions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this particular project, we actually use only one AWS Java SDK library—`aws-java-sdk-dynamodb`—and
+    so using the BOM is less necessary for this example. But many Lambda applications
+    use multiple AWS SDKs, so it’s useful to start off on solid footing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can also see that we don’t define the version for `aws-java-sdk-dynamodb`
+    in the `<dependency>` section, because it uses the version defined in the BOM.
+    We do still have to declare the version of `aws-lambda-java-core` because that’s
+    not part of the AWS Java SDK, and therefore not in the BOM—you can tell because
+    it doesn’t have “sdk” in its name. You can read more about the AWS Java SDK BOM
+    [in this blog article](https://oreil.ly/V1x9x).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, we collect the code for both of our different Lambda functions
+    into one zipped package. In the next example later in this chapter, we show how
+    you can break this package up into individual artifacts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the dependency updates defined, we can build and package our application,
+    using `mvn package` as usual.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Infrastructure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The one element we still need to define is our infrastructure template.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far in this book we’ve only defined Lambda resources. Now we need to define
+    our API Gateway, and our database. How do we do that? [Example 5-7](#EX5-7) shows
+    the *template.yaml*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-7\. SAM template for HTTP API
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let’s go through this from the top.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First of all we have our CloudFormation and SAM headers—these are no different
+    to what we’ve seen before.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next is a new top-level section named `Globals`. `Globals` is a code-optimizing
+    feature of SAM that allows us to define some of the properties common to all the
+    resources of the same type in an application. We mostly use it here to define
+    a few properties common to both of the Lambda functions that we declare later
+    in the file. We’ve already seen `Runtime`, `MemorySize`, and `Timeout`, but the
+    way we’ve declared `LOCATIONS_TABLE` in the `Environment` key, with the `!Ref`
+    string, is new—we will come back to that in a moment. Note that not all properties
+    from a function definition work within the `Globals` section, which is why you
+    don’t see `CodeUri` defined within the `Globals`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, in the `Globals` section is a small configuration of the API Gateway
+    settings to use the most up-to-date version of SAM’s API configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then we move into the rest of the template, which consists of `Resources` elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first one is new—it’s of type `AWS::Serverless::SimpleTable`. This is SAM’s
+    way of defining DynamoDB databases. It works for simple configurations, which
+    is fine for us in this example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that what we’re doing here isn’t merely pointing to a database that already
+    exists—we’re actually declaring that we want CloudFormation to create a database
+    for us, and managing it in the same stack of components as our Lambda functions,
+    etc. All we do is specify what we want the primary key field to be named, and
+    AWS does everything else to manage the table on our behalf.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We don’t even give the table a physical name—CloudFormation generates a unique
+    name for us based on the name of the stack, the logical name of the table, `LocationsTable`,
+    plus some randomly generated uniqueness. That’s all well and good, but if we don’t
+    know the name of the table, how are we meant to use it from our Lambda functions?
+  prefs: []
+  type: TYPE_NORMAL
+- en: That’s where the `!Ref LocationsTable` value that we saw earlier comes in. CloudFormation
+    substitutes that string for the physical name of the DynamoDB table, and so our
+    Lambda functions have an environment variable pointing them to the correct location.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Moving on from the DynamoDB table, we see the definitions of our two Lambda
+    functions. These elements contain a lot of ideas we’ve covered already. We saw
+    the `Policies` section in [Chapter 4](ch04.html#ch04)—note how we’re embracing
+    the principle of least privilege here by:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only giving our functions access to one specific DynamoDB table (see `!Ref`
+    being used again)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Only giving the Lambda function that is querying data read-only access (by declaring
+    the `DynamoDBReadPolicy` policy)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We also see the `Events` section in each Lambda function that we covered briefly
+    earlier in this chapter. As we mentioned then, what’s happening here is that SAM
+    is defining an implicit API Gateway, and then is attaching our Lambda functions
+    to that Gateway with the `Path` and `Method` properties defined in the `Events`
+    sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In many real-life scenarios, the implicit API Gateway configuration won’t be
+    quite enough for your needs, and in that case you can define either an explicit
+    SAM API Gateway resource (using a resource of type `AWS::Serverless::Api`), or
+    the underlying CloudFormation API Gateway resource types. If you use the first
+    of these options, you can add a `RestApiId` property to the API `Event` property
+    of your Lambda functions to tie them to your self-defined API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can also use Swagger/Open API as part of the CloudFormation/SAM definition
+    of your API Gateway. That way you’ll get better documentation, plus the opportunity
+    for some amount of “no code required” input validation—but definitely don’t rely
+    on Swagger/API Gateway as a complete input validator. Also there are certain aspects
+    to API Gateway’s configuration that can be defined only using AWS’s own [OpenAPI
+    extensions](https://oreil.ly/Cq-_T). We could write an entire mini-book just on
+    this area, though, so we’ll leave you to go explore the AWS documentation for
+    yourself if that’s what you need!
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is all a little theoretical, but fortunately we’ve finished looking at
+    the template, so it’s time to deploy and test our application!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deployment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: As is, the API in this example is publicly accessible on the internet. While
+    this is OK for experimentation (since the full API name isn’t easily discoverable),
+    it’s not something you want to leave around forever since anyone can read and
+    write to this API. In a production scenario you would want to add some amount
+    of security at least around the write path, but that’s beyond the scope of what
+    we’re going to cover here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To deploy the application, use precisely the same incantation of `sam deploy`
+    that you’ve done already (if you need to refresh your memory, take a look at [“CloudFormation
+    and the Serverless Application Model”](ch04.html#cloudformation-and-sam)). The
+    only thing you may want to change is the `stack-name` so that you deploy this
+    to a new stack (e.g., `ChapterFiveApi`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once SAM and CloudFormation have completed, you’ll have deployed a new stack
+    to CloudFormation. We can see this in the CloudFormation section of the AWS Web
+    Console ([Figure 5-3](#http-api-cloudformation)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch05_image03.png](assets/awsl_0503.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-3\. CloudFormation stack for HTTP API
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: CloudFormation is a little low level, though, and so usefully AWS also provides
+    a way of viewing this deployment in a view called *Serverless Application*, just
+    as we designed earlier in [“Architecture”](#architecture-section). You can access
+    this view via the Applications tab of the Lambda console ([Figure 5-4](#http-api-appview)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch05_image04.png](assets/awsl_0504.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-4\. Serverless Application view for HTTP API
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In this view you can see the DynamoDB table, the API Gateway (referred to as
+    a *RestAPI* in AWS terms), and our two Lambda functions. If you click any of these
+    resources, you are taken to the correct service console, and into that resource—try
+    it out for the *ServerlessRestApi* resource. This puts you in the API Gateway
+    console. Click *Stages* on the left and then *Prod*—you should see something like
+    [Figure 5-5](#http-api-apigateway).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch05_image05.png](assets/awsl_0505.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-5\. API Gateway view for HTTP API
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The *Invoke URL* value is the publicly accessible URL for your API—make a note
+    of it since you’ll need it in a moment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can also see in the *Serverless Application* view that the physical names
+    for the resources have the partially generated/partially random structure we discussed
+    earlier. For example, in this case, our DynamoDB table is actually named *ChapterFiveApi-LocationsTable-WFRRTZNM7JTF*.
+    And sure enough, if we look in the Lambda console at either of the two functions
+    for this application, we can see that the `LOCATIONS_TABLE` environment variable
+    is correctly set to this value ([Figure 5-6](#http-api-lambdaconfig)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch05_image06.png](assets/awsl_0506.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-6\. API Gateway view for HTTP API
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Finally, let’s test our deployment by calling both API routes. To do this, you
+    need that URL from a moment ago.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let’s send some data. The base of the URL is the one from the API Gateway
+    console, but we append `/events`. We can call our API using curl, for example,
+    as follows (substitute in your URL):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: This has saved two new events to DynamoDB. You can prove that to yourself by
+    clicking on the DynamoDB table from the Serverless Application console, and then
+    clicking on the *Items* tab once you’re in the DynamoDB console ([Figure 5-7](#http-api-dynamodb)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch05_image07.png](assets/awsl_0507.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-7\. DynamoDB table for HTTP API
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'And now we can use the final part of our application—reading from the API.
+    We can use curl for that again, adding `/locations` to the API Gateway console
+    URL, for example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: As expected, this returns the list of locations that we’ve stored weather for.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Congratulations! You’ve built your first full serverless application! While
+    it has only one simple feature, think of all the *nonfunctional* capabilities
+    it has—it auto-scales up to handle a vast load and then back down when not in
+    use, it’s fault-tolerant across multiple availability zones, it has infrastructure
+    that is automatically updated to include critical security patches, and it has
+    a whole lot more besides.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now let’s look at a different type of application, using a couple of other different
+    AWS services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example: Building a Serverless Data Pipeline'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 1](ch01.html#ch01) we listed two use cases for Lambda ([“What Does
+    a Lambda Application Look Like?”](ch01.html#what_does_a_lambda_application_look_like)).
+    The first was an HTTP API that we just described in more detail—an example of
+    synchronous usage of Lambda. The second use case was file processing—uploading
+    a file to S3 and then using Lambda to do something with that file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, we’re building on that second idea to create a *data pipeline*.
+    A data pipeline is a pattern where we chain together multiple asynchronous stages
+    and branches of processing data. It’s a popular pattern where the scalability
+    of cloud resources gives a real-time alternative to batch systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another important element of this example is that we’re going to change the
+    build and packaging phases of our application to create isolated output artifacts
+    for each Lambda function. As the amount of code in your Lambda functions grows—both
+    that which is specific to the function and that which is imported as libraries—then
+    deployment and startup will slow down. Breaking up the packaged artifacts is a
+    valuable technique to mitigate that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s get started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Behavior
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This example is going to be another take on the weather event system we started
+    in the previous example. This time an application will upload a list of “weather
+    events” in a JSON file to S3. A data pipeline will then process this file, and
+    for now the side effect will merely be logging the events to AWS CloudWatch Logs
+    ([Figure 5-8](#data-pipeline-behavior)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch05_image08.png](assets/awsl_0508.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-8\. Data pipeline example behavior
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Architecture
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: What we’ve just shown is the *behavior* of this application—the *architecture*
+    has a few more details ([Figure 5-9](#data-pipeline-architecture)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch05_image09.png](assets/awsl_0509.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-9\. Data pipeline example architecture
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We start this application with an S3 bucket. The act of uploading a file, or
+    in S3 terms an *object*, to S3 will (asynchronously) trigger a Lambda function.
+    This first function (`BulkEventsLambda`) will read the JSON list of weather events,
+    separate them out into individual events, and then publish each one onto a SNS
+    topic. This in turn will trigger (asynchronously again) a second Lambda function
+    (`SingleEventLambda`) which will then process each weather event. In our case,
+    this will simply mean logging the event.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This architecture is obviously far too complicated just for logging the contents
+    of an uploaded file! However, the important aspect of the example is that it provides
+    a “walking skeleton” of an application that has a complete, deployable, multistage
+    data pipeline. You could then use this as a starting point for adding interesting
+    processing logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All of these components are treated as one collectively deployed serverless
+    application, just as we did in the HTTP API example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we’ll dig in further to each of these stages of the architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: S3
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: S3 is one of the oldest services in AWS, as we described in [“The Cloud Grows”](ch01.html#the-cloud-grows).
+    While it’s often used in the application architecture of systems, it’s commonplace
+    too when deploying and operating AWS applications—we’ve used S3 a number of times
+    in this book already when deploying our Lambda-based applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'More than that, however, we think that S3 is one of the earliest examples of
+    a serverless BaaS product, at least on AWS. If we look back to [Chapter 1](ch01.html#ch01)
+    at the factors that “differentiate” serverless, we can see it ticks all the boxes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Does not require managing a long-lived host or application instance
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yes—we have no “file servers” or otherwise to manage when we use S3.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Self auto-scales and auto-provisions, dependent on load
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yes, we never have to manually configure how much capacity we want with S3—it
+    auto-scales both for total storage, and for traffic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Has costs that are based on precise usage, up from and down to zero usage
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yes! If you have an empty bucket, you don’t pay anything. Alternatively, your
+    cost will be dependent on the amount of bytes stored, amount of traffic, and your
+    storage class (see next point).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Has performance capabilities defined in terms other than host size/count
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yes, again! S3’s performance capabilities are the storage class you choose—how
+    quickly you need to access data. The more quickly you want to be able to access
+    your data, the more you’ll pay.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Has implicit high availability
+  prefs: []
+  type: TYPE_NORMAL
+- en: And yes. S3 replicates data across AZs within a region. If one AZ has a problem,
+    you’ll still be able to access all of your data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because S3 is serverless, it is a great partner to Lambda, especially because
+    of their similar scaling capabilities. Further, S3 directly integrates with Lambda
+    by allowing Lambda functions to be triggered whenever data changes in an S3 bucket.
+    This way of reacting to changes automatically in S3 in an event-driven manner,
+    rather than having to poll S3 to look for changes from a long-running traditional
+    process, is cleaner, easier to understand, and more efficient from an infrastructure
+    costs point of view.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All of the non-Lambda services we use in these two examples—API Gateway, DynamoDB,
+    S3, and SNS—are serverless BaaS services within the AWS ecosystem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For now we won’t provide an “upload client” to S3 in the example, and instead
+    will use AWS tools to handle uploading. In a real application you may choose to
+    allow your end user client to upload directly to S3 by means of a “Signed URL”—this
+    is a “pure” serverless approach since you are not only not running servers, you’re
+    in fact pushing behavior to the client that you may otherwise have implemented
+    in a server-side application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda functions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: When you see the code for the Lambda functions a little later, you won’t come
+    across anything new given everything you’ve already learned. The only real difference
+    to what we did in the first example is that these functions won’t need to return
+    any values since they are invoked asynchronously.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One question that might be on your mind, though, is why do we separate out processing
+    for each event to a separately invoked Lambda function? This pattern is what we
+    often call *fan-out*. Alternatively, it’s the “map” part of a “map-reduce” system,
+    and there are a couple of reasons for using it with Lambda.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first reason is to introduce parallelism. Each SNS message will trigger
+    a new invocation of our `SingleEventLambda` function. For each invocation of a
+    Lambda function, if the previous invocation is not complete, then the Lambda platform
+    will automatically create a new instance of the Lambda function, and call that
+    instead. In the case of our example app, if you upload a file of one hundred events,
+    and each event individually took at least a few seconds to process, then Lambda
+    would create one hundred instances of `SingleEventLambda`, and process each weather
+    event in parallel ([Figure 5-10](#data-pipeline-fanout)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch05_image10.png](assets/awsl_0510.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-10\. Data pipeline fan-out
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This scaling aspect of Lambda is hugely valuable, and we’ll be discussing it
+    further in [Chapter 8](ch08.html#ch08) ([“Scaling”](ch08.html#lambda-scaling)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second reason for introducing fan-out is if each individual event takes
+    a long time to process—say a few minutes. In this case, processing one hundred
+    weather events would take longer than the maximum 15-minute timeout we have with
+    Lambda, but putting each event into its own Lambda invocation means we may be
+    able to avoid a timeout concern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are other ways of solving Lambda’s timeout restriction. One alternative
+    (which is somewhat dangerous—see the following warning!) is to use a recursive
+    call in a Lambda function. In [Chapter 3](ch03.html#ch03) ([“Timeout”](ch03.html#lambda-timeout)),
+    we saw that we could use the `getRemainingTimeInMillis()` method of the `Context`
+    object passed to a Lambda handler to keep track of how long a function has left
+    until it times out. A strategy of using this value is to asynchronously directly
+    invoke the same Lambda function that’s currently running, but only with the remaining
+    data to be processed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is a better choice than “fan-out” if your data needs to be processed linearly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Be careful when calling Lambda functions recursively since it’s easy to have
+    runaway scenarios where either (a) you never stop and/or (b) you scale out your
+    function hundreds or thousands of instances wide. Either of these can seriously
+    impact your AWS bill! Because of reason (b), we recommend in the very rare case
+    where a recursive Lambda call makes sense that you use a low “reserved concurrency”
+    configuration (see [“Reserved concurrency”](ch08.html#reserved-concurrency)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: SNS
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: SNS is one of AWS’s messaging services. On one hand, SNS offers a simple [publish-subscribe
+    message bus](https://oreil.ly/D5jdc); on another, it provides the capability to
+    send *SMS* text messages, and similar human-targeted messages. For our example,
+    we only care about the first of these!
+  prefs: []
+  type: TYPE_NORMAL
+- en: SNS is another serverless service. You are responsible for asking AWS to create
+    a Topic, and then AWS handles all the scaling and operations of that Topic behind
+    the scenes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s simple to publish a message with a string as its contents to a Topic using
+    the SNS SDK, as we’ll see later. There are also multiple subscription types for
+    SNS, but we (not surprisingly) are only going to use the Lambda subscription type
+    in this example. The way this works is that when a message is published to a Topic,
+    all subscribers for that Topic will be sent the message. In the case of Lambda,
+    the Lambda platform will receive the message, and then asynchronously invoke the
+    Lambda function we’ve associated with the subscription.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case of our example, we want a Lambda function to be asynchronously invoked
+    for each weather event in an uploaded file. We could have just directly called
+    the `Invoke` method of the Lambda SDK to directly (but asynchronously) invoke
+    `Single​EventLambda` from `BatchEventsLambda`, but instead we used SNS as an intermediary—why?
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is because we want to reduce the structural coupling between the two Lambda
+    functions. We want `BatchEventsLambda` to know that its responsibility is splitting
+    up a batch of weather events, but we don’t necessarily want it to be involved
+    with what happens to those weather events next. If we decide later to evolve our
+    architecture so that each event is processed by multiple consumers, or perhaps
+    we substitute the [AWS Step Functions service](https://oreil.ly/LWX1e) for `SingleEvent​Lambda`,
+    then the code for `BatchEventsLambda` doesn’t need to change.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we chose SNS because of its simplicity and ubiquity within Lambda applications.
+    AWS offers a number of other messaging systems—SQS, Kinesis, and Event Bridge
+    are some examples, and you can even use S3 if you like! Which service you choose
+    really comes down to the specific requirements of your application, and the various
+    capabilities of each service. Picking the right messaging service for an application
+    can be a little tricky, so it’s worthwhile to do appropriate research.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda Code
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our code consists of three classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first is the same `WeatherEvent` as we had in the first example, but copied
+    into a new package, for reasons that will become clearer later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Processing the batch with BulkEventsLambda
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The next class is our `BulkEventsLambda` code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we’ve discussed already the first thing to do is understand the format of
+    the input event.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we run `sam local generate-event s3`, we see that S3 can generate events
+    for both “puts” (creates and updates) and “deletes.” We care about the former,
+    and the example event looks as follows (trimmed a little for conciseness):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first thing to notice is that the event contains an array of `Records`.
+    In fact, S3 will only ever send an array with exactly one element in it, but it’s
+    good practice to code defensively for this if it’s easy to do so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next thing to notice is that we are told what object has caused this event—`test/key`
+    in bucket `example-bucket`. It’s important to remember that S3 isn’t actually
+    a file system, even though we often treat it as such. It’s actually a key-value
+    store where it just so happens that we might consider the key as if it were a
+    path in a file system with directories.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final thing to notice is that we don’t receive the contents of the uploaded
+    object—we’re only told the *location* of the object. In our example application,
+    we want the contents, so we need to load the object from S3 ourselves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, we’re going to use the `S3Event` class from the `aws-lambda-java-events`
+    library as our input event POJO. This class references other types from the `aws-java-sdk-s3`
+    SDK library, so we need that in our library dependencies too. That’s OK, though,
+    from the perspective of wanting to minimize library dependencies, since we make
+    direct calls to the S3 SDK anyway in this class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An `S3Event` object, and its fields, includes everything we need for the input
+    event, and since this function is asynchronous, there is no return type. That
+    means we’re done with the POJO definition phase and can move on to writing code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’re leaving the `package` and `import` lines out of [Example 5-8](#EX5-8)
+    because there are a lot of them, but if you’re interested in seeing them, please
+    download the sample code for the book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-8\. BulkEventsLambda.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: The handler method loops over each record in the `S3Event`. We know that there
+    should only ever be one, but we’ll be safe with this code if that’s not the case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The requirements for the remainder of the code are fairly simple:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Read uploaded JSON object from S3.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Deserialize the JSON object into a list of `WeatherEvent` objects.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: For each `WeatherEvent` object serialize it back into JSON…
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: …and then publish it to SNS.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If you look at the code, you’ll see all of these expressed. We use Jackson for
+    serialization/deserialization just as we did in the first example. We use the
+    AWS SDK twice—once to read from S3 (`s3.getObject()`) and once to publish to SNS
+    (`sns.publish()`). While these are different SDKs, each requiring their own library
+    dependency, they feel broadly the same to use as the DynamoDB SDK did in the previous
+    example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One thing that’s interesting to notice is that just like in the first example
+    we never give any credentials when creating our connections to the AWS SDKs: when
+    we call `defaultClient()` on `AmazonSNSClientBuilder` and `AmazonS3ClientBuilder`,
+    there is no username or password. This works because the Java AWS SDKs, in the
+    context of running within Lambda, by default use the Lambda execution role that
+    we configure for the Lambda (and which we discussed in [“Identity and Access Management”](ch04.html#IAM)).
+    That means there aren’t any passwords that can leak from our source code!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Processing an individual weather event with SingleEventLambda
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: On to our final class. You should be getting the hang of this by now, so let’s
+    zoom through it!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First of all, the input event. Running `sam local generate-event sns notification`
+    gives us the following, and again this is trimmed a little:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Similar to S3, our input event consists of a single-element list of `Records`.
+    Within a `Record`, and the `Sns` object within that, are a number of fields. The
+    one we care about in this example is `Message`, but SNS messages also offer a
+    `Subject` field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use the `aws-lambda-java-events` library again, as we did with `BulkEvents​Lambda`,
+    but this time we want to use the `SNSEvent` class. `SNSEvent` doesn’t require
+    any other AWS SDK classes, so there’s no need to add any further libraries to
+    our Maven dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: And again, this is an asynchronous event type, so there’s no return type to
+    worry about.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On to the code (see [Example 5-9](#EX5-9))! Again, we leave out the `package`
+    and `import` statements here, but they’re in the book’s downloadable code if you’d
+    like to see them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-9\. SingleEventLambda Handler Class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This time our code is simpler:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code defensively again for multiple `SNSRecord` events (even though there should
+    only be one).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Deserialize the `WeatherEvent` from the SNS event.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Log the `WeatherEvent` (we’ll look more at logging in [Chapter 7](ch07.html#ch07)).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: This time there are no references to SDKs because the input event included all
+    the data we cared about.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Build and Package Using Multiple Modules and Isolated Artifacts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With all of the code written, it’s time to build and package our application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From a process point of view, nothing is different with this example from what
+    we’ve covered before—we’ll run `mvn package` before running `sam deploy`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, there’s a big structural difference to this example—we create separate
+    ZIP file artifacts for each Lambda function. Each ZIP file includes the classes
+    for only one Lambda handler and the library dependencies it needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While doing this for an application of this size is somewhat unnecessary, as
+    your applications get bigger, it’s valuable to consider breaking up the artifacts
+    for a few reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cold start time will be reduced (we’ll talk more about cold starts in [“Cold
+    Starts”](ch08.html#cold-starts)).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Deployment time from local machines will typically be reduced since only the
+    artifacts relating to changed functions will be uploaded for each deployment,
+    assuming the use of the reproducible build plug-in we covered in [Chapter 4](ch04.html#ch04)
+    ([“Reproducible Builds”](ch04.html#reproducible-builds)).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You may need to do so to avoid Lambda’s artifact size limitation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The final point relates to the 250MB size limit of (uncompressed) function artifacts
+    in Lambda. If you have 10 Lambda functions, all with different dependencies, and
+    their combined (uncompressed) artifact size is more than 250MB, you’ll need to
+    break up your artifact for each function to make deployment even possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So how do we implement this?
+  prefs: []
+  type: TYPE_NORMAL
+- en: One way to think about it is that we’re effectively building a very small [monorepo](https://oreil.ly/p8jk_)
+    for our serverless application. You can think of it, perhaps, as a “serverless
+    application MiniMono.” Regular monorepos consist of multiple projects in one repo;
+    our MiniMono will consist of multiple Maven modules in one Maven project. While
+    Maven has its shortcomings, it does work very well as a way of declaring dependencies
+    between multiple components, and their dependencies on external libraries. And
+    IntelliJ does a great job of interpreting multimodule Maven projects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting multimodule Maven projects working correctly is a little fiddly, so
+    we’ll go step-by-step through it here. We strongly recommend that you download
+    the sample code and open it up in IntelliJ, since it’s likely to make more sense
+    to you that way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The top-level project
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our top-level *pom.xml* file is going to look a little like [Example 5-10](#EX5-10).
+    We’ve cut out some of it to give clarity to the explanation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-10\. Parent project pom.xml for data pipeline app
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are a few takeaways here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We add the `<packaging>pom</packaging>` tag at the top level—this is declaring
+    that this is a multimodule project.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We include the list of modules in the `<modules>` section.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note that we don’t declare any inter-module dependencies at this point.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All of our external dependencies (not just the AWS SDK BOM) move into the `<dependencyManagement>`
+    section. It makes life easier to declare all the dependencies across the entire
+    project here, and it guarantees that dependency versions are common across the
+    whole project, but you don’t have too.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We’ll see in a moment that modules will declare which of these external dependencies
+    they need.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Notice that we’ve still got the AWS SDK BOM that we talked about in the first
+    example. We move our build plug-in definitions into a `<pluginManagement>` section
+    so that they can be used by the modules.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The configuration for the assembly plug-in remains at *src/assembly/lambda-zip.xml*,
+    or you can use the version we’ve created for you in Maven Central.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There’s a whole bunch of other “Maven magic” detail here that we won’t go into!
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: With our top-level project in place, we can now create our modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The modules
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We create one subdirectory for each module, named the same as each element of
+    the module list in the project *pom.xml*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Within each module subdirectory we create a new *pom.xml*. We’ll start with
+    the most simple one for *common-code*, which allows us to write code that is shared
+    by both Lambda artifacts. In our example, it contains the `WeatherEvent` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Again, all of these Maven examples are slightly trimmed, so please refer to
+    the book source code for the complete versions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-11\. Module pom.xml for common-code
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: We declare our parent, our module’s `artifactId` (which for the sake of sanity
+    should be the same as the module name), and then we declare which build plug-ins
+    we want to use. For this module we’re just creating a regular JAR file, of just
+    the code in the module itself. That means we don’t need to assemble a ZIP file,
+    but we do still want to make use of the reproducible build plug-in. The configuration
+    for the plug-in comes from our definition in the `<pluginManagement>` section
+    of the parent bom.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notice that there’s no `<dependencies>` section because this module doesn’t
+    have any dependencies at this time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, in the *bulk-events-stage* subdirectory we create the *pom.xml* as shown
+    in [Example 5-12](#EX5-12).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-12\. Module pom.xml for bulk-events-stage
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `<parent>` section is the same as for *common-code*, and `<artifactId>`
+    follows the same rule as before.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This time we do have dependencies. The first one is how we declare an inter-module
+    dependency, in this case to the *common-code* module. Notice that we pick up the
+    version from the parent module. Then we declare all of our external dependencies.
+    Notice that there aren’t any versions for these—the versions come from the `<dependency-management>`
+    section in the parent *pom.xml* (or, transitively, from the AWS SDK BOM).
+  prefs: []
+  type: TYPE_NORMAL
+- en: And finally in the `<build>` section we declare our build plug-ins. This time
+    we need to create a ZIP file (which will be the ZIP file just for the `BulkEventsLambda`
+    function), and so we include a reference to `maven-assembly-plugin`. Again, the
+    configuration for the plug-in is defined in the parent *pom.xml*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The *single-event-stage* *pom.xml* looks almost the same as the *bulk-events-stage*
+    *pom.xml*, but with fewer dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With the Maven POM files complete, we then create *src* directories within
+    each module. The end result of our project directory tree looks as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: Running `mvn package` for this multimodule project will create separate *lambda.zip*
+    files in each of the two Lambda module directories.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since we have parallel modules that don’t depend on each other we can actually
+    tune our use of Maven a little to increase build performance. Running `mvn package
+    -T 1C` will make Maven use multiple OS threads, one per core of your machine,
+    when it can.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Infrastructure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Despite the significant change in the structure of our Java project, our SAM
+    template doesn’t change all that much. Let’s look at how it does change, plus
+    the other AWS resources that we use in [Example 5-13](#EX5-13).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-13\. SAM template for data pipeline
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: First, while it’s still fresh in our minds, let’s look at the differences caused
+    by the multimodule Maven project. They are solely the updates to the `CodeUri`
+    properties on the Lambda functions—where we used to have the same `target/lambda.zip`
+    value for both functions in the API example, it’s now `bulk-events-stage/target/lambda.zip`
+    for `BulkEventsLambda`, and `single-event-stage/target/lambda.zip` for the `SingleEventLambda`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: OK, now let’s go back to the top.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Globals` section is a little smaller this time. That’s because there are
+    no shared environment variables across the Lambda functions, and we don’t need
+    any API configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Under `Resources`, first we declare our S3 bucket. There are a whole lot of
+    properties you can add here—access control–related properties are particularly
+    popular. One thing we typically like to add is server-side encryption as well
+    as lifecycle policies. But here we keep it to the defaults. One thing that’s here
+    is an explicitly declared name. Normally we wouldn’t want to do this, and instead
+    have CloudFormation generate a unique name for us, but due to an annoying aspect
+    of CloudFormation’s S3 resource, if we don’t declare a name, then we get a circular
+    dependency with some of the other elements of the file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: S3 bucket names have to be globally unique across all AWS regions and accounts.
+    If you create a bucket named *sheep* in the us-east-1 region, then you can’t also
+    create another one named *sheep* in us-west-2 (unless you first delete the one
+    in us-east-1), and I can’t create a bucket named “sheep” at all. This means that
+    when you create a bucket name explicitly via an automated tool like CloudFormation,
+    you need to include various context-unique aspects to avoid a naming collision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, we use the following declared bucket name:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: There’s some CloudFormation smarts happening here, so let’s unpack that a little.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First of all `!Sub` is another [*intrinsic function*](https://oreil.ly/NaRtL),
+    just like `!Ref` in the first example. `!Sub` substitutes variables in a string.
+    Often you will use variables you declare yourself in template parameters, but
+    in this case we are using CloudFormation [*pseudo parameters*](https://oreil.ly/LUtMC)—variables
+    that CloudFormation defines on our behalf. Say I created a stack named *my-stack*,
+    our account ID was 123456, and we had created the stack in us-west-2, then the
+    bucket name in this stack would be *my-stack-123456-us-west-2-start*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next resource is our SNS Topic. Look—no properties! SNS is partly configurable,
+    but it’s also super simple to use with no configuration at all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: And then we have our two Lambda functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`BulkEventsLambda` has an environment variable referring to the Amazon Resource
+    Name (ARN) of the SNS topic. The [SNS Topic CloudFormation documentation](https://oreil.ly/r6oVW)
+    tells us that calling `!Ref` on a Topic resource returns its ARN.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the security side of this Lambda we both need to read from the S3 bucket—which
+    we refer to with the same name as we used when declaring the bucket in the first
+    place—and we need to write (or publish) to the SNS topic. For the SNS topic, the
+    security policy doesn’t need the ARN (which is what is returned when we call `!Ref`
+    on the Topic resource); it needs the Topic’s name. To get that, we use a third
+    intrinsic function—`!GetAtt`. `!GetAtt` allows us to read secondary return values
+    from a CloudFormation resource. Again, when looking at the SNS documentation,
+    we can see that the name is returned when asking for `TopicName`, hence the value
+    `!GetAtt FanOutTopic.TopicName`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, for `BulkEventsLambda` we need to declare the event source. This is
+    the S3 bucket, and we declare the type of S3 events we care about in the `Events`
+    fields. You can be much more prescriptive here if you like, for example including
+    filter patterns to only trigger events for certain S3 keys.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you’d expect, `SingleEventLambda` is simpler since it doesn’t call any AWS
+    resources. For this function, we just need to declare the event source, which
+    is the SNS Topic, referred to by the Topic’s ARN.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deployment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Deployment is similar to what you’ve seen before. Again, we’re using the principles
+    of a serverless application in that we collectively deploy all of the components
+    together.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There’s one small change for deploying this app. Because we’re using the stack
+    name in the manually defined S3 bucket name, we have to use only lowercase letters
+    in the stack name (because S3 buckets can’t be named with uppercase letters):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once the application is deployed, you can explore the deployed components via
+    the Lambda Applications console, or the CloudFormation console. [Figure 5-11](#data-pipeline-appview)
+    shows what it looks like in Lambda applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch05_image11.png](assets/awsl_0511.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-11\. Serverless Application view for data pipeline
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Clicking the resources will take you through to their own parts of the AWS Console.
+    To test this application, we need to upload a file to S3\. One option is to do
+    that manually through the web console.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A more automated approach is as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, query CloudFormation to get the name of the S3 bucket, and assign that
+    to a shell variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now use the AWS CLI to upload the sample file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now look at the logs for the `SingleEventLambda` function, and you’ll see, after
+    a few seconds, each of the weather events separately logged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Congratulations—you’ve built your second serverless application!
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can imagine, with the vast number of services available on AWS, the different
+    types of serverless application that can be built are innumerable. And that’s
+    before we even consider the perfectly valid capability of calling services outside
+    of AWS from Lambda!
+  prefs: []
+  type: TYPE_NORMAL
+- en: We hope that this chapter has given you a taste of what’s possible. The ability
+    to deploy complete, multicomponent, applications with just a few text files, in
+    minutes or seconds, and then tear them down again, makes for an extraordinarily
+    valuable “application sandbox” environment that can also scale to real production
+    use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We started this chapter by looking at how to trigger Lambda functions from other
+    AWS services. Understanding this is an important first step to embracing serverless
+    architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then explored two example serverless applications—wholly contained groups
+    of AWS resources that can be collectively deployed. The first example was a database-backed
+    HTTP API, using two synchronously invoked Lambda functions, along with the AWS
+    services API Gateway and DynamoDB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second example was a serverless data pipeline consisting of two asynchronous
+    processing stages, including a fan-out design. This example used Lambda, S3, and
+    SNS. In this example, we also explored using multimodule Maven projects to create
+    a “serverless application MiniMono.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You now have a framework for building serverless AWS applications:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Identify the *behavior* you want your application to have.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Design the *architecture* of your application by choosing which services will
+    implement the different aspects of your system, and how those services will interact.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Program *Lambda code* to:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Consume the correct event types.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Perform the necessary side effects on downstream services.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Where relevant, return the correct response.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Configure your *infrastructure* using a CloudFormation/SAM template.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Execute *deployment* using the correct AWS tooling.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: So far all of our testing has been very manual. How can we do better, using
+    automated testing techniques? That’s what we explore in the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Another great event source for “getting started” with Lambda is CloudWatch
+    Scheduled Events, which we can use to build “serverless cron jobs.” We describe
+    this use of Lambda in [“Example: Lambda “cron jobs””](ch09.html#lambda-cron-jobs).
+    Build a Lambda function that will run every minute, and for now that just writes
+    out a log statement when it’s called. See the [SAM documentation](https://oreil.ly/C_FhY)
+    on how to set up this trigger.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Update your scheduled event Lambda from the previous exercise to post a message
+    to SNS, similar to how we did so in `BulkEventsLambda` earlier in this chapter.
+    Update your SNS topic to send an SMS, or text, message to your mobile phone (see
+    the [AWS documentation](https://oreil.ly/TrQct) on how to do this).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Reimplement the data pipeline example from this chapter to use an SQS queue,
+    rather than an SNS topic, between the two Lambdas. A couple of good starting places
+    to help with this are [here](https://oreil.ly/LKekx) and [here](https://oreil.ly/Cbvb3)
+    in the Lambda documentation.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

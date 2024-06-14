@@ -1,0 +1,1468 @@
+- en: Chapter 6\. Java’s Approach to Memory and Concurrency
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter is an introduction to the handling of concurrency (multithreading)
+    and memory in the Java platform. These topics are inherently intertwined, so it
+    makes sense to treat them together. We will cover:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introduction to Java’s memory management
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The basic mark-and-sweep garbage collection (GC) algorithm
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How the HotSpot JVM optimizes GC according to the lifetime of the object
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Java’s concurrency primitives
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Data visibility and mutability
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Basic Concepts of Java Memory Management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In Java, the memory occupied by an object is automatically reclaimed when the
+    object is no longer needed. This is done through a process known as *garbage collection*
+    (or GC). Garbage collection is a technique that has been around for years and
+    was pioneered by languages such as Lisp. It takes some getting used to for those
+    programmers accustomed to languages such as C and C++, in which you must call
+    the `free()` function or the `delete` operator to reclaim memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The fact that you don’t need to remember to destroy every object you create
+    is one of the features that makes Java a pleasant language to work with. It is
+    also one of the features that makes programs written in Java less prone to bugs
+    than those written in languages that don’t support automatic garbage collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Different VM implementations handle garbage collection in different ways, and
+    the specifications do not impose very stringent restrictions on how GC must be
+    implemented. Later in this chapter, we will discuss the HotSpot JVM (which is
+    the basis of both the Oracle and OpenJDK implementations of Java). Although this
+    is not the only JVM that you may encounter, it is by far the most common among
+    server-side deployments and provides the reference example of a modern production
+    JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory Leaks in Java
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The fact that Java supports garbage collection dramatically reduces the incidence
+    of *memory leaks*. A memory leak occurs when memory is allocated and never reclaimed.
+    At first glance, it might seem that garbage collection prevents all memory leaks
+    because it reclaims all unused objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A memory leak can still occur in Java, however, if a valid (but unused) reference
+    to an unused object is left hanging around. For example, when a method runs for
+    a long time (or forever), the local variables in that method can retain object
+    references much longer than they are actually required. The following code illustrates:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Memory leaks can also occur when you use a `HashMap` or similar data structure
+    to associate one object with another. Even when neither object is required anymore,
+    the association remains in the map, preventing the objects from being reclaimed
+    until the map itself is reclaimed. If the map has a substantially longer lifetime
+    than the objects it holds, this can cause memory leaks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing Mark-and-Sweep
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Java GC typically relies on an algorithm from a family broadly known as *mark-and-sweep*.
+    To understand these algorithms, recall that all Java objects are created in the
+    heap, and a reference (basically a pointer) to them is stored in a Java local
+    variable (or field) when an object is created. Local variables live in the method’s
+    stack frame, and if an object is returned from a method, then the reference is
+    passed back to the caller’s stack frame when the method exits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As all objects are allocated in the heap, GC will trigger when the heap gets
+    full (or before, depending on the details). The basic idea of mark-and-sweep is
+    to *trace* the heap and identify which objects are still in use. This can be done
+    by examining the stack frames of each Java thread (and a few other sources of
+    references) and following any references into the heap. Each object located is
+    *marked* as still alive and can then be checked to see if it has any fields that
+    are of reference type. If so, these references can be traced and marked as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the recursive tracing activity has completed, all remaining unmarked objects
+    are known to be no longer needed and the heap space they occupy can be *swept*
+    as garbage, i.e., the memory they used is reclaimed to use in further object allocations.
+    If this analysis can be carried out exactly, then this type of collector is known,
+    unsurprisingly enough, as an *exact garbage collector*. For all practical purposes,
+    all Java GCs can be considered to be exact, but this may not be true in other
+    software environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a real JVM, there will very likely be different areas of heap memory, and
+    real programs will use all of them in normal operation. In [Figure 6-1](#javanut8-CHP-6-FIG-1)
+    we show one possible layout of the heap, with two threads (T1 and T2) holding
+    references that point into the heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The different areas are called *Eden*, *Survivor* and *Tenured*; we’ll meet
+    each of these later in the chapter and see how they relate to each other. For
+    the sake of simplicity, the figures show an older form of the Java heap, where
+    each memory area is a single lump of memory. Modern collectors don’t actually
+    lay objects out this way, but it’s easier to understand by thinking about it this
+    way first!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![JN7 0601](assets/jns8_0601.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-1\. Heap structure
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The figure also shows that it would be dangerous to move objects that application
+    threads have references to while the program is running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To avoid this, a simple tracing GC like the one just described will cause a
+    *stop-the-world* (STW) pause when it runs. This works because all application
+    threads are stopped, then GC occurs, and finally application threads are started
+    up again. The runtime takes care of this by halting application threads as they
+    reach a *safepoint*—for example, the start of a loop or just before a method call
+    returns. At these execution points, the runtime knows that it can stop an application
+    thread without a problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These pauses sometimes worry developers, but for most mainstream usages, Java
+    is running on top of an operating system (and possibly multiple virtualization
+    layers) that is constantly swapping processes on and off processor cores, so this
+    slight additional stoppage is usually not a concern. In the HotSpot case, a large
+    amount of work has been done to optimize GC and to reduce STW times, for those
+    cases where it is important to an application’s workload. We will discuss some
+    of those optimizations in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How the JVM Optimizes Garbage Collection
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The *weak generational hypothesis* (WGH) is a great example of one of the runtime
+    facts about software that we introduced in [Chapter 1](ch01.xhtml#javanut8-CHP-1).
+    Simply put, it is that objects tend to have one of a small number of possible
+    life expectancies (referred to as *generations*).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Usually objects are alive for only a very short amount of time (sometimes called
+    transient objects) and then become eligible for garbage collection. However, some
+    small fraction of objects live longer and are destined to become part of the longer-term
+    state of the program (sometimes referred to as the *working set*). This can be
+    seen in [Figure 6-2](#javanut8-CHP-6-FIG-2) where we see volume of memory (or
+    number of objects created) plotted against expected lifetime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![JN7 0602](assets/jns8_0602.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-2\. Weak generational hypothesis
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This fact is not deducible from static analysis of programs, and yet when we
+    measure the runtime behavior of software, we see that it is broadly true across
+    a wide range of workloads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The HotSpot JVM has a garbage collection subsystem that is designed specifically
+    to take advantage of the weak generational hypothesis, and in this section, we
+    will discuss how these techniques apply to short-lived objects (which is the majority
+    case). This discussion is directly applicable to HotSpot, but other JVMs often
+    employ similar or related techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In its simplest form, a *generational garbage collector* is one that takes notice
+    of the WGH. They take the position that some extra bookkeeping to monitor memory
+    will be more than paid for by gains obtained by being friendly to the WGH. In
+    the simplest forms of generational collector, there are usually just two generations—usually
+    referred to as young and old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evacuation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In our original formulation of mark-and-sweep, during the cleanup phase, the
+    GC reclaimed individual objects for reuse. This is fine, as far as it goes, but
+    it leads to issues such as memory fragmentation and the GC needing to maintain
+    a “free list” of memory blocks that are available. However, if the WGH is true,
+    and on any given GC cycle most objects are dead, then it may make sense to use
+    an alternative approach to reclaiming space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This works by dividing the heap up into separate memory spaces; new objects
+    are created in a space called *Eden*. Then, on each GC run, we locate only the
+    live objects and move them to a different space, in a process called *evacuation*.
+    Collectors that do this are referred to as *evacuating collectors*, and they have
+    the property that the entire memory space can be wiped at the end of the collection,
+    to be reused again and again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 6-3](#javanut8-CHP-6-FIG-3) shows an evacuating collector in action,
+    with solid blocks representing surviving objects, and hatched boxes representing
+    allocated but now dead (and unreachable) objects.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![JN7 0603](assets/jns8_0603.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-3\. Evacuating collectors
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This is potentially much more efficient than the naive collection approach,
+    because the dead objects are never touched. This means that the GC time is proportional
+    to the number of live objects, rather than the number of allocated objects. The
+    only downside is slightly more bookkeeping—we have to pay the cost of copying
+    the live objects, but this is almost always a very small price compared to the
+    huge gains realized by evacuation strategies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The use of an evacuating collector also allows the use of per-thread allocation.
+    This means that each application thread can be given a contiguous chunk of memory
+    (called a *thread-local allocation buffer* or TLAB) for its exclusive use when
+    allocating new objects. When new objects are allocated, this just involves bumping
+    a pointer in the allocation buffer, an extremely cheap operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If an object is created just before a collection starts, then it will not have
+    time to fulfill its purpose and die before the GC cycle starts. In a collector
+    with only two generations, this short-lived object will be moved into the long-lived
+    region, die almost immediately, and then stay there until the next full collection.
+    As these are a lot less frequent (and typically a lot more expensive), this seems
+    rather wasteful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To mitigate this, HotSpot has a concept of a *survivor space*, an area used
+    to house objects that have survived previous collections of young objects. A surviving
+    object is copied by the evacuating collector between survivor spaces until a *tenuring
+    threshold* is reached, when the object will be *promoted* to the old generation,
+    known as *Tenured* or *OldGen*. This solves the problem of short-lived objects
+    cluttering up the old generation, at the cost of more complexity in the GC subsystem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compaction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A different form of collection algorithm is known as a *compacting collector*.
+    The main feature of these collectors is that, at the end of the collection cycle,
+    allocated memory (i.e., surviving objects) is arranged as a single contiguous
+    area within the collected region.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The normal case is that all the surviving objects have been “shuffled up” within
+    the memory pool (or region) usually to the start of the memory range, and there
+    is now a pointer indicating the start of empty space available for objects to
+    be written into once application threads restart.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compacting collectors will avoid memory fragmentation but typically are much
+    more expensive in terms of amount of CPU consumed than evacuating collectors.
+    There are design trade-offs between the two algorithms (the details of which are
+    beyond the scope of this book), but both techniques are used in production collectors
+    in Java (and in many other programming languages). The space where long-lived
+    objects end up is typically cleaned using a compacting collector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A full discussion of the details of the GC subsystem is outside the scope of
+    this book. For production applications that have to care about these details,
+    specialist material such as [*Optimizing Java*](http://shop.oreilly.com/product/0636920121718.do)
+    (O’Reilly) should be consulted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The HotSpot Heap
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The HotSpot JVM is a relatively complex piece of code, made up of an interpreter
+    and a just-in-time compiler, as well as a user-space memory management subsystem.
+    It is composed of a mixture of C, C++, and a fairly large amount of platform-specific
+    assembly code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: HotSpot manages the JVM heap itself, more-or-less completely in user space,
+    and does not need to perform system calls to allocate or free memory. The area
+    where objects are initially created is usually called Eden (or the Nursery), and
+    most production JVMs will use an evacuating strategy when collecting Eden.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At this point, let’s summarize our description of the HotSpot heap and recap
+    its basic features:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Java heap is a contiguous block of memory, which is reserved at JVM startup.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Only some of the heap is initially allocated to the various memory pools.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As the application runs, memory pools are resized as needed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These resizes are performed by the GC subsystem.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Objects are created in Eden by application threads and are removed by a nondeterministic
+    GC cycle.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The GC cycle runs when necessary (i.e., when memory is getting low).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The heap is divided into two generations, young and old.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The young generation is made up of Eden and survivor spaces, whereas the old
+    generation is just one memory space.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: After surviving several GC cycles, objects get promoted to the old generation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Collections that collect only the young generation are usually very cheap (in
+    terms of computation required).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: HotSpot uses an advanced form of mark-and-sweep and is prepared to do extra
+    bookkeeping to improve GC performance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'When discussing garbage collectors, developers should know one other important
+    terminology distinction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parallel collector
+  prefs: []
+  type: TYPE_NORMAL
+- en: A garbage collector that uses multiple threads to perform collection
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrent collector
+  prefs: []
+  type: TYPE_NORMAL
+- en: A garbage collector that can run at the same time as application threads are
+    still running
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the discussion so far, the collection algorithms we have been describing
+    have implicitly all been parallel, but not concurrent, collectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In modern approaches to GC, there is a growing trend toward using partially
+    concurrent algorithms. These types of algorithms are much more elaborate and computationally
+    expensive than STW algorithms and involve trade-offs. However, today’s applications
+    are typically willing to trade some extra computation for reduced application
+    pauses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In legacy Java versions (version 8 and older), the heap has a simple structure:
+    each memory pool (Eden, survivor spaces, and Tenured) is a contiguous block of
+    memory. This is the structure that we’ve shown in the diagrams, as it’s easier
+    for beginners to visualize. The default collector for the old generation in these
+    older versions is called *Parallel*. However, in modern versions of HotSpot, a
+    new, partially concurrent collection algorithm known as *Garbage First* (G1) has
+    become the default.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: G1
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: G1 is an example of a *region-based collector* and has a different heap layout
+    than the old-style heap. A region is an area of memory (usually 1M in size, but
+    larger heaps may have regions of 2, 4, 8, 16, or 32M) where all the objects belong
+    to the same memory pool. However, in a regional collector, the different regions
+    that make up a pool are not necessarily located next to each other in memory.
+    This is unlike the Java 8 heap, where each pool is contiguous, although in both
+    cases the entire heap remains contiguous.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: G1 uses a different version of the algorithm in each Java version, and there
+    are some important differences in terms of performance and other behavior between
+    versions. It is very important that, when upgrading from Java 8 to a later version
+    and adopting G1, you undertake a full performance retest. You may find that when
+    switching to Java 11 or 17, you require fewer resources (and may even save money).
+  prefs: []
+  type: TYPE_NORMAL
+- en: G1 focuses its attention on regions that are mostly garbage, as they have the
+    best free memory recovery. It is an evacuating collector and does *incremental
+    compaction* when evacuating individual regions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The G1 collector was originally intended to take over from a previous collector,
+    CMS, as the low-pause collector, and it allows the user to specify *pause goals*
+    in terms of how long and how often to pause when doing GC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The JVM provides a command-line switch that controls how long the collector
+    will aim to pause: `-XX:MaxGCPauseMillis=200`. This means that the default pause
+    time goal is 200 ms, but you can change this value depending on your needs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are, of course, limits to how far the collector can be pushed. Java GC
+    is driven by the rate at which new memory is allocated, which can be highly unpredictable
+    for many Java applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As noted, G1 was originally intended to be a replacement low-pause collector.
+    However, the overall characteristics of its behavior have meant that it has actually
+    evolved into a more general-purpose collector (which is why it has now become
+    the default).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the development of a new production-grade collector that is suitable
+    for general use is not a quick process. In the next section, let’s move on to
+    discuss the alternative collectors that are provided by HotSpot (including the
+    parallel collector of Java 8).
+  prefs: []
+  type: TYPE_NORMAL
+- en: A detailed full treatment is outside the scope of the book, but it is worth
+    knowing about the existence of alternate collectors. For non-HotSpot users, you
+    should consult your JVM’s documentation to see what options may be available for
+    you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ParallelOld
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'By default, in Java 8 the collector for the old generation is a parallel (but
+    not concurrent) mark-and-sweep collector. It seems, at first glance, to be similar
+    to the collector used for the young generation. However, it differs in one very
+    important respect: it is *not* an evacuating collector. Instead, the old generation
+    is compacted when collection occurs. This is important so that the memory space
+    does not become fragmented over time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `ParallelOld` collector is very efficient, but it has two properties that
+    make it less desirable for modern applications. It is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fully STW
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Linear in pause time with the size of the heap
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This means that once GC has started, it cannot be aborted early, and the cycle
+    must be allowed to finish. As heap sizes increase, this makes `ParallelOld` a
+    less attractive option than G1, which can often keep a constant pause time regardless
+    of heap size (assuming the allocation rate is manageable).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In modern deployments, especially for Java 11+, G1 gives typically better performance
+    on a large majority of applications that previously used `ParallelOld`. The `ParallelOld`
+    collector is still available as of Java 17, for those (hopefully few) apps that
+    still need it, but the direction of the platform is clear—toward using G1 wherever
+    possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Serial
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The Serial and SerialOld collectors operate in a similar fashion to the Parallel
+    collectors, with one important difference: they use only a single CPU core to
+    perform fully STW GC.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On modern multicore systems, there is no benefit from using these collectors,
+    and so they should not be used, as they are just an inefficient form of the parallel
+    collectors. However, one place where you may still encounter these collectors
+    is when running Java applications in containers. A full discussion of containerized
+    Java is outside the scope of this book. However, if your application is run in
+    too small a container (either too little memory or with only a single CPU), then
+    the JVM will automatically select the Serial collector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, we do not recommend running Java in a single-core container, as the
+    Serial collector performs noticeably worse than G1 under almost all realistic
+    load scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shenandoah
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Shenandoah is a new GC algorithm developed by Red Hat to work effectively with
+    certain use cases where G1 and other algorithms do not perform well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The aim of Shenandoah is to bring down pause times, especially on large heaps,
+    and to guarantee (as far as possible) that pause times will not exceed 1 ms, no
+    matter the size of the heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Like G1, Shenandoah is an evacuating regional collector that performs concurrent
+    marking. The evacuation of regions causes incremental compaction but the key difference
+    is that in G1, evacuation happens during a STW phase, whereas in Shenandoah the
+    evacuation is concurrent with application threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is no such thing as a free lunch, however, and users of Shenandoah could
+    experience up to 15% overhead (i.e., reduction in application throughput), but
+    the exact figure will depend on the details of the workload. For example, on some
+    targeted benchmarks you can observe a significant overhead, towards the upper
+    end of the expected range.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Shenandoah can be activated with this command line switch:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: One important point to note is that, at time of writing, Shenandoah is not yet
+    a generational collector, although work is underway to add generations to the
+    implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ZGC
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As well as Shenandoah, Oracle has also created a new ultra-low-pause collector,
+    known as ZGC. It is designed to appeal to the same sorts of workloads as Shenandoah
+    and is broadly similar in intent, effect, and overhead. ZGC is a single-generation,
+    region-based, NUMA-aware, compacting collector. However, the implementation of
+    ZGC is quite different from Shenandoah.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ZGC can be activated with this command line switch:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: ZGC needs only a stop-the-world pause to perform root scanning, which means
+    that GC pause times do not increase with the size of the heap or the number of
+    live objects. Due to its intended domain of applicability (ultra-low pause on
+    large heaps), ZGC is most commonly used by Oracle customers on the Oracle-supported
+    builds of Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finalization
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For completeness, developers should be aware of an old technique for resource
+    management known as *finalization*. However, this technique is *extremely* heavily
+    deprecated and the vast majority of Java developers should *not* directly use
+    it under any circumstances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Finalization has been deprecated and will be removed in a future release. The
+    mechanism remains enabled by default for now but can be disabled with a switch.
+    In a future release, it will be disabled by default and then eventually removed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The finalization mechanism was intended to automatically release resources once
+    they are no longer needed. Garbage collection automatically frees up the memory
+    resources used by objects, but objects can hold other kinds of resources, such
+    as open files and network connections. The garbage collector cannot free these
+    additional resources for you, so the finalization mechanism was intended to allow
+    the developer to perform cleanup tasks as closing files, terminating network connections,
+    deleting temporary files, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The finalization mechanism works as follows: if an object has a `finalize()`
+    method (usually called a *finalizer*), this is invoked some time after the object
+    becomes unused (or unreachable) but before the garbage collector reclaims the
+    space allocated to the object. The finalizer is used to perform resource cleanup
+    for an object.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The central problem with finalization is that Java makes no guarantees about
+    when garbage collection will occur or in what order objects will be collected.
+    Therefore, the platform can make no guarantees about when (or even whether) a
+    finalizer will be invoked or in what order finalizers will be invoked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finalization Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The finalization mechanism is an attempt to implement a similar concept present
+    in other languages and environments. In particular, C++ has a pattern known as
+    RAII (Resource Acquisition Is Initialization) that provides automatic resource
+    management in a similar way. In that pattern, a destructor method (which would
+    be called `finalize()` in Java) is provided by the programmer, to perform cleanup
+    and release resources when the object is destroyed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The basic use case for this is fairly simple: when an object is created, it
+    takes ownership of some resource, and the object’s ownership of that resource
+    is tied to the lifetime of the object. When the object dies, the ownership of
+    the resource is automatically relinquished, as the platform calls the destructor
+    without any programmer intervention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: While finalization superficially sounds similar to this mechanism, in reality
+    it is fundamentally different. In fact, the finalization language feature is fatally
+    flawed, due to differences in the memory management schemes of Java versus C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the C++ case, memory is handled manually, with explicit lifetime management
+    of objects under the control of the programmer. This means that the destructor
+    can be called immediately after the object is deleted (the platform guarantees
+    this), and so the acquisition and release of resources is directly tied to the
+    lifetime of the object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, Java’s memory management subsystem is a garbage collector
+    that runs as needed, in response to running out of available memory to allocate.
+    It therefore runs at variable (and nondeterministic) intervals and so `finalize()`
+    is run only when the object is collected, and this will be at an unknown time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the `finalize()` mechanism was used to automatically release resources (e.g.,
+    filehandles), then there is no guarantee as to when (if ever) those resources
+    will actually become available. This has the result of making the finalization
+    mechanism fundamentally unsuitable for its stated purpose—automatic resource management.
+    We cannot guarantee that finalization will happen fast enough to prevent us from
+    running out of resources. As an automatic cleanup mechanism for protecting scarce
+    resources (such as filehandles), finalization is broken by design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finalization has only a very small number of legitimate use cases, and only
+    a tiny minority of Java developers will ever encounter them. If in any doubt,
+    do not use finalization—try-with-resources is usually the correct alternative.
+    More details about `try`-with-resources can be found in [Chapter 10](ch10.xhtml#javanut8-CHP-10).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java’s Support for Concurrency
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The idea of a *thread* is that of a lightweight unit of execution—smaller than
+    a process, but still capable of executing arbitrary Java code. The usual way that
+    this is implemented is for each thread to be a fully fledged unit of execution
+    to the operating system but to belong to a process, with the address space of
+    the process being shared between all threads comprising that process. This means
+    each thread can be scheduled independently and has its own stack and program counter
+    but shares memory and objects with other threads in the same process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Java platform has supported multithreaded programming from the very first
+    version. The platform exposes the ability to create new threads of execution to
+    the developer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To understand this, first we must consider what happens in detail when a Java
+    program starts up and the original application thread (usually referred to as
+    *main* thread) appears:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The programmer executes `java Main` (other startup cases are possible).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: This causes the Java Virtual Machine, the context within which all Java programs
+    run, to start up.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The JVM examines its arguments and sees that the programmer has requested execution
+    starting at the entry point (the `main()` method) of `Main.class`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Assuming that `Main` passes classloading checks, a dedicated thread for the
+    execution of the program is started (main thread).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The JVM bytecode interpreter is started on main thread.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Main thread’s interpreter reads the bytecode of `Main::main()` and execution
+    begins, one bytecode at a time.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Every Java program starts this way, but this also means:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every Java program starts as part of a managed model with one interpreter per
+    thread.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Every Java program always runs as part of a multithreaded operating system process.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The JVM has a certain ability to control a Java application thread.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Following from this, when we create new threads of execution in Java code,
+    this is usually as simple as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: This small piece of code creates and starts a new thread, which executes the
+    body of the lambda expression and then executes. Technically speaking, the lambda
+    is converted to an instance of the `Runnable` interface before being passed to
+    the `Thread` constructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The threading mechanism allows new threads to execute concurrently with the
+    original application thread and the threads that the JVM itself starts up for
+    various purposes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For mainstream implementations of the Java platform, every time we call `Thread::start()`
+    this call is delegated to the operating system, and a new OS thread is created.
+    This new OS thread `exec()`’s a new copy of the JVM bytecode interpreter. The
+    interpreter starts executing at the `run()` method (or, equivalently, at the body
+    of the lambda).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that application threads have their access to the CPU controlled
+    by the operating system *scheduler*—a built-in part of the OS that is responsible
+    for managing timeslices of processor time (and that will not allow an application
+    thread to exceed its allocated time).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In more recent versions of Java, an increasing trend toward *runtime-managed
+    concurrency* has appeared. This is the idea that for many purposes it’s not desirable
+    for developers to explicitly manage threads. Instead, the runtime should provide
+    “fire and forget” capabilities, whereby the program specifies what needs to be
+    done, but the low-level details of how this is to be accomplished are left to
+    the runtime. This viewpoint can be seen in the concurrency toolkit contained in
+    `java.util.concurrent`, which we discuss briefly in [Chapter 8](ch08.xhtml#javanut8-CHP-8).
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the remainder of this chapter, we will introduce the low-level concurrency
+    mechanisms that the Java platform provides and that every Java developer should
+    be aware of. The reader is strongly encouraged to understand both the low-level
+    `Thread`-based and the runtime-managed approaches before doing any significant
+    concurrent programming.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread Lifecycle
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let’s start by looking at the lifecycle of an application thread. Every operating
+    system has a view of threads that can differ in the details (but in most cases
+    is broadly similar at a high level). Java tries hard to abstract these details
+    away and has an enum called `Thread.State`, which wrappers over the operating
+    system’s view of the thread’s state. The values of `Thread.State` provide an overview
+    of the lifecycle of a thread:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`NEW`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The thread has been created, but its `start()` method has not yet been called.
+    All threads start in this state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`RUNNABLE`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The thread is running or is available to run when the operating system schedules
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`BLOCKED`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The thread is not running because it is waiting to acquire a lock so that it
+    can enter a `synchronized` method or block. We’ll see more about `synchronized`
+    methods and blocks later in this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`WAITING`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The thread is not running because it has called `Object.wait()` or `Thread.join()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`TIMED_WAITING`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The thread is not running because it has called `Thread.sleep()` or has called
+    `Object.wait()` or `Thread.join()` with a timeout value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`TERMINATED`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The thread has completed execution. Its `run()` method has exited normally or
+    by throwing an exception.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These states represent the view of a thread that is common (at least across
+    mainstream operating systems), leading to a view like [Figure 6-4](#javanut8-CHP-6-FIG-4).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![JN7 0604](assets/jns8_0604.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-4\. Thread lifecycle
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Threads can also be made to sleep, by using the `Thread.sleep()` method. This
+    takes an argument in milliseconds, which indicates how long the thread would like
+    to sleep like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The argument to sleep is a request to the operating system, not a demand. For
+    example, your program may sleep for longer than requested, depending on load and
+    other factors specific to the runtime environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will discuss the other methods of `Thread` later in this chapter, but first
+    we need to cover some important theory that deals with how threads access memory
+    and that is fundamental to understanding why multithreaded programming is hard
+    and can cause developers a lot of problems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Visibility and Mutability
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In mainstream Java implementations, all Java application threads in a process
+    have their own call stacks (and local variables) but share a single heap. This
+    makes it very easy to share objects between threads, as all that is required is
+    to pass a reference from one thread to another. This is illustrated in [Figure 6-5](#javanut8-CHP-6-FIG-5).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This leads to a general design principle of Java—that objects are *visible by
+    default*. If I have a reference to an object, I can copy it and hand it off to
+    another thread with no restrictions. A Java reference is essentially a typed pointer
+    to a location in heap—and threads share the same heap, so visible by default is
+    a natural model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition to visible by default, Java has another property that is important
+    to fully understand concurrency, which is that objects are *mutable*: the contents
+    of an object instance’s fields can usually be changed. We can make individual
+    variables or references constant by using the `final` keyword, but this does not
+    apply to the contents of the object.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we will see throughout the rest of this chapter, the combination of these
+    two properties—visibility across threads and object mutability—gives rise to a
+    great many complexities when trying to reason about concurrent Java programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![JN7 0605](assets/jns8_0605.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-5\. Shared memory between threads
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Concurrent safety
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If we’re to write correct multithreaded code, then we want our programs to satisfy
+    a certain important property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Chapter 5](ch05.xhtml#javanut8-CHP-5), we defined a safe object-oriented
+    program to be one where we move objects from legal state to legal state by calling
+    their accessible methods. This definition works well for single-threaded code.
+    However, there is a particular difficulty that comes about when we try to extend
+    it to concurrent programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: A *safe multithreaded program* is one in which it is impossible for any object
+    to be seen in an illegal or inconsistent state by any other object, no matter
+    what methods are called, and no matter in what order the application threads are
+    scheduled by the operating system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For most mainstream cases, the operating system will schedule threads to run
+    on particular processor cores at seemingly random times, depending on load and
+    what else is running in the system. If load is high, then there may be other processes
+    that also need to run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The operating system will forcibly remove a Java thread from a CPU core if it
+    needs to. The thread is suspended immediately, no matter what it’s doing—including
+    being partway through executing a method. However, as we discussed in [Chapter 5](ch05.xhtml#javanut8-CHP-5),
+    a method can temporarily put an object into an illegal state while it is working
+    on it, providing it corrects it before the method exits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that if a thread is swapped off before it has completed a long-running
+    method, it may leave an object in an inconsistent state, *even if the program
+    follows the safety rules*. Another way of saying this is that even data types
+    that have been correctly modeled for the single-threaded case still need to protect
+    against the effects of concurrency. Code that adds this extra layer of protection
+    is called *concurrently safe* or (more informally) threadsafe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we’ll discuss the primary means of achieving this safety,
+    and at the end of the chapter, we’ll meet some other mechanisms that can also
+    be useful under some circumstances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exclusion and Protecting State
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Any code that modifies *or reads* state that can become inconsistent must be
+    protected. To achieve this, the Java platform provides only one mechanism: *exclusion*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consider a method that contains a sequence of operations that, if interrupted
+    partway through, could leave an object in an inconsistent or illegal state. If
+    this illegal state was visible to another object, incorrect code behavior could
+    occur.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, consider an ATM or other cash-dispensing machine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The sequence of operations that happens inside `withdraw()` can leave the object
+    in an inconsistent state. In particular, after we’ve checked the balance, a second
+    thread could come in while the first was sleeping in simulated risk checks, and
+    the account could be overdrawn, in violation of the constraint that `balance >=
+    0`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is an example of a system where the operations on the objects are single-threaded
+    safe (because the objects cannot reach an illegal state (`balance < 0`) if called
+    from a single thread) but not concurrently safe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To allow the developer to make code like this concurrently safe, Java provides
+    the `synchronized` keyword. This keyword can be applied to a block or to a method,
+    and when it is used, the platform uses it to restrict access to the code inside
+    the block or method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Because `synchronized` surrounds code, many developers are led to the conclusion
+    that concurrency in Java is about code. Some texts even refer to the code that
+    is inside the synchronized block or method as a *critical section* and consider
+    that to be the crucial aspect of concurrency. This is not the case; instead, it
+    is the inconsistency of data that we must guard against, as we will see.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Java platform keeps track of a special token, called a *monitor*, for every
+    object that it ever creates. These monitors (also called *locks*) are used by
+    `synchronized` to indicate that the following code could temporarily render the
+    object inconsistent. The sequence of events for a synchronized block or method
+    is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread needs to modify an object and may make it briefly inconsistent as an
+    intermediate step
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Thread acquires the monitor, indicating it requires temporary exclusive access
+    to the object
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Thread modifies the object, leaving it in a consistent, legal state when done
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Thread releases the monitor
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If another thread attempts to acquire the lock while the object is being modified,
+    then the attempt to acquire the lock blocks, until the holding thread releases
+    the lock.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that you do not have to use the `synchronized` statement unless your program
+    creates multiple threads that share data. If only one thread ever accesses a data
+    structure, there is no need to protect it with `synchronized`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One point is of critical importance—acquiring the monitor does *not* prevent
+    access to the object. It only prevents any other thread from claiming the lock.
+    Correct concurrently safe code requires developers to ensure that all accesses
+    that might modify *or read* potentially inconsistent state acquire the object
+    monitor before operating on or reading that state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Put another way, if a `synchronized` method is working on an object and has
+    placed it into an illegal state, and another method (which is not synchronized)
+    reads from the object, it can still see the inconsistent state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Synchronization is a cooperative mechanism for protecting state, and it is very
+    fragile as a result. A single bug (such as missing a single `synchronized` keyword
+    from a method it’s required on) can have catastrophic results for the safety of
+    the system as a whole.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The reason we use the word `synchronized` as the keyword for “requires temporary
+    exclusive access” is that in addition to acquiring the monitor, the JVM also rereads
+    the current state of the object from main memory when the block is entered. Similarly,
+    when the `synchronized` block or method is exited, the JVM flushes any modified
+    state of the object back to main memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Without synchronization, different CPU cores in the system may not see the same
+    view of memory, and memory inconsistencies can damage the state of a running program,
+    as we saw in our ATM example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The simplest example of this is known as *lost update*, as demonstrated in
+    the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This can be driven via a simple control program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: If this concurrent program was correct, then the value for the anomaly (number
+    of lost updates) should be exactly zero. It is not, and so we may conclude that
+    unsynchronized access is fundamentally unsafe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By contrast, we also see that the addition of the keyword `synchronized` to
+    the increment method is sufficient to reduce the lost update anomaly to zero—​that
+    is, to make the method correct, even in the presence of multiple threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: volatile
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Java provides another keyword for dealing with concurrent access to data. This
+    is the `volatile` keyword, and it indicates that before being used by application
+    code, the value of the field or variable must be reread from main memory. Equally,
+    after a volatile value has been modified, as soon as the write to the variable
+    has completed, it must be written back to main memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One common usage of the `volatile` keyword is in the “run-until-shutdown” pattern.
+    This is used in multithreaded programming where an external user or system needs
+    to signal to a processing thread that it should finish the current job being worked
+    on and then shut down gracefully. This is sometimes called the “graceful completion”
+    pattern. Let’s look at a typical example, supposing that this code for our processing
+    thread is in a class that implements `Runnable`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: All the time that the `shutdown()` method is not called by another thread, the
+    processing thread continues to sequentially process tasks (this is often combined
+    very usefully with a `BlockingQueue` to deliver work). Once `shutdown()` is called
+    by another thread, the processing thread immediately sees the `shutdown` flag
+    change to `true`. This does not affect the running job, but once the task finishes,
+    the processing thread will not accept another task and instead will shut down
+    gracefully.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, useful as the `volatile` keyword is, it does not provide a complete
+    protection of state—as we can see by using it to mark the field in `Counter` as
+    `volatile`. We might naively assume that this would protect the code in `Counter`.
+    However, it does not. To see this, modify the previous `Counter` example and add
+    the word `volatile` to the field `i` and rerun the example. The observed nonzero
+    value of the anomaly (and therefore, the presence of the lost update problem)
+    tells us that by itself, `volatile` does not make code threadsafe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Useful Methods of Thread
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `Thread` class has a number of methods to make your life easier when you’re
+    creating new application threads. This is not an exhaustive list—there are many
+    other methods on `Thread`, but this is a description of some of the more common
+    methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: getId()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This method returns the ID number of the thread, as a `long`. This ID will stay
+    the same for the lifetime of the thread and is guaranteed to be unique within
+    this instance of the JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: getPriority() and setPriority()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: These methods are used to control the priority of threads. The scheduler decides
+    how to handle thread priorities; for example, one strategy could be to not have
+    any low-priority threads run while there are high-priority threads waiting. In
+    most cases, there is no way to influence how the scheduler will interpret priorities.
+    Thread priorities are represented as an integer between 1 and 10, with 10 being
+    the highest.
+  prefs: []
+  type: TYPE_NORMAL
+- en: setName() and getName()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: These methods allow the developer to set or retrieve a name for an individual
+    thread. Naming threads is good practice, as it can make debugging much, much easier,
+    especially in a tool such as JDK Mission Control (which we will discuss briefly
+    in [Chapter 13](ch13.xhtml#javanut8-CHP-13)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: getState()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This returns a `Thread.State` object that indicates which state this thread
+    is in, as per the values defined in [“Thread Lifecycle”](#javanut8-CHP-6-SECT-5.1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: isAlive()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This method is used to test whether a thread is still alive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: start()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This method is used to create a new application thread, and to schedule it,
+    with the `run()` method being the entry point for execution. A thread terminates
+    normally when it reaches the end of its `run()` method or when it executes a `return`
+    statement in that method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: interrupt()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If a thread is blocked in a `sleep()`, `wait()`, or `join()` call, then calling
+    `interrupt()` on the `Thread` object that represents the thread will cause the
+    thread to be sent an `InterruptedException` (and to wake up).
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the thread was involved in interruptible I/O, then the I/O will be terminated
+    and the thread will receive a `ClosedByInterruptException`. The interrupt status
+    of the thread will be set to `true`, even if the thread was not engaged in any
+    activity that could be interrupted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: join()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The current thread waits until the thread corresponding to the `Thread` object
+    has died. It can be thought of as an instruction not to proceed until the other
+    thread has completed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: setDaemon()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A *user thread* is a thread that will prevent the process from exiting if it
+    is still alive—this is the default for threads. Sometimes, programmers want threads
+    that will not prevent an exit from occurring—these are called *daemon threads*.
+    The status of a thread as a daemon or user thread can be controlled by the `setDaemon()`
+    method and checked using `isDaemon()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: setUncaughtExceptionHandler()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'When a thread exits by throwing an exception (i.e., one that the program did
+    not catch), the default behavior is to print the name of the thread, the type
+    of the exception, the exception message, and a stack trace. If this isn’t sufficient,
+    you can install a custom handler for uncaught exceptions in a thread. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: This can be useful in some situations; for example, if one thread is supervising
+    a group of other worker threads, then this pattern can be used to restart any
+    threads that die.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is also `setDefaultUncaughtExceptionHandler()`, a `static` method that
+    sets a backup handler for catching any thread’s uncaught exceptions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deprecated Methods of Thread
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In addition to the useful methods of `Thread`, there are a number of dangerous
+    methods you should not use. These methods form part of the original Java thread
+    API but were quickly found to be unsuitable for developer use. Unfortunately,
+    due to Java’s backward compatibility requirements, it has not been possible to
+    remove them from the API. Developers simply need to be aware of them and to avoid
+    using them under *all* circumstances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: stop()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '`Thread.stop()` is almost impossible to use correctly without violating concurrent
+    safety, as `stop()` kills the thread immediately, without giving it any opportunity
+    to recover objects to legal states. This is in direct opposition to principles
+    such as concurrent safety and so should never be used.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: suspend(), resume(), and countStackFrames()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `suspend()` mechanism does not release any monitors it holds when it suspends,
+    so any other thread that attempts to access those monitors will deadlock. In practice,
+    this mechanism produces race conditions between these deadlocks and `resume()`
+    that render this group of methods unusable. The method `countStackFrames()` only
+    works when called on a suspended thread so is also made nonfunctional by this
+    restriction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: destroy()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This method was never implemented—it would have suffered from the same race
+    condition issues as `suspend()` if it had been.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All of these deprecated methods should always be avoided. A set of safe alternative
+    patterns that achieve the same intended aims as the preceding methods have been
+    developed. A good example of one of these patterns is the run-until-shutdown pattern
+    that we already met.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with Threads
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To work effectively with multithreaded code, you need the basic facts about
+    monitors and locks at your command. This checklist contains the main facts you
+    should know:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronization is about protecting object state and memory, not code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Synchronization is a cooperative mechanism between threads. One bug can break
+    the cooperative model and have far-reaching consequences.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Acquiring a monitor only prevents other threads from acquiring the monitor—it
+    does not protect the object.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Unsynchronized methods can see (and modify) inconsistent state, even while the
+    object’s monitor is locked.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Locking an `Object[]` doesn’t lock the individual objects.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Primitives are not mutable, so they can’t (and don’t need to) be locked.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`synchronized` can’t appear on a method declaration in an interface.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Inner classes are just syntactic sugar, so locks on inner classes have no effect
+    on the enclosing class (and vice versa).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Java’s locks are *reentrant*. This means that if a thread holding a monitor
+    encounters a synchronized block for the same monitor, it can enter the block.^([1](ch06.xhtml#idm45927729626048))
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We’ve also seen that threads can be asked to sleep for a period of time. It
+    is also useful to go to sleep for an unspecified amount of time and wait until
+    a condition is met. In Java, this is handled by the `wait()` and `notify()` methods
+    that are present on `Object`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Just as every Java object has a lock associated with it, every object maintains
+    a list of waiting threads. When a thread calls the `wait()` method of an object,
+    any locks the thread holds are temporarily released, and the thread is added to
+    the list of waiting threads for that object and stops running. When another thread
+    calls the `notifyAll()` method of the same object, the object wakes up the waiting
+    threads and allows them to continue running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, let’s look at a simplified version of a queue that is safe for
+    multithreaded use:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: This class uses a `wait()` on the instance of `WaitingQueue` if the queue is
+    empty (which would make the `pop()` fail). The waiting thread temporarily releases
+    its monitor, allowing another thread to claim it—a thread that might `push()`
+    something new onto the queue. When the original thread is woken up again, it is
+    restarted where it originally began to wait, and it will have reacquired its monitor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '`wait()` and `notify()` must be used inside a `synchronized` method or block,
+    because of the temporary relinquishing of locks required for them to work properly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In general, most developers shouldn’t roll their own classes like the one in
+    this example—instead, use the libraries and components that the Java platform
+    provides for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we’ve discussed Java’s view of memory and concurrency and seen
+    how these topics are intrinsically linked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java’s garbage collection is one of the major aspects of the platform that simplifies
+    development by removing the need for programmers to manually manage memory. We
+    have seen how Java provides advanced GC capabilities and how modern versions of
+    Java use the partially concurrent G1 collector by default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have also discussed how, as processors develop more and more cores, we will
+    need to use concurrent programming techniques to use those cores effectively.
+    In other words, concurrency is key to the future of well-performing applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java’s threading model is based on three fundamental concepts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shared, visible-by-default mutable state
+  prefs: []
+  type: TYPE_NORMAL
+- en: Objects are easily shared between different threads in a process, and they can
+    be changed (“mutated”) by any thread holding a reference to them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preemptive thread scheduling
+  prefs: []
+  type: TYPE_NORMAL
+- en: The OS thread scheduler can swap threads on and off cores at more or less any
+    time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Object state can only be protected by locks
+  prefs: []
+  type: TYPE_NORMAL
+- en: Locks can be hard to use correctly, and state is quite vulnerable—even in unexpected
+    places such as read operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Taken together, these three aspects of Java’s approach to concurrency explain
+    why multithreaded programming can cause so many headaches for developers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch06.xhtml#idm45927729626048-marker)) Outside of Java, not all implementations
+    of locks have this property.
+  prefs: []
+  type: TYPE_NORMAL

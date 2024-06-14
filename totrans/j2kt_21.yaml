@@ -1,0 +1,526 @@
+- en: Chapter 21\. Exceptions to Values
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 19](ch19.html#throwing-to-returning) we looked at error-handling
+    strategies for Kotlin, and how to refactor from exceptions in Java to more functional
+    techniques. The truth is that most code ignores errors in the hope that they won’t
+    happen. Can we do better?
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Someone new in marketing has taken to tweaking the spreadsheet that we last
+    saw in [Chapter 20](ch20.html#performing-io-to-passing-data)—the one that generates
+    the high-value customer scores. We don’t know what they are doing in detail, but
+    they keep on exporting files that break our parsing and then asking us to explain
+    what a stack trace is. It’s getting a bit embarrassing on both sides of the relationship,
+    so the cake has begun to dry up. Could there be any more incentive?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Well yes, there could. We’ve also been asked to write an unattended job so that
+    marketing can save the file onto a server, and *we* will automatically write the
+    summarized version. Without a person in the loop to interpret those stack traces,
+    it looks like we’ll have to find a way to report errors properly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Identifying What Can Go Wrong
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here’s the code as we left it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.1 [exceptions-to-values.0:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.1&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.1&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we’re to do a thorough job of error handling, the first thing we have to
+    do is establish what might go wrong. As we saw in [Chapter 19](ch19.html#throwing-to-returning),
+    in Kotlin we don’t have checked exceptions to give us clues, but these were so
+    badly used in most Java code that in this respect there isn’t much of a difference
+    between the languages. Unless code has been written to communicate the ways that
+    it can fail, we’ll have to rely on examination, intuition, and experience to work
+    it out. In this case, experience tells us that the failures we actually get are
+    due to missing fields, so we can concentrate there, but we should still do due
+    diligence on all aspects of the code. Let’s work our way up the functions from
+    the bottom of the listing, looking for potential errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CustomerData.marketingName` looks benign:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.2 [exceptions-to-values.0:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.2&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.2&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If `CustomerData` were implemented in Java, we might find `familyName` resolving
+    to `null` and, hence, throwing when we try `toUpperCase()`, but in Kotlin it can’t,
+    so it won’t. As with all code, the function is subject to subclasses of `Error`
+    (such as `OutOfMemoryError`) being thrown, but it should be generally safe. From
+    here on we’ll count throwing `Error` as extraordinary and not consider it in our
+    analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now `formattedAs`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.3 [exceptions-to-values.0:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.3&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.3&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`String.format(format, this)` is implemented as `java.lang.String::format`,
+    which is documented to throw `IllegalFormatException` if the `format` is not compatible
+    with its other input. This is a [partial function](https://oreil.ly/ErpGo): one
+    that only returns a result for some of the possible values of its parameters.
+    In this case, it can return a result for all values of `Double`, but only when
+    we use very specific values of `format`. Luckily, we are only feeding it one particular
+    `format`, the value `%#.2f`, which we know works, so this and its only caller,
+    `Double.toMoneyString()`, should not fail. If they do fail, it’s because our analysis
+    is incorrect (or its assumptions are no longer true), and runtime errors are a
+    reasonable way of signaling this programmer error.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next we have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.4 [exceptions-to-values.0:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.4&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.4&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This only calls code that we have just reasoned shouldn’t fail, so by the transitive
+    property of failure, it should also be safe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note this has been easy so far because these functions are all calculations
+    ([“Calculations”](ch07.html#calculations)). They don’t depend on any external
+    state, so we can reason about them just by looking at them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So far so good, now `String.toCustomerData()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.5 [exceptions-to-values.0:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.5&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.5&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'OK, this is another partial function: almost no values of the `String` receiver
+    will lead to this function being able to return a result. Luckily, almost all
+    the ones that we are getting in practice are OK, which is why error handling is
+    only now becoming a priority. What could go wrong though?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Starting from the top of the function, `String.split` may behave oddly if we
+    pass it an empty delimiter, but we aren’t. Then we may not have enough parts,
+    so that `parts[n]` throws `IndexOutOfBoundsException`. Finally, `parts[3]` may
+    not represent an `Int`, or `parts[4]` may not represent a `Double`, both of which
+    will throw `NumberFormatException`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Having established that `toCustomerData` can fail if passed a `String` that
+    doesn’t meet our format specification, what should we do about it? At the moment,
+    all the ways that it can fail result in an exception being thrown, the program
+    being aborted with an unfriendly error message, and marketing calling us over.
+    Which leads to two follow-on questions: “Should we abort?” and “How can we improve
+    the error message so that marketing can interpret it?”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we saw in [Chapter 19](ch19.html#throwing-to-returning), we shouldn’t use
+    exceptions to abort on predictable errors. The lack of checked exceptions in Kotlin
+    (and their lack of use in Java) means that if we do, we lose the opportunity to
+    communicate that the code is susceptible to failure. The callers of our code then
+    have to do what we are currently doing: reason with every line of code in an implementation.
+    Even after then, the implementation might change, silently invalidating the findings.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we aren’t to throw an exception, then the cheapest change (provided our
+    callers are all Kotlin) is to return `null` when we fail. Client code will then
+    be forced to consider the `null` case and act accordingly. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.6 [exceptions-to-values.1:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.6&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.6&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We could have chosen to simply wrap the whole implementation in a `try` block
+    and return `null` from the `catch`, but here we have been more proactive than
+    reactive. This means that the code will still throw if the relevant fields cannot
+    be converted to `Int` or `Double`. We’ll get to that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This change breaks `toHighValueCustomerReport`, which is now forced to consider
+    the possibility of failure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.7 [exceptions-to-values.1:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.7&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.7&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO47-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Doesn’t compile because `it` is nullable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now if we want to just ignore badly formed input lines, we can get everything
+    running again with `filterNotNull`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.8 [exceptions-to-values.2:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.8&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.8&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We don’t have any tests to support this, and we really should write some, but
+    for now we’ll proceed without a safety net because this is an exploratory spike
+    solution. From here, we can use `null` to represent the other ways that we know
+    `toCustomerData` can fail:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.9 [exceptions-to-values.3:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.9&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.9&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the Kotlin standard library has helped us out by providing `String::toSomethingOrNull`
+    functions with just this error-handling convention. Now that this code represents
+    all reasonable errors with `null`, we can go back to `toHighValueCustomer​Re⁠port`
+    and work out what to do with them instead of pretending that they haven’t happened
+    (pronounced `filterNotNull`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We could abort on the first error, but it seems worth the extra effort to collect
+    all the problem lines and report them somehow. *Somehow* is a bit vague, but funnily
+    enough it has a type: `(String) -> Unit` in this case. Which is to say, we can
+    delegate the what-to-do to a function that accepts the errant line and doesn’t
+    affect the result. We allude to this technique in [“Error Handling Before Exceptions”](ch19.html#errors-invoking-a-function).
+    To illustrate this, let’s add a test:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.10 [exceptions-to-values.4:src/test/java/travelator/marketing/HighValueCustomersReportTests.kt]](https://java-to-kotlin.dev/code.html?ref=21.10&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.10&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO48-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This lambda implements `onErrorLine` in the next sample.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s implement that with the simplest thing that could possibly work:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.11 [exceptions-to-values.4:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.11&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.11&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is still filtering out error lines, but only after passing them off to
+    `onErrorLine`, which can decide what to do. In `main`, we’ll use it to print errors
+    to `System.err` and then abort:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.12 [exceptions-to-values.4:src/main/java/travelator/marketing/HighValueCustomersMain.kt]](https://java-to-kotlin.dev/code.html?ref=21.12&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.12&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is one of the few places in this book where we have fallen back on a mutable
+    `List`. Why here? For example, we could have changed `toHighValueCustomerReport`
+    to return `Pair<Sequence<String>, List<String>>`, where the second of the pairs
+    is the errors. The main advantage of this scheme is that it allows the caller
+    to abort early by throwing an exception in `onErrorLine`. For maximum flexibility,
+    we could even have an error-handling strategy with signature `(String) -> CustomerData?`
+    so that the caller could supply a substitute, allowing recovery from errors in
+    any particular line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Chapter 20](ch20.html#performing-io-to-passing-data), we went out of our
+    way to convert `toHighValueCustomerReport` from an action to a calculation. We
+    then relaxed the purity a little by reading and writing from and to a `Sequence`.
+    Here we have introduced an error-handling function returning `Unit`, a sure sign
+    that we have introduced an action. Provided that action’s scope is confined to
+    error handling, and any side effects are, as in this `main`, restricted to local
+    variables, this is another reasonable compromise. This is an expedient error-handling
+    solution that is flexible and communicates well, but pure it isn’t.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Representing Errors
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we are communicating *that* our parsing can fail (by returning a nullable
+    type), and *where* it has failed (with a callback passing the line), can we better
+    communicate *why* it has failed?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Returning a result type rather than a nullable type allows us to specify what
+    failure modes there are and provide details when they happen. Let’s change `String.to​Custo⁠merData()`
+    to return a `Result` rather than nullable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.13 [exceptions-to-values.5:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.13&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.13&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we did in [Chapter 19](ch19.html#throwing-to-returning), we create a sealed
+    class to represent why parsing failed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.14 [exceptions-to-values.5:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.14&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.14&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To be honest, this is overkill in this situation (a single data class carrying
+    the failing line and a string reason would do here), but we are exemplifying excellence
+    in error engineering. We can fix up the callers of `toCustomerData` by invoking
+    `onErrorLine` with the data held in the `ParseFailure` and then yielding `null`
+    when we have an `Error`. This passes the current tests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.15 [exceptions-to-values.5:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.15&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.15&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What we really want, though, is to expose the `ParseFailure`. Let’s change
+    the test first to collect the `ParseFailure`s instead of lines with errors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.16 [exceptions-to-values.6:src/test/java/travelator/marketing/HighValueCustomersReportTests.kt]](https://java-to-kotlin.dev/code.html?ref=21.16&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.16&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we can change `onErrorLine` to take the failure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.17 [exceptions-to-values.6:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.17&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.17&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This lets `main` report the reason and the line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.18 [exceptions-to-values.6:src/main/java/travelator/marketing/HighValueCustomersMain.kt]](https://java-to-kotlin.dev/code.html?ref=21.18&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.18&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We might not have used the runtime type of the `ParseFailure` to process errors
+    differently, but we have used its name in the error message, so we are at least
+    getting some value from our little sealed class hierarchy. If the resulting error
+    messages aren’t enough to allow marketing to fix their input, then we can use
+    a `when` expression on the sealed class to differentiate between the types of
+    failure, as we saw in [“Layers”](ch19.html#error-layers).
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this point, everything is compiling and our tests pass, so all is good in
+    this little part of the world at least. Had we had more client code calling this
+    API, or our changes were to ripple through more layers of code, we might have
+    picked a more sophisticated refactoring strategy than changing code in one file
+    and fixing the broken things. Often, though, it isn’t worth the effort when we
+    can get the code compiling and passing the tests in a couple of minutes at most.
+    If we do find out that we have bitten off more than we can chew, it’s easy to
+    revert and take a more considered approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that the tests are passing, we should go back and make sure everything
+    is as tidy and expressive as it can be. In particular, we did the quickest thing
+    we could to get everything to work again in `toHighValueCustomerReport`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.19 [exceptions-to-values.6:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.19&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.19&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There’s something about yielding `null` from the `recover` block and then skipping
+    these with `filterNotNull` that is a little unsatisfactory. It doesn’t communicate
+    how it works directly, and gets in the way of the happy path. We would like to
+    be able to find a nicer formulation of the `valuableCustomers` expression, but
+    the truth is that everything else is a bit worse in your authors’ eyes. If you
+    do find a nice simple way, then please let us know.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Similarly, the early returns in `toCustomerData` look a bit ugly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.20 [exceptions-to-values.6:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.20&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.20&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Proper” functional error handling would not return early, but use a `flatMap`
+    chain. Readers of a nervous disposition may wish to look away:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.21 [exceptions-to-values.7:src/main/java/travelator/marketing/HighValueCustomersReport.kt]](https://java-to-kotlin.dev/code.html?ref=21.21&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.21&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Your authors like a single expression even more than most people, but not if
+    this is the `Result` (pun intended). We could obviously simplify here by introducing
+    more functions (`asResultOr ... flatMap` looks like it is a concept trying to
+    get out, for example). Some other result libraries would let us abuse coroutines
+    or exceptions to get the same effect as the previous early returns, but without
+    better language support to avoid the indent-per-statement, the grain of Kotlin
+    favors early returns in these cases. We haven’t addressed it specifically in this
+    book, but the fact that lambdas can be compiled inline and so support returns
+    from their enclosing function encourages us to use imperative code in situations
+    like this. For us then, the early returns will do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, returning to `main` on our final check before check-in:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.22 [exceptions-to-values.6:src/main/java/travelator/marketing/HighValueCustomersMain.kt]](https://java-to-kotlin.dev/code.html?ref=21.22&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.22&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Those three levels of nested `use` obfuscate the actual structure, and that
+    `exitProcess` from deep in the bowels of the function is also a bit iffy. We can
+    define our own `using` overload to address the former and pass out an exit code
+    to solve the latter (an example of using data rather than control flow to address
+    errors). We can extract an extension function to print the errors too:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.23 [exceptions-to-values.8:src/main/java/travelator/marketing/HighValueCustomersMain.kt]](https://java-to-kotlin.dev/code.html?ref=21.23&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.23&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What About I/O?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: That’s very nearly good enough. Before we go, though, we should think about
+    I/O errors. Since we introduced `List`s and then `Sequence`s, our report generation
+    code does not have to worry about writing failing, because it is the calling code’s
+    responsibility to iterate over the result lines and actually perform the write.
+    The `main` function in this case makes the reasonable assumption that `System.out`
+    will always be there, but when we implement the unattended job that motivated
+    this refactor, we will have to deal with the possibility that the file or network
+    socket may disappear even if it was open when we started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is a similar situation reading. We are now iterating over each `String`
+    in a `Sequence`. In the test code, these are in memory, but in production they
+    are being fetched from a file (via `System.in`). So our `Sequence` operations
+    are subject to failure with `IOExceptions` that the report generation is blissfully
+    unaware of.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is little that `toHighValueCustomerReport()` can or should do in these
+    cases. There is no practical way of recovering from I/O errors once we have started
+    reading here—aborting the whole operation is the sensible thing to do. Helpfully,
+    now the onus is entirely on the caller (in this case `main`). `toHighValueCustomerReport`
+    signals the errors that it knows about (failure to parse) and how they are represented
+    (subclasses of `ParseFailure`) through its `onErrorLine` parameter. `IOException`s
+    are not its responsibility. It is `main` that is passing an I/O-backed `Sequence`
+    into `toHighValueCustomerReport`, so `main` should be aware that `toHighValueCustomerReport`
+    can therefore fail with an `IOException` and deal with it accordingly. Let’s add
+    that code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 21.24 [exceptions-to-values.9:src/main/java/travelator/marketing/HighValueCustomersMain.kt]](https://java-to-kotlin.dev/code.html?ref=21.24&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=21.24&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is perhaps overkill for this application, but it shows the pattern of catching
+    and dealing with the exceptions that we *expect* (printing a relatively friendly
+    message for `IOException`) but allowing all others to leak and quit the application.
+    If we follow the strategy from [Chapter 19](ch19.html#throwing-to-returning),
+    *unexpected* exceptions are either unrecoverable environment errors or programmer
+    errors. In both cases, the default JVM behavior of quitting the process after
+    printing a stack trace gives us a fighting chance of diagnosing the issue. When
+    we convert this to an unattended server job, we will similarly process expected
+    errors in our top-level handler function. We might abort on `IOException` or retry
+    the whole interaction if we think the problem may be transient. We know that retrying
+    won’t help with parse errors, so we will have to log these and/or send notifications
+    somewhere. Unexpected errors in handler functions are normally allowed to leak
+    to generic exception-handling code, which will log them and send an internal server
+    error status before returning the thread to its pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Moving On
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Very often in engineering, we have to make compromises. In particular, attempts
+    to make one thing simpler often complicate another. I/O complicates our software
+    in two ways. It is an action, so we can’t just ignore whether or when it happens
+    as we refactor; and it is subject to errors, which we have to deal with if we
+    want a robust system. These errors may be simple environmental failures to read
+    or write, or because the things that we are reading don’t meet our expectations—when
+    the marketing file ends badly formatted, for example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Both actions and errors taint their callers, and the solution in both cases
+    is the same: move the code closer to the entry points so that it taints less of
+    our system. This, then, is an area where, rather than having to compromise, we
+    can kill two birds with one stone. By moving I/O to the outside of our systems,
+    we can reduce the ways that both actions and errors complicate our code.'
+  prefs: []
+  type: TYPE_NORMAL

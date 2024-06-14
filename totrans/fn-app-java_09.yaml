@@ -1,0 +1,1807 @@
+- en: Chapter 7\. Working With Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Streams utilize many of the functional features introduced in Java 8 to provide
+    a declarative way to process data. The Stream API covers many use cases, but you
+    need to know the different operations and available helper classes work to make
+    the most of them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Chapter 6](ch06.xhtml#_02-data-processing) concentrated on showing you the
+    foundation of Streams. This chapter will build on that and teach you different
+    ways to create and work with Streams for various use cases.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Primitive Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In Java, generics only work with object-based types (yet^([1](ch07.xhtml#idm45115235898112))).
+    That’s why `Stream<T>` can’t be used for sequences of primitive values like `int`.
+    There are only two options for using primitive types with Streams:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Autoboxing
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Specialized Stream variants
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Java’s autoboxing support — the automatic conversion between primitive types
+    and the object-based counterparts like `int` and `Integer` — may seem like a simple
+    workaround because it automagically works, as shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Autoboxing introduces multiple problems, though. For one, there’s the overhead
+    associated with the conversion from primitive values to objects compared to using
+    primitive types directly. Usually, the overhead is negligible. Still, in a data
+    processing pipeline, the overhead of such frequent creation of wrapper types accumulates
+    and can degrade overall performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another non-issue with primitive wrappers is the possibility of `null` elements.
+    The direct conversion from primitive to object type never results in `null`, but
+    any operation in the pipeline might return `null` if it has to deal with the wrapper
+    type instead of a primitive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To mitigate, the Stream API, like other functional features of the JDK, has
+    specialized variants for primitive types `int`, `long`, and `double` without relying
+    on autoboxing, as listed in [Table 7-1](#_02-streams_primitive-streams-equivalents).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-1\. Primitive Streams and their equivalents
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Primitive Type | Primitive Stream | Boxed Stream |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `int` | `IntStream` | `Stream<Integer>` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `long` | `LongStream` | `Stream<Long>` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `double` | `DoubleStream` | `Stream<Double>` |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The available operations on primitive Streams are similar to their generic
+    counterpart but use primitive functional interfaces. For example, an `IntStream`
+    provides a `map` operation for transforming elements, just like `Stream<T>`. Unlike
+    `Stream<T>` though, the required higher-order function to do so is the specialized
+    variant `IntUnaryOperator`, which accepts and returns an `int`, as the following
+    simplified interface declaration shows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Operations accepting higher-order functions on primitive Streams use specialized
+    functional interfaces, like `IntConsumer` or `IntPredicate`, to stay within the
+    confines of the primitive Stream. That reduces the number of available operations
+    compared to `Stream<T>`. Still, you can easily switch between a primitive Stream
+    and a `Stream<T>` by either mapping to another type or converting the primitive
+    Stream to its boxed variant:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Stream<Integer> boxed()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Stream<U> mapToObj(IntFunction<? extends U> mapper)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The other way around, from `Stream<T>` to a primitive Stream, is also supported,
+    with `mapTo…​` and `flatMapTo…​` operations available on `Stream<T>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`IntStream mapToInt(ToIntFunction<? super T> mapper)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`IntStream flatMapToInt(Function<? super T, ? extends IntStream> mapper)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Besides the usual intermediate operations, primitive Streams have a set of
+    self-explanatory arithmetic terminal operations for common tasks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`int sum()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`OptionalInt min()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`OptionalInt max()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`OptionalDouble average()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These operations don’t need any arguments because their behavior is non-negotiable
+    for numbers. The returned types are the primitive equivalents you expect from
+    similar `Stream<T>` operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As with primitive Streams in general, doing arithmetics with Streams has its
+    use cases, like highly optimized parallel processing of humongous amounts of data.
+    For simpler use cases, though, switching to primitive Streams compared to existing
+    processing structures usually won’t be worth it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Iterative Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Stream pipelines and their internal iteration usually deal with existing sequences
+    of elements or data structures readily convertible to sequences of elements. Compared
+    to traditional looping constructs, you have to let go of controlling the iteration
+    process and let the Stream take over. If you require more control, though, the
+    Stream API still has you covered with its `static iterate` methods available on
+    the `Stream<T>` type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`<T> Stream<T> iterate(T seed, UnaryOperator<T> f)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`IntStream iterate(int seed, IntUnaryOperator f)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Java 9 added two additional methods, including a `Predicate` variant to have
+    an end condition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`<T> Stream<T> iterate(T seed, Predicate<T> hasNext, UnaryOperator<T> next)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`IntStream iterate(int seed, IntPredicate hasNext, IntUnaryOperator next)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Primitive `iterate` variants are available for `int`, `long`, and `double` on
+    their corresponding Stream variants.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The iterative approach to Streams produces an *ordered* and potentially infinite
+    sequence of elements by applying an `UnaryOperator` to a seed value. In other
+    words, the Stream elements will be `[seed, f(seed), f(f(seed)), …​]`, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the general concept feels familiar, you’re right! It’s a Stream-equivalent
+    to a `for`-loop:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_working_with_streams_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The seed, or initial iteration value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_working_with_streams_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The termination condition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_working_with_streams_CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The incrementation of the iteration value. The `for`-loop needs an assignment
+    where the `Stream` requires a return value instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both loop and Streams variants produce the same elements for the loop body /
+    subsequent Stream operations. Java 9 introduced an `iterate` variant that includes
+    a limiting `Predicate`, so no additional operations are needed to restrict the
+    overall elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The most significant advantage of an iterative Stream over a `for` loop is that
+    you can still use a loop-like iteration but gain the benefits of a lazy functional
+    Stream pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The end condition doesn’t have to be defined on Stream creation. Instead, a
+    later intermediate Stream operation, like `limit`, or a terminal condition, like
+    `anyMatch`, may provide it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The characteristics of an iterative Stream are `ORDERED`, `IMMUTABLE`, and
+    in the case of primitive Streams, `NONNULL`. If the iteration is number-based
+    and the range is known beforehand, you can benefit from more Stream optimizations,
+    like short-circuiting, by using the `static range…​` methods for Stream creation
+    available on `IntStream` and `LongStream` instead:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`IntStream range(int startInclusive, int endExclusive)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`IntStream rangeClosed(int startInclusive, int endInclusive)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`LongStream range(long startInclusive, +long endExclusive)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`LongStream rangeClosed(long startInclusive, long endInclusive)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Even though the same results are achievable with `iterate`, the main difference
+    is the underlying `Spliterator`. The returned Stream’s characteristics `ORDERED`,
+    `SIZED`, `SUBSIZED`, `IMMUTABLE`, `NONNULL`, `DISTINCT`, and `SORTED`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Choosing between iterative or ranged Stream creation depends on what you want
+    to achieve. The iterative approach gives you more freedom for the iteration process,
+    but you lose out on Stream characteristics enabling the most optimization possibilities,
+    especially in parallel Streams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Infinite Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The lazy nature of Streams allows for infinite sequences of elements as they
+    are processed *on-demand*, and not *all at once*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All available Stream interfaces in the JDK — `Stream<T>` and its primitive brethren
+    `IntStream`, `LongStream`, and `DoubleStream` — have `static` convenience methods
+    to create infinite Streams either based on an iterative approach or an unordered
+    generative one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While the `iterate` methods from the previous section start with a *seed* and
+    rely on applying their `UnaryOperator` on the current iteration value, the `static
+    generate` methods only rely on a `Supplier` to generate their next Stream element:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`<T> Stream<T> generate(Supplier<T> s)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`IntStream generate(IntSupplier s)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`LongStream generate(LongSupplier s)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`DoubleStream generate(DoubleSupplier s)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The lack of a starting seed value affects the Stream’s characteristics, making
+    it `UNORDERED`, which can be beneficial for parallel use. An unordered Stream
+    created by a `Supplier` is helpful for constant non-interdependent sequences of
+    elements, like random values. For example, creating an `UUID` Stream factory is
+    quite simple:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The downside of unordered Streams is that they won’t guarantee that a `limit`
+    operation will pick the first `n` elements in a parallel environment. That may
+    result in more calls to the element generating `Supplier` than are actually necessary
+    for the result of the Stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Take the following example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The expected output of the pipeline is `1000`. The output, though, will most
+    likely be greater than `1000`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This behavior is expected from an unordered Stream in a parallel execution environment.
+    Under most circumstances, it won’t matter much, but it highlights the necessity
+    of choosing the right Stream type with favorable characteristics to gain maximum
+    performance and the fewest invocations possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Random Numbers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The Stream API has special considerations for generating an infinite Stream
+    of random numbers. Although it’s possible to create such a Stream with `Stream.generate`
+    using, for example, `Random#next()`, there’s an easier way available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Three different random-number-generating types are capable of creating Streams:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`java.util.Random`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`java.util.concurrent.ThreadLocalRandom`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`java.util.SplittableRandom`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'All three of them provide multiple methods to create Streams of random elements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Technically, the Streams are only *effectively infinite*, as it’s stated in
+    their documentation^([2](ch07.xhtml#idm45115235350064)). If no `streamSize` is
+    provided, the resulting Stream contains `Long.MAX_VALUE` elements. The upper and
+    lower bounds are set with the `randomNumberOrigin` (inclusive) and `randomNumberBound`
+    (exclusive).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'General usage and performance characteristics will be discussed in [“Example:
+    Random Numbers”](ch08.xhtml#_01-parallel-concurrent-async_seq-vs-para).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory Isn’t Infinite
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The most important thing to remember when using infinite Streams is that your
+    memory is quite finite. Limiting your infinite Streams isn’t just important, it’s
+    an absolute necessity! Forgetting to put a restricting intermediate or terminal
+    operation will inevitably use up all memory available to the JVM and eventually
+    throw an `OutOfMemoryError`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The available operations to restrict any Stream are listed in [Table 7-2](#_02-streams_infinite-restricting-ops).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-2\. Stream-restricting operations
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Operation Type | Operation | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Intermediate Operations | `limit(long maxSize)` | Limits a Stream to `maxSize`
+    elements |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `takeWhile(Predicate<T> predicate)` | Takes elements until `predicate` evaluates
+    `false` (Java 9+) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Terminal Operations (guaranteed) | `Optional<T> findFirst()` | Returns the
+    first element of the Stream |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Optional<T> findAny()` | Return a single, non-deterministic Steam element
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Terminal Operations (non-guaranteed) | `boolean anyMatch(Predicate<T> predicate)`
+    | Returns whether *any* Stream elements match `predicate` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `boolean allMatch(Predicate<T> predicate)` | Returns whether *all* Stream
+    elements match `predicate` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `boolean noneMatch(Predicate<T> predicate)` | Returns whether *no* Stream
+    element matches `predicate` |'
+  prefs: []
+  type: TYPE_TB
+- en: The most straightforward choice is `limit`. Choice-based operations using `Predicate<T>`
+    like `takeWhile` must be crafted with diligence, or you might still end up with
+    a Stream consuming more memory than needed. For terminal operations, only the
+    `find…​` operations are guaranteed to terminate the Stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `…​Match` operations suffer from the same problem as `takeWhile`. If the
+    predicate doesn’t match according to their purpose, the Stream pipeline will process
+    an *infinite* number of elements and, therefore, all the available memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As discussed in [“The Cost of Operations”](ch06.xhtml#_02-data-processing_order-matters),
+    the position of the restricting operation in the Stream also makes a difference
+    in how many elements will pass through. Even if the final result might be identical,
+    restricting the flow of Stream elements as early as possible will save you more
+    memory and CPU cycles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From Arrays to Streams and Back
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Arrays are a particular type of object. They’re a collection-like structure,
+    holding elements of their *base type*, and only provide a method to access a specific
+    element by its index, and the overall length of the array, besides the *usual*
+    methods inherited from `java.lang.Object`. They’re also the only way to have a
+    collection of primitive types until *Project Valhalla* becomes available in the
+    future^([3](ch07.xhtml#idm45115235120224)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, two characteristics make arrays a good match for Stream-based processing.
+    First, their length is set on their creation and won’t change. Second, they’re
+    an ordered sequence. That’s why there are multiple convenience methods available
+    on `java.util.Arrays` to create an appropriate Stream for different base types.
+    Creating an array from a Stream is done with an appropriate terminal operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Object-Type Arrays
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Creating a typical `Stream<T>` is supported by two `static` convenience methods
+    on `java.util.Arrays`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`<T> Stream<T> stream(T[] array)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`<T> Stream<T> stream(T[] array, int startInclusive, int endExclusive)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As you can see, creating a `Stream<T>` from an array is quite self-explanatory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other way around, from `Stream<T>` to `T[]` is done by using one of these
+    two terminal operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Object[] toArray()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`<A> A[] toArray(IntFunction<A[]> generator)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first variant can only return an `Object[]` array regardless of the actual
+    element type of the Stream due to how arrays are created by the JVM. If you need
+    an array of the Stream’s elements type, you need to provide the Stream with a
+    way to create an appropriate array. That’s where the second variant comes in.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second variant requires an `IntFunction` that creates the array of the
+    provided size. The most straightforward way is to use a method reference:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: There is no static type checking for using the created array in `toArray`. Types
+    are checked at runtime when an element is stored in the allocated array, throwing
+    an `ArrayStoreException` if the types aren’t compatible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Primitive Arrays
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The three primitive Stream specializations, `IntStream`, `LongStream`, and
+    `DoubleStream`, have all dedicated variants of the `static` method `Arrays.stream`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`IntStream stream(int[] array)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`IntStream stream(int[] array, int startInclusive, int endExclusive)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `LongStream` and `DoubleStream` variants only differ in the `array` type
+    and the returned primitive Stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because the element type is fixed in a primitive Stream, they only have a singular
+    `toArray` method that doesn’t require an `IntFunction`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Low-Level Stream Creation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far, all Stream creation methods I’ve discussed were quite high-level, creating
+    a Stream from another data source, iteration, generation, or arbitrary objects.
+    They are directly available on their respective types, with as few arguments needed
+    as possible. The auxiliary type `java.util.stream.StreamSupport` has also several
+    low-level `static` convenience methods available for creating Streams directly
+    from a Spliterator. This way, you can create a Stream representation for your
+    own custom data structures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following two methods accept a Spliterator to create a new Stream:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Stream<T> stream(Spliterator<T> spliterator, boolean parallel)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The easiest way to create a sequential or parallel Stream from any source that
+    is representable by a `Spliterator<T>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Stream<T> stream(Supplier<? extends Spliterator<T>> supplier, int characteristics,
+    boolean parallel)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of using the Spliterator right away, the Supplier gets called once and
+    only after the terminal operation of the Stream pipeline is invoked. That relays
+    any possible interference with the source data structure to a smaller timeframe,
+    making it safer for non-`IMMUTABLE` or non-`CONCURRENT` eager-bound Streams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s strongly recommended that the Spliterators used to create a `Stream<T>`
+    are either `IMMUTABLE` or `CONCURRENT` to minimize possible interference or changes
+    to the underlying data source during the traversal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another good option is using a *late-binding* Spliterator, meaning the elements
+    aren’t fixed at the creation of the Spliterator. Instead, they’re bound on first
+    use, when the Stream pipeline starts processing its elements after calling a terminal
+    operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Low-level Stream creation methods also exist for the primitive Spliterator variants.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you don’t have a `Spliterator<T>` but a `Iterator<T>`, the JDK got you covered.
+    The type `java.util.Spliterators` has multiple convenience methods for creating
+    Spliterators, with two methods designated for `Iterator<T>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can use the created `Spliterator<T>` instance in the previously discussed
+    `Stream<T> stream(Spliterator<T> spliterator, boolean parallel)` method to finally
+    create a `Stream<T>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with File I/O
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Streams aren’t only for collection-based traversal. They also provide an excellent
+    way to traverse the filesystem with the help of the `java.nio.file.Files` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This section will look at several use cases for file I/O and Streams. Contrary
+    to other Streams, I/O-related Streams must be explicitly closed by calling `Stream#close()`
+    after you are finished using them. `Stream<T>` conforms to the `java.lang.AutoCloseable`
+    interface, so the examples will use a `try-with-resources`-block, which will be
+    explained in [“Caveats of File I/O Streams”](#_02-streams-file-io_caveats).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All examples in this section use the files in the book’s [code repository](https://github.com/benweidig/a-functional-approach-to-java)
+    as their source. The following filesystem tree represents the overall structure
+    of the files used in the examples:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Reading Directory Contents
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Listing the contents of a directory can be done by calling the method `Files.list`
+    to create a lazily populated `Stream<Path>` of the provided `Path`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Its argument must be a directory, or else it will throw a `NotDirectoryException`.
+    [Example 7-1](#_02-streams_list) shows how to list a directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-1\. Listing a directory
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output lists the files of the directory `jshell` for [Chapter 4](ch04.xhtml#_02-data-structures):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: The order of retrieved content isn’t guaranteed, which I will go into more detail
+    about in [“Caveats of File I/O Streams”](#_02-streams-file-io_caveats).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Depth-First Directory Traversal
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The two `walk` methods do, as their name suggests, “walk” the whole file tree
+    from a specific starting point. The lazily populated `Stream<Path>` traverses
+    *depth-first*, meaning if an element is a directory, it will be entered and traversed
+    first before the next element in the current directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The difference between the two `walk` variants in `java.nio.file.Files` is
+    the maximum directory depth they’re going to traverse:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_working_with_streams_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The starting point of the traversal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_working_with_streams_CO2-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The maximum number of directory levels to traverse. `0` (zero) restricts the
+    Stream to the starting level. The second variant without `maxDepth` has no depth
+    limit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_working_with_streams_CO2-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Zero or more options on how to traverse the filesystem. So far, only `FOLLOW_LINKS`
+    exists. Be aware that by following links, a possible cyclic traversal might occur.
+    If the JDK detects this, it throws a `FileSystemLoopException`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can walk the filesystem as shown in [Example 7-2](#_02-streams_walk).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-2\. Walking the Filesystem
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The traversal generates the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The Stream will have at least one element, the starting point. If it’s not accessible,
+    an `IOException` is thrown. As with `list`, the Stream elements encounter order
+    isn’t guaranteed, which I will go into more detail in [“Caveats of File I/O Streams”](#_02-streams-file-io_caveats).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Searching the Filesystem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Although you can search for a particular `Path` with `walk`, you could use
+    the method `find` instead. It bakes a `BiPredicate` with access to the `BasicFileAttribute`
+    of the current element directly into the Stream creation, making the Stream more
+    focused on your task’s requirements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_working_with_streams_CO3-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The starting point of the search.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_working_with_streams_CO3-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The maximum number of directory levels to traverse. `0` (zero) restricts it
+    to the starting level. Unlike `Files.walk` no method variant without `maxDepth`
+    exists.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_working_with_streams_CO3-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Criteria for including a `Path` in the Stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_working_with_streams_CO3-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Zero or more options on how to traverse the filesystem. So far, only `FOLLOW_LINKS`
+    exists. Be aware that by following links, a possible cyclic traversal might occur.
+    If the JDK detects this, it throws a `FileSystemLoopException`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With it, [Example 7-2](#_02-streams_walk) can be implemented without needing
+    to map the `Path` to a `File`, as shown in [Example 7-3](#_02-streams_find).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-3\. Finding Files
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The output is equivalent to using `walk`, and the same assumptions — *depth-first*
+    and non-guaranteed encounter order — apply to `find`, too. The real difference
+    is the access to the `BasicFileAttributes` of the current element, which may affect
+    performance. If you need to filter or match by file attributes, using `find` will
+    save you reading the file attributes explicitly from the `Path` element, which
+    could be slightly more performant. However, if you only require the `Path` element
+    and no access to its file attributes, the `walk` method is just as good an alternative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reading Files Line-By-Line
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The common task of reading a file and processing it line-by-line is a breeze
+    with Streams, which provides the `lines` method. There are two variants, depending
+    on the file’s `Charset`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_working_with_streams_CO4-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Path` pointing the file to read.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_working_with_streams_CO4-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The charset of the file. The second variant defaults to `StandardCharsets.UTF_8`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Even though you can use any `Charset` you want, it will make a performance difference
+    in parallel processing. The `lines` method is optimized for `UTF_8`, `US_ASCII`,
+    and `ISO_8859_1`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at a simple example of counting the words in *War and Peace* by Tolstoy,
+    as seen in [Example 7-4](#_01-parallel-concurrent-async_war-and-peace).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-4\. Counting words in “War and Peace”
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_working_with_streams_CO5-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The plain text version of *War and Peace* from Project Gutenberg^([4](ch07.xhtml#idm45115233771312))
+    is used, so no formatting might get in the way of counting words.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_working_with_streams_CO5-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The regular expressions are pre-compiled to prevent recompilation for each element.
+    Such optimizations are essential because of the overhead of creating a `Pattern`
+    for each element and `map` operation will quickly compound and affect the overall
+    performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_working_with_streams_CO5-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `lines` call returns a `Stream<String>` with the file’s lines as elements.
+    The `try-with-resources` block is required because the I/O operation must be closed
+    explicitly, which you’ll learn more about in [“Caveats of File I/O Streams”](#_02-streams-file-io_caveats).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_working_with_streams_CO5-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The punctuation needs to be removed, or identical words directly next to any
+    punctuation will be counted as different words.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](assets/5.png)](#co_working_with_streams_CO5-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The cleaned line is now split on whitespace characters which creates a `Stream<String[]>`.
+    To actually count the words, the `flatMap` operation will flatten the Stream to
+    a `Stream<String>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![6](assets/6.png)](#co_working_with_streams_CO5-6)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The “word” matcher is an additional cleanup and selection step to only count
+    the actual words.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![7](assets/7.png)](#co_working_with_streams_CO5-7)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mapping the element to lowercase ensures differently-cased words are counted
+    as one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![8](assets/8.png)](#co_working_with_streams_CO5-8)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The terminal operation creates a `Map<String, Integer>` with the word as its
+    key and the occurrence count as its value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Stream pipeline does what it was set out to do, taking over the task of
+    reading the file and providing you with its content line-by-line so that you can
+    concentrate your code on the processing steps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will revisit this particular example in [Chapter 8](ch08.xhtml#_01-parallel-streams)
+    to take another look at how such a common task can be improved immensely by using
+    a parallel Stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Caveats of File I/O Streams
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Working with Streams and file I/O is pretty straightforward. However, there
+    are three unusual aspects I mentioned before. They aren’t a big deal and don’t
+    diminish the usability or usefulness of using Stream-based file I/O, although
+    you need to be aware of them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Closing the Streams is required
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Directory contents are weakly consistent
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Non-guaranteed element order
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These aspects stem from dealing with I/O in general and are found in most I/O-related
+    code, not only Stream pipelines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Explicit Closing of the Stream
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Dealing with resources in Java, like file I/O, typically requires you to close
+    them after use. An unclosed resource can *leak*, meaning the garbage collector
+    can’t reclaim its memory after the resource is no longer required or used. The
+    same is true for dealing with I/O with Streams. That’s why you need to close I/O-based
+    Streams explicitly, at least compared to non-I/O Streams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `Stream<T>` type extends `java.io.AutoClosable` through `BaseStream`, so
+    the most straightforward way to close it is to use a `try-with-resources` block,
+    as seen throughout the “Working with File I/O” section and in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: All Stream-related methods on `java.nio.file.Files` throw an `IOException` according
+    to their signatures, so you need to handle that exception in some form. Combining
+    a `try-with-resources`-block with an appropriate `catch`-block can solve both
+    requirements in one fell swoop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weakly Consistent Directory Content
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `list`, `walk`, and `find` methods on `java.nio.file.Files` are *weakly
+    consistent* and *lazily* populated. That means the actual directory content isn’t
+    scanned once on Stream creation to have a fixed snapshot during traversal. Any
+    updates to the filesystem may or may not be reflected after the `Stream<Path>`
+    is created or traversed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The reasoning behind this constraint is quite most likely due to performance
+    and optimization considerations. Stream pipelines are supposed to be lazy sequential
+    pipelines with no distinction of their elements. A fixed snapshot of the file
+    tree would require gathering all possible elements on Stream creation, not lazily
+    on the actual Stream processing triggered by a terminal operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Non-guaranteed Element Order
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The lazy nature of Streams creates another aspect of file I/O Streams you might
+    not expect. The encounter order of file I/O Streams isn’t guaranteed to be in
+    natural order — in this case, alphabetically —  which is why you might need an
+    additional `sorted` intermediate operation to ensure consistent element order.
+    That’s because the Stream is populated by the filesystem, which isn’t guaranteed
+    to return its files and directories in an ordered fashion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dealing with Date and Time
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Dealing with dates is always a challenge with many edge cases. Thankfully, a
+    new *Date & Time API*⁠^([5](ch07.xhtml#idm45115233615264)) was introduced in Java
+    8. Its immutable nature fits nicely in any functional code and provides some Stream-related
+    methods, too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Querying Temporal Types
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The new Date and Time API provides a flexible and functional query interface
+    for arbitrary properties. Like most Stream operations, you inject the actually
+    required logic to do your task into the method via its arguments, making the methods
+    themselves more general scaffolds with greater versatility:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The generic signature allows querying for any type, making it quite flexible:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The utility class `java.time.temporal.TemporalQueries` provides pre-defined
+    queries, shown in [Table 7-3](#_02-streams-jsr310_temporalquery), to eliminate
+    the need to create common queries yourself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-3\. Pre-defined `TemporalQuery<T>` in `java.time.temporal.TemporalQueries`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| `static` method | Return Type |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `chronology()` | `Chronology` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `offset()` | `ZoneOffset` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `localDate()` | `LocalDate` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `localTime()` | `LocalTime` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `precision()` | `TemporalUnit` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `zoneId()` | `ZoneId` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `zone()` | `ZoneId` |'
+  prefs: []
+  type: TYPE_TB
+- en: Obviously, not all Time API types support each query type. For example, you
+    can’t get a `ZoneId`/`ZoneOffset` from a `Local…​` type. Each method is documented^([6](ch07.xhtml#idm45115233447600))
+    quite well with their supported types and intended use cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LocalDate-Range Streams
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Java 9 introduced Stream capabilities for a single JSR 310 type, `java.time.LocalDate`,
+    to create a consecutive range of `LocalDate` elements. You don’t have to worry
+    about all the intricacies and edge cases of different calendar systems and how
+    the date calculations are actually performed. The date and time API will handle
+    them for you by giving you a consistent and easy-to-use abstraction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Two `LocalDate` instance methods create an ordered and consecutive Stream:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Stream<LocalDate> datesUntil(LocalDate endExclusive)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Stream<LocalDate> datesUntil(LocalDate endExclusive, Period step)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first variant is equivalent to using `Period.ofDays(1)`. Their implementation
+    won’t overflow, meaning that any element plus `step` *must* be before `endExclusive`.
+    The direction of the dates isn’t *future-only*, too. If `endExclusive` is in the
+    past, you must provide a negative `step` to create a Stream going toward the past.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring Stream Performance with JMH
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Throughout the book, I mention how Java’s functional techniques and tools, like
+    Streams, incur a certain overhead compared to a *traditional* approach and that
+    you have to consider it. This is why measuring the performance of Stream pipelines
+    with benchmarks can be crucial. Streams aren’t an easy target for benchmarking
+    because they are complex pipelines of multiple operations with many optimizations
+    behind the scenes that depend on their data and operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JVM and its *just-in-time* compiler can be tricky to benchmark and determine
+    the actual performance. That’s where the *Java Micro-Benchmarking Harness* comes
+    in to help.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The [JMH](https://openjdk.java.net/projects/code-tools/jmh/) takes care of JVM
+    warm-up, iterations, and code-optimizations that might dilute the results, making
+    them more reliable and, therefore, a better baseline for evaluation. It’s the
+    *de-facto* standard for benchmarking and got included in the JDK with version
+    12^([7](ch07.xhtml#idm45115233431088)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Plugins are available for IDEs and build systems like [Gradle](https://github.com/melix/jmh-gradle-plugin),
+    [IntelliJ](https://github.com/artyushov/idea-jmh-plugin), [Jenkins](https://github.com/brianfromoregon/jmh-plugin),
+    or [TeamCity](https://github.com/presidentio/teamcity-plugin-jmh).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The [JMH GitHub repository sample directory](https://github.com/openjdk/jmh/blob/master/jmh-samples/src/main/java/org/openjdk/jmh/samples/)
+    has a myriad of well-documented benchmarks explaining the intricacies of its usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: I won’t talk further about how to benchmark Streams or lambdas in general because
+    it is out of scope for this chapter and it could easily consume the space of an
+    entire book. In fact, I recommend you check out *Optimizing Java* by Benjamin
+    J Evans, James Gough, and Chris Newland^([8](ch07.xhtml#idm45115233423152)) and
+    *Java Performance* by Scott Oaks^([9](ch07.xhtml#idm45115233422032)) to learn
+    more about benchmarking and how to measure performance in Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: More about Collectors
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '[Chapter 6](ch06.xhtml#_02-data-processing) introduced Collectors and the corresponding
+    terminal operation `collect` as a powerful tool to aggregate a Stream pipeline’s
+    elements into new data structures. The utility type `java.util.stream.Collectors`
+    has a plethora of `static` factory methods to create Collectors for almost any
+    task, from simple aggregation into a new `Collection` type, or even more complex,
+    multi-step aggregation pipelines. Such more complex Collectors are done with the
+    concept of *downstream Collectors*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The general idea of Collectors is simple: collect elements into a new data
+    structure. That’s a pretty straightforward operation if you want a Collection-based
+    type like `List<T>` or `Set<T>`. In the case of a `Map<K, V>`, however, you usually
+    need complex logic to get a correctly formed data structure that fulfills your
+    goal.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collecting a sequence of elements to a key-value-based data structure like `Map<K,
+    V>` can be done in various ways, each with its own challenges. For example, even
+    with a simple key-value mapping where each key has only one value, there’s already
+    the problem of key collisions to be dealt with. But if you want to further transform
+    the Map’s value-part, like grouping, reducing, or partitioning, you need a way
+    to manipulate the collected values. That’s where downstream Collectors come into
+    play.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Downstream Collectors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Some of the pre-defined Collectors available via `java.util.stream.Collectors`
+    factory methods accept an additional Collector to manipulate *downstream* elements.
+    Basically, this means that after the primary Collector has done its job, the downstream
+    Collector makes further changes to the collected values. It’s almost like a secondary
+    Stream pipeline working on the previously collected elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Typical tasks for downstream Collectors include:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transforming
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reducing
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Flattening
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Filtering
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Composite Collector operations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'All examples of this section will use the following `User` Record and `users`
+    data source:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Transforming Elements
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Grouping Stream elements into simple key-value Maps is easy with the `Collectors.groupingBy`
+    methods. The value part of a key-value mapping, though, might not be represented
+    in the form you need and require additional transformation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, grouping a `Stream<User>` by its `group` creates a `Map<String,
+    List<User>>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Simple enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What if you don’t want the whole `User` and only its `id` in its place? You
+    can’t use an intermediate `map` operation to transform the elements before collecting
+    them because you wouldn’t have access to the `User` anymore to actually group
+    them. Instead, you can use a downstream Collector to transform the collected elements.
+    That’s why there are multiple `groupingBy` methods available, like the one we’re
+    going to use in this section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although the different generic types in this method signature might look intimidating,
+    don’t fret! Let’s break the signature down into its parts to get a better understanding
+    of what’s happening.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are four types involved are listed in [Table 7-4](#_02-streams-downstream_generic-types-groupingBy).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-4\. Generic types of `groupingBy`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Generic Type | Used for |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `T` | The Stream’s elements type before collecting. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `K` | The `Map` result’s key type. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `D` | The type of the result `Map` value part that is created by the downstream
+    Collector. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `A` | The accumulator type of the downstream Collector. |'
+  prefs: []
+  type: TYPE_TB
+- en: As you can see, each type of the method-signature represents a part of the overall
+    process. The `classifier` creates the keys, mapping the elements of type `T` to
+    the key type `K`. The downstream Collector aggregates the elements of type `T`
+    to the new result type `D`. The overall result will therefore be a `Map<K, D>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Java’s type inference will usually do the heavy lifting of matching the correct
+    types for you, so you don’t have to think much about the actual generic signatures
+    if you only want to use such complex generic methods and not write them yourselves.
+    If a type mismatch occurs and the compiler can’t deduct the types automatically,
+    try to refactor the operation logic into dedicated variables with the help of
+    your IDE to see the inferred types. It’s easier to tweak smaller blocks of code
+    than an entire Stream pipeline at once.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In essence, each Collector accepting an additional downstream Collector consists
+    of the original logic — in this case, the key-mapper — and a downstream Collector,
+    affecting the values mapped to a key. You can think of the downstream collecting
+    process as working like another Stream that’s collected. Instead of all elements,
+    though, it only encounters the values associated with the key by the primary Collector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s get back to the lookup Map for `User` groups. The goal is to create a
+    `Map<String, Set<UUID>>`, mapping the `User` groups to a list of distinct `id`
+    instances. The best way to create a downstream Collector is to think about the
+    particular steps required to achieve your goal and which factory methods of `java.util.stream.Collectors`
+    could achieve them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, you want the `id` of a `User` element, which is a mapping operation.
+    The method `Collector<T, ?, R> mapping(Function<? super T, ? extends U> mapper,
+    Collector<? super U, A, R> downstream)` creates a Collector that maps the collected
+    elements before passing them down to another Collector. The reasoning behind requiring
+    another downstream Collector is simple; the mapping Collector’s sole purpose is,
+    you might have guessed, *mapping* the elements. The actual collection of mapped
+    elements is outside its scope and therefore delegated to the downstream Collectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, you want to collect the mapped elements into a `Set`, which can be done
+    by `Collectors.toSet()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By writing the Collectors separately, their intent and hierarchy become more
+    visible:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As I said before, you can usually let the compiler infer the types and use
+    the `Collectors` factory methods directly. If you import the class statically,
+    you can even forgo the repetitive `Collectors.` prefix. Combining all the Collectors
+    and using them in the Stream pipeline leads to a straightforward collection pipeline:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The result type is inferable by the compiler, too. Still, I prefer to explicitly
+    state it to communicate better what kind of type is returned by the Stream pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative approach is keeping the primary downstream Collector as a variable
+    to keep the `collect` call simpler. The downside of this is the necessity to help
+    the compiler infer the correct types if it’s not obvious, like in the case of
+    using a lambda expression instead of a method reference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_working_with_streams_CO6-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The method reference tells the compiler which type the Stream’s elements are,
+    so the downstream Collector knows it, too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_working_with_streams_CO6-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The lambda variant of `mapper` needs to know the type to work with. You can
+    either provide an explicit type to the lambda argument or replace `var` with the
+    more complicated generic `Collector<T, A , R>` signature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_working_with_streams_CO6-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `collect` call is still expressive thanks to the variable name. If certain
+    aggregation operations are commonly used, you should consider refactoring them
+    into an auxiliary type with factory methods, similar to `java.util.stream.Collectors`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reducing Elements
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Sometimes, a reduction operation is needed instead of an aggregation. The general
+    approach to designing a reducing downstream Collector is identical to the previous
+    section: define your overall goal, dissect it into the necessary steps, and finally,
+    create the downstream Collector.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For this example, instead of creating a lookup Map for `id` by `group`, let’s
+    count the `logEntries` per `User`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The overall goal is to count the log entries per `User` element. The required
+    steps are getting the log count of a `User` and summing them up to the final tally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You could use the `Collectors.mapping` factory method with another downstream
+    Collector to achieve the goal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Instead of requiring a mapping and reducing downstream Collector in tandem,
+    you could use one of the other `Collector.reduce` variants which includes a `mapper`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This `reduce` variant needs, in addition to a seed value (`identity`) and the
+    reduction operation (`op`), a `mapper` to transform the `User` elements into the
+    desired value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Like the `reduce` intermediate operation, using a reducing Collector for downstream
+    operations is an incredibly flexible tool, being able to combine multiple steps
+    into a single operation. Which method to choose, multi-downstream Collectors or
+    single reduction, depends on personal preferences and the overall complexity of
+    the collection process. If you only need to sum up numbers, though, the `java.util.stream.Collectors`
+    type also gives you more specialized variants:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `summing` Collector is available for the usual primitive types (`int`, `long`,
+    `float`). Besides summing up numbers, you can calculate averages (prefixed with
+    `averaging`) or simply count elements with `Collectors.counting()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Flattening Collections
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Dealing with Collection-based elements in Streams usually requires a `flatMap`
+    intermediate operation to “flatten” the Collection back into discrete elements
+    to work with further down the pipeline, or you’ll end up with nested Collections
+    like `List<List<String>>`. The same is true for the collecting process of a Stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Grouping all `logEntries` by their `group` would result in a `Map<String, List<List<String>>>`,
+    which most likely won’t be what you want. Java 9 added a new pre-defined Collector
+    with built-in flattening capabilities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Like the other added Collector, `Collectors.filtering(…​)`, which I discussed
+    in [“Filtering Elements”](#_02-streams_collecting-streams_filtering), it doesn’t
+    provide any advantages over an explicit `flatMap` intermediate operation if used
+    as the sole Collector. But, used in a multi-level reduction, like `groupingBy`
+    or `partitionBy`, it gives you access to the original Stream element *and* allows
+    for flattening the collected elements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: Like with the transforming and reducing Collectors, you will quickly get the
+    hang of when to use a flattening downstream Collector. If the result type of the
+    Stream pipeline doesn’t match your expectations, you most likely need a downstream
+    Collector to remedy the situation, either by using `Collectors.mapping` or `Collectors.flatMapping`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Filtering Elements
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Filtering Stream elements is an essential part of almost any Stream pipeline,
+    done with the help of the intermediate `filter` operation. Java 9 added a new
+    pre-defined Collector with built-in filtering capabilities, moving the step of
+    filtering elements directly before the accumulation process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'On its own, it’s no different from an intermediate `filter` operation. As a
+    downstream Collector, though, its behavior is quite different to `filter`, easily
+    seen when grouping elements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You might expect an equivalent result, but the order of operations leads to
+    different results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Intermediate filter first, grouping second
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using an intermediate `filter` operation removes any undesired element before
+    any collection occurs. Therefore, no groups of users that haven’t logged in today
+    are included in the resulting `Map`, as illustrated in [Figure 7-1](#_02-streams_collectors_downstream-filter-first-grouping-second).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Grouping elements with filter first, grouping second](assets/afaj_0701.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-1\. Grouping elements with “filter first, grouping second”
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Group first, filter downstream
+  prefs: []
+  type: TYPE_NORMAL
+- en: Without an intermediate `filter` operation, the `groupingBy` Collector will
+    encounter all `User` elements, regardless of their last login date. The downstream
+    Collector — `Collectors.filtering` — is responsible for filtering the elements,
+    so the returned `Map` still includes all user groups, regardless of the last login.
+    The flow of elements is illustrated in [Figure 7-2](#_02-streams_collectors_downstream-group-first-filter-downstream).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Grouping elements with group first, filter downstream](assets/afaj_0702.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-2\. Grouping elements with “group first, filter downstream”
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Which approach is preferable depends on your requirements. Filtering first returns
+    the least amount of key-value pairs possible, but grouping first grants you access
+    to all `Map` keys and their (maybe) empty values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Composite Collectors
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The last Collector I want to discuss is `Collectors.teeing` Added in Java 12,
+    it differs from the others because it accepts two downstream Collectors at once
+    and combines both results into one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The name *teeing* originates from one of the most common pipe fittings — the
+    T-fitting — which has the shape of a capital letter T.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Stream’s elements first pass through both downstream Collectors, so a `BiFunction`
+    can merge both results as the second step, as illustrated in [Figure 7-3](#_02-streams-collectors_teeing).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Teeing Collector Flow of Elements](assets/afaj_0703.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-3\. Teeing Collector Flow of Elements
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Imagine you want to know how many users you have and how many of them never
+    logged in. Without the `teeing` operation, you would have to traverse the elements
+    twice: once for the overall count and another time for counting the never logged-in
+    Users. Both counting tasks can be represented by dedicated Collectors, `counting`
+    and `filtering`, so you only need to traverse the elements once and let `teeing`
+    do the two counting tasks at the end of the pipeline. The results are then merged
+    with a `BiFunction<Long, Long>` into the new data structure `UserStats`. [Example 7-5](#_02-streams-teeing-login-range)
+    shows how to implement it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-5\. Finding min and max login dates
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_working_with_streams_CO7-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A local Record type is used as the result type because Java lacks dynamic tuples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_working_with_streams_CO7-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first downstream Collector counts all elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_working_with_streams_CO7-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second downstream Collector filters first and uses an additional downstream
+    Collector to count the remaining elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_working_with_streams_CO7-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A method reference to the `UserStats` constructor serves as the merge function
+    of the two downstream Collector results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Like many functional additions, the `teeing` Collector might initially seem
+    strange if you’re coming from a mainly object-oriented background. On its own,
+    a `for`-loop with two out-of-body variables to count could achieve the same result.
+    The difference lies in how the `teeing` Collector benefits from the Stream pipeline
+    and its overall advantages and functional possibilities, not just the terminal
+    operation itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating Your Own Collector
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The auxiliary type `java.util.stream.Collectors` gives you over 44 pre-defined
+    factory methods in the current LTS Java version 17 at the time of writing this
+    book. They cover most general use cases, especially if used in tandem. There may
+    be times when you need a custom, more context-specific Collector that’s more domain-specific
+    and easier to use than a pre-defined one. That way, you can also share such specific
+    Collectors in a custom auxiliary class, like `Collectors`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Recall from [Chapter 6](ch06.xhtml#_02-data-processing) that Collectors aggregate
+    elements with the help of four methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Supplier<A> supplier()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`BiConsumer<A, T> accumulator()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`BinaryOperator<A> combiner()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Function<A, R> finisher()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: One method of the `Collector` interface I haven’t mentioned before is `Set<Characteristics>
+    characteristics()`. Like Streams, Collectors have a set of characteristics that
+    allow for different optimization techniques. The three currently available options
+    are listed in [Table 7-5](#_02-streams_collector-characteristics).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-5\. Available java.util.Collector.Characteristics
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Characteristic | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `CONCURRENT` | Supports parallel processing |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `IDENTITY_FINISH` | The finisher is the identity function, returning the
+    accumulator itself. In this case, only a cast is required instead of calling the
+    finisher itself. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `UNORDERED` | Indicates that the order of Stream elements isn’t necessarily
+    preserved. |'
+  prefs: []
+  type: TYPE_TB
+- en: To better understand how these parts fit together, we’re going to recreate one
+    of the existing Collectors, `Collectors.joining(CharSequence delimiter)`, which
+    joins `CharSequence` elements, separated by the `delimiter` argument. [Example 7-6](#_02-streams_collector_joinector-full)
+    shows how to implement the `Collector<T, A, R>` interface with a `java.util.StringJoiner`
+    to achieve the required functionality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-6\. Custom Collector for joining String elements
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_working_with_streams_CO8-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `StringJoiner` type is the perfect mutable results container due to its
+    public API and delimiter support.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_working_with_streams_CO8-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The accumulation logic for adding new elements to the container is as simple
+    as using the proper method reference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_working_with_streams_CO8-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The logic for combining multiple containers is also available via method reference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_working_with_streams_CO8-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last step, transforming the results container to the actual result, is done
+    with the container’s `toString` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](assets/5.png)](#co_working_with_streams_CO8-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Joinector` doesn’t have any of the available Collector characteristics,
+    so an empty `Set` is returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Simple enough, but it’s still a lot of code for very little functionality consisting
+    mostly of returning method references. Thankfully, there are convenience factory
+    methods called `of` available on `Collector` to simplify the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: This shorter version is equivalent to the previous full implementation of the
+    interfaces.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The last argument of the `Collector.of(…​)` method isn’t always visible, if
+    not set; it’s a vararg of the Collector’s characteristics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating your own Collectors should be reserved for custom result data structures
+    or to simplify domain-specific tasks. Even then, you should first try to achieve
+    the results with the available Collectors and a mix of downstream Collectors.
+    The Java team has invested a lot of time and knowledge to give you safe and easy-to-use
+    generic solutions that can be combined into quite complex and powerful solutions.
+    Then, if you have a working Collectors, you can still refactor it into an auxiliary
+    class to make it reusable and easier on the eyes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Final Thoughts on (Sequential) Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Java Streams API is, in my opinion, an absolute game changer, and that’s
+    why it’s important to know about the multitude of available operations and ways
+    to use Streams for different tasks. Streams give you a fluent, concise, and straightforward
+    approach to data processing, with an option to go parallel if needed, as you’ll
+    learn more about in [Chapter 8](ch08.xhtml#_01-parallel-streams). Still, they
+    aren’t designed to replace preexisting constructs like loops, merely complementing
+    them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The most important skill you as a Java developer should acquire regarding Streams
+    is finding the balance between using just enough Stream pipelines to improve the
+    readability and reasonability of your code without sacrificing performance by
+    ignoring traditional looping constructs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not every loop needs to be a Stream. However, not every Stream would be better
+    off being a loop, either. The more you get used to using Streams for data processing,
+    the easier you will find a healthy balance between the two approaches to data
+    processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Takeaways
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Stream API provides a wide range of possibilities to create Streams, from
+    iterative approaches that are similar to traditional looping constructs to specialized
+    variants for certain types like file I/O or the new Date and Time API.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Like functional interfaces, most Streams and their operations support primitive
+    types via specialized types to reduce the amount of autoboxing. These specialized
+    variants can give you a performance-wise edge if needed but will restrict the
+    available operations. But you can always switch between primitive and non-primitive
+    Streams in a pipeline to gain the benefits of both worlds.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Downstream Collectors can affect the collection process in multiple ways, like
+    transforming or filtering, to manipulate the result into the representation required
+    for your task.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If a combination of downstream Collectors cannot fulfill your task, you can
+    fall back on creating your own Collector instead.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ^([1](ch07.xhtml#idm45115235898112-marker)) *Project Valhalla*, as discussed
+    in [“Project Valhalla and Specialized Generics”](ch03.xhtml#_01-functions_project-valhalla),
+    will allow value-based types, like primitives, to be used as generic type boundaries.
+    Unfortunately, though, at the point of writing this book, no targeted availability
+    date is known.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch07.xhtml#idm45115235350064-marker)) For example, the [documentation
+    of `Random#ints()`](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Random.xhtml#ints())
+    states that the method is implemented to be an equivalent of `Random.ints(Long.MAX_VALUE)`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch07.xhtml#idm45115235120224-marker)) See the sidebar [“Project Valhalla
+    and Specialized Generics”](ch03.xhtml#_01-functions_project-valhalla) for more
+    information about *Project Valhalla*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([4](ch07.xhtml#idm45115233771312-marker)) Project Gutenberg provides multiple
+    versions of [War and Peace](https://www.gutenberg.org/ebooks/2600) for free.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([5](ch07.xhtml#idm45115233615264-marker)) The [Java *Date & Time API* (JSR310)](https://openjdk.java.net/projects/threeten)
+    set out to replace `java.util.Date` with a comprehensive set of types allowing
+    for a consistent and complete way to deal with date- and time-related types in
+    an immutable fashion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([6](ch07.xhtml#idm45115233447600-marker)) The [official documentation of `java.time.temporal.TemporalQueries`](https://docs.oracle.com/javase/8/docs/api/java/time/temporal/TemporalQueries.xhtml)
+    lists in detail which types are supported by each pre-defined `TemporalQuery`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^([7](ch07.xhtml#idm45115233431088-marker)) JMH is also supported for Java
+    versions before 12, but you need to include its two dependencies manually: [JMH
+    Core](https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-core) and the [JMH
+    Generators/Annotation Processors](https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-generator-annprocess).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([8](ch07.xhtml#idm45115233423152-marker)) Evans, Benjamin J., Gough, James,
+    Newland, Chris. 2018\. “Optimizing Java.” O’Reilly Media. 978-1-492-02579-5
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([9](ch07.xhtml#idm45115233422032-marker)) Oaks, Scott. 2020\. “Java Performance,
+    2nd Edition.” O’Reilly Media. ISBN 978-1-492-05611-9.
+  prefs: []
+  type: TYPE_NORMAL

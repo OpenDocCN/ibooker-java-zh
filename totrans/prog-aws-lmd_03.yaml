@@ -1,0 +1,1012 @@
+- en: Chapter 3\. Programming AWS Lambda Functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter is about digging into what it means to build Lambda functions—what
+    do they look like, how do you configure how they run, and how do you specify your
+    own environmental configuration. You’ll learn about these topics by examining
+    core concepts for Lambda execution environments, input and output, timeout, memory
+    and CPU, and finally, how Lambda uses environment variables for application configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To start, let’s take a look at how Lambda functions are executed. Grab your
+    hiking boots—it’s time to explore.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Core Concepts: Runtime Model, Invocation'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 2](ch02.html#ch02), you created a Java class, uploaded it to the
+    Lambda service somewhere in the nebulous “cloud,” and magically were able to execute
+    that code. You didn’t have to consider operating systems, containers, startup
+    scripts, deployment of the code to an actual host, or JVM settings. Nor did you
+    think about any of those pesky “servers.” So how did your code execute?
+  prefs: []
+  type: TYPE_NORMAL
+- en: To understand this, you need to first understand the basics of the Lambda execution
+    environment, as shown in [Figure 3-1](#lambda-execution-environment).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch03_image01.png](assets/awsl_0301.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 3-1\. The Lambda execution environment
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The Lambda Execution Environment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we mentioned in [Chapter 2](ch02.html#ch02) (see [“Installing the AWS CLI”](ch02.html#installing_the_aws_cli)),
+    both AWS management and function operations (often referred to as the *control
+    plane* and *data plane*, respectively) make extensive use of APIs. Lambda is no
+    different and offers an API both for management of functions and for execution
+    of functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A function is executed, or *invoked*, whenever the `invoke` command of the
+    AWS Lambda API is called. This happens at the following times:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a function is triggered by an event source
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When you use the test harness in the web console
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When you call the Lambda API `invoke` command yourself, typically via the CLI
+    or SDK, from your own code or scripts
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Invoking a function for the first time will start the following chain of activity
+    that will end in your code being executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, the Lambda service will create a host Linux environment—a lightweight
+    micro-virtual machine. You typically won’t need to worry about the precise nature
+    of what type of environment it is (which kernel, what distribution, etc.), but
+    if you do care, Amazon makes that information public. But don’t rely on it staying
+    constant—Amazon can and does make frequent changes to the OS of Lambda functions,
+    often for your own benefit, including automatic security patches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the host environment has been created, then Lambda will start a language
+    runtime within it—in our case a Java virtual machine. At the time of this writing,
+    the JVM version will always be Java 8 or Java 11. You must supply Lambda with
+    code compatible with the version of Java that you choose. The JVM is started with
+    a set of environment flags that we can’t change.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may have noticed when we wrote our code that there was no “main” method—the
+    top-level Java application is Amazon’s own Java application server, which we’ll
+    refer to as the *Lambda Java Runtime*; that’s the next component to be started.
+    The runtime is responsible for top-level error handling, logging, and more.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, the Lambda Java Runtime’s primary concern is executing our code.
+    The final steps of the invocation chain are (a) to load our Java classes and (b)
+    to call the handler method that we specified during deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Invocation Types
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Great—our code is alive! What happens next?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To explore this, let’s start using the AWS CLI. In [Chapter 2](ch02.html#ch02)
+    we used the higher-level SAM CLI tool—the AWS CLI is a little closer to the guts
+    of the AWS machine. Specifically, we’re going to use a command in the AWS CLI
+    for calling Lambda functions: `aws lambda invoke`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Assuming you ran the examples in [Chapter 2](ch02.html#ch02), let’s start with
+    a small update. Open the *template.yaml* file (which we’ll refer to as the *SAM
+    template* occasionally from now on), and within the properties section, add a
+    new property named `FunctionName` with the value `HelloWorldJava` so that the
+    resource section looks as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run the **`sam deploy`** command from [Chapter 2](ch02.html#ch02) again. This
+    should complete after a couple of minutes. If you go back to the Lambda console,
+    you’ll see your strangely named Java function has now been renamed to `HelloWorldJava`.
+    In most real-use cases, we like using the generated names that AWS provides, but
+    when we’re learning about Lambda, it’s nice to be able to refer to functions with
+    more succinct names.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: To use the Java 11 runtime instead of Java 8, simply change the `Runtime:` property
+    in your SAM template from `java8` to `java11`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s get back to invocation. From the terminal, run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This should return the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can tell that everything was OK because `StatusCode` was `200`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can also see what the Lambda function returned by executing the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: When we executed the `invoke` command, the Lambda function was first instantiated,
+    as we described in the previous section. With instantiation complete, the Lambda
+    Java Runtime, itself within the JVM, then called our Lambda function with the
+    data that we passed in the `payload` parameter—in this case the string `"world"`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our code then ran. As a reminder, here it is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: It takes our input (`"world"`), and returns `"Hello, world"`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There’s an important but subtle point here. When we called `invoke`, we specified
+    `--invocation-type RequestResponse`—this means that we are calling the function
+    *synchronously* (i.e., the Lambda runtime calls our code and waits for the result).
+    We explained this in [“What Does a Lambda Application Look Like?”](ch01.html#what_does_a_lambda_application_look_like).
+    *Synchronous behavior* is useful for scenarios like web APIs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because we called the function synchronously, the Lambda runtime was able to
+    return the response to our terminal, and this is what was saved to *outputfile.txt*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now let’s invoke the function slightly differently:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Notice that we’ve changed the `--invocation-type` flag to `Event`. The result
+    is now as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`StatusCode` is `202`, not `200`. `202` means *Accepted* in HTTP terms. If
+    you take a look at *outputfile.txt*, you’ll see that it’s empty.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This time we have called the function *asynchronously*. The Lambda runtime calls
+    our code precisely as before, but it does not wait for, or use, the value returned
+    by our code—that value returned by our code is discarded. The point of using asynchronous
+    execution is that we can perform a “side effect” on some other function or service.
+    In the asynchronous example in [“What Does a Lambda Application Look Like?”](ch01.html#what_does_a_lambda_application_look_like),
+    the side effect was to upload a file to Amazon’s S3 service—a new, resized, version
+    of a photo.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you start using Lambda, you’ll discover that most classes of Lambda function
+    use asynchronous invocation, embracing the idea that Lambda is an *event-driven
+    platform*. We’ll explore this further later in the book when we start examining
+    [“Lambda Event Sources”](ch05.html#event-sources).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We used the same code in the previous two examples; however, if you know that
+    your Lambda function will never be used synchronously, you don’t need to return
+    a value—the method can have a `void` return type. Let’s see an example of that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, change your function’s method to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that we’ve changed the return type to `void` and are now writing a message
+    to `System.out`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we need to rebuild and redeploy our code. To do this, run the same two
+    commands you did in [Chapter 2](ch02.html#ch02):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**`mvn package`**'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**`sam deploy…`**'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: where `**…**` refers to the same arguments you used before. You’re going to
+    be running these commands often enough that you’ll probably want to put them in
+    a script.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now invoke the code again with the `Event` invocation type, and you should
+    receive another `"StatusCode": 202` response. But where does that message to `System.out`
+    go? To understand that, we’ll take a quick look at logging.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: You now know enough about the `mvn`, `sam`, and `aws` commands to run the remaining
+    examples in this chapter. If you get into a weird state, go to *CloudFormation*
+    in the AWS Web Console, delete the `HelloWorldLambdaJava` stack, and deploy again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introduction to Logging
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The Lambda runtime captures anything written by our function to either the standard
+    output or standard error process streams. In Java terms, these correspond to `System.out`
+    and `System.err`. Once the Lambda runtime has caught this data, it sends it to
+    CloudWatch Logs. If you’re new to AWS, this will need a little more explanation!
+  prefs: []
+  type: TYPE_NORMAL
+- en: CloudWatch Logs consists of a few components. The principal one is a log capturing
+    service. It’s cheap, dependable, easy to use and handles all the scale you can
+    throw at it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once CloudWatch Logs has captured log messages, there are a few ways that you
+    can view or process them. The simplest way is to use the CloudWatch Logs log viewer
+    in the AWS Web Console.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are various ways to get to this, but for now open up your Lambda function’s
+    page in the AWS Web Console (as we showed in [“Running the Lambda function”](ch02.html#running_the_lambda_function)).
+    If you click the Monitoring tab of that page, you should be able to see a *View
+    logs in CloudWatch* button—click that, as shown in [Figure 3-2](#accessing-lambda-logs).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch03_image02.png](assets/awsl_0302.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 3-2\. Access Lambda logs
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: What you’ll see next will depend a little on how the CloudWatch console is working,
+    but if you’re not already seeing log output, then click the blue *Search Log Group*
+    button and scroll down to the most recent log lines. You should then be able to
+    see something like in [Figure 3-3](#viewing-lambda-logs).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch03_image03.png](assets/awsl_0303.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 3-3\. Lambda logs
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Notice there on the second line is the output we wrote from our Lambda function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: No good, self-respecting Java programmer does real production logging using
+    `System.out.println`, though—logging frameworks give far more flexibility and
+    control over logging behavior. We dig into logging practices in detail in [“Logging”](ch07.html#logging).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Input, Output
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When a Lambda function is executed, it is always passed an input argument, typically
+    referred to as an *event*. Within the Lambda execution environment, this event
+    is specifically always a JSON value, and in our examples so far we’ve been handcrafting
+    a string—by itself valid JSON.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In real use cases, the input to the Lambda function will be a JSON object that
+    represents an event from some other component or system. For example, it may be
+    a representation of the details of an HTTP request, or some metadata of an image
+    uploaded to the S3 storage service. Again, we look in detail at tying event sources
+    to Lambda functions later in the book—see [“Lambda Event Sources”](ch05.html#event-sources).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JSON that we create in our test events, or that comes from event sources,
+    is passed to the Lambda Java Runtime. In most use cases, the Lambda Java Runtime
+    will automatically *deserialize* this JSON payload for us, and we have several
+    options of how to guide this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you saw in the previous section, when we invoke a function synchronously,
+    we can return a useful value to the environment. The Lambda Java Runtime will
+    automatically *serialize* this return value to JSON for us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How the Java Runtime performs this serialization and deserialization depends
+    on types we specify within the function signature, so it’s time we took a deeper
+    look at what makes a Lambda function statically valid.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda Function Method Signatures
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Valid Java Lambda methods must fit one of the following four signatures:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*`output-type handler-name`*`(`*`input-type`* ` `input`) `'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*`output-type handler-name`*`(`*`input-type`* ` `input`, Context context) `'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`void` *`handler-name`*`(InputStream is, OutputStream os)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`void` *`handler-name`*`(InputStream is, OutputStream os, Context context)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'where:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*`output-type`* can be `void`, a Java primitive, or a JSON-serializable type.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*`input-type`* is a Java primitive, or a JSON-serializable type.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Context` refers to `com.amazonaws.services.lambda.runtime.Context` (we describe
+    this more later in the chapter).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`InputStream` and `OutputStream` refer to the types with those names in the
+    `java.io` package.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*`handler-name`* can be any valid Java method name, and we refer to it in our
+    application’s configuration.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Java Lambda methods can be either instance methods or static methods, but must
+    be public.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A class containing a Lambda function cannot be abstract and must have a no-argument
+    constructor—either the default constructor (i.e., no constructor specified) or
+    an explicit no-argument constructor. The main reason to consider using a constructor
+    at all is for caching data between Lambda calls, which is an advanced topic that
+    we’ll get to later in the book—see [“Caching”](ch08.html#caching).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Beyond those limitations, there are no static typing requirements of a Java
+    Lambda function. You are not required to implement any interfaces or base classes,
+    although you may do so if you desire. AWS provides a `RequestHandler` interface
+    if you want to be very explicit about the type of your Lambda classes, but we
+    have never found a need to make use of this. Also, you can if you like extend
+    your own classes, subject to the constructor rules, but again we find this is
+    rarely a useful ability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may have multiple Lambda functions defined in one class with different names,
+    but we don’t usually recommend this style. Since two different Lambda functions
+    never run in the same execution environment, we find it makes it clearer for subsequent
+    engineers when we cleanly separate the code for each function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda functions, statically, are simple in comparison with some other application
+    frameworks. The first two signatures listed earlier are the most common for Java
+    Lambdas, and we’ll look at those next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configuring the Handler Function in the SAM Template
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'So far we’ve made only one change to the SAM template file—*template.yaml*—to
+    change the function’s name. Before we go too much further, we need to look at
+    another property in that file: `Handler`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Open the *template.yaml* file, and you’ll see that `Handler` is currently set
+    to `book.HelloWorld::handler`. What this means is that for this Lambda function,
+    the Lambda platform will attempt to find a method named `handler` in a class named
+    `HelloWorld` in the package named `book`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you create a new class named `Cow` in a package named `old.macdonald.farm`,
+    and you have a method named `moomoo` that is your Lambda function, then you would
+    set `Handler` instead to `old.macdonald.farm.Cow::moomoo`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With this information, you’re all set to create some new Lambda handlers!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Basic Types
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[Example 3-1](#EX3-1) shows a class with three different Lambda handler functions
+    (yes, we just said a moment ago that we don’t tend to use multiple Lambda functions
+    per class in real use—we’re doing so here for brevity!)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-1\. Basic type serialization and deserialization
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: To try this code, add the new class `StringIntegerBooleanLambda` to your source
+    tree, change the `Handler` in the *template.yaml* file (e.g., to `book.StringIntegerBooleanLambda::handlerString`),
+    and then run your package and deploy commands.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first of these functions is the same as we described in the previous section.
+    We can test this method by invoking it with the JSON object `"world"`, and since
+    it had a `void` return type, it is meant for asynchronous usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: From here on in you should assume that when we say to invoke a function in an
+    example, we mean you should invoke it *synchronously* unless we specify otherwise.
+    You can do this either using the `--invocation-type RequestResponse` flag when
+    invoking from a terminal or using the *Test* functionality in the AWS Web Console.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second function can be invoked with a Boolean—any of the JSON values `true`,
+    `false`, `"true"`, or `"false"`—and it will also return a Boolean, the inverse
+    of the input in this case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final function takes an integer (either a JSON integer or a number in a
+    JSON string, e.g., `5` or `"5"`) and returns a Boolean.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the second and third examples we’re using a primitive type, but you may use
+    boxed types if you prefer. For example, you are free to use `java.lang.Integer`
+    instead of plain `int` if you like.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What’s happening in all of these cases is that the Lambda Java Runtime is deserializing
+    the JSON input to a simple type on our behalf. If the event that is passed can’t
+    be deserialized to the specified parameter type, you’ll get a failure, with a
+    message that starts as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Strings, integers, and Booleans are the only basic types that are explicitly
+    documented as being supported, but with some experimentation we see other basic
+    types, such as doubles and floats, are also included.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lists and Maps
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: JSON also includes arrays and objects/properties (see [Example 3-2](#EX3-2)).
+    The Lambda Java Runtime will automatically deserialize those to Java `List`s and
+    `Map`s, respectively, and will also serialize output `List`s and `Map`s to JSON
+    arrays and objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-2\. List and Map serialization and deserialization
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Invoking the function `handlerList()` with the JSON array `[ 1, 2, 3 ]` returns
+    `[ 101, 102, 103 ]`. Invoking the function `handlerMap()` with the JSON object
+    `{ "a" : "x", "b" : "y"}` returns `{ "New Map → a" : "x", "New Map → b" : "y"
+    }`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, you can use nested collections as you would expect; for example,
+    invoking `handlerNestedCollection()` with
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: returns
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, you can also just use `java.lang.Object` as the type of the input parameter.
+    While not often useful in production (unless you don’t care about the input argument’s
+    value, which is sometimes a valid use), this can be handy at development time
+    if you don’t know the precise format of an event. For example, you can use `.getClass()`
+    on the argument to find out what type it really is, print out the `.toString()`
+    value, etc. We’ll show you a better way of getting the JSON structure of an event
+    a little later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: POJOs and Ecosystem Types
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The previous input types work well for very fairly simple inputs. An alternative
+    for more complex types is to use the Lambda Java Runtime’s automatic POJO (Plain
+    Old Java Object) serialization. [Example 3-3](#EX3-3) shows an example where we
+    use this for both input and output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-3\. POJO serialization and deserialization
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Obviously this is a very simple case, but it shows POJO serialization in action.
+    We can execute this Lambda with the input `{ "a" : "Hello Lambda" }`, and it returns
+    `{ "b" : "Input was Hello Lambda" }`. Let’s look a little more closely at the
+    code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First of all, we have our handler function, `handlerPojo()`. This takes as input
+    the type `PojoInput`, which is a POJO class we’ve defined. POJO input classes
+    can be static nested classes, as we’ve written here, or regular (outer) classes.
+    The important thing is that they need to have an empty constructor and have field
+    setters that follow the naming of the expected fields to be deserialized from
+    the input JSON. If no JSON field is found with the same name as a setter, then
+    the POJO field will be left null. Input POJO objects need to be mutable since
+    the runtime will modify them after they’ve been instantiated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our handler function interrogates the POJO object and creates a new instance
+    of the `PojoResponse` class, which we pass back to the Lambda runtime. The Lambda
+    runtime serializes it to JSON by reflecting over all the `get…` methods. There
+    are fewer limitations on POJO output classes—since they are not created or mutated
+    by the Lambda runtime, you are free to construct them as you please and free to
+    make them immutable. And like input classes, POJO output classes can be static
+    nested classes or regular (outer) classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For both POJO input and output classes, you can nest further POJO classes, using
+    the same rules, to serialize/deserialize nested JSON objects. Further, you can
+    mix up POJOs and the collection types we discussed (`List`s and `Map`s) in your
+    input and output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The example we gave previously follows most of the documentation you’ll see
+    online: using a *JavaBean* convention for fields. However, if you don’t want to
+    use setters in your input class or getters in your output class, you’re free to
+    also use public fields. For instance, [Example 3-4](#EX3-4) shows another example.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-4\. POJO serialization and deserialization alternative definition
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can execute this Lambda with the input `{ "c" : "Hello Lambda" }`, and it
+    returns `{ "d" : "Input was Hello Lambda" }`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One of the main uses for POJO input deserialization is when you tie your Lambda
+    function to one of the AWS ecosystem Lambda event sources. Here’s an example of
+    a handler function that would process the event of an object being uploaded to
+    the S3 storage service:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`S3Event` is a type that you can access from an AWS library dependency—we discuss
+    this more in [“Example: Building a Serverless Data Pipeline”](ch05.html#serverless-data-pipeline-example).
+    You’re also free to build your own POJO classes to handle AWS events.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Streams
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The input/output types we’ve covered so far will be useful for you in many,
+    and possibly all, of your use of Lambda in the real world. But what if you have
+    a fairly dynamic and/or complicated structure that you can’t, or don’t want to,
+    use any of the previous deserialization methods for?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The answer is to use option 3 or 4 of the valid signature list, making use of
+    `java.io.InputStream` for the event parameter. This gives you access to the raw
+    bytes passed to your Lambda function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The signature for a Lambda using an `InputStream` is a little different in that
+    it always has a `void` return type. If you take an `InputStream` as a parameter,
+    you must also take a `java.io.OutputStream` as the second parameter. To return
+    a result from such a handler function, you need to write to the `OutputStream`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Example 3-5](#EX3-5) shows a handler that can process streams.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-5\. Using streams as handler parameters
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we execute this handler with the input `"Hello World"`, it will write `"HELLO
+    WORLD"` to the output stream, which becomes the function’s result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may well want to use your own JSON manipulation code if you’re using an
+    `InputStream`, but we’ll leave that as an exercise to the reader. You should also
+    practice good stream hygiene—error checking, closing, etc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For more on this subject, see the official documentation on [using streams in
+    handler functions](https://oreil.ly/oXm39).
+  prefs: []
+  type: TYPE_NORMAL
+- en: One particularly handy use of this type of Lambda function is at development
+    time when you don’t know the structure of the event you are coding for. [Example 3-6](#EX3-6)
+    will log the received event to CloudWatch Logs so you can see what it is.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-6\. Log received event to CloudWatch Logs
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Context
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far we’ve covered signature formats 1 and 3 of our earlier list, but what
+    of 2 and 4? What’s that `Context` object about?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In all of our examples so far, the only input we’ve taken for a Lambda handler
+    function is that of the event that occurred. But that’s not the only information
+    the handler can receive when it wants to do some processing. Additionally, you
+    can add a `com.amazonaws.services.lambda.runtime.Context` parameter to the end
+    of any handler parameter list, and the runtime will pass in an interesting object
+    that you can use. Let’s look at an example ([Example 3-7](#EX3-7)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-7\. Examining the Context object
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is the first full example where we need to use a type outside of the Java
+    standard library. We’ll look in more detail at dependencies and packaging in the
+    next chapter, but for now add the following section anywhere under the root element
+    of your *pom.xml* file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: When you run `mvn package` now, it will compile your code using the core Lambda
+    library provided by AWS, enabling you to use the `Context` interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `Context` object gives us information about the current Lambda invocation.
+    We can use this information during the processing of a Lambda event. When we invoke
+    the example (passing anything as an input event—it won’t be used), we’ll get something
+    like the following as a result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: All the different `Context` fields are described in the [AWS documentation](https://oreil.ly/oE2hP).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most of these fields will stay the same whenever you call them during the processing
+    of a particular event, but `getRemainingTimeInMillis()` is a notable exception.
+    It’s related to *timeout*, which is what we look at next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Timeout
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Lambda functions are subject to a configurable timeout. You are able to specify
+    this timeout when you create the function, or you can update it later in the function’s
+    configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the time of this writing, the *maximum* timeout is 15 minutes. That means
+    the longest a single invocation of a Lambda function can run is 15 minutes. This
+    restriction is one that AWS may increase in the future, and they’ve done so before—for
+    a long time the maximum timeout was 5 minutes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our examples so far we haven’t specified a timeout setting, so it defaults
+    to 3 seconds. That means if our function doesn’t finish executing within 3 seconds,
+    then the Lambda Java Runtime will abort it. You’ll see an example of this in a
+    moment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the previous section, we looked at the `Context` object. Calling `context.getRemainingTimeInMillis()`
+    will tell you how much time to run you have left at any given point during execution
+    before the function is aborted by the runtime. Subsequent calls will give an updated
+    duration. This is useful if you are writing a fairly long-lived Lambda and want
+    to save any state before the timeout occurs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One question you may be asking yourself—why not always configure the timeout
+    to the maximum of 900 seconds? As we’ll explore further in the next section, Lambda
+    costs are based significantly on how long functions run—if your function should
+    only ever run for at most 10 seconds, then you don’t want a billion invocations
+    taking 90 times that long, since you’ll be charged 90 times as much as you want
+    to be.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The timeout does *not* include the time our function is being instantiated—in
+    other words, the timeout period is not started during the *cold start* of a function.
+    Or, to be even more precise, the timeout applies only to the time from when Lambda
+    calls our `handler` method. We discuss cold starts further in [“Cold Starts”](ch08.html#cold-starts).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The timeout maximum of 15 minutes is a significant constraint for Lambda functions—if
+    you are writing functionality that needs more than 15 minutes, you’ll need to
+    either break it up into multiple, orchestrated, Lambda functions, or not use Lambda
+    at all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enough theory, let’s look at timeouts in action.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Example 3-8](#EX3-8) shows a Lambda function that will query the remaining
+    time and then eventually fail due to timeout.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-8\. Looking at timeout with Context.getRemainingTimeInMillis()
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Update your *template.yaml* file, adding a new property named `Timeout` to the
+    `Properties` section of your function. Set the value to be `2`—this says that
+    the function’s timeout is now two seconds. Also, remember to update your `Handler`
+    property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then run your package and deploy steps as usual.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we execute this using the test functionality in the web console, it will
+    fail with the message “Task timed out after 2.00 seconds.” The log output will
+    be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here we can see the `getRemainingTimeInMillis()` method being queried as we’d
+    expect and then the function finally failing as Lambda’s timeout occurs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory and CPU
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Lambda functions do not have infinite amounts of RAM, and in fact every function
+    is configured with a `memory-size` setting. The setting defaults to 128MB, but
+    this is rarely enough for a production Java Lambda function, so you should treat
+    `memory-size` as something you actively think about for every function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`memory-size` can be as small as 64MB, although for Java Lambda functions you
+    should probably use at least 256MB. `memory-size` must be a multiple of 64MB.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A very important thing to know is that the `memory-size` setting is not just
+    for how much RAM your function can use—*it also specifies how much CPU power you
+    get*. In fact, a Lambda function’s CPU power scales linearly from 64MB up to 1792MB.
+    Therefore a Lambda function configured with 1024MB of RAM has twice the CPU power
+    of one with 512MB of RAM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Lambda function with 1792MB RAM gets a full virtual CPU core—larger RAM settings
+    than that enable fractions of a second virtual core. This is worth knowing if
+    your code is not multithreaded at all—you may not see a CPU improvement for memory
+    settings higher than 1792MB in such a case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We discuss how the Lambda execution environment interacts with multiple threads
+    in [“Lambda and Threading”](ch08.html#lambda-and-threading).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But why should you care about this—why not always just set `memory-size` to
+    its maximum of 3008MB? The reason is cost. AWS charges for Lambda functions by
+    two primary factors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How long a function runs, rounded up to the nearest 100 ms
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How much memory a function is specified to use
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In other words, given the same execution duration, a Lambda function that has
+    2GB of RAM costs twice as much to execute as one with 1GB of RAM. Or, one with
+    512MB of RAM costs 17% of one with 3008MB. This, at scale, could be a big difference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Surely that means you should always use the smallest amount of memory possible
+    then? No, that’s not always the best choice. Since a function with twice as much
+    memory of a smaller function also has twice the CPU power, it might take half
+    the time to execute, meaning the cost is the same, and it gets its work done more
+    quickly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Right-sizing Lambda functions is something of an art. We recommend you stick
+    with somewhere between 512MB and 1GB to start with and then start tuning as your
+    functions get bigger or as you need to scale them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Environment Variables
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The previous two sections were all about Lambda’s own system configuration—what
+    if you want to use configuration for your own application?
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can specify *environment variables* for our Lambda functions. This allows
+    us to alter how our function runs in different contexts for the same code. It’s
+    very typical, for example, to specify connection settings for external processes,
+    or secure configuration, through environment variables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s try this. [Example 3-9](#EX3-9) shows a function that reads from the environment
+    using Java’s standard method for doing so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-9\. Using an environment variable
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Update the *template.yaml* file to point to this new class and perform the package
+    and deploy process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we run this function (using any test input we like), the log output will
+    include the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now update the *template.yaml* file again so that the `HelloWorldLambda` section
+    looks as follows (careful with your YAML tabbing!):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After packaging and deploying, if we test the function now, the log output
+    includes this instead:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: We are free to update the environment configuration as much as we would like.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When using environment variables, you often want to store sensitive data, for
+    example access keys to remote services. There are a number of ways of doing this
+    in a secure way with Lambda, and they are explained in Amazon’s documentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The programming model for AWS Lambda is significantly different from other models
+    that you may be used to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, you explored what it means to program Lambda functions—what
+    the runtime environment is, how functions are invoked, and the different ways
+    you can get data in and out of functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then you learned some aspects of configuration for Lambda functions—timeout
+    and memory—and what those settings mean. Finally, you saw how you can apply your
+    own application configuration through environment variables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that you know how to program Lambda functions, in the next chapter we will
+    examine Lambda operations—packaging, deployment, security, monitoring, and more.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Take some time to work through the step-by-step descriptions in this chapter—Lambda
+    is very different than how you may have built and run Java applications in the
+    past.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Try logging something using `System.err`—the standard error stream—instead of
+    `System.out`. Does the log output appear any differently to `System.out`? Does
+    it change the result of calling the function, either asynchronously or synchronously?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Deliberately call a function with invalid input to see the parsing exception
+    described earlier: `An error occurred during JSON parsing`. Where do you see this
+    error? How does it impact the result of calling the function, either asynchronously
+    or synchronously?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Try building your own POJO types and calling Lambda with JSON versions of them.
+    Do you prefer the *JavaBean* style, or public fields?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Try using the `StreamLambda` described earlier that outputs the entire input
+    event with one of the provided test event template objects in the Lambda web console.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Try converting one of your classes to use a static handler method, rather than
+    an instance method, to confirm that it works just as well.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

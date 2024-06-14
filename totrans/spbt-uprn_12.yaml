@@ -1,0 +1,895 @@
+- en: Chapter 12\. Going Deeper with Reactive
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As previously discussed, reactive programming gives developers a way to make
+    better use of resources in distributed systems, even extending powerful scaling
+    mechanisms across application boundaries and into the communication channels.
+    For developers with experience exclusively with mainstream Java development practices—often
+    called *imperative* Java due to its explicit and sequential logic versus the more
+    declarative approach generally used in reactive programming, although this label,
+    like most, is imperfect—these reactive capabilities may bear some undesired costs.
+    In addition to the expected learning curve, which Spring helps flatten considerably
+    due to parallel and complementary WebMVC and WebFlux implementations, there are
+    also relative limitations in tooling, its maturity, and established practices
+    for essential activities like testing, troubleshooting, and debugging.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While it is true that reactive Java development is in its infancy relative to
+    its imperative cousin, the fact that they are family has allowed a much faster
+    development and maturation of useful tooling and processes. As mentioned, Spring
+    builds similarly on established imperative expertise within its development and
+    community to condense decades of evolution into production-ready components available
+    *now*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter introduces and explains the current state of the art in testing
+    and diagnosing/debugging issues you might encounter as you begin to deploy reactive
+    Spring Boot applications and demonstrates how to put WebFlux/Reactor to work for
+    you, even before—and to help—you go to production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code Checkout Checkup
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Please check out branch *chapter12begin* from the code repository to begin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When Reactive?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Reactive programming, and in particular those applications focusing on reactive
+    streams, enables system-wide scaling that is difficult to match using other means
+    available at this point in time. However, not all applications need to perform
+    at the far reaches of end-to-end scalability, or they may already be performing
+    (or are expected to perform) admirably with relatively predictable loads over
+    impressive time frames. Imperative apps have long fulfilled production demands
+    for organizations globally, and they will not simply cease to do so because a
+    new option arrives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While reactive programming is unquestionably exciting in terms of the possibilities
+    it offers, the Spring team clearly states that reactive code will not replace
+    all imperative code for the foreseeable future, if ever. As stated in the [Spring
+    Framework reference documentation for Spring WebFlux](https://oreil.ly/SFRefDoc):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you have a large team, keep in mind the steep learning curve in the shift
+    to non-blocking, functional, and declarative programming. A practical way to start
+    without a full switch is to use the reactive WebClient. Beyond that, start small
+    and measure the benefits. We expect that, for a wide range of applications, the
+    shift is unnecessary. If you are unsure what benefits to look for, start by learning
+    about how non-blocking I/O works (for example, concurrency on single-threaded
+    Node.js) and its effects.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Spring Framework Reference Documentation
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: In short, adopting reactive programming and Spring WebFlux is a choice—a great
+    choice that provides perhaps the best way to accomplish certain requirements—but
+    still a choice to make after careful consideration of the relevant requirements
+    and demands for the system in question. Reactive or not, Spring Boot provides
+    unsurpassed options to develop business-critical software to handle all of your
+    production workloads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testing Reactive Applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In order to better focus on the key concepts of testing reactive Spring Boot
+    applications, I take several steps to tighten the scope of code under consideration.
+    Like zooming in on a subject you wish to photograph, other project code is still
+    present but is not on the critical path for the information in this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For this section I’ll zero in specifically on testing externally those APIs
+    that expose reactive streams publishers—`Flux`, `Mono`, and `Publisher` types
+    that could be either `Flux` or `Mono`—instead of the typical blocking `Iterable`
+    or `Object` types. I begin with the class within `Aircraft Positions` that provides
+    the external APIs: `PositionController`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: If you haven’t already checked out the [Chapter 12](#sbur-12) code as indicated
+    at the beginning of this chapter, please do so now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But First, Refactoring
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'While the code within `PositionController` does work, it is a bit of a testing
+    muddle. The first order of business is to provide a cleaner separation of concerns,
+    and I begin by removing the code to create an `RSocketRequester` object to an
+    `@Configuration` class that will create it as a Spring bean, accessible anywhere
+    within the application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This streamlines the constructor for `PositionController`, placing the work
+    for creating the `RSocketRequester` where it belongs and well outside of a controller
+    class. To use the `RSocketRequester` bean in `PositionController`, I simply autowire
+    it in using Spring Boot’s constructor injection:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Testing the RSocket connection would require integration testing. While this
+    section focuses on unit testing and not integration testing, it is still essential
+    to decouple the construction of the `RSocketRequester` from `PositionController`
+    in order to isolate and properly unit test `PositionController`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is another source of logic that falls well outside of controller functionality
+    that remains, this time involving the acquisition, then the storing and retrieving,
+    of aircraft positions using the `AircraftRepository` bean. Typically when complex
+    logic unrelated to a particular class finds its way into that class, it’s best
+    to extract it, as I did for the `RSocketRequester` bean. To relocate this somewhat
+    complex and unrelated code outside of `PositionController`, I create a `PositionService`
+    class and define it as a `@Service` bean available throughout the application.
+    The `@Service` annotation is simply a more visually specific description of the
+    oft-used `@Component` annotation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Currently there is no `findAircraftByReg()` method defined within `AircraftRepository`.
+    I address that prior to creating tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although more work could be done (especially with regard to the `WebClient`
+    member variable), it is sufficient for now to remove the complex logic shown in
+    `PositionService::getAllAircraft` from its former home within `PositionController::getCurrentAircraftPositions`
+    and inject the `PositionService` bean into the controller for its use, resulting
+    in a much cleaner and focused controller class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Reviewing the existing `PositionController` endpoints shows that they feed a
+    Thymeleaf template (`public String getCurrentAircraftPositions(Model model)`)
+    or require an external `RSocket` connection (`public Flux<Aircraft>` `getCurrentACPositionsStream()`).
+    In order to isolate and test the Aircraft Positions application’s ability to provide
+    an external API, I need to expand the currently defined endpoints. I add two more
+    endpoints mapped to */acpos* and */acpos/search* to create a basic, but flexible,
+    API leveraging the methods I created within `PositionService`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: I first create a method to retrieve and return as JSON all positions of aircraft
+    currently within range of our PlaneFinder service-enabled device. The `getCurrentACPositions()`
+    method calls `PositionService::getAllAircraft` just as its counterpart `getCurrentAircraftPositions(Model
+    model)`, but it returns JSON object values instead of adding them to the domain
+    object model and redirecting to the template engine for display of an HTML page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, I create a method for searching current aircraft positions by the unique
+    position record identifier and by the aircraft registration number. The record
+    (technically document, since this version of `Aircraft Positions` uses MongoDB)
+    identifier is the database unique ID among the stored positions last retrieved
+    from PlaneFinder. It is useful for retrieving a specific position record; but
+    more useful from an aircraft perspective is the ability to search for an aircraft’s
+    unique registration number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interestingly, PlaneFinder may report a small number of positions reported by
+    a single aircraft when queried. This is due to near-constant position reports
+    being sent from aircraft in flight. What this means for us is that when searching
+    by an aircraft’s unique registration number within currently reported positions,
+    we may actually retrieve 1+ position reports for that flight.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are various ways to write a search mechanism with flexibility to accept
+    different search criteria of different types returning different numbers of potential
+    results, but I chose to incorporate all options within a single method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The final (for now) version of the `PositionController` class should look something
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, I return to the `PositionService` class. As mentioned earlier, its `public
+    Flux<Aircraft> getAircraftByReg(String reg)` method references a currently undefined
+    method in `AircraftRepository`. To fix that, I add a `Flux<Aircraft>` `findAircraftByReg(String
+    reg)` method to the `AircraftRepository` interface definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This interesting bit of code, this single method signature, demonstrates the
+    powerful Spring Data concept of query derivation using a set of widely applicable
+    conventions: operators like `find`, `search`, or `get`, the specified type of
+    objects stored/retrieved/managed (in this case `Aircraft`), and member variable
+    names like `reg`. By declaring a method signature with parameters+types and return
+    type using the method naming conventions mentioned, Spring Data can build the
+    method implementation for you.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you want or need to provide more specifics or hints, it’s also possible to
+    annotate the method signature with `@Query` and supply desired or required details.
+    That isn’t necessary for this case, as stating we wish to search aircraft positions
+    by registration number and return 0+ values in a reactive streams `Flux` is ample
+    information for Spring Data to create the implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Returning to `PositionService`, the IDE now happily reports `repo.findAircraftByReg(reg)`
+    as a valid method call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Another design decision I made for this example was to have both `getAircraftByXxx`
+    methods query the current position documents. This may be considered to assume
+    some position documents exist in the database or that the user isn’t concerned
+    with a fresh retrieval if the database doesn’t already contain any positions within.
+    Your requirements may drive a different choice, such as verifying some positions
+    are present prior to searching and if not executing a fresh retrieval with a call
+    to `getAllAircraft`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: And Now, the Testing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the earlier chapter on testing, standard `Object` types were used to test
+    expected outcomes. I did use `WebClient` and `WebTestClient`, but only as the
+    tool of choice for interacting with all HTTP-based endpoints, regardless of whether
+    they returned reactive streams publisher types or not. Now, it’s time to properly
+    test those reactive streams semantics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the existing `PositionControllerTest` class as a starting point, I retool
+    it to accommodate the new reactive endpoints exposed by its counterpart class
+    `PositionController`. Here are the class-level details:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: First, I make the class-level annotation `@WebFluxTest(controllers = {PositionController.class})`.
+    I still use the reactive `WebTestClient` and wish to restrict the scope of this
+    test class to WebFlux capabilities, so loading a full Spring Boot application
+    context is unnecessary and wasteful of time and resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, I autowire a `WebTestClient` bean. In the earlier chapter on testing,
+    I directly injected the `WebTestClient` bean into a single test method, but since
+    it now will be needed in multiple methods, it makes more sense to create a member
+    variable from which to reference it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Third, I create mock beans using Mockito’s `@MockBean` annotation. I mock the
+    `RSocketRequester` bean simply because `PositionController`—which we request (and
+    need) to be loaded in the class-level annotation—requires a bean, real or mocked,
+    of an `RSocketRequester`. I mock the `PositionService` bean in order to mock and
+    use its behavior within this class’s tests. Mocking `PositionService` allows me
+    to assure its proper behavior, exercise a consumer of its outputs (`PositionController`),
+    and compare the actual results with known expected results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, I create three `Aircraft` instances for use in the contained tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Prior to executing a JUnit `@Test` method, a method annotated with `@BeforeEach`
+    is run to configure the scenario and expected results. This is the `setUp()` method
+    I use to prepare the testing environment before each test method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: I assign an aircraft position for the aircraft with registration N12345 to the
+    `ac1` member variable. For `ac2` and `ac3`, I assign positions very close to each
+    other for the same aircraft, N54321, simulating a frequent case of closely updated
+    position reports arriving from PlaneFinder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last several lines of the `setUp()` method define the behavior that the
+    `PositionService` mock bean will provide when its methods are called in various
+    ways. Similar to the method mocks in the earlier chapter on testing, the only
+    difference of import is the types of return values; since the actual `PositionService`
+    methods return Reactor `Publisher` types of `Flux` and `Mono`, so must the mock
+    methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Test for retrieving all aircraft positions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Finally, I create a method to test the `PositionController` method `getCurrentACPositions()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Testing reactive streams applications can bring myriad challenges to what is
+    often considered a pretty mundane (if prone to omission) effort of setting expected
+    results, obtaining actual results, and comparing the two to determine test success
+    or failure. Though multiple results *can* be obtained in an effectively instantaneous
+    manner, just as with a blocking type of `Iterable`, reactive streams `Publishers`
+    don’t wait for a complete result set prior to returning it as a single unit. From
+    a machine perspective, it’s the difference between receiving one group of five
+    all at once (for example) or receiving five results very quickly, but individually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The core of Reactor’s testing tools is the `StepVerifier` and its utility methods.
+    `StepVerifier` subscribes to a `Publisher` and, as the name implies, enables the
+    developer to consider results obtained as discrete values and verify each one.
+    In the test for `getCurrentACPositions`, I perform the following actions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a `StepVerifier`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Supply it a `Flux` produced by the following steps:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use the `WebTestClient` bean.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Access the `PositionController::getCurrentACPositions` method mapped to the
+    */acpos* endpoint.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Initiate the `exchange()`.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Verify a response status of `200 OK`.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Verify the response header has a content type of “application/json”.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Return the result items as instances of the `Aircraft` class.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GET the response.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Evaluate the actual first value against the expected first value `ac1`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Evaluate the actual second value against the expected second value `ac2`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Evaluate the actual third value against the expected third value `ac3`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Verify all actions and receipt of `Publisher` completion signal.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'This is quite an exhaustive evaluation of expected behavior, including conditions
+    and values returned. Running the test results in output similar to the following
+    (trimmed to fit page):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run from the IDE, the result will look similar to that shown in [Figure 12-1](#successful_test).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1201](Images/sbur_1201.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-1\. Successful test
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Testing Aircraft Positions search capabilities
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Testing the search functionality within `PositionController::searchForACPosition`
+    requires a minimum of two separate tests due to the ability to handle searches
+    for aircraft positions by database document ID and aircraft registration numbers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To test searching by database document identifier, I create the following unit
+    test:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is similar to the unit test for all aircraft positions. There are two
+    notable exceptions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The specified URI references the search endpoint and includes the search parameter
+    `id=1` to retrieve `ac1`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The expected result is only `ac1`, as indicated in the `expectNext(ac1)` chained
+    operation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'To test searching for aircraft positions by an aircraft registration number,
+    I create the following unit test, using a registration that I’ve mocked to include
+    two corresponding position documents:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The differences between this test and the previous one are minimal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The URI includes the search parameter `reg=N54321` and should result in the
+    return of both `ac2` and `ac3`, both of which contain reported positions for the
+    aircraft with registration number N54321.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Expected results are verified to be `ac2` and `ac3` with the `expectNext(ac2)`
+    and `expectNext(ac3)` chained operations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The final state of the `PositionControllerTest` class is shown in the following
+    listing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Executing all tests within the `PositionControllerTest` class provides the gratifying
+    results shown in [Figure 12-2](#successful_execution_of_all_unit_tests).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1202](Images/sbur_1202.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-2\. Successful execution of all unit tests
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '`StepVerifier` enables more testing possibilities, a few of which have been
+    hinted at in this section. Of particular interest is the `StepVerifier::withVirtualTime`
+    method that enables tests of publishers that emit values sporadically to be compressed,
+    producing results instantaneously that might ordinarily be spaced over extensive
+    periods of time. `StepVerifier::withVirtualTime` accepts a `Supplier<Publisher>`
+    instead of a `Publisher` directly, but otherwise the mechanics of its use are
+    quite similar.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These are essential elements of testing reactive Spring Boot applications. But
+    what happens when you encounter issues in production? What tools does Reactor
+    offer for identification and resolution of issues when your app goes live?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Diagnosing and Debugging Reactive Applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When things go sideways in typical Java applications, there is usually a stacktrace.
+    A useful (if sometimes voluminous) stacktrace can be produced by imperative code
+    for several reasons, but at a high level, two factors enable this helpful information
+    to be collected and shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sequential execution of code that typically dictates how to do something (imperative)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Execution of that sequential code occurs within a single thread
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'There are exceptions to every rule, but generally speaking, this is the common
+    combination that allows for the capture of steps executed sequentially up to the
+    time an error was encountered: everything happens one step at a time in a single
+    swimlane. It may not leverage full system resources as effectively, and it generally
+    doesn’t, but it makes isolating and resolving issues a much simpler affair.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enter reactive streams. Project Reactor and other reactive streams implementations
+    use schedulers to manage and use those other threads. Resources that would typically
+    have remained idle or underutilized can be put to work to enable reactive applications
+    to scale far beyond their blocking counterparts. I would refer you to the [Reactor
+    Core documentation](https://projectreactor.io/docs/core/release/reference) for
+    more details regarding `Schedulers` and the options available for controlling
+    how they can be used and tuned, but suffice it to say for now that Reactor does
+    a fine job handling scheduling automatically in the vast majority of circumstances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This does highlight one challenge with producing a meaningful execution trace
+    for a reactive Spring Boot (or any reactive) application, however. One can’t expect
+    to simply follow a single thread’s activity and produce a meaningful sequential
+    list of code executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compounding the difficulty of tracing execution due to this thread-hopping optimizing
+    feature is that reactive programming separates code *assembly* from code *execution*.
+    As mentioned in [Chapter 8](ch08.xhtml#sbur-08), in most cases for most `Publisher`
+    types, nothing happens until you *subscribe*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Simply put, it’s unlikely that you will ever see a production failure that
+    points to an issue with the code where you declaratively assembled the `Publisher`
+    (whether `Flux` or `Mono`) pipeline of operations. Failures nearly universally
+    occur at the point the pipeline becomes active: producing, processing, and passing
+    values to a `Subscriber`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This distancing between code assembly and execution and Reactor’s ability to
+    utilize multiple threads to complete a chain of operations necessitates better
+    tooling to effectively troubleshoot errors that surface at runtime. Fortunately,
+    Reactor provides several excellent options.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hooks.onOperatorDebug()
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This is not to imply that troubleshooting reactive applications using existing
+    stacktrace results is impossible, only that it could be significantly improved
+    upon. As with most things, the proof is in the code—or in this case, the logged,
+    post failure output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To simulate a failure in a reactive `Publisher` chain of operators, I revisit
+    the `PositionControllerTest` class and change one line of code in the `setUp()`
+    method run before each test’s execution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'I replace the properly operating `Flux` produced by the mock `getAllAircraft()`
+    method with one that includes an error in the resultant stream of values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, I execute the test for `getCurrentACPositions()` to see the results of
+    our intentional `Flux` sabotage (wrapped to fit page):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, the volume of information for a single bad value is quite difficult
+    to digest. Useful information is present, but it’s overwhelmed by excessive, less-helpful
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: I reluctantly but deliberately included the full output resulting from the preceding
+    `Flux` error to show how difficult it can be to navigate the usual output when
+    a `Publisher` encounters an error and to contrast it with how dramatically available
+    tools reduce the noise and boost the signal of key information. Getting to the
+    core of the problem reduces frustration in development, but it is absolutely critical
+    when troubleshooting business-critical applications in production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Project Reactor includes configurable life cycle callbacks called *hooks*, available
+    via its `Hooks` class. One operator that is particularly useful for increasing
+    the signal to noise ratio when things go awry is `onOperatorDebug()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Calling `Hooks.onOperatorDebug()` prior to instantiation of the failing `Publisher`
+    enables assembly-time instrumentation of all subsequent instances of type `Publisher`
+    (and subtypes). In order to ensure capture of the necessary information at the
+    necessary time(s), the call is usually placed in the application’s main method
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since I am demonstrating this capability from a test class, I instead insert
+    `Hooks.onOperatorDebug();` on the line immediately preceding assembly of the intentionally
+    failing `Publisher`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: This single addition doesn’t eliminate the somewhat voluminous stacktrace—there
+    are still rare occasions in which any additional bit of data provided can be helpful—but
+    for the vast majority of cases, the tree summary added to the log by `onOperatorDebug()`
+    as a backtrace results in faster issue identification and resolution. The backtrace
+    summary for the same error I introduced in the `getCurrentACPositions()` test
+    is shown in [Figure 12-3](#debugging_backtrace) in order to preserve full details
+    and formatting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1203](Images/sbur_1203.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-3\. Debugging backtrace
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'At the top of the tree is the incriminating evidence: a `Flux` error has been
+    introduced using `concatWith` on line 68 of `PositionControllerTest.java`. Thanks
+    to `Hooks.onOperatorDebug()`, the time it took to identify this issue and its
+    specific location has been reduced from several minutes (or more) to a few seconds.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instrumenting all assembly instructions for all subsequent `Publisher` occurrences
+    doesn’t come without a cost, however; using hooks to instrument your code is relatively
+    runtime-expensive, as debug mode is global and impacts every chained operator
+    of every reactive streams `Publisher` executed once enabled. Let’s consider another
+    alternative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checkpoints
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Rather than populate every possible backtrace of every possible `Publisher`,
+    one can set checkpoints near key operators to assist with troubleshooting. Inserting
+    a `checkpoint()` operator into the chain works like enabling a hook but only for
+    that segment of that chain of operators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are three variants of checkpoints:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Standard checkpoints that include a backtrace
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Light checkpoints that accept a descriptive `String` parameter and do not include
+    backtrace
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Standard checkpoints with backtrace that also accept a descriptive `String`
+    parameter
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let’s see them in action.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, I remove the `Hooks.onOperatorDebug()` statement before the mocked method
+    for `PositionService::getAllAircraft` in the `setUp() method within `PositionControllerTest`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Rerunning the test for `getCurrentACPositions()` produces the results shown
+    in [Figure 12-4](#standard_checkpoint_output).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1204](Images/sbur_1204.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-4\. Standard checkpoint output
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The checkpoint at the top of the list directs us to the problematic operator:
+    the one immediately preceding the triggered checkpoint. Note that backtrace information
+    is still being collected, as the checkpoint reflects the actual source code file
+    and specific line number for the checkpoint I inserted on line 64 of the `PositionControllerTest`
+    class.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Switching to lightweight checkpoints replaces the collection of backtrace information
+    with a useful `String` description specified by the developer. While backtrace
+    collection for standard checkpoints is limited in scope, it still requires resources
+    beyond the simple storage of a `String`. If done with sufficient detail, light
+    checkpoints provide the same utility in locating problematic operators. Updating
+    the code to leverage light checkpoints is a simple matter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Re-running the `getCurrentACPositions()` test produces the results shown in
+    [Figure 12-5](#light_checkpoint_output).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1205](Images/sbur_1205.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-5\. Light checkpoint output
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Although file and line number coordinates are no longer present in the top-listed
+    checkpoint, its clear description makes it easy to find the problem operator in
+    the `Flux` assembly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Occasionally there will be a requirement to employ an extremely complex chain
+    of operators to build a `Publisher`. In those circumstances, it may be useful
+    to include both a description and full backtrace information for troubleshooting.
+    To demonstrate a very limited example, I refactor the mock method used for `PositionService::getAllAircraft`
+    once more as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Running the `getCurrentACPositions()` test once again results in the output
+    shown in [Figure 12-6](#standard_checkpoint_with_description_output).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1206](Images/sbur_1206.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-6\. Standard checkpoint with description output
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: ReactorDebugAgent.init()
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There is a way to realize the benefits of full backtracing for all `Publishers`
+    within an application—like that produced using hooks—without the performance penalties
+    imposed by enabling debugging using those same hooks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Within the Reactor project is a library called `reactor-tools` that includes
+    a separate Java agent used to instrument a containing application’s code. `reactor-tools`
+    adds debugging information to the application and attaches to the running application
+    (of which it is a dependency) to track and trace execution of every subsequent
+    `Publisher`, providing the same kind of detailed backtrace information as hooks
+    with nearly zero performance impact. As such, there are few if any downsides and
+    numerous upsides to running reactive applications in production with `ReactorDebugAgent`
+    enabled.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a separate library, `reactor-tools` must be manually added to an application’s
+    build file. For the Aircraft Positions application’s Maven *pom.xml*, I add the
+    following entry:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: After saving the updated *pom.xml*, I refresh/reimport the dependencies to gain
+    access to the `ReactorDebugAgent` within the project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Like `Hooks.onOperatorDebug()`, the `ReactorDebugAgent` is typically initialized
+    in the application’s main method prior to running the app. Since I will be demonstrating
+    this within a test that doesn’t load the full application context, I insert the
+    initialization call just as I did `Hooks.onOperatorDebug()`, immediately before
+    constructing the `Flux` used to demonstrate a runtime execution error. I also
+    remove the now-unnecessary calls to `checkpoint()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Returning once again to the `getCurrentACPositions()` test, I run it and am
+    treated to the summary tree output shown in [Figure 12-7](#reactordebugagent_ouput_resulting_from_flux_error)
+    , which is similar to that provided by `Hooks.onOperatorDebug()` but without runtime
+    penalty:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1207](Images/sbur_1207.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-7\. ReactorDebugAgent output resulting from `Flux` error
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Other tools are available that don’t directly help test or debug reactive applications
+    but that nevertheless help to improve application quality. One example is [BlockHound](https://github.com/reactor/BlockHound),
+    which, although outside the scope of this chapter, can be a useful tool for determining
+    if blocking calls are hidden within your application’s code or its dependencies.
+    And, of course, these and other tools are evolving and maturing rapidly to provide
+    numerous ways to level up your reactive applications and systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code Checkout Checkup
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For complete chapter code, please check out branch *chapter12end* from the code
+    repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Reactive programming gives developers a way to make better use of resources
+    in distributed systems, even extending powerful scaling mechanisms across application
+    boundaries and into the communication channels. For developers with experience
+    exclusively with mainstream Java development practices—often called *imperative*
+    Java due to its explicit and sequential logic versus the more declarative approach
+    generally used in reactive programming—these reactive capabilities may bear some
+    undesired costs. In addition to the expected learning curve, which Spring helps
+    flatten considerably due to parallel and complementary WebMVC and WebFlux implementations,
+    there are also relative limitations in tooling, its maturity, and established
+    practices for essential activities like testing, troubleshooting, and debugging.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While it is true that reactive Java development is in its infancy relative to
+    its imperative cousin, the fact that they are family has allowed a much faster
+    development and maturation of useful tooling and processes. As mentioned, Spring
+    builds similarly on established imperative expertise within its development and
+    community to condense decades of evolution into production-ready components available
+    *now*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, I introduced and elaborated on the current state of the art
+    in testing and diagnosing/debugging issues you might encounter as you begin to
+    deploy reactive Spring Boot applications. I then demonstrated how to put WebFlux/Reactor
+    to work for you before and in production to test and troubleshoot reactive applications
+    in various ways, showing relative advantages of each option available. You have
+    a wealth of tools at your disposal even now, and the outlook is only getting better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this book, I had to choose which of the innumerable “best parts” of Spring
+    Boot to cover in order to provide what I hope to be the best possible way to get
+    up and running with Spring Boot. There is so much more, and I only wish I could
+    have doubled (or trebled) the scope of the book to do so. Thank you for accompanying
+    me on this journey; I hope to share more in future. Best to you in your continued
+    Spring Boot adventures.
+  prefs: []
+  type: TYPE_NORMAL

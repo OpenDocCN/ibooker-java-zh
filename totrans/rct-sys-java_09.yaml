@@ -1,0 +1,583 @@
+- en: 'Chapter 6\. Quarkus: Reactive Engine'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Part II](part02.html#reactive-part), you learned a lot about Reactive, in
+    all its forms, meanings, and variations! I know, you’re probably a bit tired of
+    hearing the word *reactive* right now, but it’s a key piece to accurately describing
+    Quarkus. At the core of Quarkus is its reactive engine, which we cover in [“A
+    Reactive Engine”](#quarkus-reactive::reactive-engine). Without its reactive engine
+    core, Quarkus would not allow implementing reactive applications and provide a
+    seamless integration of reactive programming.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Quarkus unifies two development models: imperative and reactive. In this chapter,
+    we review the main differences and show how Quarkus handles the unification. Quarkus
+    aims for them to be as alike as possible. If the APIs *feel* similar, understanding
+    a complex model such as Reactive becomes seamless.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we can get into the reactive engine, we need to revisit the imperative
+    and reactive models. Doing so allows us an opportunity to appreciate how they’re
+    unified with Quarkus. For anyone already familiar with imperative and reactive
+    models, how they work, and the benefits and disadvantages of each, feel free to
+    skip ahead to [“Unification of Reactive and Imperative”](#quarkus-reactive::unification).
+  prefs: []
+  type: TYPE_NORMAL
+- en: You might worry we’re repeating previously covered information. We might be
+    a little, but it’s all geared toward reinforcing how the two models impact the
+    way applications are developed—and as a result, how frameworks differ depending
+    on the model they offer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First up is the imperative model, which most Java developers likely started
+    their careers using.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Imperative Model
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When using the *imperative model*, you may not even be aware of its name. So
+    what is the imperative model? It alters a program’s state with a defined sequence
+    of commands. One command is executed after another until all commands are executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 6-1](#image:imperative-commands-result-10) shows a sequence of mathematical
+    commands, executed in succession, until the result (in this case 10 if we start
+    from 0, is produced). As you can see in the imperative model, defining the proper
+    sequence is critical to achieving the desired result, 10.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Imperative commands with result 10](assets/rsij_0601.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-1\. Imperative commands with result 10
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '[Figure 6-2](#image:imperative-commands-result-7-5) shows the exact same commands,
+    but in a different sequence.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Imperative commands with result 7.5](assets/rsij_0602.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-2\. Imperative commands with result 7.5
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: As you see, the sequence of commands, in the imperative mode, is just as important
+    as the commands themselves. Modifying the sequence results in an entirely different
+    program output. An imperative program can be considered the process of getting
+    from A to B, when we already know what A and B need to be. The developer needs
+    to define only the steps between A and B in the correct sequence to achieve the
+    desired result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In imperative programs, we have a defined input and output, and, in addition,
+    we know the steps needed to get from A to B. For these two reasons, imperative
+    programs are easily reasoned about. When we have a defined input, what we know
+    the output should be, and the defined steps to get there, writing tests is a lot
+    easier because the permutations of what can happen are limited and determinable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What are some other aspects of the imperative programming model we need to be
+    aware of? As imperative relies on a sequence of commands, resource utilization
+    will always be a primary concern. In the example shown in [Figure 6-1](#image:imperative-commands-result-10),
+    we’re not going to need a large amount of resources to perform basic mathematical
+    calculations. However, if we replaced all those operations with database calls
+    retrieving a few hundred records each, the impacts begin adding up quickly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The impacts we’re talking about are related to the threading model for imperative
+    programming. If we have our sequence of database operations using a single I/O
+    thread, the same I/O thread handling the HTTP request (not realistic but useful
+    for illustrative purposes), only one request can be processed at any point in
+    time. We introduced the I/O thread in [Chapter 5](ch05.html#reactive-programming).
+    Moreover, as the sequence of the imperative program is fixed, each command must
+    complete before the next one can commence. What does that look like?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though contrived, [Figure 6-3](#image:database-retrieval-single-thread) illustrates
+    how each step in the database program must complete before the next can commence.
+    More importantly, any subsequent request can begin only when the one being processed
+    is finished. In this situation, the number of concurrent requests we can process
+    is limited by the number of I/O threads we give the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Database program on single I/O thread](assets/rsij_0603.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-3\. Database program on single I/O thread
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Now, as depicted in [Figure 6-4](#image:database-retrieval-multiple-threads),
+    we will be generous and provide the same application two I/O threads!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Database program on multiple I/O threads](assets/rsij_0604.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-4\. Database program on multiple I/O threads
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We can process two concurrent requests, but no more than that with only two
+    I/O threads. Being able to handle only a single request per I/O thread is not
+    great, so let’s dive deeper into what’s going on inside.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both the *Retrieve DB records* and *Write new DB records* commands have periods
+    of time when the command itself is not performing any work, shown as the lighter
+    section in [Figure 6-5](#image:database-retrieval-thread-delays). In between sending
+    a request to the database and receiving the response, what is the I/O thread doing?
+    In this situation, absolutely nothing! The I/O thread sits there waiting for the
+    response from the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Database program I/O thread delays](assets/rsij_0605.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-5\. Database program I/O thread delays
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Why does it do nothing? Could an I/O thread perform other work while waiting?
+    As we mentioned earlier, imperative programming requires an ordered sequence of
+    commands. Because *Retrieve DB records* is still running during the wait period,
+    an I/O thread does not know there is time to perform other work. This is why imperative
+    programming is often tied with synchronous execution, and by default synchronous
+    is the execution model for imperative programming.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some might wonder whether an I/O thread waiting is a big deal. The time an I/O
+    thread waits for a command to complete could be several seconds or longer. An
+    imperative program taking about a second to complete all its steps may be OK,
+    but it doesn’t take many periods of I/O threads waiting to explode the total response
+    time to many seconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The expanded time to complete an imperative program has several effects. Increased
+    execution time on an I/O thread leads to a reduction in the number of requests
+    being processed in a given period of time. There are additional impacts on the
+    resources required to buffer in memory any incoming requests that are waiting
+    on I/O threads to become available to begin processing. These resource impacts
+    can cause significant issues with the overall performance of an application. If
+    an application is dealing with a few hundred, or even thousand, users, it may
+    not be noticeable, especially if few are concurrent users. However, tens of thousands
+    of users, many concurrently, will show these problems to their users in failed
+    connections, time-outs, errors, and any number of possible problems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are other ways to break the synchronous and blocking nature of an imperative
+    program. We can use `ExecutorService` to move work from the I/O thread onto a
+    separate worker pool thread. Or we can use `@Suspended` and `AsyncResponse` with
+    JAX-RS Resources to delegate work to a worker pool of threads, enabling the HTTP
+    request to be suspended from the I/O thread until a response is set on `AsyncResponse`.
+    Suspending HTTP requests waiting for a response facilitates processing of additional
+    HTTP requests on the I/O thread while others are waiting for a processing response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though these approaches work, the complexity of code increases without a significant
+    benefit in throughput as we’re still I/O thread limited—not quite to the level
+    of a request per thread when using `@Suspended`, but not significantly more either.
+    How does the reactive model differ?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Reactive Model
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The *reactive model* is built around the notion of continuations and nonblocking
+    I/O, as we detailed in [“Asynchronous Code and Patterns”](ch05.html#reactive-programming:async-code-patterns).
+    As mentioned previously, this approach significantly increases the level of concurrency,
+    enabling many more requests to be processed in parallel. However, it’s not a free
+    ride because it requires additional thought on the part of a developer to develop
+    an application built around these principles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Taking our previous database example, what would it look like to remove the
+    I/O thread wait times to improve the concurrency? Take a look at [Figure 6-6](#image:database-retrieval-reactive).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Reactive database program on I/O thread](assets/rsij_0606.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-6\. Reactive database program on I/O thread
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Here, we can see that, instead of an I/O thread waiting, it begins processing
+    another incoming request. It continues to do so until it’s been notified that
+    a database response is ready for processing. How do we achieve this separation?
+    We provide a continuation to process the database response. The continuation is
+    added to the queue of methods to execute on the I/O thread after the database
+    response is received. Likewise, the single command to process the database records
+    is split into smaller methods to help with the concurrency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 6-6](#image:database-retrieval-reactive) shows how a reactive model
+    utilizing continuations can facilitate the removal of I/O thread wait time and
+    increase the number of requests processed concurrently. As you’ve seen, we developers
+    need to adjust how programs are developed to *align* with the reactive model.
+    We need to break work into smaller chunks, but most importantly, modify interactions
+    with anything external to the application into separate request and response handling.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Figure 6-6](#image:database-retrieval-reactive), we approximated how pieces
+    of a program could be segmented to prevent the I/O thread from waiting or being
+    blocked. Quarkus uses an *event loop*, as discussed in [“Reactor Pattern and Event
+    Loop”](ch04.html#reactive-system::reactor-pattern-event-loop), to implement the
+    reactive model. The event loop can visually be represented as shown previously
+    in [Figure 4-7](ch04.html#image:event-loop).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve discussed some hugely beneficial aspects of the reactive model, but nothing
+    comes for free. With the reactive model needing to separate code execution, as
+    opposed to the imperative model in which everything is sequential, complexity
+    is introduced in the ability to understand the entirety of a program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A program is no longer a sequenced set of steps, but a series of handlers executing
+    at different points in time with no predetermined order. Though continuations
+    can be guaranteed to occur after they were triggered, there is no ordering among
+    various asynchronous invocations within a single request, or among multiple requests.
+    This shift requires an alteration in thinking by developers toward event passing,
+    with the triggering of associated event handlers. No longer is it a sequence of
+    commands called one after another in code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unification of Reactive and Imperative
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'What do we mean by Quarkus unifying reactive and imperative? We don’t mean
+    being able to ignore the complexities of reactive or expecting imperative to provide
+    high levels of concurrency. We *do* mean the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quarkus’s reactive core nonblocking I/O is key to any extension built on top.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Quarkus offers a framework of extensions built on the performance of the Eclipse
+    Vert.x toolkit, the reactive engine.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A developer’s choice of imperative or reactive is an API choice, and not a framework
+    one.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Often when choosing to develop an application, an *up-front* choice needs to
+    be made as to whether to use reactive or imperative programming. This decision
+    requires much forethought by developers and architects in terms of the skills
+    required by the team building the application, the current business requirements
+    for the application, as well as the final architecture of the application. We
+    developers find choosing a specific technology stack one of the most difficult
+    decisions to make. We always want to consider the future needs of the application,
+    even if we don’t know what those needs are concretely. No matter how we try, there
+    will always be new requirements or unforeseen problems, requiring a change in
+    architecture or even design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We feel more comfortable about a decision when it doesn’t box us in, offering
+    ways to shift and alter the way an application works as needs change. This is
+    a huge advantage with Quarkus. When we choose Quarkus, and the unification of
+    imperative and reactive models, we’re free to pick one or the other, a mix of
+    the two, or even switch parts of an application between the models over time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How does Quarkus support reactive or imperative models seamlessly? Supporting
+    both models seamlessly is the key foundation to everything Quarkus offers. Built
+    on the foundation of Vert.x, Quarkus has a routing layer enabling either model.
+    This is how the layers work together when we’ve deployed reactive code, assuming
+    an HTTP request is being processed ([Figure 6-7](#image:unify-model-reactive)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Quarkus reactive model](assets/rsij_0607.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-7\. Quarkus reactive model
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We see in [Figure 6-7](#image:unify-model-reactive) how a request is received
+    by the Vert.x HTTP server, passes through the routing layer, and our reactive
+    code executes. All these interactions occur on the I/O thread; a worker thread
+    is not needed. As already mentioned, having code execute on the I/O thread provides
+    the highest level of concurrency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In [Figure 6-7](#image:unify-model-reactive), only a single HTTP request is
+    being processed. If there were multiple requests, those executions would be interleaved
+    on the I/O thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You might be wondering how executing imperative code alters the behavior—take
+    a look at [Figure 6-8](#image:unify-model-imperative).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Quarkus imperative model](assets/rsij_0608.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-8\. Quarkus imperative model
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: You can see that the model is not significantly different. The biggest change
+    is that our code, now imperative in nature, is executed on a worker thread and
+    not the I/O thread. In this way, Quarkus can execute imperative code, a series
+    of sequential commands, without impacting the concurrency of the I/O thread. Quarkus
+    has *offloaded* the imperative execution to a worker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The process of offloading to a worker thread comes with a cost, however. Every
+    time we execute on a worker thread, a context switch, before and after execution,
+    is necessary. In [Figure 6-8](#image:unify-model-imperative), we represent this
+    switch as a circle on the boundary between the I/O and worker threads. These context
+    switches cost time and resources to perform the switch and store the information
+    in a new thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve seen how the two models operate on Quarkus, but what about when we unify
+    them? For example, if we have a reactive application needing to execute a piece
+    of blocking code, how can we do that without blocking the I/O thread? In [Figure 6-9](#image:unify-model-combined),
+    we see our code executing on both the I/O and worker threads!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Quarkus reactive and imperative model](assets/rsij_0609.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-9\. Quarkus reactive and imperative model
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: When reactive code is executed, it’s on the I/O thread, but any imperative code
+    is executed on a worker thread. Quarkus handles all of this for developers without
+    them needing to create `Executors` or `Threads`, or needing to manage them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 6-9](#image:unify-model-combined) is a visualization of the *proactor*
+    pattern we defined in [“Reactor Pattern and Event Loop”](ch04.html#reactive-system::reactor-pattern-event-loop).
+    Nonblocking and blocking handlers can coexist, as long as we offload blocking
+    execution onto worker threads and invoke continuations when a blocking handler
+    completes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The proactor pattern unifies imperative and reactive code in Quarkus. Anyone
+    familiar with developing reactive applications knows that sometimes it’s necessary
+    to write code in a blocking, or sequential, manner. Quarkus’s unification allows
+    us to delegate such execution onto a worker thread, by using `@Blocking`, which
+    we cover for HTTP in [Chapter 8](ch08.html#http) and Reactive Messaging in [Chapter 10](ch10.html#messaging).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Utilizing the reactive model, and thus the I/O thread, for as much work as possible
+    has an added benefit. We minimize the amount of context switching performed when
+    delegating execution to a worker thread. Anytime execution of the same request
+    moves between threads, from the I/O to worker thread, or vice versa, costs are
+    associated with the switch. Any objects associated with the request need to be
+    available from the new thread, costing time and resources to move them, as well
+    as resource costs for additional threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve talked a lot about how the models are unified in Quarkus, but what extensions
+    use these models? RESTEasy Reactive, covered in [Chapter 8](ch08.html#http), and
+    Reactive Messaging, in [Chapter 10](ch10.html#messaging), both utilize the reactive
+    model. The classic RESTEasy and Spring controller both use the imperative model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Reactive Engine
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If you have written reactive programs or done any research into Reactive, you
+    are likely aware of the Vert.x toolkit. As mentioned before, the Quarkus reactive
+    engine utilizes Vert.x. In addition to Vert.x, as well as Netty, the routing layer
+    of Quarkus forms the outer layer of the reactive engine. It’s the integration
+    piece for extensions, coordinating the offloading of blocking handlers onto worker
+    threads, and the execution of their continuations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition, all the reactive clients are built on top of the reactive engine
+    to utilize the nonblocking handling. Reactive applications are no longer reactive
+    after they use blocking clients, a key aspect often overlooked by developers.
+    Quarkus endeavors to have all clients that an application might need built on
+    the reactive engine, for true reactive integration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: By default, everything in Quarkus is reactive. Developers must decide whether
+    they want reactive or imperative. What do we mean by *everything*? It includes
+    HTTP handling, event-driven applications with AMQP and Kafka, and *everything*
+    Quarkus offers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Reactive Programming Model
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: SmallRye Mutiny is the reactive programming library of Quarkus. You already
+    learned about it in [“Reactive Programming”](ch05.html#reactive-programming::reactive-programming),
+    and we will learn even more in [Chapter 7](ch07.html#mutiny), so we won’t cover
+    too much detail here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In short, Mutiny is built around three key aspects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Event-driven
+  prefs: []
+  type: TYPE_NORMAL
+- en: Listening to events from the stream and handling them appropriately.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Easily navigable API
+  prefs: []
+  type: TYPE_NORMAL
+- en: Navigating the API is driven by an event type and the available options for
+    that event.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only two types
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Multi` and `Uni` can handle any desired asynchronous actions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One point to note is the laziness of the Mutiny types. Events won’t begin flowing
+    through the data streams until a subscriber requests them. This is a fantastic
+    feature to prevent streams from consuming resources if nothing is listening, but
+    developers do need to be aware of this, so we don’t forget to subscribe!
+  prefs: []
+  type: TYPE_NORMAL
+- en: All Quarkus reactive APIs use `Multi` and `Uni`. This approach facilitates the
+    seamless integration of Quarkus extensions with reactive programming and Mutiny.
+    Let’s see examples of using Mutiny.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A reactive application with Quarkus using the PostgreSQL reactive client retrieves
+    `Fruit` objects from the database with `Multi`, as shown in [Example 6-1](#quarkus-reactive::mutiny-data).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-1\. Reactive Mutiny client
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_quarkus__reactive_engine_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`client` is an instance of `PgPool`, the PostgreSQL reactive client built with
+    Mutiny and Vert.x.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_quarkus__reactive_engine_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a `RowSet` item is received, transform the single `RowSet` into a `Multi<Row>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_quarkus__reactive_engine_CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Convert each `Row` in `Multi` to a `Fruit` instance. The result of the execution
+    is `Multi<Fruit>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given we’re writing about Reactive in this book, all the remaining chapters
+    have examples utilizing Mutiny in many situations. We present reactive HTTP endpoints
+    in [Chapter 8](ch08.html#http) and their consumption in [Chapter 12](ch12.html#http-client).
+    We cover reactive data access with Quarkus and Mutiny in [Chapter 9](ch09.html#data),
+    including many examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Event-Driven Architecture with Quarkus
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Though building reactive applications with Quarkus is great, performant, and
+    fun, we want to do more than build a single application. We need a reactive system,
+    as covered in [Chapter 4](ch04.html#reactive-systems), combining smaller applications
+    into a coordinated distributed system. To support such an architecture, Quarkus
+    must receive and produce events, an event-driven architecture! Quarkus achieves
+    this by using Reactive Messaging, as shown in [Example 6-2](#quarkus-reactive::messaging).
+    Reactive Messaging integrates with various messaging technologies, such as Apache
+    Kafka, AMQP, and others, with annotations for developers to specify whether a
+    method receives or produces events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-2\. Reactive Messaging
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_quarkus__reactive_engine_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Read messages from the `prices` channel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_quarkus__reactive_engine_CO2-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transform each `Price` into a `Quote`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The offered development model allows consuming, transforming, and generating
+    messages easily. The `@Incoming` annotation denotes the consumption of a *channel*.
+    Reactive Messaging invokes the method for each transiting `Price` from the configured
+    channel. The `@Outgoing` annotation indicates in which channel the results are
+    written.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Full details of Reactive Messaging are covered in [Chapter 10](ch10.html#messaging).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter covered the imperative model, a series of sequential commands,
+    and the reactive model, utilizing continuations and nonblocking I/O.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We have seen the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How the two models work with threads (in Figures [6-8](#image:unify-model-imperative),
+    [6-7](#image:unify-model-reactive), and [6-9](#image:unify-model-combined)), providing
+    improved concurrency with the reactive model.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How Quarkus unifies these models to allow developers to grow their applications,
+    introducing reactive aspects, as it grows and expands without the need to switch
+    frameworks.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How we can use reactive programming in Quarkus.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the coming chapters, we explore the various reactive aspects of Quarkus,
+    such as HTTP and RESTEasy Reactive in [Chapter 8](ch08.html#http), and reactive
+    data access in [Chapter 9](ch09.html#data). But first, let’s have a deeper look
+    into the Mutiny reactive programming API.
+  prefs: []
+  type: TYPE_NORMAL

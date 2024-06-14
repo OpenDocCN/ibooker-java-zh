@@ -1,0 +1,971 @@
+- en: Chapter 6\. Error Handling
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You will always encounter errors in the real world. How you handle them helps
+    show the quality of your code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java has its roots in embedded systems—software that runs inside specialized
+    devices, such as the handheld computers, cellular phones, and fancy toasters that
+    we might consider part of the internet of things (IoT) these days. In those applications,
+    it’s especially important that software errors be handled robustly. Most users
+    would agree that it’s unacceptable for their phone to crash on a regular basis
+    or for their toast (and perhaps their house) to burn because some software failed.
+    Given that we can’t eliminate the possibility of software errors, recognizing
+    and dealing with application-level errors methodically is a good step in the right
+    direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some languages leave the responsibility for handling errors entirely with the
+    programmer. The language itself provides no help in identifying error types and
+    no tools for dealing with them easily. In the C language, for example, functions
+    generally indicate a failure by returning an “unreasonable” value (like the idiomatic
+    `-1` or a `null`). As the programmer, you must know what constitutes a bad result
+    and what it means. It’s often awkward to work around the limitations of passing
+    error values in the normal path of data flow.^([1](ch06.html#id1273)) An even
+    worse problem is that certain types of errors can legitimately occur almost anywhere,
+    and it’s slow and costly to test for them explicitly at every point in the software.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter we’ll consider how Java tackles the problem of problems. We’ll
+    go over the notion of exceptions to look at how and why they occur, as well as
+    how and where to handle them. We’ll also be looking at errors and assertions.
+    *Errors* are more serious problems that often cannot be fixed at runtime but can
+    still be logged for debugging. *Assertions* are a popular way of inoculating your
+    code against exceptions or errors by verifying ahead of time that safe conditions
+    exist.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exceptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java offers an elegant solution to aid the programmer in addressing common coding
+    and runtime problems through exceptions. (Java exception handling is similar to,
+    but not quite the same as, exception handling in C++.) An *exception* indicates
+    an unusual condition or an error condition. When a problem occurs, the runtime
+    transfers control (or “throws”) to a specially designated section of your code
+    that can handle (or “catch”) the condition. In this way, error handling is independent
+    of the normal flow of the program. We don’t need special return values for all
+    of our methods; errors are handled by a separate mechanism. Java can pass control
+    a long distance from a deeply nested routine and handle errors in a single location
+    when that is desirable, or an error can be handled immediately at its source.
+    A few standard Java methods still return a special value such as `-1`, but these
+    are generally limited to situations where expecting and handling a special value
+    is relatively straightforward.^([2](ch06.html#id1274))
+  prefs: []
+  type: TYPE_NORMAL
+- en: You must specify any known exceptions your methods can throw, and the compiler
+    makes sure that callers of the method handle them. In this way, Java treats information
+    about what errors a method can produce with the same level of importance as its
+    argument and return types. You may still decide to punt and ignore some errors,
+    but in Java you must do so explicitly. (We’ll discuss runtime exceptions and errors,
+    which don’t require this explicit declaration, in a moment.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exceptions and Error Classes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Exceptions are represented by instances of the class `java.lang.Exception` and
+    its subclasses. Subclasses of `Exception` can hold specialized information (and
+    possibly behavior) for different kinds of exceptional conditions. However, more
+    often they are simply “logical” subclasses that serve only to identify a new exception
+    type. [Figure 6-1](#learnjava6-CHP-6-FIG-1) shows the subclasses of `Exception`
+    in the `java.lang` package. It should give you a feel for how exceptions are organized.
+    Most packages define their own exception types, which usually are subclasses of
+    `Exception` itself or of its important subclass `RuntimeException`, which we’ll
+    get to in a moment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, let’s look at another important exception class: `java.io.IOException`.
+    The `IOException` class extends `Exception` and has many subclasses of its own
+    for typical I/O problems, such as a `FileNotFoundException`. Notice how explicit
+    (and useful) the class name is. Many network exceptions further extend `IOException`—they
+    do involve input and output—but following conventions, exceptions like `MalformedURLException`
+    belong to the `java.net` package alongside other networking classes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![ljv6 0601](assets/ljv6_0601.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-1\. The `java.lang.Exception` subclasses
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The runtime creates an `Exception` object at the point where the error condition
+    arises. It can be designed to hold any information necessary to describe the exceptional
+    condition. It also includes a full stack trace for debugging. A *stack trace*
+    is the (occasionally unwieldy) list of all the methods called and the order in
+    which they were called from your `main()` method up to the point where the exception
+    was thrown. (We’ll look at these useful lists in more detail in [“Stack Traces”](#learnjava6-CHP-6-SECT-1.4).)
+    The `Exception` object is passed as an argument to the handling block of code,
+    along with the flow of control. This is where the terms *throw* and *catch* come
+    from: the `Exception` object is thrown from one point in the code and caught by
+    another, where execution resumes, as shown in [Figure 6-2](#learnjava6-CHP-6-FIG-throw-flow).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![ljv6 0602](assets/ljv6_0602.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-2\. The flow of control when an exception occurs
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Java also defines the `java.lang.Error` class for unrecoverable errors. The
+    subclasses of `Error` in the `java.lang` package are shown in [Figure 6-3](#learnjava6-CHP-6-FIG-2).
+    A notable `Error` type is `AssertionError`, which is used by the Java `assert`
+    statement (more on this statement later in this chapter) to indicate a failure.
+    A few other packages define their own subclasses of `Error`, but subclasses of
+    `Error` are much less common (and less useful) than subclasses of `Exception`.
+    You generally won’t need to worry about these errors in your code; they are intended
+    to indicate fatal problems or virtual machine errors, which usually cause the
+    Java interpreter to display a message and exit. Java’s designers actively discourage
+    developers from trying to catch or recover from these errors because they are
+    supposed to indicate a fatal program bug, possibly in the JVM itself, not a routine
+    condition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both `Exception` and `Error` are subclasses of `Throwable`. The `Throwable`
+    class is the base class for objects that can be “thrown” with the `throw` statement.
+    While you can technically extend `Throwable` yourself, you should generally extend
+    only `Exception`, `Error`, or one of their subclasses if you want to create your
+    own throwable type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![ljv6 0603](assets/ljv6_0603.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-3\. The `java.lang.Error` subclasses
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Exception Handling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To catch and handle an _Italicized Textixexception, you wrap blocks of your
+    code in `try/catch` guarding statements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, any exceptions that occur within the body of the `try` portion
+    of the statement are directed to the `catch` clause for possible handling. The
+    `catch` clause acts like a method; it specifies the type of exception it wants
+    to handle. If it’s invoked, the clause receives the `Exception` object as an argument.
+    Here, we receive the object in the variable `e` and print it along with a message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can try this ourselves. Recall the simple program to calculate the greatest
+    common denominator (GCD) using the Euclid algorithm back in [Chapter 4](ch04.html#learnjava6-CHP-4).
+    We could augment that program to allow the user to pass in the two numbers `a`
+    and `b` as command-line arguments via that `args[]` array in the `main()` method.
+    However, that array is of type `String`. If we cheat a little bit and steal some
+    code from [“Parsing Primitive Numbers”](ch08.html#learnjava6-CHP-8-SECT-2.1),
+    we can use a text parsing method to turn those strings into `int` values. However,
+    that parsing method can throw an exception if we don’t pass a valid number. Here’s
+    a look at our new `Euclid2` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that we limit our `try/catch` to just the potentially problematic code.
+    It’s common to see several different `try/catch` blocks in a method. This small
+    scope allows us to better tailor the code in the `catch` block to whatever problems
+    we’re anticipating. In this case, we know we might get some bad input from the
+    user, so we can check for the (very) specific `NumberFormatException` and print
+    a friendly message for the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we run this program from a terminal window or use the command-line arguments
+    option in our IDE like we did in [Figure 2-10](ch02.html#learnjava6-CHP-2-FIG-9),
+    we can now find the GCD of several number pairs without recompiling:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But if we pass in arguments that are not numeric, we’ll get that `NumberFormatException`
+    and see our error message. Note, however, that our code recovers gracefully and
+    still provides some output. This recovery is the essence of error handling:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A `try` statement can have multiple `catch` clauses that specify different
+    types (subclasses) of `Exception`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `catch` clauses are evaluated in order, and Java picks the first assignable
+    match. At most, one `catch` clause is executed, which means that the exceptions
+    should be listed from most specific to most generic. In the previous example,
+    we anticipate that the hypothetical `readFromFile()` method can throw two different
+    kinds of exceptions: one for a file not found and another for a more general read
+    error. Maybe the file exists but we don’t have permission to open it. `FileNotFoundException`
+    is a subclass of `IOException`, so if we had swapped the first two `catch` clauses,
+    the more general `IOException` clause would catch the missing file exception.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What if we completely reverse the order of the `catch` clauses? You can assign
+    any subclass of `Exception` to the parent type `Exception`, so that clause catches
+    *every* exception. If you use a `catch` with type `Exception`, always put it as
+    the last possible clause. It acts like the `default` case in a `switch` statement
+    and handles any remaining possibilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One advantage of the `try/catch` scheme is that any statement in the `try` block
+    can assume that all previous statements in the block succeeded. A problem won’t
+    arise suddenly because you forgot to check the return value from a method. If
+    an earlier statement fails, execution jumps immediately to a `catch` clause; later
+    statements inside the `try` are never executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is an alternative to using multiple `catch` clauses. You can handle multiple
+    discrete exception types in a single `catch` clause, using the *or syntax* (written
+    using the pipe character, “|”):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using this “|” syntax, we receive both types of exception in the same `catch`
+    clause.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is the actual type of the `e` variable that we are passing to our log method?
+    What can we do with it? In this case, `e`’s type will be neither `ZipException`
+    nor `SSLException` but `IOException`, which is the nearest common ancestor (the
+    closest parent class type to which they are both assignable) for the two exceptions.
+    In many cases, the nearest common type among the two or more argument exception
+    types may simply be `Exception`, the parent of all exception types.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The difference between catching these discrete exception types with a multiple-type
+    `catch` clause and simply catching the common parent exception type is that we
+    are limiting our `catch` to only these specifically enumerated exception types.
+    We will not catch any of the other `IOException` types. Combining multiple-type
+    `catch` clauses with ordering the clauses from specific to broad types gives you
+    great flexibility in handling exceptions. You can consolidate error-handling logic
+    where appropriate and avoid repeating code. There are more nuances to this feature,
+    and we will return to it after we have discussed “throwing” and “re-throwing”
+    exceptions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bubbling Up
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: What if we hadn’t caught the exception? Where would it have gone? Well, if there
+    is no enclosing `try/catch` statement, the exception pops up from the method in
+    which it originated (halting further execution of that method) and is thrown from
+    that method up to its caller. If that calling method has a `try` clause, control
+    passes to the corresponding `catch` clause. Otherwise, the exception continues
+    propagating up the call stack, from one method to its caller. The exception bubbles
+    up until it’s caught or until it pops out of the top of the program and terminates
+    it with a runtime error message. Sometimes there’s a bit more to it; the compiler
+    might force you to deal with the exception along the way. [“Checked and Unchecked
+    Exceptions”](#learnjava6-CHP-6-SECT-1.5) talks about this distinction in more
+    detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at another example. In [Figure 6-4](#learnjava6-CHP-6-FIG-propagation),
+    the method `getContent()` invokes the method `openConnection()` from within a
+    `try/catch` statement (step 1 in the figure). In turn, `openConnection()` invokes
+    the method `sendRequest()` (step 2), which calls the method `write()` to send
+    some data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![ljv6 0604](assets/ljv6_0604.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-4\. Exception propagation
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In this figure, the second call to `write()` throws an `IOException` (step 3).
+    Since `sendRequest()` doesn’t contain a `try/catch` statement to handle the exception,
+    it’s thrown again from the point where it was called in the method `openConnection()`
+    (step 4). But `openConnection()` doesn’t catch the exception either, so it’s thrown
+    once more (step 5). Finally, it’s caught by the `try` statement in `getContent()`
+    and handled by its `catch` clause. Notice that each throwing method must declare
+    that it can throw a particular type of exception with a `throws` clause. We’ll
+    discuss this in [“Checked and Unchecked Exceptions”](#learnjava6-CHP-6-SECT-1.5).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a high-level `try` statement early in your code can also help handle
+    errors that might bubble up from background threads. We’ll discuss threads in
+    much more detail in [Chapter 9](ch09.html#learnjava6-CHP-9), but uncaught exceptions
+    can lead to debugging headaches in larger, more complex programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stack Traces
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Because an exception can bubble up quite a distance before it is caught and
+    handled, we need a way to determine exactly where it was thrown. It’s also important
+    to know how that problematic code was reached. Which methods called which other
+    methods to get to that point? For debugging, all exceptions can dump a *stack
+    trace* that lists their method of origin and all the nested method calls they
+    took to arrive there. Most commonly, the user sees a stack trace when it is printed
+    using the `printStackTrace()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Such a stack trace for an exception might look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: This stack trace indicates that line 5 (in your source code) of the `main()`
+    method of the class `MyApplication` called the method `loadFile()`. The `loadFile()`
+    method then tried to construct a `FileInputStream` at line 137, which threw the
+    `FileNotFound``Exception`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the stack trace reaches Java system classes (like `FileInputStream`), the
+    line numbers may be lost. This can also happen if the code has been optimized.
+    Usually, there is a way to disable the optimization temporarily to find the exact
+    line numbers, but sometimes other debugging techniques may be required. We’ll
+    look at many of those techniques later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Methods in the `Throwable` class allow you to retrieve the stack trace information
+    programmatically, by using the `getStackTrace()` method. (Recall that `Throwable`
+    is the parent class of `Exception` and `Error`.) This method returns an array
+    of `StackTraceElement` objects, each of which represents a method call on the
+    stack. You can ask a `StackTraceElement` for details about that method’s location
+    using the methods `getFileName()`, `getClassName()`, `getMethodName()`, and `getLineNumber()`.
+    Element zero of the array is the top of the stack, the final line of code that
+    caused the exception; subsequent elements step back one method call each until
+    the original `main()` method is reached in the last element.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checked and Unchecked Exceptions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We mentioned earlier that Java forces us to be explicit about our error handling,
+    but it’s not necessary to require that every conceivable type of error be handled
+    explicitly in every situation. Java exceptions are therefore divided into two
+    categories: *checked* and *unchecked*. Most application-level exceptions are checked,
+    which means that any method that throws one must declare it with a special `throws`
+    clause in its definition, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our `readFile()` method anticipates throwing two types of exceptions: by generating
+    them itself (as we’ll discuss in [“Throwing Exceptions”](#learnjava6-CHP-6-SECT-1.6))
+    and by ignoring ones that occur within it. For now, all you need to know is that
+    methods have to declare the checked exceptions they can throw or allow to be thrown.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `throws` clause tells the compiler that a method is a possible source of
+    that type of checked exception and that anyone calling that method must be prepared
+    to deal with it. The caller must then either use a `try/catch` block to handle
+    it or, in turn, declare that it can throw the exception from itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In contrast, exceptions that are subclasses of either the class `java.lang.RuntimeException`
+    or the class `java.lang.Error` are unchecked. See [Figure 6-1](#learnjava6-CHP-6-FIG-1)
+    for the subclasses of `RuntimeException`. It’s not a compile-time error to ignore
+    the possibility of these exceptions; methods also don’t have to declare they can
+    throw them. In all other respects, unchecked exceptions behave the same as other
+    exceptions. You are free to catch them if you wish, but in this case you aren’t
+    required to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checked exceptions are intended to cover application-level problems, such as
+    missing files and unavailable network hosts. As good programmers (and upstanding
+    citizens), we should design software to recover gracefully from these kinds of
+    conditions. Unchecked exceptions are intended for system-level problems, such
+    as “array index out of bounds.” While these may indicate application-level programming
+    errors, they can occur almost anywhere. Fortunately, because they are unchecked
+    exceptions, you don’t have to wrap every one of your array operations in a `try/catch`
+    statement or declare all of the calling methods as a potential source of them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To sum up, checked exceptions are problems that a reasonable application should
+    try to handle gracefully. Unchecked exceptions (runtime exceptions or errors)
+    are problems from which we would not normally expect our software to recover,
+    but you can provide a polite and hopefully informative message to the user about
+    what happened. Error types, such as “out of memory” errors, are conditions we
+    typically cannot recover from.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Throwing Exceptions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We can throw our own exceptions—either instances of `Exception`, one of its
+    existing subclasses, or our own specialized exception classes. All we have to
+    do is create an instance of the appropriate exception class and throw it with
+    the `throw` statement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Execution stops and is transferred to the nearest enclosing `try/catch` statement
+    that can handle the exception type. Notice we didn’t put the new exception into
+    a variable. There is little point in keeping a reference to the `IOException`
+    object we’ve created here, as the `throw` statement immediately halts the current
+    flow through our code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An alternative constructor for exceptions lets us specify a string with an
+    error message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can retrieve this string by using the `Exception` object’s `getMessage()`
+    method. Often, though, you can just print the exception object itself to get the
+    message and stack trace.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By convention, all types of `Exception` have a `String` constructor like this.
+    The “Sunspots!” message is whimsical but not very helpful. Normally, you will
+    throw a more specific subclass of `Exception`, which captures extra details about
+    the fault or at least provides a more useful string explanation. Here’s another
+    example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this code, we partially implement a method to check for an illegal path.
+    If we find one, we throw a `SecurityException` with some information about the
+    transgression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Of course, we could include any other information that is useful in our own
+    specialized subclasses of `Exception`. Often, though, just having a new type of
+    exception is good enough because it’s sufficient to help direct the flow of control.
+    For example, if we are building a program to read and parse the contents of a
+    web page, we might want to make our own kind of exception to indicate a particular
+    failure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'See [“Constructors”](ch05.html#learnjava6-CHP-5-SECT-3.1) for a full description
+    of classes and class constructors. The body of our `Exception` class here simply
+    allows a `ParseException` to be created in the conventional ways (either generically
+    or with a little extra information). Now that we have our new exception type,
+    we can guard against any poorly formatted content like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Even without special information like the line number where our input caused
+    a problem, our custom exception lets us distinguish a parse error from some other
+    I/O error in the same chunk of code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Chaining and re-throwing exceptions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Sometimes you’ll want to take some action based on an exception and then turn
+    around and throw a new exception in its place. This is common when building frameworks
+    where low-level detailed exceptions are handled and represented by higher-level
+    exceptions that can be managed more easily. For example, you might want to catch
+    an `IOException` in a communications package, possibly perform some cleanup, and
+    then throw a higher-level exception of your own, maybe something like `LostServerConnection`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can do this in the obvious way by simply catching the exception and then
+    throwing a new one, but then you lose important information, including the stack
+    trace of the original “causal” exception. To deal with this, you can use the technique
+    of *exception chaining*. This means that you include the causal exception in the
+    new exception that you throw. Java has explicit support for exception chaining.
+    The base `Exception` class can be constructed with an exception as an argument
+    or the standard `String` message and an exception:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can get access to the wrapped exception later with the `getCause()` method.
+    More importantly, Java automatically prints both exceptions and their respective
+    stack traces if you print the exception or if it is shown to the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can add this kind of constructor to your own exception subclasses (delegating
+    to the parent constructor). You can also take advantage of this pattern by using
+    the `Throwable` method `initCause()` to set the causal exception explicitly after
+    constructing your own exception and before throwing it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Sometimes it’s enough to simply do some logging or take some intermediate action
+    and then re-throw the original exception:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: You see this pattern crop up when you have exceptions that don’t contain enough
+    information to handle locally. You can do something with what information is available
+    (like printing an error message to help during debugging), but you don’t have
+    enough information to recover from the problem. You have to pass on the exception
+    and hope that some calling method with more resources will know what to do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: try Creep
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `try` statement imposes a condition on the statements that it guards. It
+    says that if an exception occurs within it, the remaining statements will be abandoned.
+    This has consequences for local variable initialization. If the compiler can’t
+    determine whether a local variable assignment placed inside a `try/catch` block
+    will happen, it won’t let us use the variable. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this example, we can’t use `foo` in the indicated place because there’s
+    a chance it was never assigned a value. One option is to move the assignment for
+    `bar` inside the `try` statement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Sometimes this works just fine. However, now we have the same problem if we
+    want to use `bar` later in `myMethod()`. If we’re not careful, we might end up
+    pulling everything into the `try` statement. The situation changes, however, if
+    we transfer control out of the method in the `catch` clause:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The compiler is smart enough to know that if an error had occurred in the `try`
+    clause, we wouldn’t have reached the `bar` assignment, so it allows us to refer
+    to `foo`. Your code may have different requirements; we just want you to be aware
+    of the options.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The finally Clause
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'What if we have something important to do before we exit our method from one
+    of the `catch` clauses? To avoid duplicating the code in each `catch` branch and
+    to make the cleanup more explicit, you can use the `finally` clause. A `finally`
+    clause can be added after a `try` block and its associated `catch` clauses. Any
+    statements in the body of the `finally` clause are guaranteed to be executed no
+    matter how control leaves the `try` body, whether an exception is thrown or not:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, the statements at the cleanup point are executed eventually,
+    no matter how control leaves the `try`. If control transfers to one of the `catch`
+    clauses, the statements in `finally` are executed after the `catch` completes.
+    If none of the `catch` clauses handles the exception, the `finally` statements
+    are executed before the exception propagates to the next level.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Even if the statements in the `try` execute cleanly, or if we perform a `return`,
+    `break`, or `continue`, the statements in the `finally` clause are still executed.
+    To guarantee that some operations will run, we can even use `try` and `finally`
+    without any `catch` clauses:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Exceptions that occur in a `catch` or `finally` clause are handled normally;
+    the search for an enclosing `try/catch` begins outside the offending `try` statement,
+    after the `finally` has been executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: try with Resources
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A common use of the `finally` clause is to ensure that resources used in a
+    `try` clause are cleaned up, no matter how the code exits the block. Consider
+    opening a network socket (more on these in [Chapter 13](ch13.html#learnjava6-CHP-13)):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: What we mean by “cleaning up” here is deallocating expensive resources or closing
+    connections to things such as files, network sockets, or databases. In some cases,
+    these resources might get cleaned up on their own eventually as Java reclaims
+    the garbage, but at best, that would happen at an unknown time in the future.
+    At worst, the cleanup may never happen or may not happen before you run out of
+    resources. You should always guard against these situations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the real world, however, there are two problems with staying on top of such
+    resource allocation. First, it requires extra work to carry out a proper cleanup
+    pattern in all of your code, including important things like null checks, as shown
+    in our hypothetical example. Second, if you are juggling multiple resources in
+    a single `finally` block, you have the possibility of your cleanup code itself
+    throwing an exception (e.g., on `close()`) and leaving the job unfinished.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The “try with resources” form of the `try` clause can help. In this extended
+    form, you place one or more resource initialization statements within parentheses
+    after the `try` keyword. Those resources will automatically be “closed” for you
+    when control leaves the `try` block:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, we initialize both a `Socket` object and a `FileWriter` object
+    within the `try`-with-resources clause, and we can use them within the body of
+    the `try` statement. When control leaves the `try` statement, either after successful
+    completion or because of an exception, Java automatically closes both resources
+    by calling their respective `close()` methods. Java closes these resources in
+    the *reverse of the order* in which you constructed them, so you can accommodate
+    any dependencies among them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java supports this behavior for any class that implements the `AutoCloseable`
+    interface (which, at current count, over one hundred different built-in classes
+    do). The `close()` method of this interface is prescribed to release all resources
+    associated with the object, and you can implement this easily in your own classes
+    as well. Now when using `try`-with-resources, we don’t have to add any code specifically
+    to close the file or socket; it is done for us automatically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another problem that `try`-with-resources solves is the pesky situation where
+    an exception is thrown during a close operation. Looking back to the prior example
+    in which we used a `finally` clause to do our cleanup, if an exception had been
+    raised by the `close()` method, the new exception would have been thrown at that
+    point, completely abandoning the original exception from the body of the `try`
+    clause. But `try`-with-resources preserves the original exception. If an exception
+    occurs within the body of the `try` and one or more exceptions are raised during
+    the subsequent auto-closing operations, it is the original exception from the
+    body of the `try` that will bubble up to the caller. Let’s look at an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the `try` has begun, if an exception occurs at exception point #1, Java
+    will attempt to close both resources in reverse order, leading to potential exceptions
+    at locations #2 and #3\. In this case, the calling code will still receive exception
+    #1\. Exceptions #2 and #3 are not lost, however; they are merely “suppressed.”
+    You can retrieve them via the `getSuppressed()` method of the exception thrown
+    to the caller. This method returns an array of all of the suppressed exceptions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performance Issues
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Because of the way the Java VM is implemented, using a `try` block to guard
+    against an exception being thrown is free, meaning it doesn’t add any overhead
+    to the execution of your code. However, throwing an exception is not free. When
+    an exception is thrown, Java has to locate the appropriate `try/catch` block and
+    perform other time-consuming activities at runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That’s why you should throw exceptions only in truly “exceptional” circumstances
+    and avoid using them for expected conditions, especially when performance is an
+    issue. For example, if you have a loop, it may be better to perform a small test
+    on each pass and avoid a `try` block rather than potentially throwing an exception
+    several times over the run of the loop. On the other hand, if the exception is
+    thrown only once in a gazillion times, you may want to eliminate the overhead
+    of your small checks and not worry about the cost of throwing that very rare exception.
+    The general rule should be that exceptions are used for abnormal situations, not
+    routine or expected conditions (such as the end of a file or a missing web resource).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Assertions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Java supports assertions as another mechanism for validating the state of your
+    program. An *assertion* is a simple pass/fail test of some condition, performed
+    while your application is running. You can use assertions to “sanity check” your
+    code. Assertions are distinct from other kinds of tests because they check conditions
+    that should never be violated at a logical level: if the assertion fails, it means
+    some code you wrote is not doing its job and the application generally halts with
+    an appropriate error message. Assertions are supported directly by the Java language,
+    and they can be turned on or off at runtime to remove any performance penalty
+    associated with including them in your code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using assertions to test for the correct behavior of your application is a simple
+    but powerful technique for ensuring software quality. It fills a gap between those
+    aspects of software that the compiler can check automatically and those more generally
+    checked by “unit tests” or human testing. Assertions test your own assumptions
+    about program behavior and turn those assumptions into guarantees (at least while
+    assertions are activated).
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you have programmed before, you may have seen something like the following:^([3](ch06.html#id1370))
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: An assertion in Java is equivalent to this example, but you use the `assert`
+    keyword. It takes a Boolean condition and an optional expression value. If the
+    assertion fails, an `AssertionError` is thrown, which usually causes Java to bail
+    out of the application. The idea behind bailing out is that an assertion failure
+    reveals a logical flaw in your code—and it is your responsibility as the programmer
+    to find and fix that flaw.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The optional expression may evaluate to either a primitive value or object
+    type. Either way, its sole purpose is to be turned into a string and shown to
+    the user if the assertion fails. Most often you’ll use a string message explicitly.
+    Here are some examples:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the event of failure, the first two assertions print only a generic message.
+    The third prints the value of `a`, and the last prints the `foo is null!` message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The important thing about assertions is not just that they are more terse than
+    the equivalent `if` condition, but that you can enable or disable them when you
+    run the application. Disabling assertions means that their test conditions are
+    not even evaluated, so there is no performance penalty for including them in your
+    code (other than, perhaps, still consuming a small bit of space in the class files
+    when they are loaded).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enabling and Disabling Assertions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You turn assertions on or off at runtime. When disabled, assertions still exist
+    in the class files but are not executed and do not consume CPU time. You can enable
+    and disable assertions for an entire application, package by package, or even
+    class by class. Remember, assertions are meant to be sanity checks for *you* during
+    development. They are not usually meant to be seen by your end users. Using them
+    as you work on your project but disabling them for “production” is a common tactic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By default, assertions are turned off in Java. To enable them for your code,
+    use the `java` command flag `-ea` or `-enableassertions`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To turn on assertions for a particular class, append the class name:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To turn on assertions just for particular packages, append the package name
+    with trailing ellipses (…​):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When you enable assertions for a package, Java also enables all subordinate
+    package names (e.g., `com.oreilly.examples.text`). However, you can be more selective
+    by using the corresponding `-da` or `-disableassertions` flag to negate individual
+    packages or classes. You can combine all this to achieve arbitrary groupings,
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: This example enables assertions for the `com.oreilly.examples` package as a
+    whole, excludes the package `com.oreilly.examples.text`, but then turns exceptions
+    on for the `MonkeyTypewriters` class in that package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Assertions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: An assertion enforces a rule about something that should be stable in your code
+    and would otherwise go unchecked. You can use an assertion for added safety anywhere
+    you want to verify your assumptions about program behavior that the compiler may
+    not be able to check.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A common situation that cries out for an assertion is testing for multiple
+    conditions or values where one should always be found. In this case, a failing
+    assertion as the default or “fall through” behavior indicates the code is broken.
+    For example, suppose we have a value called `direction` that should always contain
+    one of two constants, `LEFT` or `RIGHT`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The same applies to the default case of a switch:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: In general, you should not use assertions for checking the validity of arguments
+    to methods. You want that validating behavior to be part of your application,
+    not just a quality control test that can be turned off. Methods require valid
+    input as part of their *preconditions*, and you should usually throw an exception
+    if any preconditions are not met. Using exceptions elevates the preconditions
+    to part of the method’s “contract” with the user. However, checking the correctness
+    of the results of your methods with assertions before returning them can be useful.
+    These wrap-up checks are called *postconditions*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sometimes determining what is or is not a precondition depends on your point
+    of view. For example, when a method is used internally within a class, its preconditions
+    may already be guaranteed by the methods that call it. Public methods of the class
+    should probably throw exceptions when their preconditions are violated, but a
+    private method might use assertions because its callers are always closely related
+    code that should obey the correct behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Real-World Exceptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java’s adoption of exceptions as an error-handling technique makes it much simpler
+    for developers to write robust code. The compiler forces you to think about checked
+    exceptions ahead of time. Unchecked exceptions will definitely pop up, but assertions
+    can help you watch out for those runtime problems and hopefully prevent a crash.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The try-with-resources feature makes it even simpler for developers to keep
+    their code clean and “do the right thing” when interacting with limited system
+    resources, such as files and network connections. As we noted at the beginning
+    of the chapter, other languages certainly have facilities or customs for dealing
+    with these problems. Java, as a language, works hard to help you thoughtfully
+    consider issues that can arise in your code. The more you work through resolving
+    those issues, the more stable your application (and the happier your users) will
+    be.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Many of our examples so far have been straightforward and have not really required
+    any fancy error checking. Rest assured we’ll be exploring more interesting code
+    with, many things that merit exception handling. Later chapters will cover topics
+    like multithreaded programming and networking. Those topics are rife with situations
+    that can go wrong at runtime, such as a big calculation running amok or a WiFi
+    connection dropping. Pardon the pun, but you’ll be `try`ing all of these new exception
+    tricks soon enough!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Review Questions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: What statement should you use to manage potential exceptions in your code?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Which exceptions does the compiler require you to handle or throw?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Where do you place any cleanup code that you want to always run after using
+    some resources in a `try` block?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Do assertions have much of a performance penalty when they are disabled?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Code Exercises
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The *Pause.java* program in the *ch06/exercises* folder will not compile. It
+    uses a method, `Thread.sleep()`, to pause the program for five seconds. That `sleep()`
+    method can throw a checked exception. Fix the program so it compiles and runs.
+    (We’ll be seeing more of threads and `Thread.sleep()` in [Chapter 9](ch09.html#learnjava6-CHP-9).)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The exercises include another variation of our “Hello, World” program from [Chapter 2](ch02.html#learnjava6-CHP-2)
+    called `HelloZero`. Use an assertion to make sure that the initial x and y coordinates
+    for the graphical message are greater than zero.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Try running the program and enabling assertions. What happens if you assign
+    a negative number to one of the coordinates? Run the program again but leave assertions
+    disabled. (Recall that “disabled” is the default behavior, so just don’t enable
+    them.) What happens in this case?
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Advanced Exercises
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let’s pretend that a greatest common denominator (GCD) of 1 is an error condition
+    that we need to flag. Create a new class, `Euclid3` , that will do the usual work
+    of finding the GCD but will throw an exception if that common denominator is 1\.
+    (Feel free to start by copying any of your other Euclidean classes.) Create a
+    custom exception class called `GCDException` that stores the offending pair of
+    numbers as details of the exception.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Modify `Euclid3` to test for a GCD of 1 and throw your new `GCDException` if
+    that is the result. (Supplying two prime numbers is a quick way to guarantee a
+    result of 1.)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Before you add any exception handling code, try compiling. Did *javac* warn
+    you about the exception? It should! Go ahead and add a `try/catch` guard or edit
+    the definition of `main()` to throw your exception. If you do handle the new exception,
+    be sure to print a nice error message to the user that includes the “bad” numbers
+    from the caught exception.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: ^([1](ch06.html#id1273-marker)) The somewhat obscure `setjmp()` and `longjmp()`
+    statements in C can save a point in the execution of code and later return to
+    it unconditionally from a deeply buried location. In a limited sense, this is
+    the functionality of exceptions in Java that we explore in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch06.html#id1274-marker)) For example, the `getHeight()` method of the
+    AWT `Image` class returns `-1` if the height isn’t known yet. No error has occurred;
+    the height will be available once the image is loaded. In this situation, throwing
+    an exception would be excessive and could impact performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch06.html#id1370-marker)) If you have done some programming, we hope your
+    error messages are not this opaque! The more helpful and explanatory your messages,
+    the better.
+  prefs: []
+  type: TYPE_NORMAL

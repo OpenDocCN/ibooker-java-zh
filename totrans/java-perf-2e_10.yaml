@@ -1,0 +1,1005 @@
+- en: Chapter 10\. Java Servers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter explores topics around Java server technologies. At their core,
+    these technologies are all about how to transmit data, usually over HTTP, between
+    clients and servers. Hence, this chapter’s primary focus is on topics common to
+    general server technology: how to scale servers using different thread models,
+    asynchronous responses, asynchronous requests, and efficient handling of JSON
+    data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scaling servers is mostly about effective use of threads, and that use requires
+    event-driven, nonblocking I/O. Traditional Java/Jakarta EE servers like Apache
+    Tomcat, IBM WebSphere Application Server, and Oracle WebLogic Server have used
+    Java NIO APIs to do that for quite some time. Current server frameworks like Netty
+    and Eclipse Vert.x isolate the complexity of the Java NIO APIs to provide easy-to-use
+    building blocks for building smaller-footprint servers, and servers like Spring
+    WebFlux and Helidon are built on those frameworks (both use the Netty framework)
+    to provide scalable Java servers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These newer frameworks offer programming models based on reactive programming.
+    At its core, *reactive programming* is based on handling asynchronous data streams
+    using an event-based paradigm. Though reactive programming is a different way
+    of looking at the events, for our purposes both reactive programming and asynchronous
+    programming offer the same performance benefit: the ability to scale programs
+    (and in particular, to scale I/O) to many connections or data sources.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java NIO Overview
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If you’re familiar with the way nonblocking I/O works, you can skip to the next
+    section. If not, here’s a brief overview of how it works and why it is important
+    as the basis of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In early versions of Java, all I/O was blocking. A thread that attempted to
+    read data from a socket would wait (block) until at least some data was available
+    or the read timed out. More importantly, there is no way to know if data is available
+    on the socket without attempting to read from the socket. So a thread that wanted
+    to process data over a client connection would have to issue a request to read
+    the data, block until data is available, process the request and send back the
+    response, and then return to the blocking read on the socket. This leads to the
+    situation outlined in [Figure 10-1](#FigureBlockingRead).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Threads blocking on I/O reads from clients](assets/jp2e_1001.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10-1\. Threads blocking on I/O reads from clients
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Blocking I/O requires that the server has a one-to-one correspondence between
+    client connections and server threads; each thread can handle only a single connection.
+    This is particularly an issue for clients that want to use HTTP keepalive to avoid
+    the performance impact of creating a new socket with every request. Say that 100
+    clients are sending requests with an average 30-second think time between requests,
+    and it takes the server 500 milliseconds to process a request. In that case, an
+    average of fewer than two requests will be in progress at any point, yet the server
+    will need 100 threads to process all the clients. This is highly inefficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, when Java introduced NIO APIs that were nonblocking, server frameworks
+    migrated to that model for their client handling. This leads to the situation
+    shown in [Figure 10-2](#FigureNonBlockingRead).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Threads handling nonblocking I/O](assets/jp2e_1002.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10-2\. Threads with event notification for reads
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Now the socket associated with each client is registered with a selector in
+    the server (the selector here is an instance of the `Selector` class and handles
+    the interface to the operating system that provides notifications when data is
+    available on a socket). When the client sends a request, the selector gets an
+    event from the operating system and then notifies a thread in the server thread
+    pool that a particular client has I/O that can be read. That thread will read
+    the data from the client, process the request, send the response back, and then
+    go back to waiting for the next request.^([1](ch10.html#idm45775547323624)) And
+    while we still have *N* clients in the diagram, they are processed using *M* threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that the clients are no longer coupled to a particular server thread, the
+    server thread pool can be tuned to handle the number of simultaneous requests
+    we expect the server to handle. In the example we used before, a thread pool with
+    a size of two would be sufficient to handle the load from all 100 clients. If
+    the requests could arrive nonuniformly but still within the general parameters
+    of a 30-second think time, we might need five or six threads to handle the number
+    of simultaneous requests. The use of nonblocking I/O allows us to use many fewer
+    threads than we have clients, which is a huge efficiency gain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Server Containers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Scaling server connections over multiple clients is the first hurdle in server
+    performance, which depends on the server using nonblocking I/O for basic connection
+    handling. Whether servers use nonblocking APIs for other operations is also important
+    and is discussed later in this chapter, but for now we’ll look at tuning the basic
+    connection handling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tuning Server Thread Pools
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In current servers, then, the requests that come from clients are handled by
+    an arbitrary thread in the server thread pool. Tuning that thread pool hence becomes
+    quite important.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As mentioned in the previous section, server frameworks vary in the way they
+    manage connections and associated thread pool(s). The basic model described there
+    was to have one or more threads that act as selectors: these threads notify the
+    system call when I/O is available and are called *selector threads*. Then a separate
+    thread pool of *worker threads* handles the actual request/response to a client
+    after the selector notifies them that I/O is pending for the client.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The selector and worker threads can be set up in various ways:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Selector and worker thread pools can be separate. The selectors wait for notification
+    on all sockets and hand off requests to the worker thread pool.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Alternately, when the selector is notified about I/O, it reads (perhaps only
+    part of) the I/O to determine information about the request. Then the selector
+    forwards the request to different server thread pools, depending on the type of
+    request.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A selector pool accepts new connections on a `ServerSocket`, but after the connections
+    are made, all work is handled in the worker thread pool. A thread in the worker
+    thread pool will sometimes use the `Selector` class to wait for pending I/O about
+    an existing connection, and it will sometimes be handling the notification from
+    a worker thread that I/O for a client is pending (e.g., it will perform the request/response
+    for the client).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There needn’t be a distinction at all between threads that act as selectors
+    and threads that handle requests. A thread that is notified about I/O available
+    on a socket can process the entire request. Meanwhile, the other threads in the
+    pool are notified about I/O on other sockets and handle the requests on those
+    other sockets.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Despite these differences, we should keep two basic things in mind when tuning
+    the server thread pools. First (and most important) is that we need sufficient
+    worker threads to handle the number of simultaneous requests (not simultaneous
+    connections) that the server can handle. As discussed in [Chapter 9](ch09.html#ThreadPerformance),
+    this partly depends on whether those requests will themselves execute CPU-intensive
+    code or will make other blocking calls. An additional consideration in this case
+    is what happens if the server makes additional nonblocking calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider a REST server that just performs CPU-intensive calculations. Then,
+    like all CPU-bound cases, there is no need to have more threads than there are
+    virtual CPUs on the machine or container running the server: we’ll never be able
+    to run more threads than that.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What if the REST server, in turn, makes outbound calls to another resource—say,
+    another REST server or a database? Now it depends on whether those calls are blocking
+    or nonblocking. Assume for now that those calls are blocking. Now we’ll need one
+    thread for every simultaneous outbound blocking call. This threatens to turn our
+    server back into an inefficient one-thread-per-client model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imagine that in order to satisfy a particular client request, the worker thread
+    must spend 900 ms retrieving data from a database and 100 ms setting up that database
+    call and processing the data into the response for the client on a system with
+    two non-hyper-threaded CPUs. That server has enough CPU to process 20 requests
+    per second. If a request comes from each client every 30 seconds, the server can
+    handle 600 clients. Because the client connection handling is nonblocking, we
+    don’t need 600 threads in the worker thread pool, but we cannot get by with only
+    2 threads (one per CPU) either. On average, 20 requests will be blocked at a time,
+    so we’ll need at least that many threads in the worker thread pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now let’s say that the outbound request is also nonblocking so that during
+    the 900 ms the database takes to return the answer, the thread making the database
+    call is free to handle other requests. Now we’re back to needing only two worker
+    threads: they can spend all their time handling the 100 ms sections it takes to
+    deal with the database data, keeping the CPUs fully busy and the throughput of
+    our server at the maximum value.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As usual, this simplifies the discussion somewhat: we need time to read and
+    set up the requests, and so on. Still, the basic rule holds: you need as many
+    threads in the worker pool as will be simultaneously executing code and simultaneously
+    blocked on other resources.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another tuning consideration here is the number of threads that need to act
+    as selectors at any given point. You need more than one. A selector thread executes
+    the `select()` call in order to find out which of many sockets has I/O available.
+    It must then spend time processing that data: at the very least, notifying the
+    other worker threads about which clients have a request to be processed. Then
+    it can return and call the `select()` method again. But during the time it processes
+    the results from the `select()` call, another thread should be executing the `select()`
+    call for other sockets to see when they have available data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So in frameworks that have a separate pool of threads for selectors, you’ll
+    want to make sure the pool has at least a few threads (typically, three is the
+    default value for frameworks). In frameworks where the same pool of threads handles
+    selection and processing, you’ll want to add a few extra threads than is required
+    based on the worker guideline we just discussed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Async Rest Servers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: An alternative to tuning the request thread pool of a server is to defer work
+    to another thread pool. This is an approach taken by the async server implementation
+    of JAX-RS as well as Netty’s event executor tasks (designed for long-running tasks)
+    and other frameworks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look at this from the perspective of JAX-RS. In a simple REST server,
+    requests and responses are all handled on the same thread. This throttles the
+    concurrency of those servers. For instance, the default thread pool for a Helidon
+    server on an eight-CPU machine is 32. Consider the following endpoint:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The point of the sleep in this example is just for testing: assume that the
+    sleep is making a remote database call or calling another REST server, and that
+    remote call takes 100 ms. If I run that test in a Helidon server with default
+    configuration, it will handle 32 simultaneous requests. A load generator with
+    a concurrency of 32 will report that each request takes 100 ms (plus 1–2 ms for
+    processing). A load generator with a concurrency of 64 will report that each request
+    takes 200 ms, since each request will have to wait for another request to finish
+    before it can start processing.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Other servers will have a different configuration, but the effect is the same:
+    there will be some throttle based on the size of the request thread pool. Often
+    that is a good thing: if the 100 ms is spent as active CPU time (instead of sleeping)
+    in this example, then the server won’t really be able to handle 32 requests simultaneously
+    unless it is running on a very large machine.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this case, though, the machine is not even close to being CPU-bound; it may
+    take only 20%–30% of a single core to process the load when there is no processing
+    to be done (and again, the same amount to process the load if those 100 ms time
+    intervals are just a remote call to another service). So we can increase the concurrency
+    on this machine by changing the configuration of the default thread pool to run
+    more calls. The limit here would be based on the concurrency of the remote systems;
+    we still want to throttle the calls into those systems so that they are not overwhelmed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'JAX-RS provides a second way to increase the concurrency, and that is by utilizing
+    an asynchronous response. The asynchronous response allows us to defer the business
+    logic processing to a different thread pool:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, the initial request comes in on the server’s default thread
+    pool. That request sets up a call to execute the business logic in a separate
+    thread pool (called the *async thread pool*), and then the `sleepAsyncEndpoint()`
+    method immediately returns. That frees the thread from the default thread pool
+    so it can immediately handle another request. Meanwhile, the async response (annotated
+    with the `@Suspended` tag) is waiting for the logic to complete; when that happens,
+    it is resumed with the response to be sent back to the user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This allows us to run 64 (or whatever parameter we pass to the thread pool)
+    simultaneous requests before the requests start to back up. But frankly, we haven’t
+    achieved anything different from resizing the default thread pool to 64\. In fact,
+    in this case, our response will be slightly worse, since the request gets sent
+    to a different thread for processing, which will take a few milliseconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are three reasons you would use an async response:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To introduce more parallelism into the business logic. Imagine that instead
+    of sleeping for 100 ms, our code had to make three (unrelated) JDBC calls to obtain
+    data needed for the response. Using an async response allows the code to process
+    each call in parallel, with each JDBC call using a separate thread in the async
+    thread pool.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To limit the number of active threads.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To properly throttle the server.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In most REST servers, if we just throttle the request thread pool, new requests
+    will wait their turn, and the queue for the thread pool will grow. Often, this
+    queue is unbounded (or at least has a very large bound) so that the total number
+    of requests ends up being unmanageable. Requests that spend a long time in a thread
+    pool queue will often be abandoned by the time they are processed, and even if
+    they are not abandoned, the long response times are going to kill the total throughput
+    of the system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A better approach is to look at the async thread pool status before queueing
+    the response, and rejecting the request if the system is too busy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: That can be accomplished in many ways, but for this simple example, we’ll look
+    at the active count running in the pool. If the count is equal to the pool size,
+    the response is immediately canceled. (A more sophisticated example would set
+    up a bounded queue for the pool and cancel the request in the thread pool’s rejected
+    execution handler.) The effect here is that the caller will immediately receive
+    an HTTP 503 Service Unavailable status, indicating that the request cannot be
+    processed at this time. That is the preferred way to handle an overloaded server
+    in the REST world, and immediately returning that status will reduce the load
+    on our overloaded server, which in the end will lead to much better overall performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Nonblocking I/O using Java’s NIO APIs allows servers to scale by reducing the
+    number of threads required to handle multiple clients.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This technique means that a server will need one or more thread pools to handle
+    the client requests. This pool should be tuned based on the maximum number of
+    simultaneous requests the server should handle.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A few extra threads are then needed for handling selectors (whether as part
+    of the worker thread pool or a separate thread pool depending on the server framework).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Server frameworks often have a mechanism to defer long requests to a different
+    thread pool, which offers more robust handling of requests on the main thread
+    pool.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Asynchronous Outbound Calls
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The preceding section gave the example of a server with two CPUs that needed
+    a pool of 20 threads to obtain its maximum throughput. That was because the threads
+    spent 90% of their time blocked on I/O while making an outbound call to another
+    resource.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Nonblocking I/O can help in this instance too: if those outbound HTTP or JDBC
+    calls are nonblocking, we needn’t dedicate a thread to the call and can reduce
+    the size of the thread pool accordingly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asynchronous HTTP
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: HTTP clients are classes that (unsurprisingly) handle HTTP requests to a server.
+    There are many clients, and they all have different functional as well as performance
+    characteristics. In this section, we’ll look into the performance characteristics
+    for common use cases among them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java 8 has a basic HTTP client, the `java.net.HttpURLConnection` class (and
+    for secure connections, the subclass `java.net.HttpsURLConnection`). Java 11 adds
+    a new client: the `java.net.http.HttpClient` class (which also handles HTTPS).
+    Other HTTP client classes from other packages include `org.apache.http.cli⁠ent​.HttpClient`
+    from the Apache Foundation, `org​.asynchttpclient.AsyncHttpClient` built on top
+    of the Netty Project, and `org.eclipse.jetty.client.HttpClient` from the Eclipse
+    Foundation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although it is possible to perform basic operations with the `HttpURLConnection`
+    class, most REST calls are made using a framework such as JAX-RS. Hence, most
+    HTTP clients directly implement those APIs (or slight variants), but the default
+    implementation of JAX-RS also provides connectors for the most popular HTTP clients.
+    Hence, you can use JAX-RS with the underlying HTTP client that gives you the best
+    performance. The JAX-RS and underlying HTTP clients carry two basic performance
+    considerations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, the JAX-RS connectors provide a `Client` object that is used to make
+    the REST calls; when using the clients directly, they similarly provide a client
+    object with a name like `HttpClient` (the `HttpURLConnection` class is an exception;
+    it cannot be reused). A typical client would be created and used like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The key in this example is that the `client` object is a static, shared object.
+    All client objects are threadsafe, and all are expensive to instantiate, so you
+    want only a limited number of them (e.g., one) in your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second performance consideration is to make sure that the HTTP client properly
+    pools connections and uses keepalive to keep connections open. Opening a socket
+    for HTTP communications is an expensive operation, particularly if the protocol
+    is HTTPS and the client and server must perform an SSL handshake. Like JDBC connections,
+    HTTP(S) connections should be reused.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All HTTP clients provide a mechanism to pool them, though the mechanism of
+    pooling within the `HttpURLConnection` class is frequently misunderstood. By default,
+    that class will pool five connections (per server). Unlike a traditional pool,
+    though, the pool in this class does not throttle connections: if you request a
+    sixth connection, a new connection will be created and then destroyed when you
+    are finished with it. That kind of transient connection is not something you see
+    with a traditional connection pool. So in the default configuration of the `HttpURLConnection`
+    class, it’s easy to see lots of transient connections and assume that the connections
+    are not being pooled (and the Javadoc isn’t helpful here either; it never mentions
+    the pooling functionality, though the behavior is documented elsewhere).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can change the size of the pool by setting the system property `-Dhttp.maxConnections=*N*`,
+    which defaults to 5\. Despite its name, this property applies to HTTPS connections
+    as well. There is no way to have this class throttle connections, though.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the new `HttpClient` class in JDK 11, the pool follows a similar idea, but
+    with two important differences. First, the default pool size is unbounded, though
+    that can be set with the `-Djdk.httpclient.connectionPoolSize=*N*` system property.
+    That property still doesn’t act as a throttle; if you request more connections
+    than are configured, they will be created when needed and then destroyed when
+    they are complete. Second, this pool is per `HttpClient` object, so if you are
+    not reusing that object, you will not get any connection pooling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In JAX-RS itself, it is frequently suggested to use a different connector than
+    the default if you want a connection pool. Since the default connector uses the
+    `HttpURLConnection` class, that’s not true: unless you want to throttle the connections,
+    you can tune the connection size of that class as we’ve just discussed. Other
+    popular connectors will also pool the connections.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-1\. Tuning the HTTP connection pool of popular clients
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Connector | HTTP client class | Pooling mechanism |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Default | `java.net.HttpURLConnection` | Setting the `maxConnections` system
+    property |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Apache | `org.apache.http.​cli⁠ent.HttpClient` | Create a `PoolingHttpClientConnectionManager`
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Grizzly | `com.ning.http.client.​Asyn⁠cHttpClient` | Pooled by default; can
+    modify configuration |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Jetty | `org.eclipse.jetty.​cli⁠ent.HttpClient` | Pooled by default; can
+    modify configuration |'
+  prefs: []
+  type: TYPE_TB
+- en: In JAX-RS, the Grizzly connection manager uses the `com.ning.http.client​.Asyn⁠cHttpClient`
+    client. That client has since been renamed to `org​.asyn⁠chttpclient.AsyncHttpClient`;
+    it is the async client built on top of Netty.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Async HTTP clients
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Asynchronous (async) HTTP clients, like async HTTP servers, allow for better
+    thread management in an application. The thread that makes an async call sends
+    the request to the remote server, and arrangements are made for a different (background)
+    thread to process the request when it is available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That statement (“arrangements are made”) is purposely vague here, because the
+    mechanism in which that is achieved is very different between different HTTP clients.
+    But from a performance perspective, the point is that using an async client increases
+    performance because it defers the response handling to another thread, allowing
+    more things to run in parallel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Async HTTP clients are a feature of JAX-RS 2.0, though most standalone HTTP
+    clients also support async features directly. In fact, you may have noticed that
+    some of the clients we looked at had *async* as part of their name; they are asynchronous
+    by default. Although they have a synchronous mode, that happens in the implementation
+    of the synchronous methods: those methods make an async call, wait for the response
+    to be complete, and then return that response (synchronously) to the caller.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This async mode is supported by JAX-RS 2.0 implementations, including those
+    in the reference Jersey implementation. That implementation includes several connectors
+    that can be used asynchronously, though not all these connectors are truly asynchronous.
+    In all cases, the response handling is deferred to another thread, but it can
+    operate in two basic ways. In one case, that other thread can simply use standard,
+    blocking Java I/O. In that case, the background thread pool needs one thread for
+    every request to be handled concurrently. That’s the same as with the async server:
+    we gain concurrency by adding lots of other threads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the second case, the HTTP client uses nonblocking I/O. For that kind of
+    processing, the background thread needs a few (at least one, but typically more)
+    threads to handle NIO key selection and then some threads to handle responses
+    as they come in. In many cases, these HTTP clients then use fewer threads overall.
+    NIO is classic event-driven programming: when data on a socket connection is available
+    to be read, a thread (usually from a pool) is notified of that event. That thread
+    reads the data, processes it (or passes the data to yet another thread to be processed),
+    and then returns to the pool.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Async programming is typically thought of as being event-driven, and so in a
+    strict sense, the async HTTP clients that use blocking I/O (and pin a thread for
+    the entire request) are not asynchronous. The API gives the illusion of asynchronous
+    behavior, even if the thread scalability will not be what we are expecting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From a performance perspective, the async client gives us similar benefits
+    as the async server: we can increase concurrency during a request so that it executes
+    more quickly, and we can better manage (and throttle) requests by utilizing different
+    thread pools.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s take a common case for async examples: a REST service that functions
+    as an aggregator of information from three other REST services. The pseudocode
+    outline for such a service looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that we also use an async response in this example, but we don’t need
+    a separate pool as before: the request will be resumed in one of the threads that
+    handles the response.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This introduces the desired concurrency into this operation, but let’s take
+    a little closer look into the thread usage. [Figure 10-3](#FigureAsyncClient)
+    shows the significant thread usage by the Helidon server when executing this example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Async Client Thread Usage](assets/jp2e_1003.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10-3\. Simple thread usage of async HTTP clients
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'At time T1, the request comes in and starts executing on a Helidon request
+    thread. The thread sets up the three remote calls; each call is actually sent
+    by a thread in the async client pool. (In the diagram, the three are sent by the
+    same thread, but that is timing dependent: they may execute on three separate
+    threads depending on how quickly the requests are made and how long it takes them
+    to send their data.) The three sockets associated with those calls are also registered
+    on the event queue being processed by the NIO polling thread. The request thread
+    finishes processing at time T2.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At time T3, the NIO polling thread gets an event that one of the sockets has
+    data, so it sets up HTTP client thread #1 to read and process that data. That
+    processing continues until time T5\. Meanwhile at time T4, the NIO polling thread
+    gets an event that another socket has data to read, which is then read and processed
+    by HTTP client thread #2 (which takes until time T7). Then at time T5, the third
+    socket is ready to be processed. Because HTTP client thread #1 is idle, it can
+    read and process that request, which finishes at time T8 (and at that point, the
+    `resume()` method is called on the response object, and the response is delivered
+    to the client).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The duration of the processing in the client threads is the key here. If the
+    processing is very fast and the responses staggered well enough, a single thread
+    can handle all the responses. If the processing takes a long time or the responses
+    are bunched, we’ll need one thread per request. In the example, we’re in a middle
+    ground: we used fewer threads than a one-thread-per-request model, but more than
+    one thread. This is a key difference between a REST server and something like
+    an nginx server of static content: ultimately, even in a completely asynchronous
+    implementation, the CPU needs of the business logic are going to require a fair
+    number of threads in order to get good concurrency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This example assumes that the HTTP client is utilizing NIO. If the client uses
+    traditional NIO, the figure would be slightly different. When the first async
+    client thread call is made, that call will last all the way until time T7\. The
+    second call on the async client will need a new thread; that request will last
+    until time T8\. And the third async client thread will run until time T5 (the
+    clients would not be expected to complete in the same order as they were started).
+    [Figure 10-4](#FigureAsyncClientTraditional) shows the difference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In either case, the results are the same for the end user: the three requests
+    are handled in parallel, with the expected gain in performance. But the thread
+    usage (and hence overall system efficiency) will be quite different.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Blocking Client Thread Usage](assets/jp2e_1004.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10-4\. Simple thread usage of blocking HTTP clients
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Async HTTP clients and thread usage
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: These background thread pool(s) will act as throttles, of course, and they must
+    as usual be tuned so that they are large enough to handle the concurrency that
+    your application needs, but not too large so as to overwhelm requests to the backend
+    resource. Often the default settings are sufficient, but if you need to look further
+    into the different connectors with the reference implementation of JAX-RS and
+    their background pool, here is some additional information on each of them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Default connector
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The default connector uses blocking I/O. A single async client thread pool
+    in Jersey (the reference JAX-RS implementation) will handle all requests; the
+    threads in this pool are named beginning with `jersey-client-async-executor`.
+    That pool will need one thread per simultaneous request, as [Figure 10-4](#FigureAsyncClientTraditional)
+    showed. By default, that pool size is unbounded; you can set a bound when the
+    client is configured by setting this property:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Apache connector
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although the Apache libraries have a true asynchronous client (one that uses
+    NIO for reading the response rather than requiring a dedicated thread), the Apache
+    connector in Jersey uses the traditional blocking I/O Apache client. With respect
+    to thread pools, it behaves and is configured just like the default connector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Grizzly connector
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The HTTP client used by the Grizzly connector is asynchronous, following the
+    model in [Figure 10-3](#FigureAsyncClient). Multiple pools are involved: a pool
+    (`grizzly-ahc-kernel`) that writes the requests, a pool (`nioEventLoopGroup`)
+    that waits for NIO events, and a pool (`pool-N`) that reads and processes the
+    responses. That latter pool is the important one to configure for throughput/throttling
+    reasons, and its size is unbounded; it can be throttled by using the `ASYNC_THREADPOOL_SIZE`
+    property.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Jetty connector
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Jetty uses an asynchronous client. Requests are sent and read from the same
+    thread pool (and event polling also happens in that pool). In Jersey, that pool
+    is also configured using the `ASYNC_THREADPOOL_SIZE` property, though a server
+    using Jetty has two backend thread pools: the standard pool of `jersey-client-async-executor`
+    threads (which handles miscellaneous bookkeeping), and the pool of threads handling
+    the Jetty clients (those threads are named beginning with `HttpClient`). If that
+    property is not set, the size of the `HttpClient` pool will be 200.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Always make sure that the connection pool for HTTP clients is set correctly.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Asynchronous HTTP clients can improve performance by distributing work among
+    multiple threads, increasing concurrency.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Async HTTP clients built using NIO will require fewer threads than those built
+    using traditional I/O, but a REST server still requires a fairly large number
+    of threads to process asynchronous requests.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Asynchronous database calls
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If the outbound call in question is a call to a relational database, making
+    it truly asynchronous is hard. The standard JDBC API does not lend itself to using
+    nonblocking I/O, so a general solution will require a new API or new technologies.
+    Various proposals around such an API have been made and rejected, and current
+    hopes are that a new lightweight task model known as *fibers* will make it possible
+    for existing synchronous APIs to scale well without the need for asynchronous
+    programming. Fibers are part of the OpenJDK [Project Loom](https://oreil.ly/npuXr),
+    but no target release date has been set (as of this writing).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Proposals (and implementations) of asynchronous JDBC wrappers often defer the
+    JDBC work to a separate thread pool. This is similar to the default Jersey asynchronous
+    HTTP client from the preceding section: from a programmatic viewpoint, the API
+    looks asynchronous. But in implementation, background threads are blocked on the
+    I/O channels, so we don’t gain any scalability by going in that direction.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Various projects outside the JDK can fill the gap. The most widely used is Spring
+    Data [R2DBC](https://oreil.ly/tN6oR) from the Spring project. This requires using
+    a different API, and drivers are available only for certain databases. Still,
+    for nonblocking access to a relational database, this is the best game in town.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For NoSQL databases, the story is somewhat similar. On the other hand, no Java
+    standard exists for accessing a NoSQL database in the first place, so your programming
+    depends on a database-proprietary API anyway. So the Spring projects for reactive
+    NoSQL databases can be used for true asynchronous access.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JSON Processing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we’ve looked at the mechanics of how data is sent in Java servers,
+    let’s delve into the data itself. In this section, we’ll look primarily at JSON
+    processing. Older Java programs often use XML (and the processing trade-offs among
+    JSON and XML are pretty much identical); there are also newer formats like Apache
+    Avro and Google’s protocol buffers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An Overview of Parsing and Marshaling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Given a series of JSON strings, a program must convert those strings into data
+    suitable for processing by Java. This is called either *marshaling* or *parsing*,
+    depending on the context and the resulting output. If the output is a Java object,
+    the process is called *marshaling*; if the data is processed as it is read, the
+    process is called *parsing*. The reverse—producing JSON strings from other data—is
+    called *unmarshaling*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can use three general techniques to handle JSON data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pull parsers
+  prefs: []
+  type: TYPE_NORMAL
+- en: The input data is associated with a parser, and the program asks for (or pulls)
+    a series of tokens from the parser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Document models
+  prefs: []
+  type: TYPE_NORMAL
+- en: The input data is converted to a document-style object that the application
+    can then walk through as it looks for pieces of data. The interface here is in
+    terms of generic document-oriented objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Object representations
+  prefs: []
+  type: TYPE_NORMAL
+- en: The input data is converted to one or more Java objects by using a set of predefined
+    classes that reflect the structure of the data (e.g., a predefined `Person` class
+    is for data that represents an individual). These are typically known as plain
+    old Java objects (POJOs).
+  prefs: []
+  type: TYPE_NORMAL
+- en: These techniques are listed in rough order of fastest to slowest, but again
+    the functional differences between them are more important than their performance
+    differences. Simple scanning is all a parser can do, so they are not ideally suited
+    for data that must be accessed in random order or examined more than once. To
+    handle those situations, a program using only a simple parser would need to build
+    an internal data structure, which is a simple matter of programming. But the document
+    and Java object models already provide structured data, which will usually be
+    easier than defining new structures on your own.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This, in fact, is the real difference between using a parser and using a data
+    marshaler. The first item in the list is a parser, and it is up to the application
+    logic to handle the data as the parser provides it. The next two are data marshalers:
+    they must use a parser to process the data, but they provide a data representation
+    that more-complex programs can use in their logic.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So the primary choice regarding which technique to use is determined by how
+    the application needs to be written. If a program needs to make one simple pass
+    through the data, simply using the fastest parser will suffice. Directly using
+    a parser is also appropriate if the data is to be saved in a simple, application-defined
+    structure; for example, the prices for the items in the sample data could be saved
+    to an `ArrayList`, which would be easy for other application logic to process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using a document model is more appropriate when the format of the data is important.
+    If the format of the data must be preserved, a document format is easy: the data
+    can be read into the document format, altered in some way, and then the document
+    format can simply be written to a new data stream.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For ultimate flexibility, an object model provides Java-language-level representation
+    of the data. The data can be manipulated in the familiar terms of objects and
+    their attributes. The added complexity in the marshaling is (mostly) transparent
+    to the developer and may make that part of the application a little slower, but
+    the productivity improvement in working with the code can offset that issue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JSON Objects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'JSON data has two object representations. The first is generic: simple JSON
+    objects. These objects are manipulated via generic interfaces: `JsonObject`, `JsonArray`,
+    and so on. They provide a way to build up or inspect JSON documents without making
+    specific class representations of the data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second JSON object representation binds the JSON data to a full-fledged
+    Java class, using JSON bindings (JSON-B) that result in POJO. For example, the
+    item data in our sample JSON data would be represented by an `Item` class that
+    has attributes for its fields.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The difference between the two object representations is that the first is
+    generic and requires no classes. Given a `JsonObject` that represents an item
+    in our sample data, the title of the item would be found like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In JSON-B, the title of an item would be available via more intuitive getters
+    and setters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: In either case, the object itself is created with an underlying parser, so it
+    is important to configure the parser for optimal performance. But in addition
+    to parsing the data, the object implementations allow us to produce a JSON string
+    from the object (i.e., to unmarshal the object). [Table 10-2](#TableJsonB) shows
+    the performance of those operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-2\. Performance of JSON object models
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Object model | Marshal performance |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JSON object | 2318 ± 51 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JSON-B classes | 7071 ± 71 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Jackson mapper | 1549 ± 40 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: Producing a simple JSON object is substantially faster than producing custom
+    Java classes, though those Java classes will be easier to work with from a programming
+    perspective.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Jackson mapper in this table is an alternate approach, which at this point
+    has pretty much eclipsed other uses. Although Jackson provides an implementation
+    of the standard JSON parsing (JSON-P) API, they have an alternate implementation
+    that marshals and unmarshals JSON data into Java objects, but that doesn’t follow
+    JSON-B. That implementation is built on the `ObjectMapper` class that Jackson
+    provides. The JSON-B code to marshal data into an object looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `ObjectMapper` code is slightly different:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: From a performance perspective, `ObjectMapper` use has some pitfalls. As the
+    JSON data is marshaled, the `mapper` will create a lot of proxy classes that are
+    used to create the resulting POJO. That in itself is somewhat time-consuming the
+    first time a class is used. To overcome this, a common mistake—and the second
+    performance issue—is to create lots of mapper objects (e.g., a static one per
+    class that performs the marshaling). This often leads to memory pressure, excessive
+    GC cycles, and even `OutOfMemory` errors. There need be only a single `ObjectMapper`
+    object in an application, which helps both CPU and memory usage. Even so, an object
+    model representation of data will consume memory for those objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JSON Parsing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Direct parsing of JSON data has two advantages. First, if the JSON object model
+    is too memory-intensive for your application, directly parsing the JSON and processing
+    it will save that memory. Second, if the JSON you are dealing with contains a
+    lot of data (or data that you want in some way to filter), parsing it directly
+    will be more efficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All JSON parsers are pull parsers, which operate by retrieving data from the
+    stream on demand. The basic pull parser for the tests in this section has this
+    loop as its main logic:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code pulls tokens from the parser. In the code, most tokens are just discarded.
+    When a start token is found, the code checks to see if the token is an item ID.
+    If it is, the next character token will be the ID the application wants to save.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This test also allows us to filter the data; in this case, we are filtering
+    to read only the first 10 items in the JSON data. That’s done when we process
+    the ID: that ID is saved via the `addItemId()` method, which returns `true` if
+    the desired number of IDs have been stored. When that happens, the loop can just
+    return and not process the remaining data in the input stream.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How do these parsers actually perform? [Table 10-3](#TablePullParserJson) shows
+    the average time in microseconds to parse the sample document, assuming parsing
+    stops after 10 items, and to process the entire document. Predictably, parsing
+    90% fewer items leads to a 90% improvement in performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 10-3\. Performance of pull parsers
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Items processed | Default parser | Jackson parser |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | 159 ± 2 us | 86 ± 5 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | 1662 ± 46 us | 770 ± 4 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: As has been the case for a while, the Jackson parser delivers superior performance
+    here, but both are quite faster than reading actual objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are two options for processing JSON: creating POJOs objects, and using
+    direct parsing.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The choice is dependent on the application needs, but direct parsing offers
+    filtering and general performance opportunities. Creating JSON objects can often
+    lead to GC issues when the objects are large.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Jackson parser is generally the fastest parser; it should be preferred over
+    default implementations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Nonblocking I/O forms the basics of effective server scaling because it allows
+    servers to handle a relatively large number of connections with a relatively small
+    number of threads. Traditional servers utilize this for basic client connection
+    handling, and newer server frameworks can extend the nonblocking nature up the
+    stack to other applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch10.html#idm45775547323624-marker)) This scheme has many slight variations;
+    you’ll see some of those in the next section.
+  prefs: []
+  type: TYPE_NORMAL

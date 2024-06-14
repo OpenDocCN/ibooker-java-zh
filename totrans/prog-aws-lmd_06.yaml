@@ -1,0 +1,729 @@
+- en: Chapter 6\. Testing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A good test suite, like the solid foundation of a house, provides a known baseline
+    of system behavior on top of which we can build confidently. That baseline gives
+    us confidence to add features, fix bugs, and refactor without worrying that we’ll
+    break other parts of the system. When integrated into a development workflow,
+    that same test suite also encourages good practices by making it easier to maintain
+    existing tests and add new ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, foundations aren’t free. The effort of maintaining tests must be
+    balanced with the value that the tests provide. If we spend all of our effort
+    on testing, we’ll have none left to work on the rest of the system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For serverless applications, drawing the line between valuable tests and brittle
+    technical debt is harder than ever. Fortunately, we can use a familiar model to
+    help consider the trade-offs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Test Pyramid
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The classic “Test Pyramid” (from the 2009 book *Succeeding with Agile* by Mike
+    Cohn, shown in [Figure 6-1](#test-pyramid)) is a useful guide in helping us decide
+    which kinds of tests to write. The pyramid metaphor illustrates the trade-offs
+    between the number of tests in a given slice, the value of those tests, and the
+    costs to write, run, and maintain them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch06_image01.png](assets/awsl_0601.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-1\. The Test Pyramid
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Testing in a serverless world isn’t substantively different than in a traditional
+    application, especially nearer the base of the pyramid. However, as with any distributed
+    system made up of different components and services, higher-level “end-to-end”
+    testing is more challenging. In this chapter, we’ll address testing from the bottom
+    of the pyramid to the top, with plenty of examples along the way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unit Tests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: At the base of the pyramid are unit tests—these tests should exercise specific
+    pieces of our components of our application, without relying on any external dependencies
+    (like databases). Unit tests should execute quickly, and we should be able to
+    run them regularly (or even automatically) during the course of development, with
+    a minimum of configuration and no network access. We should have as many unit
+    tests as necessary to give us confidence that our code is working correctly. Unit
+    tests not only cover the “happy paths,” but thoroughly address edge cases and
+    error handling. Even a small application might have dozens or hundreds of unit
+    tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Functional Tests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the middle of the pyramid are the functional tests. Like unit tests, these
+    tests should execute quickly, and shouldn’t rely on external dependencies. Unlike
+    unit tests, we might have to mock or stub those external dependencies to meet
+    the runtime requirements of the component under test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rather than attempting to exhaustively exercise every logical branch of our
+    code, our functional tests address the major code paths for a component, paying
+    particular attention to failure modes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: End-to-End Tests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: At the top of the pyramid are the end-to-end tests. An end-to-end test submits
+    input to the application (often via the normal user interface or API) and then
+    makes assertions on the output or side effects. Unlike a functional test, an end-to-end
+    test runs against the complete application and all of its external dependencies,
+    in a production-like environment (although often isolated from production).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because end-to-end tests are more expensive to run than functional and unit
+    tests (in terms of runtime and infrastructure cost), you typically should only
+    test a few important scenarios. A good rule of thumb is to have at least one end-to-end
+    test that covers the most important path through an application (e.g., the purchase
+    path in an online shopping application).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refactoring for Testing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We’re going to use the serverless data pipeline we built in [Chapter 5](ch05.html#ch05)
+    as the basis to build out a suite of unit, functional, and end-to-end tests. Before
+    we jump in, let’s do a little refactoring to make our data pipeline Lambdas easier
+    to test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recall from the previous section that unit tests exercise specific pieces of
+    components of our application. In our case, we’re referring to methods within
+    the Java classes that make up our Lambda functions. We want to write tests that
+    provide input to certain methods, and assert that the output (or side effects)
+    of those methods are what we expect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To start, let’s review `BulkEventsLambda`, keeping in mind the unit and functional
+    slices of the Test Pyramid. This relatively simple Lambda function is interacting
+    with two external AWS services (S3 and SNS), as well as serializing and deserializing
+    JSON data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Revisiting BulkEventsLambda
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '`BulkEventsLambda` is triggered whenever a file is uploaded to a specific S3
+    bucket. The handler method is invoked with an `S3Event` object. For each `S3EventNotificationRecord`
+    within that event, the Lambda retrieves a JSON file from an S3 bucket. That JSON
+    file contains zero or more JSON objects. The Lambda deserializes the JSON file
+    into a collection of `WeatherEvent` Java objects. Each of those Java objects is
+    then serialized into a `String` and published to an SNS topic. Finally, the Lambda
+    function writes a log entry to STDOUT (and hence to CloudWatch Logs) stating the
+    number of weather events that were sent to SNS.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code you saw in [Chapter 5](ch05.html#ch05) was written and organized for
+    clarity, but not necessarily for ease of testing. Let’s take a look at the four
+    methods in the `BulkEvents Lambda` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, the `handler` method, which receives an `S3Event` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is the only method accessible from outside the class—without refactoring,
+    it means that any tests for this class *must* invoke this method with an `S3Event`
+    object. Furthermore, the method has a `void` return type, so asserting success
+    or failure is difficult.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Moving on, we see that this method calls `processS3EventRecord` for each incoming
+    event record:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This method is private, so it can’t be tested at all without changing the visibility
+    to “package-private” (by removing the `private` keyword). Like the `handler` function,
+    it has a void return type, so any assertions we make will be on the side effects
+    rather than the return value of the method. This method has two explicit side
+    effects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `System.out.println` call.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The `sns.publish` call, which sends an SNS message to the topic named by the
+    `snsTopic` field. Because this is an AWS SDK call, a number of other environment
+    and system attributes must be accounted for:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The appropriate AWS configuration must be in place and correct.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The AWS API endpoint for the configured region must be accessible over the network.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The named SNS topic must exist.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The AWS credentials we’re using must have access to write to that SNS topic.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To invoke `processS3EventRecord` as written, we have to address all of those
+    items ahead of time. For a unit test, this is unacceptable overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, if we also want to assert that `processS3EventRecord` has run correctly,
+    we need a way of knowing that the SNS message was sent to the correct topic. One
+    way to do that would be to subscribe to the SNS topic within our test process
+    and wait for the expected message to show up. As before, this is unacceptable
+    overhead for a unit test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A common way to test these side effects in Java is to mock or stub the classes
+    responsible for those side effects using tools like [Mockito](https://site.mockito.org).
+    This allows us to test our own application classes that produce side effects,
+    by replacing things like the AWS SDK with a mock that looks and acts similarly
+    but allows us to avoid actually setting up a real SNS topic. Using techniques
+    like [argument capture](https://oreil.ly/GPdlH), mocks can also save the parameters
+    used to call them, which allows us to make assertions about how they are called—in
+    this case we could assert that the `sns.publish` method was called with the correct
+    topic name and message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To use a mock AWS SDK object like this, we need a way to inject it into the
+    class under test—typically this is done via a constructor that accepts the appropriate
+    parameters. `BulkEventsLambda` doesn’t have such a constructor, so we’ll need
+    to add one to be able to use mock objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `readWeatherEventsFromS3` method is another example of a method with a side
+    effect, in this case a remote API call. In this case, it uses the AWS S3 SDK client’s
+    `getObject` call to download data from the S3.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That data is then deserialized into a collection of `WeatherEvent` objects
+    and returned to the caller:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: This method does two distinctly different things—it downloads data from S3 *and*
+    deserializes that data. That combination of actions makes it harder for us to
+    test each piece of functionality in isolation. If we want to test how errors are
+    handled during JSON deserialization, we still have to make sure that the input
+    to the method has the correct S3 bucket and key even though that information isn’t
+    relevant to the JSON processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, `weatherEventToSnsMessage` is an example of a method that should be
+    easy to test (if made visible outside of the `BulkEventsLambda` class). It takes
+    a single `Weather Event` object and returns a `String`, and it doesn’t cause any
+    side effects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refactoring BulkEventsLambda
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Having reviewed the four methods in `BulkEventsLambda`, here are some things
+    we can do to better enable unit and functional testing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enable injection of mock AWS SDK classes via constructor arguments.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Isolate side effects, so most methods can be tested without using mocks.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Split methods up so most methods just do one thing.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Add Constructors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'With those things in mind, let’s start by adding some constructors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: We now have two constructors. As we learned in [Chapter 3](ch03.html#ch03),
+    the no-arguments default constructor will be invoked by the Lambda runtime when
+    our function is run for the first time. That default constructor creates an AWS
+    SDK SNS client and an S3 client and passes those two objects to the second constructor
+    (this technique is called *constructor chaining*).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second constructor takes those client objects as parameters. In tests we
+    can use this constructor to instantiate the `BulkEventsLambda` class with mock
+    AWS SDK clients. That second constructor also reads the `FAN_OUT_TOPIC` environment
+    variable, and throws an exception if it isn’t set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Isolate Side Effects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We noted three side effects from the `BulkEventsLambda` review:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Download a JSON file from S3.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Publish messages to an SNS topic.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Write a log entry to STDOUT.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first two impose a number of prerequisites on the test environment, slow
+    down test execution, and make tests more complex to write. While we definitely
+    want to test those side effects (using both mocks *and* the actual AWS services),
+    isolating them to as few methods as possible will help make our unit tests simple
+    and fast.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With that in mind, let’s look at two new methods that isolate AWS side effects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first method, `publishToSns`, takes a `String` parameter and publishes a
+    message to an SNS topic. The second, `getObjectFromS3`, takes an `S3EventNotification​Record`
+    and downloads the corresponding file from S3.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These two methods are now called from a refactored `handler` method, which
+    is where the actual isolation of side effects is realized:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: There’s more going on in this new `handler` method, but for now just note that
+    `get​ObjectFromS3` and `publishToSns` are called from here (and nowhere else).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Split Methods
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In addition to isolating our side effects, the new `handler` method now also
+    contains much of our processing logic. This might seem contrary to our goal, but
+    this “glue” logic orchestrates a number of simpler, single-purpose methods that
+    are easier to unit test. In this case, the `readWeatherEvents` method no longer
+    requires access to S3 (or to a mock S3 client). Its only purpose is to deserialize
+    an `InputStream` into a collection of `WeatherEvent` objects and handle errors
+    (by rethrowing a `RuntimeException`, which will halt the Lambda function).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that we’re now using Java’s [`try-with-resources` feature](https://oreil.ly/LxRNY)
+    to automatically close the input stream. We also removed the `private` keyword
+    from this and the `weather​EventToSnsMessage` method, so those can both be accessed
+    from our test classes as necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testing BulkEventsLambda
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we’ve refactored, let’s add some unit tests for `BulkEventsLambda`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unit Testing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: These tests are completely isolated from side effects—we don’t have to configure
+    or connect to any AWS services or any other external dependencies. That isolation
+    also means that these tests execute quickly, in just a few milliseconds. We have
+    only a few, because `BulkEventsLambda` is fairly simple, but even hundreds of
+    unit tests written in this style could be run in a few seconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here’s a unit test for the `readWeatherEvents` method of `BulkEventsLambda`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: For convenience, we’re reading the input data from a JSON file on disk. We then
+    create an instance of `BulkEventsLambda`—notice that we’re simply passing in `null`
+    for the SNS and S3 clients, because they’re not needed by this test at all. The
+    `readWeatherEvents` method is called, and we assert that it produced the right
+    objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can test the failure case with even less code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here we use a [JUnit Rule](https://oreil.ly/YeLiW) to assert that an exception
+    of the expected type is thrown by our method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As unit tests go, these are simple and effective. For a more complex Lambda
+    function, we might have dozens of tests like these to test as many logical paths
+    and edge cases as necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Functional Testing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Like the unit tests, we want our functional tests to run without having to connect
+    to AWS. However, unlike the unit tests, we want to test our Lambda function as
+    a single component, and doing so means that we have to convince our code that
+    it’s talking to the cloud! To accomplish this feat of trickery and deceit, we’ll
+    use Mockito to build “mock” instances of the AWS SDK clients configured to return
+    prearranged responses to method calls. For example, if our code calls the `getObject`
+    method on the S3 client, our mock will return an `S3Object` complete with fixtured
+    test data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here’s a functional test for the “happy path”:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first thing you should note is that this test is *much* longer than our
+    unit tests. Most of that additional code is setting up the mock objects and configuring
+    the environment so that our Lambda function’s `handler` method thinks it’s running
+    in the cloud.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second thing to note is that we’re reading the input data from a file on
+    disk. *s3_event.json* is a file that was generated using this `sam` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then changed the `key` field to reference another local file, *bulk_data.json*,
+    which represents the weather data that would be stored on S3:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Our mock S3 client returns the contents of the *bulk_data.json* file when the
+    `s3.getObject` method is called, and our Lambda function is none the wiser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lastly, we want to assert that `BulkEventsLambda` publishes messages to SNS,
+    but without actually sending messages to AWS. Here we use our mock SNS client
+    and capture the parameters that are passed to the `sns.publish` method. If that
+    method is called the expected number of times with the right parameters, our test
+    passes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another functional test asserts that the Lambda function throws an exception
+    if it receives bad input data. The last test asserts that an exception is thrown
+    if the `FAN_OUT_TOPIC` environment variable isn’t set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These functional tests are more complex to write and take somewhat longer to
+    run, but they give us confidence that `BulkEventsLambda` will behave as we expect
+    it to when the Lambda runtime calls the `handler` function with an `S3Event` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: End-to-End Testing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: With the confidence gained from our suite of unit and functional tests, we can
+    focus our most complex and costly testing methodology on the critical path for
+    our application. We can also take advantage of our infrastructure-as-code approach
+    to deploy a complete version of our serverless application and infrastructure
+    to AWS, for the sole purpose of running an end-to-end test. When the test has
+    completed successfully, we’ll clean up and tear it all down.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To run the end-to-end test, we simply need to execute the `mvn verify` command.
+    This uses the Maven Failsafe plug-in, which finds test classes that end in **IT*
+    and runs them using JUnit. In this case, IT stands for integration test, but that’s
+    just Maven nomenclature—we could configure the Failsafe plug-in to use a different
+    suffix.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For our end-to-end test, we exercise our application exactly as it would be
+    used in production. We upload a JSON file to an S3 bucket and then assert that
+    the `Single EventLambda` produces the correct CloudWatch Logs output. From the
+    perspective of the test, our serverless application is a black box.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here’s the main body of the test method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here are a few points worth noting from this example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The test resolves the actual name (in AWS parlance, the “Physical ID”) of the
+    S3 bucket from our CloudFormation stack. This technique for resource discovery
+    is useful because it allows us to deploy named stacks that don’t explicitly specify
+    names for resources (or that use the stack name as part of the resource name).
+    This means that we can deploy the same application multiple times in the same
+    account and even the same region, using different names each time for the CloudFormation
+    stack.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For simplicity’s sake, our test simply sleeps for 30 seconds before checking
+    if the `SingleEventLambda` has executed. Another approach would be to poll CloudWatch
+    Logs proactively, which would be more reliable, but obviously more complex.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We clean up some resources at the end of the test method. We do this so if the
+    test fails, those resources remain available for our investigation into the test
+    failure. If we had used JUnit’s `@After` functionality, that cleanup would happen
+    even if the test failed, thus hampering an investigation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Now that you’ve seen the test method itself, let’s look at how we set up and
+    tear down the test infrastructure. We need to make sure that the S3 bucket, SNS
+    topic, and Lambda functions are in place for our test to run, but we don’t want
+    to create those resources individually. Instead, we want to use the same SAM *template.yaml*
+    file as we use for production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For this example, we’re using the Maven “exec” plug-in to hook into the build
+    lifecycle’s “pre-integration” phase, which will execute before the end-to-end
+    test. Don’t be put off by the fact that we’re using Maven here. You could just
+    as easily do this with a simple shell script or Makefile. What’s important is
+    that we use the same *template.yaml* file as we would use for production, and
+    if possible, the same AWS CLI commands to deploy our application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: It takes several lines of XML to describe, but in this example we’re calling
+    the SAM CLI binary with the same arguments that we used in [Chapter 5](ch05.html#ch05).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `${integration.test.code.bucket}` and `${integration.test.stack.name}`
+    properties come from the top-level *pom.xml* file and are defined like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Our Maven process populates the value of `${integration.test.code.bucket}` with
+    the value of the `$CF_BUCKET` environment variable, which we’ve used in previous
+    chapters. The `${maven.build.timestamp.format}` [*pom.xml* documentation](https://oreil.ly/FIl7J)
+    tells Maven to construct a human-readable numeric timestamp, which we then use
+    as part of the `${integration.test.stack.name}`. This gives us a (nearly) unique
+    CloudFormation stack name, so multiple end-to-end tests could be run simultaneously
+    using the same AWS account and region (as long as they’re not started in the same
+    second!).
+  prefs: []
+  type: TYPE_NORMAL
+- en: What we don’t see in this Maven configuration are any AWS credentials. Processes
+    started by the Maven “exec” plug-in will pick up environment variables automatically,
+    so this will use the AWS environment variables that we’ve been using for the last
+    several chapters without any additional configuration on our part.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In most cases you should use separate AWS accounts for your test environments
+    to isolate test infrastructure and data. To achieve that here, simply supply a
+    different set of AWS credentials via environment variables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After our end-to-end test runs, teardown of the CloudFormation stack works
+    in the same way, as part of Maven’s “post-integration-test” lifecycle phase:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We’ve now reached the very top of the Test Pyramid. The end-to-end test brings
+    a lot of value: it deploys and runs the entire application. It tests the critical
+    path just as it would be executed in production. However, with that value comes
+    a fairly high cost—we need a lot of extra configuration and setup and teardown
+    code to make sure the test can be run repeatedly and without any affinity to a
+    particular AWS account or region. Despite those efforts, this test is still vulnerable
+    to vendor outages, environment changes, and the indeterminate behavior inherent
+    in operating over a global network.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In other words, our end-to-end test is brittle and costly to maintain compared
+    to the unit and functional tests. For this reason, you should try to write as
+    few end-to-end tests as possible and instead rely on more, lower-cost tests to
+    fully exercise your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Local Cloud Testing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For years, an inherent and unassailable property of a good development workflow
+    was the ability to run the entire application or system locally, without touching
+    any external resources. For a traditional desktop or server application, this
+    might mean just running the application itself, or perhaps the application and
+    a database. For a web application, the list of requirements might include a reverse
+    proxy, a web server, and a job queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But what happens when we start using vendor-managed cloud services? Our initial
+    reaction might be to try to achieve the same fully local development workflow
+    we were used to before, using tools like [localstack](https://oreil.ly/TbcEo)
+    and `sam local` ([“sam local invoke”](#sam-local)). This approach might seem tenable
+    at first, but it quickly puts us at odds with a cloud-first architecture in which
+    we want to take full advantage of scalable, reliable, fully managed services provided
+    by a cloud vendor. Most importantly, we don’t want to limit our service choices
+    to only those that enable our development workflow. This is the tail wagging the
+    dog!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What are the difficulties with fully local development in a world of vendor-managed
+    cloud services? The fundamental issue is fidelity: it is simply impossible for
+    a local version of a service (like S3 or DynamoDB or Lambda) to have the same
+    properties as the cloud version. Even if the local analogue is provided by the
+    vendor (in this case AWS), it will have at least some of the following issues:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Missing features
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Different (or absent) control plane behavior (e.g., creating DynamoDB tables)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Different scaling behavior
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Different latency (e.g., extremely low latency for the local analogue compared
+    to the cloud service)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Different failure modes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Different (or no) security controls
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Having run into these issues time after time, we advocate for the pragmatic
+    testing approach taken in this chapter. We rely extensively on unit tests to verify
+    the behavior of specific pieces of functionality, and we use those tests to rapidly
+    iterate during development of individual Lambda functions. Functional tests exercise
+    the capability of a Lambda function using mocks or stubs in place of AWS SDK clients
+    and other external dependencies. Finally, a few full-fledged end-to-end tests
+    let us execute the entire application in the cloud, using the same SAM infrastructure
+    template and CLI commands that we would use in production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cloud Test Environments
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For the unit and functional testing we’ve described in this chapter, a local
+    environment with Java, Maven, and your favorite IDE will suffice nicely. For the
+    end-to-end tests, you need access to an AWS account. This is all straightforward
+    for a single developer working in isolation, but when working as part of a larger
+    team, it can get more complex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you’re working as a part of a larger team, what’s the best way to work
+    with cloud resources? We have found that a good place to start is for each developer
+    to have an isolated development account and for the team as a whole to have one
+    account per shared integration environment (e.g., dev, test, staging). Things
+    can get tricky when relying on truly shared resources (such as databases or S3
+    buckets), but in general maintaining isolation during rapid development prevents
+    an entire class of issues ranging from accidental deletion to resource contention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A rigorous infrastructure-as-code approach makes managing resources in multiple
+    accounts much easier. Taking it a step further, an infrastructure-as-code approach
+    to setting up build pipelines means that standing up and deploying a serverless
+    application in a new account might be as simple as deploying a single CloudFormation
+    stack representing the build pipeline, which will then pull the latest source
+    code and deploy the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Testing serverless applications is not substantively different than testing
+    traditional applications—it’s all about finding the right balance of coverage,
+    complexity, cost, and value, and scaling our testing approach to work for a team.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, you learned that the Test Pyramid can guide your testing strategy
+    for a serverless application. We refactored our Lambda code to ease unit testing
+    and to enable functional testing without a network connection. The end-to-end
+    test demonstrated the efficacy of an infrastructure-as-code approach as well as
+    the high degree of complexity inherent in testing a distributed application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You saw that trying to run cloud services for local testing is subject to a
+    host of issues, especially the lack of fidelity that can be achieved locally.
+    If you want to test a cloud-based application, at some point you have to actually
+    run it in the cloud! Finally, for a team to work effectively in this way, developers
+    should have isolated cloud accounts, and teams should have shared integration
+    environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Through testing, we now have confidence that our application will behave as
+    expected. In the next chapter, we’ll explore how to gain insight into the behavior
+    of our deployed applications through logging, metrics, and tracing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exercise
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The code and tests in this chapter exercise S3 and SNS. Write an integration
+    test for the [Chapter 5](ch05.html#ch05) application that makes HTTP calls from
+    Java to the deployed API Gateway and then asserts on the responses (and side effects).
+    For extra credit, use [Java 11’s new native HTTP client](https://oreil.ly/ctKPo)!
+  prefs: []
+  type: TYPE_NORMAL

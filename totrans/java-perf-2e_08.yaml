@@ -1,0 +1,866 @@
+- en: Chapter 8\. Native Memory Best Practices
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The heap is the largest consumer of memory in a Java application, but the JVM
+    will allocate and use a large amount of native memory. And while [Chapter 7](ch07.html#Memory)
+    discussed ways to efficiently manage the heap from a programmatic point of view,
+    the configuration of the heap and how it interacts with the native memory of the
+    operating system is another important factor in the overall performance of an
+    application. There’s a terminology conflict here, since C programmers tend to
+    refer to portions of their native memory as the C heap. In keeping with a Java-centric
+    worldview, we’ll continue to use *heap* to refer to the Java heap, and *native
+    memory* to refer to the non-heap memory of the JVM, including the C heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter discusses these aspects of native (or operating system) memory.
+    We start with a discussion of the entire memory use of the JVM, with a goal of
+    understanding how to monitor that usage for performance issues. Then we’ll discuss
+    various ways to tune the JVM and operating system for optimal memory use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Footprint
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The heap (usually) accounts for the largest amount of memory used by the JVM,
+    but the JVM also uses memory for its internal operations. This nonheap memory
+    is native memory. Native memory can also be allocated in applications (via JNI
+    calls to `malloc()` and similar methods, or when using New I/O, or NIO). The total
+    of native and heap memory used by the JVM yields the total *footprint* of an application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From the point of view of the operating system, this total footprint is the
+    key to performance. If enough physical memory to contain the entire total footprint
+    of an application is not available, performance may begin to suffer. The operative
+    word here is *may*. Parts of native memory are used only during startup (for instance,
+    the memory associated with loading the JAR files in the classpath), and if that
+    memory is swapped out, it won’t necessarily be noticed. Some of the native memory
+    used by one Java process is shared with other Java processes on the system, and
+    some smaller part is shared with other kinds of processes on the system. For the
+    most part, though, for optimal performance you want to be sure that the total
+    footprint of all Java processes does not exceed the physical memory of the machine
+    (plus you want to leave some memory available for other applications).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring Footprint
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To measure the total footprint of a process, you need to use an operating-system-specific
+    tool. In Unix-based systems, programs like `top` and `ps` can show you that data
+    at a basic level; on Windows, you can use `perfmon` or `VMMap`. No matter which
+    tool and platform are used, you need to look at the actual allocated memory (as
+    opposed to the reserved memory) of the process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The distinction between allocated and reserved memory comes about as a result
+    of the way the JVM (and all programs) manage memory. Consider a heap that is specified
+    with the parameters `-Xms512m` `-Xmx2048m`. The heap starts by using 512 MB, and
+    it will be resized as needed to meet the GC goals of the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That concept is the essential difference between committed (or allocated) memory
+    and reserved memory (sometimes called the *virtual size* of a process). The JVM
+    must tell the operating system that it might need as much as 2 GB of memory for
+    the heap, so that memory is *reserved*: the operating system promises that when
+    the JVM attempts to allocate additional memory when it increases the size of the
+    heap, that memory will be available.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Still, only 512 MB of that memory is allocated initially, and that 512 MB is
+    all of the memory that is being used (for the heap). That (actually *allocated*)
+    memory is known as the *committed memory*. The amount of committed memory will
+    fluctuate as the heap resizes; in particular, as the heap size increases, the
+    committed memory correspondingly increases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This difference applies to almost all significant memory that the JVM allocates.
+    The code cache grows from an initial to a maximum value as more code gets compiled.
+    Metaspace is allocated separately from the heap and grows between its initial
+    (committed) size and its maximum (reserved) size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread stacks are an exception to this. Every time the JVM creates a thread,
+    the OS allocates some native memory to hold that thread’s stack, committing more
+    memory to the process (until the thread exits at least). Thread stacks, though,
+    are fully allocated when they are created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Unix systems, the footprint of an application can be estimated by the *resident
+    set size (RSS)* of the process as reported by various OS tools. That value is
+    a good estimate of the amount of committed memory a process is using, though it
+    is inexact in two ways. First, the few pages that are shared at the OS level between
+    JVM and other processes (that is, the text portions of shared libraries) are counted
+    in the RSS of each process. Second, a process may have committed more memory than
+    it paged in at any moment. Still, tracking the RSS of a process is a good first-pass
+    way to monitor the total memory use. On more recent Linux kernels, the PSS is
+    a refinement of the RSS that removes the data shared by other programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On Windows systems, the equivalent idea is called the *working set* of an application,
+    which is what is reported by the task manager.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Minimizing Footprint
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To minimize the footprint used by the JVM, limit the amount of memory used
+    by the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap
+  prefs: []
+  type: TYPE_NORMAL
+- en: The heap is the biggest chunk of memory, though surprisingly it may take up
+    only 50% to 60% of the total footprint. Using a smaller maximum heap (or setting
+    the GC tuning parameters such that the heap never fully expands) limits the program’s
+    footprint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread stacks
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread stacks are quite large, particularly for a 64-bit JVM. See [Chapter 9](ch09.html#ThreadPerformance)
+    for ways to limit the amount of memory consumed by thread stacks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code cache
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code cache uses native memory to hold compiled code. As discussed in [Chapter 4](ch04.html#JustInTimeCompilation),
+    this can be tuned (though performance will suffer if all the code cannot be compiled
+    because of space limitations).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Native library allocations
+  prefs: []
+  type: TYPE_NORMAL
+- en: Native libraries can allocate their own memory, which can sometimes be significant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next few sections discuss how to monitor and reduce these areas.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The total footprint of the JVM has a significant effect on its performance,
+    particularly if physical memory on the machine is constrained. Footprint is another
+    aspect of performance tests that should be commonly monitored.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Native Memory Tracking
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The JVM provides bounded visibility into how it allocates native memory. It
+    is important to realize that this tracking applies to the memory allocated by
+    the code JVM itself, but it does not include any memory allocated by a native
+    library used by the application. This includes both third-party native libraries
+    and the native libraries (e.g., *libsocket.so*) that ship with the JDK itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the option `-XX:NativeMemoryTracking=*off|summary|detail*` enables this
+    visibility. By default, Native Memory Tracking (NMT) is off. If the summary or
+    detail mode is enabled, you can get the native memory information at any time
+    from `jcmd`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the JVM is started with the argument `-XX:+PrintNMTStatistics` (by default,
+    `false`), the JVM will print out information about the allocation when the program
+    exits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the summary output from a JVM running with a 512 MB initial heap size
+    and a 4 GB maximum heap size:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Although the JVM has made memory reservations totaling 5.9 GB, it has used
+    much less than that: only 620 MB. This is fairly typical (and one reason not to
+    pay particular attention to the virtual size of the process displayed in OS tools,
+    since that reflects only the memory reservations).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This memory usage breaks down as follows. The heap itself is (unsurprisingly)
+    the largest part of the reserved memory at 4 GB. But the dynamic sizing of the
+    heap meant it grew only to 268 MB (in this case, the heap sizing was `-Xms256m
+    -Xmx4g`, so the actual heap usage has expanded only a small amount):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next is the native memory used to hold class metadata. Again, note that the
+    JVM has reserved more memory than it used to hold the 24,316 classes in the program.
+    The committed size here will start at the value of the `MetaspaceSize` flag and
+    grow as needed until it reaches the value of the `MaxMetaspaceSize` flag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Seventy-seven thread stacks were allocated at about 1 MB each:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then comes the JIT code cache: 24,316 classes is not very many, so just a small
+    section of the code cache is committed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next is the area outside the heap that GC algorithm uses for its processing.
+    The size of this area depends on the GC algorithm in use: the (simple) serial
+    collector will reserve far less than the more complex G1 GC algorithm (though,
+    in general, the amount here will never be very large):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Similarly, this area is used by the compiler for its operations, apart from
+    the resulting code placed in the code cache:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Internal operations of the JVM are represented here. Most of them tend to be
+    small, but one important exception is direct byte buffers, which are allocated
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Symbol table references (constants from class files) are held here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'NMT itself needs some space for its operation (which is one reason it is not
+    enabled by default):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, here are some minor bookkeeping sections of the JVM:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Overall, NMT provides two key pieces of information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Total committed size
+  prefs: []
+  type: TYPE_NORMAL
+- en: The total committed size of the JVM is (ideally) close to the amount of physical
+    memory that the process will consume. This, in turn, should be close to the RSS
+    (or working set) of the application, but those OS-provided measurements don’t
+    include any memory that has been committed but paged out of the process. In fact,
+    if the RSS of the process is less than the committed memory, that is often an
+    indication that the OS is having difficulty fitting all of the JVM in physical
+    memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Individual committed sizes
+  prefs: []
+  type: TYPE_NORMAL
+- en: When it is time to tune maximum values—of the heap, the code cache, and the
+    metaspace—it is helpful to know how much of that memory the JVM is using. Overallocating
+    those areas usually leads only to harmless memory reservations, though when reserved
+    memory is important, NMT can help track down where those maximum sizes can be
+    trimmed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, as I noted at the beginning of this section, NMT does not
+    provide visibility into the native memory use of shared libraries, so in some
+    cases the total process size will be larger than the committed size of the JVM
+    data structures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: NMT over time
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'NMT also allows you to track how memory allocations occur over time. After
+    the JVM is started with NMT enabled, you can establish a baseline for memory usage
+    with this command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That causes the JVM to mark its current memory allocations. Later, you can
+    compare the current memory usage to that mark:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, the JVM has reserved 5.8 GB of memory and is presently using 2.3
+    GB. That committed size is 448 MB less than when the baseline was established.
+    Similarly, the committed memory used by the heap has declined by 444 MB (and the
+    rest of the output could be inspected to see where else the memory use declined
+    to account for the remaining 4 MB).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is a useful technique to examine the footprint of the JVM over time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Native Memory Tracking (NMT) provides details about the native memory usage
+    of the JVM. From an operating system perspective, that includes the JVM heap (which
+    to the OS is just a section of native memory).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The summary mode of NMT is sufficient for most analysis and allows you to determine
+    how much memory the JVM has committed (and what that memory is used for).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shared Library Native Memory
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'From an architectural perspective, NMT is part of HotSpot: the C++ engine that
+    runs the Java bytecode of your application. That is underneath the JDK itself,
+    so it does not track allocations by anything at the JDK level. Those allocations
+    come from shared libraries (those loaded by the `System.loadLibrary()` call).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Shared libraries are often thought of as third-party extensions of Java: for
+    instance, the Oracle WebLogic Server has several native libraries that it uses
+    to handle I/O more efficiently than the JDK.^([1](ch08.html#idm45775549798408))
+    But the JDK itself has several native libraries, and like all shared libraries,
+    these are outside the view of NMT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, native memory leaks—where the RSS or working set of an application continually
+    grows overtime—are usually not detected by NMT. The memory pools that NMT monitors
+    all generally have an upper bound (e.g., the maximum heap size). NMT is useful
+    in telling us which of those pools is using a lot of memory (and hence which need
+    to be tuned to use less memory), but an application that is leaking native memory
+    without bound is typically doing so because of issues in a native library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: No Java-level tools can really help us detect where an application is using
+    native memory from shared libraries. OS-level tools can tell us that the working
+    set of the process is continually growing, and if a process grows to have a working
+    set of 10 GB and NMT tells us that the JVM has committed only 6 GB of memory,
+    we know that the other 4 GB of memory must come from native library allocations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figuring out which native library is responsible requires OS-level tools rather
+    than tools from the JDK. Various debugging versions of `malloc` can be used for
+    this purpose. These are useful to a point, though often native memory is allocated
+    via an `mmap` call, and most libraries to track `malloc` calls will miss those.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A good alternative is a profiler that can profile native code as well as Java
+    code. For example, in [Chapter 3](ch03.html#Tools) we discussed the Oracle Studio
+    Profiler, which is a mixed-language profiler. That profiler has an option to trace
+    memory allocations as well—one caveat is that it can track only the memory allocations
+    of the native code and not the Java code, but that’s what we’re after in this
+    case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 8-1](#FigureNativeMemory) shows the native allocation view within the
+    Studio Profiler.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A profiler snapshot of native memory allocation.](assets/jp2e_0801.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-1\. Profiling of native memory
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'This call graph shows us that the WebLogic native function `mapFile` has used
+    `mmap` to allocate about 150 GB of native memory into our process. This is a little
+    misleading: multiple mappings to that file exist, and the profiler isn’t quite
+    smart enough to realize that they are sharing the actual memory: if there were,
+    for example, 100 mappings of that 15 GB file, the memory usage increases by only
+    15 GB. (And, to be frank, I purposely corrupted that file to make it that large;
+    this is in no way reflective of actual usage.) Still, the native profiler has
+    pointed to the location of the issue.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Within the JDK itself, two common operations can lead to large amounts of native
+    memory usage: the use of `Inflater` and `Deflater` objects, and the use of NIO
+    buffers. Even without profiling, there are ways to detect if these operations
+    are causing your native memory growth.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Native memory and inflaters/deflaters
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `Inflater` and `Deflater` classes perform various kinds of compression:
+    zip, gzip, and so on. They can be used directly or implicitly via various input
+    streams. These various algorithms use platform-specific native libraries to carry
+    out their operations. Those libraries can allocate a significant amount of native
+    memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you use one of these classes, you are supposed to—as the documentation
+    says—call the `end()` method when the operation is complete. Among other things,
+    that frees the native memory used by the object. If you are using a stream, you
+    are supposed to close the stream (and the stream class will call the `end()` method
+    on its internal object).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you forget to call the `end()` method, all is not lost. Recall from [Chapter 7](ch07.html#Memory)
+    that all objects have a cleanup mechanism exactly for this situation: the `finalize()`
+    method (in JDK 8) or the `Cleaner` associated with the object (in JDK 11) can
+    call the `end()` method when the `Inflater` object is collected. So you’re not
+    going to leak native memory here; eventually, the objects will be collected and
+    finalized, and the native memory will be freed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Still, this can take a long time. The size of the `Inflater` object is relatively
+    small, and in an application with a large heap that rarely performs a full GC,
+    it’s easy enough for these objects to get promoted into the old generation and
+    stick around for hours. So even if there is technically not a leak—the native
+    memory will eventually get freed when the application performs a full GC—failure
+    to call the `end()` operation here can have all the appearances of a native memory
+    leak.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For that matter, if the `Inflater` object itself is leaking in the Java code,
+    then the native memory will be actually leaking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So when a lot of native memory is leaking, it can be helpful to take a heap
+    dump of the application and look for these `Inflater` and `Deflater` objects.
+    Those objects likely won’t be causing an issue in the heap itself (they are too
+    small for that), but a large number of them will indicate that there is significant
+    usage of native memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Native NIO buffers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: NIO byte buffers allocate native (off-heap) memory if they are created via the
+    `allocateDirect()` method of the `ByteBuffer` class or the `map()` method of the
+    `FileChannel` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Native byte buffers are important from a performance perspective, since they
+    allow native code and Java code to share data without copying it. Buffers used
+    for filesystem and socket operations are the most common example. Writing data
+    to a native NIO buffer and then sending that data to the channel (e.g., the file
+    or socket) requires no copying of data between the JVM and the C library used
+    to transmit the data. If a heap byte buffer is used instead, contents of the buffer
+    must be copied by the JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `allocateDirect()` method call is expensive; direct byte buffers should
+    be reused as much as possible. The ideal situation occurs when threads are independent
+    and each can keep a direct byte buffer as a thread-local variable. That can sometimes
+    use too much native memory if many threads need buffers of variable sizes, since
+    eventually each thread will end up with a buffer at the maximum possible size.
+    For that kind of situation—or when thread-local buffers don’t fit the application
+    design—an object pool of direct byte buffers may be more useful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Byte buffers can also be managed by slicing them. The application can allocate
+    one very large direct byte buffer, and individual requests can allocate a portion
+    out of that buffer by using the `slice()` method of the `ByteBuffer` class. This
+    solution can become unwieldy when the slices are not always the same size: the
+    original byte buffer can then become fragmented in the same way the heap becomes
+    fragmented when allocating and freeing objects of different sizes. Unlike the
+    heap, however, the individual slices of a byte buffer cannot be compacted, so
+    this solution works well only when all the slices are a uniform size.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From a tuning perspective, one thing to realize with any of these programming
+    models is that the amount of direct byte buffer space that an application can
+    allocate can be limited by the JVM. The total amount of memory that can be allocated
+    for direct byte buffers is specified by setting the `-XX:MaxDirectMemorySize`=*`N`*
+    flag. The default value for this flag in current JVMs is 0\. The meaning of that
+    limit has been the subject of frequent changes, but in later versions of Java
+    8 (and all versions of Java 11), the maximum limit is equal to the maximum heap
+    size: if the maximum heap size is 4 GB, you can also create 4 GB of off-heap memory
+    in direct and/or mapped byte buffers. You can increase the value past the maximum
+    heap value if you need to.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The memory allocated for direct byte buffers is included in the `Internal` section
+    of the NMT report; if that number is large, it is almost always because of these
+    buffers. If you want to know exactly how much the buffers themselves are consuming,
+    mbeans keep track of that. Inspecting the mbean `java.nio.BufferPool.direct.Attributes`
+    or `java.nio.BufferPool.mapped.Attributes` will show you the amount of memory
+    each type has allocated. [Figure 8-2](#FigureNativeByteBuffer) shows a case where
+    we’ve mapped 10 buffers totaling 10 MB of space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Amount of native memory consumed by mmaped buffers.](assets/jp2e_0802.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-2\. Inspecting byte buffer native memory
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If an application seems to be using too much native memory, it is likely from
+    native libraries rather than the JVM itself.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Native profiles can be effective in pinpointing the source of these allocations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A few common JDK classes can often contribute to native memory usage; make sure
+    to use these classes correctly.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: JVM Tunings for the Operating System
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The JVM can use several tunings to improve the way it uses OS memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large Pages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Discussions about memory allocation and swapping occur in terms of pages. A
+    *page* is a unit of memory used by operating systems to manage physical memory.
+    It is the minimum unit of allocation for the operating system: when 1 byte is
+    allocated, the operating system must allocate an entire page. Further allocations
+    for that program come from that same page until it is filled, at which point a
+    new page is allocated.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The operating system allocates many more pages than can fit in physical memory,
+    which is why there is paging: pages of the address space are moved to and from
+    swap space (or other storage depending on what the page contains). This means
+    there must be some mapping between these pages and where they are currently stored
+    in the computer’s RAM. Those mappings are handled in two ways. All page mappings
+    are held in a global page table (which the OS can scan to find a particular mapping),
+    and the most frequently used mappings are held in translation lookaside buffers
+    (TLBs). TLBs are held in a fast cache, so accessing pages through a TLB entry
+    is much faster than accessing it through the page table.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Machines have a limited number of TLB entries, so it becomes important to maximize
+    the hit rate on TLB entries (it functions as a least recently used cache). Since
+    each entry represents a page of memory, increasing the page size used by an application
+    is often advantageous. If each page represents more memory, fewer TLB entries
+    are required to encompass the entire program, and it is more likely that a page
+    will be found in the TLB when required. This is true in general for any program,
+    and so is also true specifically for things like Java application servers or other
+    Java programs with even a moderately sized heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large pages must be enabled at both the Java and OS levels. At the Java level,
+    the `-XX:+UseLargePages` flag enables large page use; by default, this flag is
+    `false`. Not all operating systems support large pages, and the way to enable
+    them obviously varies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the `UseLargePages` flag is enabled on a system that does not support large
+    pages, no warning is given, and the JVM uses regular pages. If the `UseLargePages`
+    flag is enabled on a system that does support large pages, but for which no large
+    pages are available (either because they are already all in use or because the
+    operating system is misconfigured), the JVM will print a warning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Linux huge (large) pages
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Linux refers to large pages as *huge pages*. The configuration of huge pages
+    on Linux varies somewhat from release to release; for the most accurate instructions,
+    consult the documentation for your release. But the general procedure is this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Determine which huge page sizes the kernel supports. The size is based on the
+    computer’s processor and the boot parameters given when the kernel has started,
+    but the most common value is 2 MB:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Figure out how many huge pages are needed. If a JVM will allocate a 4 GB heap
+    and the system has 2 MB huge pages, 2,048 huge pages will be needed for that heap.
+    The number of huge pages that can be used is defined globally in the Linux kernel,
+    so repeat this process for all the JVMs that will run (plus any other programs
+    that will use huge pages). You should overestimate this value by 10% to account
+    for other nonheap uses of huge pages (so the example here uses 2,200 huge pages).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Write out that value to the operating system (so it takes effect immediately):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Save that value in */etc/sysctl.conf* so that it is preserved after rebooting:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'On many versions of Linux, the amount of huge page memory that a user can allocate
+    is limited. Edit the */etc/security/limits.conf* file and add `memlock` entries
+    for the user running your JVMs (e.g., in the example, the user `appuser`):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'If the *limits.conf* file is modified, the user must log in again for the value
+    to take effect. At this point, the JVM should be able to allocate the necessary
+    huge pages. To verify that it works, run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Successful completion of that command indicates that the huge pages are configured
+    correctly. If the huge page memory configuration is not correct, a warning will
+    be given:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The program runs in that case; it just uses regular instead of large pages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Linux transparent huge pages
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Linux kernels starting with version 2.6.32 support *transparent huge pages*.
+    These offer (in theory) the same performance benefit as traditional huge pages,
+    but they have some differences from traditional huge pages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, traditional huge pages are locked into memory; they can never be swapped.
+    For Java, this is an advantage, since as we’ve discussed, swapping portions of
+    the heap is bad for GC performance. Transparent huge pages can be swapped to disk,
+    which is bad for performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Second, allocation of a transparent huge page is also significantly different
+    from a traditional huge page. Traditional huge pages are set aside at kernel boot
+    time; they are always available. Transparent huge pages are allocated on demand:
+    when the application requests a 2 MB page, the kernel will attempt to find 2 MB
+    of contiguous space in physical memory for the page. If physical memory is fragmented,
+    the kernel may decide to take time to rearrange pages in a process similar to
+    the by-now-familiar compacting of memory in the Java heap. This means that the
+    time to allocate a page may be significantly longer as it waits for the kernel
+    to finish making room for the memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This affects all programs, but for Java it can lead to very long GC pauses.
+    During GC, the JVM may decide to expand the heap and request new pages. If that
+    page allocation takes a few hundred milliseconds or even a second, the GC time
+    is significantly affected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Third, transparent huge pages are configured differently at both the OS and
+    Java levels. The details of that follow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At the operating system level, transparent huge pages are configured by changing
+    the contents of */sys/kernel/mm/transparent_hugepage/enabled*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The three choices here are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`always`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: All programs are given huge pages when possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`madvise`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Programs that request huge pages are given them; other programs get regular
+    (4 KB) pages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`never`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: No program gets huge pages, even when they request them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Different versions of Linux have a different default value for that setting
+    (and it is subject to change in future releases). Ubuntu 18.04 LTS, for example,
+    sets the default to `madvise`, but CentOS 7 (and vendor releases like Red Hat
+    and Oracle Enterprise Linux based on that) sets it to `always`. Be aware also
+    that on cloud machines, the supplier of the OS image may have changed that value;
+    I’ve seen Ubuntu images that also set the value to `always`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the value is set to `always`, no configuration is needed at the Java level:
+    the JVM will be given huge pages. In fact, all programs that run on the system
+    will run in huge pages.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the value is set to `madvise` and you want the JVM to use huge pages, specify
+    the `UseTransparentHugePages` flag (by default, `false`). Then the JVM will make
+    the appropriate request when it allocates pages and be given huge pages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Predictably, if the value is set to `never`, no Java-level argument will allow
+    the JVM to get huge pages. Unlike traditional huge pages, though, no warning is
+    given if you specify the `UseTransparentHugePages` flag and the system cannot
+    provide them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because of the differences in swapping and allocation of transparent huge pages,
+    they are often not recommended for use with Java; certainly their use can lead
+    to unpredictable spikes in pause times. On the other hand, particularly on systems
+    where they are enabled by default, you will—transparently, as advertised—see performance
+    benefits most of the time when using them. If you want to be sure to get the smoothest
+    performance with huge pages, though, you are better off setting the system to
+    use transparent huge pages only when requested and configuring traditional huge
+    pages for use by your JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Windows large pages
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Windows *large pages* can be enabled on only server-based Windows versions.
+    Exact instructions for Windows 10 are given here; variations exist among releases:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Start the Microsoft Management Center. Click the Start button, and in the Search
+    box, type **`mmc`**.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If the left panel does not display a Local Computer Policy icon, select Add/Remove
+    Snap-in from the File menu and add the Group Policy Object Editor. If that option
+    is not available, the version of Windows in use does not support large pages.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the left panel, expand Local Computer Policy → Computer Configuration → Windows
+    Settings → Security Settings → Local Policies and click the User Rights Assignment
+    folder.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the right panel, double-click “Lock pages in memory.”
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the pop-up, add the user or group.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Click OK.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Quit the MMC.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Reboot.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'At this point, the JVM should be able to allocate the necessary large pages.
+    To verify that it works, run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the command completes successfully like that, large pages are set up correctly.
+    If the large memory configuration is incorrect, a warning is given:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Remember that the command will not print an error on a Windows system (such
+    as “home” versions) that does not support large pages: once the JVM finds out
+    that large pages are not supported on the OS, it sets the `UseLargePages` flag
+    to `false`, regardless of the command-line setting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using large pages will usually measurably speed up applications.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Large page support must be explicitly enabled in most operating systems.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Although the Java heap is the memory region that gets the most attention, the
+    entire footprint of the JVM is crucial to its performance, particularly in relation
+    to the operating system. The tools discussed in this chapter allow you to track
+    that footprint over time (and, crucially, to focus on the committed memory of
+    the JVM rather than the reserved memory).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Certain ways that the JVM uses OS memory—particularly large pages—can also be
+    tuned to improve performance. Long-running JVMs will almost always benefit from
+    using large pages, particularly if they have large heaps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^([1](ch08.html#idm45775549798408-marker)) This is mostly a historical artifact:
+    these libraries were developed before NIO and largely duplicate its functionality.'
+  prefs: []
+  type: TYPE_NORMAL

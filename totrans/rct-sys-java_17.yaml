@@ -1,0 +1,748 @@
+- en: Chapter 13\. Observing Reactive and Event-Driven Architectures
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'So far, we’ve focused on how to develop reactive systems. What we haven’t discussed
+    is how to ensure that all the components of our reactive system are functioning
+    as we expect them to. This is the focus of the chapter: how we monitor and observe
+    our reactive and event-driven architecture.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why Is Observability Important?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When an application is a single deployment, or *monolith*, we have a relatively
+    easy time observing how the application is performing. Everything we need to observe
+    is in one place. Whether it’s checking logs for errors, monitoring the utilization
+    of CPU and memory, or any other aspect, it’s all accessible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With a reactive and event-driven architecture, instead of one deployment, it’s
+    often several, dozens, or even hundreds. We’re no longer dealing with a single
+    place to view the information we need to monitor and observe, but many places!
+    Observability tooling provides a means for us to gather this information and provide
+    a single place to view it again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, we need to gather the necessary information, or telemetry, from the
+    components in the event-driven architecture to enable a singular view. *Telemetry*
+    consists of any information we gather from processes for the purpose of observing
+    a system. The most common types of telemetry are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Logs
+  prefs: []
+  type: TYPE_NORMAL
+- en: Textual messages often written to console output, logfiles, or exported to specific
+    log-processing systems. We can also provide more structured logging in a JSON
+    format to facilitate more accurate data extraction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Metrics
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A single metric measures a specific piece of information, such as HTTP server
+    requests. Various types of metrics are available: counter, gauge, timer, and histogram,
+    to name a few.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Traces
+  prefs: []
+  type: TYPE_NORMAL
+- en: Represents a single request through a system, broken into specific operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When running distributed systems utilizing reactive or event-driven architecture,
+    we need solid telemetry produced from the components to support sufficient reasoning
+    about the system. Without being able to reason about the system based on what
+    we can observe from the outside, our reactive system is not truly observable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s clarify some terms. *Monitoring* and *observability* can be conflated
+    to mean the same thing. Though there are overlaps, they do mean different things.
+    Monitoring focuses on specific metrics and measuring them against specific goals,
+    service-level objectives (SLOs), and alerting operations when those goals are
+    not met. Monitoring is also called *known unknowns*, as we know what data, or
+    metrics, to measure to see a problem, but we don’t know what might cause a specific
+    problem. *Unknown unknowns* refers to observability, because we don’t know what
+    will cause a problem, and when one occurs, it requires observation of a system
+    from its outputs to determine the cause.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kubernetes is a great place to run reactive systems, as it provides the mechanism
+    to monitor, scale, and repair a system gracefully. However, we need to provide
+    information for Kubernetes to do that properly, such as with health checks. Health
+    checks can serve many purposes; for our needs, the readiness and liveness probes
+    in Kubernetes can utilize them. *Readiness probes* let Kubernetes know a container
+    is ready to begin accepting requests, and *liveness probes* let Kubernetes know
+    if a container needs to be restarted because of unrecoverable failures when communicating
+    with Kafka.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Throughout the rest of the chapter, we explain how to effectively monitor and
+    observe reactive systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Health with Messaging
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Kubernetes utilizes health checks to determine the state of a container. If
+    containers don’t provide health checks, Kubernetes is unable to determine the
+    state of a container. This may result in users experiencing errors caused by deadlocked
+    containers that cannot be stopped or by containers that are not ready to process
+    requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can implement three types of health checks for our containers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Liveness Probe
+  prefs: []
+  type: TYPE_NORMAL
+- en: This probe lets Kubernetes know a container should be restarted. If we can write
+    a meaningful health check, it’s a good way to catch situations of application
+    deadlock or connection issues with external systems. We can possibly resolve intermittent
+    issues by allowing a clean slate by restarting the container. The probe is periodically
+    run based on the frequency we define. We want to ensure that the frequency is
+    not too large, so we prevent containers being stuck for long periods of time,
+    but not too small either, as that would increase resource consumption.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Readiness Probe
+  prefs: []
+  type: TYPE_NORMAL
+- en: This probe informs Kubernetes when a container is ready to begin receiving traffic
+    from a service. We can use this type of health check to provide enough time for
+    HTTP servers and connections to external systems to be available before we begin
+    accepting requests. This prevents users from experiencing errors because the container
+    was not ready to process a request. This probe executes only once during the life
+    of a container. The readiness probe is necessary to effectively allow scaling
+    up without causing undue user errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Startup Probe
+  prefs: []
+  type: TYPE_NORMAL
+- en: A recent health check addition, this probe has a similar purpose as the liveness
+    probe. However, this probe allows us to set a different wait period before declaring
+    the container unhealthy. This is especially beneficial in situations where a container
+    could take a very long time to be alive, possibly due to connecting with legacy
+    systems. We’re able to set a shorter time-out for a *Liveness Probe*, while allowing
+    a much longer time-out for a *Startup Probe*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each of these probes supports HTTP, TCP, or commands run inside the container
+    itself. Nothing prevents other protocols from being used for probes, but they’re
+    currently not implemented in Kubernetes. Which probe we use for an application
+    will depend on whether there are HTTP endpoints we can utilize for the probes,
+    or whether we need custom commands within the container. Quarkus has an extension
+    for [SmallRye Health](https://github.com/smallrye/smallrye-health) to develop
+    health checks available over HTTP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'How do these probes relate to a reactive application? Readiness indicates that
+    a Reactive Messaging connector, such as Kafka, has successfully connected to the
+    broker, or backend, there were no failures, and optionally the topic we intend
+    to use exists in the broker. In this state, the connector is ready to begin sending
+    or receiving messages. Verifying the presence of any topics is disabled by default
+    because it’s a lengthy operation requiring use of the admin client. Enabling topic
+    verification is done by setting `health-readiness-topic-verification: true`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Liveness should fail when the Reactive Messaging connector has experienced an
+    unrecoverable failure or a disconnection from the broker. These types of transient
+    failures can disappear after a restart of the container. For example, the application
+    may connect to another broker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we covered in [“Apache Kafka”](ch11.html#_kafka_101), Kafka has built-in
+    resilience. The last committed offset is not updated until a consumer has successfully
+    processed the record, ensuring that records are not forgotten if a consumer fails
+    while processing it. Also, Kafka is able to rebalance consumers, within the same
+    consumer group, if any of them fail. Any consumer(s) that might crash while processing
+    records from a partition will be replaced with other consumers from the same group.
+    When using Kubernetes health checks, the consumers will be rebalanced when containers
+    stop, and re-balanced again when Kubernetes has started new instances of the containers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is now time to see how it all works with an example. We will take the example
+    from [Chapter 11](ch11.html#event-bus) and extend it. We want to customize the
+    consumer to highlight the behaviors of health checks. We will have a specific
+    process service, `processor-health`. You can find the complete code in the *chapter-13*
+    directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First we need to add the extension for SmallRye Health to the *pom.xml* of each
+    service, as shown in [Example 13-1](#dependency-health-support).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-1\. Dependency for the health support (*chapter-13/processor-health/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: To generate the necessary Kubernetes deployment YAML, including the liveness
+    and readiness probes, we need the Kubernetes extension. In this case, though,
+    we use the minikube extension as we’re deploying to it; see [Example 13-2](#dependency-minikube-deployment-feature).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-2\. Dependency for the minikube deployment feature (*chapter-13/processor-health/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run `mvn clean package` in the */chapter-13* directory to generate the deployment
+    YAML. Take a look in the */target/kubernetes* directory of one of the modules
+    and view the generated YAML. We see the desired liveness and readiness probes
+    added to the deployment specification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By default, the period between each liveness probe request is 30 seconds. Let’s
+    reduce it to 10 seconds to enable Kubernetes to restart our consumer, `processor-health`,
+    sooner if there are problems by modifying `application.properties` ([Example 13-3](#configure-liveness-probe)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-3\. Configure the liveness probe (*chapter-13/processor-health/src/main/resources/application.properties*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13-4](#observability:nack) shows how to modify `Processor` to simulate
+    failures.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-4\. Processor to nack every eighth message received (*chapter-13/processor-health/src/main/java/org/acme/Processor.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_observing_reactive_and___span_class__keep_together__event_driven_architectures__span__CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use manual acknowledgment, so we can nack messages explicitly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_observing_reactive_and___span_class__keep_together__event_driven_architectures__span__CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We need to change the method signature to use `Message` instead of `Long` to
+    use manual acknowledgment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_observing_reactive_and___span_class__keep_together__event_driven_architectures__span__CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every eighth message should be nacked, and we return a `null` instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_observing_reactive_and___span_class__keep_together__event_driven_architectures__span__CO1-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Explicitly ack a message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As the default `failure-strategy` is `fail`, when we nack a message, the processing
+    of messages fails. This message failure will cause the health check of the consumer
+    to also fail, triggering a container restart once the next liveness probe runs.
+    Refer to [“Kafka on Kubernetes”](ch11.html#bus::install-kafka), or the *README*
+    of */chapter-13*, to start minikube and deploy Kafka. Then, run `m⁠v⁠n⁠ v⁠e⁠r⁠i⁠f⁠y⁠ ‑D⁠q⁠u⁠a⁠r⁠k⁠u⁠s⁠.​k⁠u⁠b⁠e⁠r⁠n⁠e⁠t⁠e⁠s⁠.d⁠e⁠p⁠l⁠o⁠y⁠=t⁠r⁠u⁠e`
+    for each of the three services: ticker, viewer, processor. Verify that all three
+    services are running with `kubectl get pods`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the services deployed, we can see the overall health check status by accessing
+    `/q/health` of a service. We get the response shown in [Example 13-5](#observability:health-output)
+    for the `processor-health` service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-5\. Reactive application health check with no errors
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_observing_reactive_and___span_class__keep_together__event_driven_architectures__span__CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The data within the check shows the channels we’re connected to and their respective
+    status.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We saw, when viewing the generated deployment YAML, that there are also `/q/health/live`
+    and `/q/health/ready` endpoints. These represent the liveness and readiness probes,
+    respectively. Access them in a browser, or via `curl`, to see the specific checks
+    of each probe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Open up the *VIEWER_URL*, from the terminal, in a browser. Based on the producer
+    we’ve defined, we will see seven messages with the same processor pod name, before
+    it hit the message that we nacked. There will be a pause while Kubernetes restarts
+    the container; then we will see another seven messages, and this sequence repeats.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we take a look at the pods in Kubernetes, we can see that the container for
+    the processor service has been restarted, as shown in [Example 13-6](#use-kubectl-to-list-pods).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-6\. Use `kubectl` to list pods
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: After several restarts in a short amount of time, the pod will be in the state
+    of `CrashLoopBackoff`, which will slowly increase the delay between pod restarts.
+    As we don’t have a “happy” container for at least 10 minutes, we end up in a state
+    where the pod will not restart for a while. That’s not a problem for these examples,
+    but is worth noting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When viewing the health checks at `/q/health`, it can be difficult to “catch”
+    the failed health check before the container restarts. To make it easier, we can
+    modify the `quarkus.kubernetes.liveness-probe.period` of the processor service
+    to a large period of time, like `100s`. With a longer period, we give ourselves
+    a chance to view the failed health check before the container restarts, as shown
+    in [Example 13-7](#observability:check-fail).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-7\. Reactive application health check with errors
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_observing_reactive_and___span_class__keep_together__event_driven_architectures__span__CO3-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Liveness check is `DOWN`, causing the entire health check to be `DOWN`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_observing_reactive_and___span_class__keep_together__event_driven_architectures__span__CO3-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ticks` channel is not OK, showing the failure from the exception sent in
+    `nack`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_observing_reactive_and___span_class__keep_together__event_driven_architectures__span__CO3-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is no subscription, because the `process` method has failed and is no
+    longer subscribing. The `ticks` channel is still OK; it’s just waiting for a subscription.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can now check the health of our applications and utilize them in the container
+    orchestration of Kubernetes. Next, we see how our reactive applications can generate
+    metrics for monitoring and utilize those metrics for autoscaling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Metrics with Messaging
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Metrics are a critical part of our applications, even more so with reactive
+    applications. Metrics can feed monitoring systems for alerting operations and
+    SREs of problems in applications. Before delving into how we can do that, let’s
+    explain some monitoring-related terms:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: SLA (service-level agreement)
+  prefs: []
+  type: TYPE_NORMAL
+- en: A contract between a service provider and its customers as to the availability,
+    performance, etc. of the service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SLO (service-level objective)
+  prefs: []
+  type: TYPE_NORMAL
+- en: A goal for a service provider to reach. SLOs are internal goals used to help
+    prevent a service provider from breaking an SLA with its customers. Developers
+    define rules, or thresholds, for the SLOs of a service to alert Operations or
+    SREs when we’re at risk of breaking SLAs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SLI (service-level indicator)
+  prefs: []
+  type: TYPE_NORMAL
+- en: A specific measurement used in measuring an SLO. These are the metrics we generate
+    from a reactive application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If an organization doesn’t define SLAs, SLOs, and SLIs, that’s OK. It’s still
+    beneficial to gather metrics from a reactive application to at least define the
+    thresholds indicating when everything is OK and when it is not. A “good” metric
+    for a particular reactive application can differ depending on the specific use
+    case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, all reactive systems should be gathering and monitoring certain metrics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Queue length
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the queue of messages waiting to be processed is too large, it impacts the
+    speed at which messages flow through the system. If messages aren’t flowing fast
+    enough, a time-sensitive reactive application, such as stock trading, will see
+    delays and problems as a result. High queue length is an indication we need to
+    increase the number of consumers within a consumer group. It may also indicate
+    that we need to increase the number of partitions for a topic if we’re already
+    at the maximum number of consumers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Processing time
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a consumer takes too long to process a message, it will likely cause an
+    increase in queue length. Long processing times can also indicate other issues
+    with a reactive application, dependent on what work a consumer does. We could
+    see network latency issues because of another service we’re interacting with,
+    database contention, or any other number of possible problems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Messages processed in a time window
+  prefs: []
+  type: TYPE_NORMAL
+- en: This metric provides an overall understanding of the throughput of a reactive
+    application. Knowing the actual number of messages processed is likely less important
+    than monitoring variations. A significant drop could indicate a problem in messages
+    not being received, or large numbers of customers leaving the application too
+    early.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ack-to-nack ratio
+  prefs: []
+  type: TYPE_NORMAL
+- en: We want this metric to be as high as possible, as it means we’re not seeing
+    many failures in the messages we process. If too many failures occur, we need
+    to investigate whether it’s due to upstream systems providing invalid data, or
+    failures in the processor to handle different data types properly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All of these metrics we’ve discussed are great for detecting possible bottlenecks
+    in a reactive application. We may see several of these metrics go in a bad direction
+    at the same time—definitely a sign we have a problem in processing messages! We
+    can also define basic rules for detecting bottlenecks. When using HTTP, or request/reply,
+    we should check the response time and success rate. High response times or low
+    success rates would indicate a problem needing investigation. For messaging applications,
+    the number of *in-flight*, not yet processed, messages is a key measurement to
+    track.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve covered a lot of theory, but what do we need to do to capture these metrics?
+    The key change is to add the dependency for Micrometer,^([1](ch13.html#idm45358813004512))
+    and in this case we want the metrics available in the Prometheus format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Micrometer* is the preferred metrics solution for Quarkus because it offers
+    key benefits for developers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ability to switch the monitoring backend from Prometheus, to Datadog, to Splunk,
+    to New Relic, and many others, without needing to modify existing code-creating
+    metrics. All that’s required is a dependency change to use a different registry!
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Provides `MeterBinder` implementations for many of the frameworks used in Quarkus.
+    These provide metrics for frameworks such as JAX-RS, Vert.x, and Hibernate, without
+    developers needing to specifically code metrics themselves.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To expose the metrics in the Prometheus format, add the dependency in [Example 13-8](#dependency-micrometer-prometheus-support)
+    to your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-8\. Dependency for the Micrometer Prometheus support (*chapter-13/viewer/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: With this dependency, we have an endpoint showing all the metrics of an application
+    at `/q/metrics`. When using Prometheus in Kubernetes, we then need only a `ServiceMonitor`
+    to inform Prometheus of this endpoint for it to scrape the metrics. For this example,
+    we won’t be utilizing Prometheus and Grafana, two common tools for monitoring
+    metrics. Plenty of documentation online explains how to set them up in Kubernetes
+    for readers to view the metrics in these tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If minikube is not still running from the earlier health example, follow the
+    instructions in the *README* of */chapter-13* to start it, deploy Kafka, and build
+    and deploy the three services. Verify that they’re running with `kubectl get pods`,
+    and then open the URL of the viewer. Once you’ve seen messages appear, open up
+    the metrics endpoint for the processor. The URL can be found with `minikube service
+    --url observability-processor` and then add `/q/metrics` to the end.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will see metrics such those shown in [Example 13-9](#observability:metrics).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-9\. Sample of metrics for a reactive application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13-9](#observability:metrics) shows a condensed version of the metrics
+    generated from the processor service, as the complete version would require much
+    more space!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Metrics would also enable us to develop a Kubernetes operator to autoscale the
+    consumers of a reactive system. The operator can use the Kafka admin API to measure
+    the number of messages that have not been consumed. If there are fewer consumers
+    than the number of partitions, the operator can scale up the number of replicas
+    for a consumer to process more messages in the same time. When the number of un-consumed
+    messages drops below a threshold, the operator can then scale back consumers from
+    within the consumer group.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Distributed Tracing with Messaging
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '*Distributed tracing* is an extremely important part of observability for reactive
+    systems. When we have a single application deployment, all the interactions usually
+    occur within the same process. Additionally, reactive systems have the complexity
+    of one service not knowing where, or often when, another service will consume
+    the message they’ve created. With nonreactive systems, we’re usually able to infer
+    the connections by reading the code to see where outgoing HTTP calls are made.
+    That is not possible with a reactive system built around messaging.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is where distributed tracing shines, connecting the many dots—services—in
+    a system across space and time to provide an overall perspective on the message
+    flows. For the example, we will be using the OpenTelemetry extension, with an
+    exporter to send the captured traces to Jaeger.^([2](ch13.html#idm45358812819136))
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, though, let’s cover some terminology:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Span
+  prefs: []
+  type: TYPE_NORMAL
+- en: A single operation within a trace (defined next). Many spans can be created
+    within a single service, depending on the level of detail you want to collect.
+    A span can have parent or child spans associated with it, representing a chain
+    of execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Trace
+  prefs: []
+  type: TYPE_NORMAL
+- en: A collection of operations, or spans, representing a single request processed
+    by an application and its components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When using Reactive Messaging in Quarkus for Kafka or AMQP, spans are automatically
+    created when messages are consumed and when they’re produced. This is done by
+    the extension propagating the existing trace and span into the headers of any
+    produced message, which is extracted when consuming it. This process allows OpenTelemetry
+    to chain together the spans across multiple services in different processes to
+    provide a singular view of the flow with Jaeger.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s update the example for distributed tracing! We add the Quarkus extension
+    for OpenTelemetry to each service in *pom.xml*, as shown in [Example 13-10](#jaeger-exporter-open-telemetry-dependency).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-10\. Jaeger exporter for OpenTelemetry dependency
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: For each service to be able to send the gathered spans to Jaeger, we also need
+    to update `application.properties` for each service with the URL of the collector
+    ([Example 13-11](#jaeger-collector-endpoint)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-11\. Jaeger collector endpoint
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: To simplify the deployment of Jaeger, we will deploy the *all-in-one* image,
+    as shown in [Example 13-12](#install-jaeger-all-in-one).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-12\. Install Jaeger all-in-one
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Details of the Kubernetes deployment and service for Jaeger can be examined
+    by reviewing */deploy/jaeger/jaeger-simplest.yaml*. The key point to note is the
+    service exposing port 14250 for collecting spans, which is the port we set in
+    [Example 13-11](#jaeger-collector-endpoint).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrieve the URL for the Jaeger UI, `minikube service --url jaeger-ui -n jaeger`,
+    and open it in a browser. We see the initial page to search for traces, but without
+    any services in the drop-down to search for, as nothing is running yet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Follow the *README* for */chapter-13* to rebuild and redeploy the three services:
+    ticker, processor, viewer. Once they’re deployed, open up the viewer URL, `minikube
+    service --url observability-viewer`, in a browser to begin receiving messages.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once messages are appearing, go back to the Jaeger UI and refresh the page.
+    There will now be four services to select from; choose `observability-ticker`,
+    the first service in the reactive stream. Click the Find Traces button to retrieve
+    the traces for the service. Select one of the traces from the list to open a view
+    containing all the details of the spans ([Figure 13-1](#image:jaeger-ui-trace)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Jaeger UI showing reactive system trace](assets/rsij_1301.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 13-1\. Jaeger UI showing reactive system trace
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In this example, we have four spans within a single trace. There is a span for
+    each step in the reactive stream that first produces a message from the ticker
+    services, then consumes and produces a message in the processor service, and finally
+    consumes the message in the viewer service. In the Jaeger UI, explore the data
+    captured within the spans for each step. In [Figure 13-1](#image:jaeger-ui-trace),
+    we see the details of the `ticks send` span, including the type of span, producer,
+    and the details of where the message was sent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Though *ticks send* is grammatically incorrect for past tense, the name of the
+    span is dictated by the semantic conventions of OpenTelemetry in *blob/main/specification/trace/semantic_conventions/messaging.md#span-name.*
+    The span name is a combination of the destination, *ticks*, and the operation
+    type, *send*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, you’ve seen how to utilize traces when message flows are almost instantaneous
+    between services. However, a benefit of reactive systems is being able to decouple
+    components within the system according to time. In other words, a message flow
+    can take hours, days, weeks, months, or even years to be completed, with messages
+    waiting in a topic, for instance, for a lengthy amount of time before being consumed.
+    It’s also possible for the same message to be processed by a different consumer,
+    such as an audit process, some time after it was originally consumed. Let’s simulate
+    a delayed scenario and see how the traces work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To start, let’s clear out the existing services with `kubectl delete all --all
+    -n default`. To ensure that we’re starting with a clean slate, we should also
+    delete and re-create the existing Kafka topics, as shown in [Example 13-13](#update-application-deployments).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-13\. Update the application deployments
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: To simulate delayed processing, let’s deploy the ticker service and then remove
+    it again after 20–30 seconds to have a reasonable number of messages produced
+    ([Example 13-14](#deploy-remove-ticker-application)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-14\. Deploy and remove the ticker application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Search again for traces of the `observability-ticker` service and you’ll see
+    traces with only a single span. The only span in every trace is the one from the
+    ticker service. For the processor to receive messages from before it was running,
+    we need to update `application.properties` to indicate we want the earliest messages;
+    see [Example 13-15](#configure-first-offset-new-consumer-groups).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 13-15\. Configure the first offset to read for new consumer groups
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: With the change made, deploy the viewer and processor services, and open the
+    viewer URL in a browser to receive the messages. Once the messages have been received
+    by the viewer, go back to the Jaeger UI and search for the traces again. We see
+    the traces that previously had only a single span now have all four spans! We
+    successfully processed messages after some time, and Jaeger was able to associate
+    the spans with the right trace.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a real production system, whether the preceding process works would depend
+    on the retention of tracing data. If we retain tracing data for a year but want
+    to process messages older than that, Jaeger will consider them as traces with
+    only the spans from today. Any spans from the same trace will no longer be present
+    for Jaeger to properly link them for visualization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter detailed the importance of observability for reactive systems in
+    Kubernetes. Observability is the key to ensuring the resiliency and elasticity
+    of reactive systems. Health checks help systems to be resilient, by triggering
+    the restart of services that are not healthy. Specific metrics of a reactive system
+    can be used to provide elasticity by scaling up and down consumers as needed,
+    dependent on message queue size, for instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We covered observability in Kubernetes with health checks, metrics, and distributed
+    tracing. What we’ve covered only scratches the surface of observability for reactive
+    systems, but provides sufficient detail for developers to delve deeper themselves.
+    Though we can provide general guidelines for observability of reactive systems,
+    specifics of what is desired will depend heavily on the use cases of the system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve reached the end of [Part IV](part04.html#patterns-part), where we covered
+    patterns of Reactive Messaging and its support of event buses, connecting messages
+    to/from HTTP endpoints, and observing reactive systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch13.html#idm45358813004512-marker)) [Micrometer](https://micrometer.io)
+    provides a facade over the instrumentation clients of popular monitoring systems,
+    such as Prometheus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch13.html#idm45358812819136-marker)) [OpenTelemetry](https://opentelemetry.io)
+    is a CNCF project combining OpenCensus and OpenTracing into a single project for
+    the collection of telemetry signals. [Jaeger](https://www.jaegertracing.io) is
+    a CNCF project for collecting and visualizing traces.
+  prefs: []
+  type: TYPE_NORMAL

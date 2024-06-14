@@ -1,0 +1,1736 @@
+- en: Chapter 4\. Working with the JIT Compiler
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The *just-in-time (JIT) compiler* is the heart of the Java Virtual Machine;
+    nothing controls the performance of your application more than the JIT compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter covers the compiler in depth. It starts with information on how
+    the compiler works and discusses the advantages and disadvantages of using a JIT
+    compiler. Until JDK 8 came along, you had to choose between two Java compilers.
+    Today, those two compilers still exist but work in concert with each other, though
+    in rare cases choosing one is necessary. Finally, we’ll look at some intermediate
+    and advanced tunings of the compiler. If an application is running slowly without
+    any obvious reason, those sections can help you determine whether the compiler
+    is at fault.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Just-in-Time Compilers: An Overview'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We’ll start with some introductory material; feel free to skip ahead if you
+    understand the basics of just-in-time compilation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Computers—and more specifically CPUs—can execute only a relatively few, specific
+    instructions, which are called *machine code*. All programs that the CPU executes
+    must therefore be translated into these instructions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Languages like C++ and Fortran are called *compiled languages* because their
+    programs are delivered as binary (compiled) code: the program is written, and
+    then a static compiler produces a binary. The assembly code in that binary is
+    targeted to a particular CPU. Complementary CPUs can execute the same binary:
+    for example, AMD and Intel CPUs share a basic, common set of assembly language
+    instructions, and later versions of CPUs almost always can execute the same set
+    of instructions as previous versions of that CPU. The reverse is not always true;
+    new versions of CPUs often introduce instructions that will not run on older versions
+    of CPUs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Languages like PHP and Perl, on the other hand, are interpreted. The same program
+    source code can be run on any CPU as long as the machine has the correct interpreter
+    (that is, the program called `php` or `perl`). The interpreter translates each
+    line of the program into binary code as that line is executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Each system has advantages and disadvantages. Programs written in interpreted
+    languages are portable: you can take the same code and drop it on any machine
+    with the appropriate interpreter, and it will run. However, it might run slowly.
+    As a simple case, consider what happens in a loop: the interpreter will retranslate
+    each line of code when it is executed in the loop. The compiled code doesn’t need
+    to repeatedly make that translation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A good compiler takes several factors into account when it produces a binary.
+    One simple example is the order of the binary statements: not all assembly language
+    instructions take the same amount of time to execute. A statement that adds the
+    values stored in two registers might execute in one cycle, but retrieving (from
+    main memory) the values needed for the addition may take multiple cycles.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, a good compiler will produce a binary that executes the statement to
+    load the data, executes other instructions, and then—when the data is available—executes
+    the addition. An interpreter that is looking at only one line of code at a time
+    doesn’t have enough information to produce that kind of code; it will request
+    the data from memory, wait for it to become available, and then execute the addition.
+    Bad compilers will do the same thing, by the way, and it is not necessarily the
+    case that even the best compiler can prevent the occasional wait for an instruction
+    to complete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For these (and other) reasons, interpreted code will almost always be measurably
+    slower than compiled code: compilers have enough information about the program
+    to provide optimizations to the binary code that an interpreter simply cannot
+    perform.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interpreted code does have the advantage of portability. A binary compiled for
+    an ARM CPU obviously cannot run on an Intel CPU. But a binary that uses the latest
+    AVX instructions of Intel’s Sandy Bridge processors cannot run on older Intel
+    processors either. Hence, commercial software is commonly compiled to a fairly
+    old version of a processor and does not take advantage of the newest instructions
+    available to it. Various tricks around this exist, including shipping a binary
+    with multiple shared libraries that execute performance-sensitive code and come
+    with versions for various flavors of a CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java attempts to find a middle ground here. Java applications are compiled—but
+    instead of being compiled into a specific binary for a specific CPU, they are
+    compiled into an intermediate low-level language. This language (known as *Java
+    bytecode*) is then run by the `java` binary (in the same way that an interpreted
+    PHP script is run by the `php` binary). This gives Java the platform independence
+    of an interpreted language. Because it is executing an idealized binary code,
+    the `java` program is able to compile the code into the platform binary as the
+    code executes. This compilation occurs as the program is executed: it happens
+    “just in time.”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This compilation is still subject to platform dependencies. JDK 8, for example,
+    cannot generate code for the latest instruction set of Intel’s Skylake processors,
+    though JDK 11 can. I’ll have more to say about that in [“Advanced Compiler Flags”](#advance-compiler-tuning).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The manner in which the Java Virtual Machine compiles this code as it executes
+    is the focus of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: HotSpot Compilation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As discussed in [Chapter 1](ch01.html#Introduction), the Java implementation
+    discussed in this book is Oracle’s HotSpot JVM. This name (HotSpot) comes from
+    the approach it takes toward compiling the code. In a typical program, only a
+    small subset of code is executed frequently, and the performance of an application
+    depends primarily on how fast those sections of code are executed. These critical
+    sections are known as the hot spots of the application; the more the section of
+    code is executed, the hotter that section is said to be.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, when the JVM executes code, it does not begin compiling the code immediately.
+    There are two basic reasons for this. First, if the code is going to be executed
+    only once, then compiling it is essentially a wasted effort; it will be faster
+    to interpret the Java bytecodes than to compile them and execute (only once) the
+    compiled code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But if the code in question is a frequently called method or a loop that runs
+    many iterations, then compiling it is worthwhile: the cycles it takes to compile
+    the code will be outweighed by the savings in multiple executions of the faster
+    compiled code. That trade-off is one reason that the compiler executes the interpreted
+    code first—the compiler can figure out which methods are called frequently enough
+    to warrant their compilation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second reason is one of optimization: the more times that the JVM executes
+    a particular method or loop, the more information it has about that code. This
+    allows the JVM to make numerous optimizations when it compiles the code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Those optimizations (and ways to affect them) are discussed later in this chapter,
+    but for a simple example, consider the `equals()` method. This method exists in
+    every Java object (because it is inherited from the `Object` class) and is often
+    overridden. When the interpreter encounters the statement `b = obj1.equals(obj2)`,
+    it must look up the type (class) of `obj1` in order to know which `equals()` method
+    to execute. This dynamic lookup can be somewhat time-consuming.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Over time, say the JVM notices that each time this statement is executed, `obj1`
+    is of type `java.lang.String`. Then the JVM can produce compiled code that directly
+    calls the `String.equals()` method. Now the code is faster not only because it
+    is compiled but also because it can skip the lookup of which method to call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s not quite as simple as that; it is possible the next time the code is
+    executed that `obj1` refers to something other than a `String`. The JVM will create
+    compiled code that deals with that possibility, which will involve deoptimizing
+    and then reoptimizing the code in question (you’ll see an example in [“Deoptimization”](#Deoptimization)).
+    Nonetheless, the overall compiled code here will be faster (at least as long as
+    `obj1` continues to refer to a `String`) because it skips the lookup of which
+    method to execute. That kind of optimization can be made only after running the
+    code for a while and observing what it does: this is the second reason JIT compilers
+    wait to compile sections of code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java is designed to take advantage of the platform independence of scripting
+    languages and the native performance of compiled languages.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A Java class file is compiled into an intermediate language (Java bytecodes)
+    that is then further compiled into assembly language by the JVM.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compilation of the bytecodes into assembly language performs optimizations that
+    greatly improve performance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tiered Compilation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Once upon a time, the JIT compiler came in two flavors, and you had to install
+    different versions of the JDK depending on which compiler you wanted to use. These
+    compilers are known as the `client` and `server` compilers. In 1996, this was
+    an important distinction; in 2020, not so much. Today, all shipping JVMs include
+    both compilers (though in common usage, they are usually referred to as `server`
+    JVMs).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite being called server JVMs, the distinction between client and server
+    compilers persists; both compilers are available to and used by the JVM. So knowing
+    this difference is important in understanding how the compiler works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Historically, JVM developers (and even some tools) sometimes referred to the
+    compilers by the names `C1` (compiler 1, client compiler) and `C2` (compiler 2,
+    server compiler). Those names are more apt now, since any distinction between
+    a client and server computer is long gone, so we’ll adopt those names throughout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The primary difference between the two compilers is their aggressiveness in
+    compiling code. The C1 compiler begins compiling sooner than the C2 compiler does.
+    This means that during the beginning of code execution, the C1 compiler will be
+    faster, because it will have compiled correspondingly more code than the C2 compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The engineering trade-off here is the knowledge the C2 compiler gains while
+    it waits: that knowledge allows the C2 compiler to make better optimizations in
+    the compiled code. Ultimately, code produced by the C2 compiler will be faster
+    than that produced by the C1 compiler. From a user’s perspective, the benefit
+    to that trade-off is based on how long the program will run and how important
+    the startup time of the program is.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When these compilers were separate, the obvious question was why there needed
+    to be a choice at all: couldn’t the JVM start with the C1 compiler and then use
+    the C2 compiler as code gets hotter? That technique is known as *tiered compilation*,
+    and it is the technique all JVMs now use. It can be explicitly disabled with the
+    `-XX:-TieredCompilation` flag (the default value of which is `true`); in [“Advanced
+    Compiler Flags”](#advance-compiler-tuning), we’ll discuss the ramifications of
+    doing that.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Common Compiler Flags
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Two commonly used flags affect the JIT compiler; we’ll look at them in this
+    section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tuning the Code Cache
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When the JVM compiles code, it holds the set of assembly-language instructions
+    in the code cache. The code cache has a fixed size, and once it has filled up,
+    the JVM is not able to compile any additional code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is easy to see the potential issue here if the code cache is too small.
+    Some hot methods will get compiled, but others will not: the application will
+    end up running a lot of (very slow) interpreted code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When the code cache fills up, the JVM spits out this warning:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: It is sometimes easy to miss this message; another way to determine if the compiler
+    has ceased to compile code is to follow the output of the compilation log discussed
+    later in this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There really isn’t a good mechanism to figure out how much code cache a particular
+    application needs. Hence, when you need to increase the code cache size, it is
+    sort of a hit-and-miss operation; a typical option is to simply double or quadruple
+    the default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The maximum size of the code cache is set via the `-XX:ReservedCodeCacheSize=`*`N`*
+    flag (where `*N*` is the default just mentioned for the particular compiler).
+    The code cache is managed like most memory in the JVM: there is an initial size
+    (specified by `-XX:InitialCodeCacheSize=`*`N`*`).` Allocation of the code cache
+    size starts at the initial size and increases as the cache fills up. The initial
+    size of the code cache is 2,496 KB, and the default maximum size is 240 MB. Resizing
+    the cache happens in the background and doesn’t really affect performance, so
+    setting the `ReservedCodeCacheSize` size (i.e., setting the maximum code cache
+    size) is all that is generally needed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Is there a disadvantage to specifying a really large value for the maximum code
+    cache size so that it never runs out of space? It depends on the resources available
+    on the target machine. If a 1 GB code cache size is specified, the JVM will reserve
+    1 GB of native memory. That memory isn’t allocated until needed, but it is still
+    reserved, which means that sufficient virtual memory must be available on your
+    machine to satisfy the reservation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition, if you still have an old Windows machine with a 32-bit JVM, the
+    total process size cannot exceed 4 GB. That includes the Java heap, space for
+    all the code of the JVM itself (including its native libraries and thread stacks),
+    any native memory the application allocates (either directly or via the New I/O
+    [NIO] libraries), and of course the code cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Those are the reasons the code cache is not unbounded and sometimes requires
+    tuning for large applications. On 64-bit machines with sufficient memory, setting
+    the value too high is unlikely to have a practical effect on the application:
+    the application won’t run out of process space memory, and the extra memory reservation
+    will generally be accepted by the operating system.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Java 11, the code cache is segmented into three parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nonmethod code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Profiled code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nonprofiled code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By default, the code cache is sized the same way (up to 240 MB), and you can
+    still adjust the total size of the code cache by using the `ReservedCodeCacheSize`
+    flag. In that case, the nonmethod code segment is allocated space according to
+    the number of compiler threads (see [“Compilation Threads”](#CompilationThreads));
+    on a machine with four CPUs, it will be about 5.5 MB. The other two segments then
+    equally divide the remaining total code cache—for example, about 117.2 MB each
+    on the machine with four CPUs (yielding 240 MB total).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You’ll rarely need to tune these segments individually, but if so, the flags
+    are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-XX:NonNMethodCodeHeapSize=*N*`: for the nonmethod code'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`-XX:ProfiledCodeHapSize=*N*` for the profiled code'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`-XX:NonProfiledCodeHapSize=*N*` for the nonprofiled code'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The size of the code cache (and the JDK 11 segments) can be monitored in real
+    time by using `jconsole` and selecting the Memory Pool Code Cache chart on the
+    Memory panel. You can also enable Java’s Native Memory Tracking feature as described
+    in [Chapter 8](ch08.html#NativeMemory).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The code cache is a resource with a defined maximum size that affects the total
+    amount of compiled code the JVM can run.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Very large applications can use up the entire code cache in its default configuration;
+    monitor the code cache and increase its size if necessary.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Inspecting the Compilation Process
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The second flag isn’t a tuning per se: it will not improve the performance
+    of an application. Rather, the `-XX:+PrintCompilation` flag (which by default
+    is `false`) gives us visibility into the workings of the compiler (though we’ll
+    also look at tools that provide similar information).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If `PrintCompilation` is enabled, every time a method (or loop) is compiled,
+    the JVM prints out a line with information about what has just been compiled.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Most lines of the compilation log have the following format:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The timestamp here is the time after the compilation has finished (relative
+    to 0, which is when the JVM started).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `compilation_id` is an internal task ID. Usually, this number will simply
+    increase monotonically, but sometimes you may see an out-of-order compilation
+    ID. This happens most frequently when there are multiple compilation threads and
+    indicates that compilation threads are running faster or slower relative to each
+    other. Don’t conclude, though, that one particular compilation task was somehow
+    inordinately slow: it is usually just a function of thread scheduling.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `attributes` field is a series of five characters that indicates the state
+    of the code being compiled. If a particular attribute applies to the given compilation,
+    the character shown in the following list is printed; otherwise, a space is printed
+    for that attribute. Hence, the five-character attribute string may appear as two
+    or more items separated by spaces. The various attributes are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`%`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The compilation is OSR.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`s`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The method is synchronized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`!`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The method has an exception handler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`b`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compilation occurred in blocking mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`n`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compilation occurred for a wrapper to a native method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first of these attributes refers to *on-stack replacement* (OSR). JIT compilation
+    is an asynchronous process: when the JVM decides that a certain method should
+    be compiled, that method is placed in a queue. Rather than wait for the compilation,
+    the JVM then continues interpreting the method, and the next time the method is
+    called, the JVM will execute the compiled version of the method (assuming the
+    compilation has finished, of course).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But consider a long-running loop. The JVM will notice that the loop itself
+    should be compiled and will queue that code for compilation. But that isn’t sufficient:
+    the JVM has to have the ability to start executing the compiled version of the
+    loop while the loop is still running—it would be inefficient to wait until the
+    loop and enclosing method exit (which may not even happen). Hence, when the code
+    for the loop has finished compiling, the JVM replaces the code (on stack), and
+    the next iteration of the loop will execute the much faster compiled version of
+    the code. This is OSR.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next two attributes should be self-explanatory. The blocking flag will never
+    be printed by default in current versions of Java; it indicates that compilation
+    did not occur in the background (see [“Compilation Threads”](#CompilationThreads)
+    for more details). Finally, the native attribute indicates that the JVM generated
+    compiled code to facilitate the call into a native method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If tiered compilation has been disabled, the next field (`tiered_level`) will
+    be blank. Otherwise, it will be a number indicating which tier has completed compilation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next comes the name of the method being compiled (or the method containing the
+    loop being compiled for OSR), which is printed as `ClassName::method`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next is the `size` (in bytes) of the code being compiled. This is the size of
+    the Java bytecodes, not the size of the compiled code (so, unfortunately, this
+    can’t be used to predict how large to size the code cache).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, in some cases a message at the end of the compilation line will indicate
+    that some sort of deoptimization has occurred; these are typically the phrases
+    `made not entrant` or `made zombie`. See [“Deoptimization”](#Deoptimization) for
+    more details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The compilation log may also include a line that looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This line (with the literal text `COMPILE SKIPPED`) indicates that something
+    has gone wrong with the compilation of the given method. In two cases this is
+    expected, depending on the reason specified:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code cache filled
+  prefs: []
+  type: TYPE_NORMAL
+- en: The size of the code cache needs to be increased using the `ReservedCodeCache`
+    flag.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrent classloading
+  prefs: []
+  type: TYPE_NORMAL
+- en: The class was modified as it was being compiled. The JVM will compile it again
+    later; you should expect to see the method recompiled later in the log.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In all cases (except the cache being filled), the compilation should be reattempted.
+    If it is not, an error prevents compilation of the code. This is often a bug in
+    the compiler, but the usual remedy in all cases is to refactor the code into something
+    simpler that the compiler can handle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here are a few lines of output from enabling `PrintCompilation` on the stock
+    REST application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This output includes only a few of the stock-related methods (and not necessarily
+    all of the lines related to a particular method). A few interesting things to
+    note: the first such method wasn’t compiled until 28 seconds after the server
+    was started, and 849 methods were compiled before it. In this case, all those
+    other methods were methods of the server or JDK (filtered out of this output).
+    The server took about 2 seconds to start; the remaining 26 seconds before anything
+    else was compiled were essentially idle as the application server waited for requests.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The remaining lines are included to point out interesting features. The `process()`
+    method is synchronized, so the attributes include an `s`. Inner classes are compiled
+    just like any other class and appear in the output with the usual Java nomenclature:
+    `outer-classname$inner-classname`. The `processRequest()` method shows up with
+    the exception handler as expected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, recall the implementation of the `StockPriceHistoryImpl` constructor,
+    which contains a large loop:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The loop is executed more often than the constructor itself, so the loop is
+    subject to OSR compilation. Note that it took a while for that method to be compiled;
+    its compilation ID is 25, but it doesn’t appear until other methods in the 900
+    range are being compiled. (It’s easy to read OSR lines like this example as 25%
+    and wonder about the other 75%, but remember that the number is the compilation
+    ID, and the % just signifies OSR compilation.) That is typical of OSR compilation;
+    the stack replacement is harder to set up, but other compilation can continue
+    in the meantime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tiered Compilation Levels
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The compilation log for a program using tiered compilation prints the tier
+    level at which each method is compiled. In the sample output, code was compiled
+    either at level 3 or 4, even though we’ve discussed only two compilers (plus the
+    interpreter) so far. It turns out that there are five levels of compilation, because
+    the C1 compiler has three levels. So the levels of compilation are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '0'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interpreted code
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simple C1 compiled code
+  prefs: []
+  type: TYPE_NORMAL
+- en: '2'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limited C1 compiled code
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Full C1 compiled code
+  prefs: []
+  type: TYPE_NORMAL
+- en: '4'
+  prefs: []
+  type: TYPE_NORMAL
+- en: C2 compiled code
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A typical compilation log shows that most methods are first compiled at level
+    3: full C1 compilation. (All methods start at level 0, of course, but that doesn’t
+    appear in the log.) If a method runs often enough, it will get compiled at level
+    4 (and the level 3 code will be made not entrant). This is the most frequent path:
+    the C1 compiler waits to compile something until it has information about how
+    the code is used that it can leverage to perform optimizations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the C2 compiler queue is full, methods will be pulled from the C2 queue and
+    compiled at level 2, which is the level at which the C1 compiler uses the invocation
+    and back-edge counters (but doesn’t require profile feedback). That gets the method
+    compiled more quickly; the method will later be compiled at level 3 after the
+    C1 compiler has gathered profile information, and finally compiled at level 4
+    when the C2 compiler queue is less busy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, if the C1 compiler queue is full, a method that is scheduled
+    for compilation at level 3 may become eligible for level 4 compilation while still
+    waiting to be compiled at level 3\. In that case, it is quickly compiled to level
+    2 and then transitioned to level 4.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Trivial methods may start in either level 2 or 3 but then go to level 1 because
+    of their trivial nature. If the C2 compiler for some reason cannot compile the
+    code, it will also go to level 1\. And, of course, when code is deoptimized, it
+    goes to level 0.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Flags control some of this behavior, but expecting results when tuning at this
+    level is optimistic. The best case for performance happens when methods are compiled
+    as expected: tier 0 → tier 3 → tier 4. If methods frequently get compiled into
+    tier 2 and extra CPU cycles are available, consider increasing the number of compiler
+    threads; that will reduce the size of the C2 compiler queue. If no extra CPU cycles
+    are available, all you can do is attempt to reduce the size of the application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deoptimization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The discussion of the output of the `PrintCompilation` flag mentioned two cases
+    of the compiler deoptimizing the code. *Deoptimization* means that the compiler
+    has to “undo” a previous compilation. The effect is that the performance of the
+    application will be reduced—at least until the compiler can recompile the code
+    in question.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Deoptimization occurs in two cases: when code is `made not entrant` and when
+    code is `made zombie`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not entrant code
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Two things cause code to be made not entrant. One is due to the way classes
+    and interfaces work, and one is an implementation detail of tiered compilation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look at the first case. Recall that the stock application has an interface
+    `StockPriceHistory`. In the sample code, this interface has two implementations:
+    a basic one (`StockPriceHistoryImpl`) and one that adds logging (`Stock​PriceHistoryLogger`)
+    to each operation. In the REST code, the implementation used is based on the `log`
+    parameter of the URL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: If a bunch of calls are made to *http://localhost:8080/StockServlet* (that is,
+    without the `log` parameter), the compiler will see that the actual type of the
+    `sph` object is `StockPriceHistoryImpl`. It will then inline code and perform
+    other optimizations based on that knowledge.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Later, say a call is made to *http://localhost:8080/StockServlet?log=true*.
+    Now the assumption the compiler made regarding the type of the `sph` object is
+    incorrect; the previous optimizations are no longer valid. This generates a deoptimization
+    trap, and the previous optimizations are discarded. If a lot of additional calls
+    are made with logging enabled, the JVM will quickly end up compiling that code
+    and making new optimizations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The compilation log for that scenario will include lines such as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that both the OSR-compiled constructor and the standard-compiled methods
+    have been made not entrant, and some time much later, they are made zombie.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deoptimization sounds like a bad thing, at least in terms of performance, but
+    that isn’t necessarily the case. [Table 4-1](#TableDeopt) shows the operations
+    per second that the REST server achieves under deoptimization scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 4-1\. Throughput of server with deoptimization
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Scenario | OPS |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Standard implementation | 24.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Standard implementation after deopt | 24.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Logging implementation | 24.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mixed impl | 24.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: The standard implementation will give us 24.4 OPS. Suppose that immediately
+    after that test, a test is run that triggers the `StockPriceHistoryLogger` path—that
+    is the scenario that ran to produce the deoptimization examples just listed. The
+    full output of `PrintCompilation` shows that all the methods of the `StockPriceHistoryImpl`
+    class get deoptimized when the requests for the logging implementation are started.
+    But after deoptimization, if the path that uses the `StockPriceHistoryImpl` implementation
+    is rerun, that code will get recompiled (with slightly different assumptions),
+    and we will still end up still seeing about 24.4 OPS (after another warm-up period).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That’s the best case, of course. What happens if the calls are intermingled
+    such that the compiler can never really assume which path the code will take?
+    Because of the extra logging, the path that includes the logging gets about 24.1
+    OPS through the server. If operations are mixed, we get about 24.3 OPS: just about
+    what would be expected from an average. So aside from a momentary point where
+    the trap is processed, deoptimization has not affected the performance in any
+    significant way.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second thing that can cause code to be made not entrant is the way tiered
+    compilation works. When code is compiled by the C2 compiler, the JVM must replace
+    the code already compiled by the C1 compiler. It does this by marking the old
+    code as not entrant and using the same deoptimization mechanism to substitute
+    the newly compiled (and more efficient) code. Hence, when a program is run with
+    tiered compilation, the compilation log will show a slew of methods that are made
+    not entrant. Don’t panic: this “deoptimization” is, in fact, making the code that
+    much faster.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The way to detect this is to pay attention to the tier level in the compilation
+    log:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, the constructor is first OSR-compiled at level 3 and then fully compiled
+    also at level 3\. A second later, the OSR code becomes eligible for level 4 compilation,
+    so it is compiled at level 4 and the level 3 OSR code is made not entrant. The
+    same process then occurs for the standard compilation, and finally the level 3
+    code becomes a zombie.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deoptimizing zombie code
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: When the compilation log reports that it has made zombie code, it is saying
+    that it has reclaimed previous code that was made not entrant. In the preceding
+    example, after a test was run with the `StockPriceHistoryLogger` implementation,
+    the code for the `StockPriceHistoryImpl` class was made not entrant. But objects
+    of the `StockPriceHistoryImpl` class remained. Eventually all those objects were
+    reclaimed by GC. When that happened, the compiler noticed that the methods of
+    that class were now eligible to be marked as zombie code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For performance, this is a good thing. Recall that the compiled code is held
+    in a fixed-size code cache; when zombie methods are identified, the code in question
+    can be removed from the code cache, making room for other classes to be compiled
+    (or limiting the amount of memory the JVM will need to allocate later).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The possible downside is that if the code for the class is made zombie and then
+    later reloaded and heavily used again, the JVM will need to recompile and reoptimize
+    the code. Still, that’s exactly what happened in the previous scenario, where
+    the test was run without logging, then with logging, and then without logging;
+    performance in that case was not noticeably affected. In general, the small recompilations
+    that occur when zombie code is recompiled will not have a measurable effect on
+    most applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The best way to gain visibility into how code is being compiled is by enabling
+    `PrintCompilation`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Output from enabling `PrintCompilation` can be used to make sure that compilation
+    is proceeding as expected.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tiered compilation can operate at five distinct levels among the two compilers.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Deoptimization is the process by which the JVM replaces previously compiled
+    code. This usually happens in the context of C2 code replacing C1 code, but it
+    can happen because of changes in the execution profile of an application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Advanced Compiler Flags
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This section covers a few other flags that affect the compiler. Mostly, this
+    gives you a chance to understand even better how the compiler works; these flags
+    should not generally be used. On the other hand, another reason they are included
+    here is that they were once common enough to be in wide usage, so if you’ve encountered
+    them and wonder what they do, this section should answer those questions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compilation Thresholds
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This chapter has been somewhat vague in defining just what triggers the compilation
+    of code. The major factor is how often the code is executed; once it is executed
+    a certain number of times, its compilation threshold is reached, and the compiler
+    deems that it has enough information to compile the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tunings affect these thresholds. However, this section is really designed to
+    give you better insight into how the compiler works (and introduce some terms);
+    in current JVMs, tuning the threshold never really makes sense.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compilation is based on two counters in the JVM: the number of times the method
+    has been called, and the number of times any loops in the method have branched
+    back. *Branching back* can effectively be thought of as the number of times a
+    loop has completed execution, either because it reached the end of the loop itself
+    or because it executed a branching statement like `continue`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the JVM executes a Java method, it checks the sum of those two counters
+    and decides whether the method is eligible for compilation. If it is, the method
+    is queued for compilation (see [“Compilation Threads”](#CompilationThreads) for
+    more details about queuing). This kind of compilation has no official name but
+    is often called *standard* *compilation*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, every time a loop completes an execution, the branching counter is
+    incremented and inspected. If the branching counter has exceeded its individual
+    threshold, the loop (and not the entire method) becomes eligible for compilation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tunings affect these thresholds. When tiered compilation is disabled, standard
+    compilation is triggered by the value of the `-XX:CompileThreshold=`*`N`* flag.
+    The default value of *`N`* is 10,000\. Changing the value of the `CompileThreshold`
+    flag will cause the compiler to choose to compile the code sooner (or later) than
+    it normally would have. Note, however, that although there is one flag here, the
+    threshold is calculated by adding the sum of the back-edge loop counter plus the
+    method entry counter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can often find recommendations to change the `CompileThreshold` flag, and
+    several publications of Java benchmarks use this flag (e.g., frequently after
+    8,000 iterations). Some applications still ship with that flag set by default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But remember that I said this flag works when tiered compilation is disabled—which
+    means that when tiered compilation is enabled (as it normally is), this flag does
+    nothing at all. Use of this flag is really just a holdover from JDK 7 and earlier
+    days.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This flag used to be recommended for two reasons: first, lowering it would
+    improve startup time for an application using the C2 compiler, since code would
+    get compiled more quickly (and usually with the same effectiveness). Second, it
+    could cause some methods to get compiled that otherwise never would have been
+    compiled.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That last point is an interesting quirk: if a program runs forever, wouldn’t
+    we expect all of its code to get compiled eventually? That’s not how it works,
+    because the counters the compilers use increase as methods and loops are executed,
+    but they also decrease over time. Periodically (specifically, when the JVM reaches
+    a safepoint), the value of each counter is reduced.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Practically speaking, this means that the counters are a relative measure of
+    the *recent* hotness of the method or loop. One side effect is that somewhat frequently
+    executed code may never be compiled by the C2 compiler, even for programs that
+    run forever. These methods are sometimes called *lukewarm* (as opposed to hot).
+    Before tiered compilation, this was one case where reducing the compilation threshold
+    was beneficial.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Today, however, even the lukewarm methods will be compiled, though perhaps they
+    could be ever-so-slightly improved if we could get them compiled by the C2 compiler
+    rather than the C1 compiler. Little practical benefit exists, but if you’re really
+    interested, try changing the flags `-XX:Tier3InvocationThreshold=*N*` (default
+    200) to get C1 to compile a method more quickly, and `-XX:Tier4InvocationThreshold=*N*`
+    (default 5000) to get C2 to compile a method more quickly. Similar flags are available
+    for the back-edge threshold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The thresholds at which methods (or loops) get compiled are set via tunable
+    parameters.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Without tiered compilation, it sometimes made sense to adjust those thresholds,
+    but with tiered compilation, this tuning is no longer recommended.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compilation Threads
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[“Compilation Thresholds”](#CompileThreshold) mentioned that when a method
+    (or loop) becomes eligible for compilation, it is queued for compilation. That
+    queue is processed by one or more background threads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These queues are not strictly first in, first out; methods whose invocation
+    counters are higher have priority. So even when a program starts execution and
+    has lots of code to compile, this priority ordering helps ensure that the most
+    important code will be compiled first. (This is another reason the compilation
+    ID in the `PrintCompilation` output can appear out of order.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: The C1 and C2 compilers have different queues, each of which is processed by
+    (potentially multiple) different threads. The number of threads is based on a
+    complex formula of logarithms, but [Table 4-2](#TableCompilerThreads) lists the
+    details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 4-2\. Default number of C1 and C2 compiler threads for tiered compilation
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| CPUs | C1 threads | C2 threads |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 1 | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 1 | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 1 | 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 1 | 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 2 | 6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 3 | 7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 64 | 4 | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 128 | 4 | 10 |'
+  prefs: []
+  type: TYPE_TB
+- en: The number of compiler threads can be adjusted by setting the `-XX:CICompilerCount=`*`N`*
+    flag. That is the total number of threads the JVM will use to process the queue(s);
+    for tiered compilation, one-third (but at least one) will be used to process the
+    C1 compiler queue, and the remaining threads (but also at least one) will be used
+    to process the C2 compiler queue. The default value of that flag is the sum of
+    the two columns in the preceding table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If tiered compilation is disabled, only the given number of C2 compiler threads
+    are started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When might you consider adjusting this value? Because the default value is based
+    on the number of CPUs, this is one case where running with an older version of
+    JDK 8 inside a Docker container can cause the automatic tuning to go awry. In
+    such a circumstance, you will need to manually set this flag to the desired value
+    (using the targets in [Table 4-2](#TableCompilerThreads) as a guideline based
+    on the number of CPUs assigned to the Docker container).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Similarly, if a program is run on a single-CPU virtual machine, having only
+    one compiler thread might be slightly beneficial: limited CPU is available, and
+    having fewer threads contending for that resource will help performance in many
+    circumstances. However, that advantage is limited only to the initial warm-up
+    period; after that, the number of eligible methods to be compiled won’t really
+    cause contention for the CPU. When the stock batching application was run on a
+    single-CPU machine and the number of compiler threads was limited to one, the
+    initial calculations were about 10% faster (since they didn’t have to compete
+    for CPU as often). The more iterations that were run, the smaller the overall
+    effect of that initial benefit, until all hot methods were compiled and the benefit
+    was eliminated.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, the number of threads can easily overwhelm the system, particularly
+    if multiple JVMs are run at once (each of which will start many compilation threads).
+    Reducing the number of threads in that case can help overall throughput (though
+    again with the possible cost that the warm-up period will last longer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, if lots of extra CPU cycles are available, then theoretically the
+    program will benefit—at least during its warm-up period—when the number of compiler
+    threads is increased. In real life, that benefit is extremely hard to come by.
+    Further, if all that excess CPU is available, you’re much better off trying something
+    that takes advantage of the available CPU cycles during the entire execution of
+    the application (rather than just compiling faster at the beginning).
+  prefs: []
+  type: TYPE_NORMAL
+- en: One other setting that applies to the compilation threads is the value of the
+    `-XX:+BackgroundCompilation` flag, which by default is `true`. That setting means
+    that the queue is processed asynchronously as just described. But that flag can
+    be set to `false`, in which case when a method is eligible for compilation, code
+    that wants to execute it will wait until it is in fact compiled (rather than continuing
+    to execute in the interpreter). Background compilation is also disabled when `-Xbatch`
+    is specified.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Compilation occurs asynchronously for methods that are placed on the compilation
+    queue.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The queue is not strictly ordered; hot methods are compiled before other methods
+    in the queue. This is another reason compilation IDs can appear out of order in
+    the compilation log.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Inlining
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'One of the most important optimizations the compiler makes is to inline methods.
+    Code that follows good object-oriented design often contains attributes that are
+    accessed via getters (and perhaps setters):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The overhead for invoking a method call like this is quite high, especially
+    relative to the amount of code in the method. In fact, in the early days of Java,
+    performance tips often argued against this sort of encapsulation precisely because
+    of the performance impact of all those method calls. Fortunately, JVMs now routinely
+    perform code inlining for these kinds of methods. Hence, you can write this code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The compiled code will essentially execute this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Inlining is enabled by default. It can be disabled using the `-XX:-Inline` flag,
+    though it is such an important performance boost that you would never actually
+    do that (for example, disabling inlining reduces the performance of the stock
+    batching test by over 50%). Still, because inlining is so important, and perhaps
+    because we have many other knobs to turn, recommendations are often made regarding
+    tuning the inlining behavior of the JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, there is no basic visibility into how the JVM inlines code. If
+    you compile the JVM from source, you can produce a debug version that includes
+    the flag `-XX:+PrintInlining`. That flag provides all sorts of information about
+    the inlining decisions that the compiler makes.) The best that can be done is
+    to look at profiles of the code, and if any simple methods near the top of the
+    profiles seem like they should be inlined, experiment with inlining flags.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The basic decision about whether to inline a method depends on how hot it is
+    and its size. The JVM determines if a method is hot (i.e., called frequently)
+    based on an internal calculation; it is not directly subject to any tunable parameters.
+    If a method is eligible for inlining because it is called frequently, it will
+    be inlined only if its bytecode size is less than 325 bytes (or whatever is specified
+    as the `-XX:MaxFreqInlineSize=`*`N`* flag). Otherwise, it is eligible for inlining
+    only if it is smaller than 35 bytes (or whatever is specified as the `-XX:MaxInlineSize=`*`N`*
+    flag).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sometimes you will see recommendations that the value of the `MaxInlineSize`
+    flag be increased so that more methods are inlined. One often overlooked aspect
+    of this relationship is that setting the `MaxInlineSize` value higher than 35
+    means that a method might be inlined when it is first called. However, if the
+    method is called frequently—in which case its performance matters much more—then
+    it would have been inlined eventually (assuming its size is less than 325 bytes).
+    Otherwise, the net effect of tuning the `MaxInlineSize` flag is that it might
+    reduce the warm-up time needed for a test, but it is unlikely that it will have
+    a big impact on a long-running application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Inlining is the most beneficial optimization the compiler can make, particularly
+    for object-oriented code where attributes are well encapsulated.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tuning the inlining flags is rarely needed, and recommendations to do so often
+    fail to account for the relationship between normal inlining and frequent inlining.
+    Make sure to account for both cases when investigating the effects of inlining.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Escape Analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The C2 compiler performs aggressive optimizations if escape analysis is enabled
+    (`-XX:+DoEscapeAnalysis`, which is `true` by default). For example, consider this
+    class to work with factorials:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To store the first 100 factorial values in an array, this code would be used:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `factorial` object is referenced only inside that loop; no other code can
+    ever access that object. Hence, the JVM is free to perform optimizations on that
+    object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It needn’t get a synchronization lock when calling the `getFactorial()` method.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It needn’t store the field `n` in memory; it can keep that value in a register.
+    Similarly, it can store the `factorial` object reference in a register.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In fact, it needn’t allocate an actual factorial object at all; it can just
+    keep track of the individual fields of the object.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'This kind of optimization is sophisticated: it is simple enough in this example,
+    but these optimizations are possible even with more-complex code. Depending on
+    the code usage, not all optimizations will necessarily apply. But escape analysis
+    can determine which of those optimizations are possible and make the necessary
+    changes in the compiled code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Escape analysis is enabled by default. In rare cases, it will get things wrong.
+    That is usually unlikely, and in current JVMs, it is rare indeed. Still, because
+    there were once some high-profile bugs, you’ll sometimes see recommendations for
+    disabling escape analysis. Those are likely not appropriate any longer, though
+    as with all aggressive compiler optimizations, it’s not out of the question that
+    disabling this feature could lead to more stable code. If you find this to be
+    the case, simplifying the code in question is the best course of action: simpler
+    code will compile better. (It is a bug, however, and should be reported.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Escape analysis is the most sophisticated of the optimizations the compiler
+    can perform. This is the kind of optimization that frequently causes microbenchmarks
+    to go awry.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: CPU-Specific Code
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: I mentioned earlier that one advantage of the JIT compiler is that it could
+    emit code for different processors depending on where it was running. This presumes
+    that the JVM is built with the knowledge of the newer processor, of course.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That is exactly what the compiler does for Intel chips. In 2011, Intel introduced
+    Advanced Vector Extensions (AVX2) for the Sandy Bridge (and later) chips. JVM
+    support for those instructions soon followed. Then in 2016 Intel extended this
+    to include AVX-512 instructions; those are present on Knights Landing and subsequent
+    chips. Those instructions are not supported in JDK 8 but are supported in JDK
+    11.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Normally, this feature isn’t something you worry about; the JVM will detect
+    the CPU that it is running on and select the appropriate instruction set. But
+    as with all new features, sometimes things go awry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Support for AVX-512 instructions was first introduced in JDK 9, though it was
+    not enabled by default. In a couple of false starts, it was enabled by default
+    and then disabled by default. In JDK 11, those instructions were enabled by default.
+    However, beginning in JDK 11.0.6, those instructions are again disabled by default.
+    Hence, even in JDK 11, this is still a work in progress. (This, by the way, is
+    not unique to Java; many programs have struggled to get the support of the AVX-512
+    instructions exactly right.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: So it is that on some newer Intel hardware, running some programs, you may find
+    that an earlier instruction set works much better. The kinds of applications that
+    benefit from the new instruction set typically involve more scientific calculations
+    than Java programs often do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These instruction sets are selected with the `-XX:UseAVX=`*`N`* argument, where
+    *`N`* is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '0'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use no AVX instructions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use Intel AVX level 1 instructions (for Sandy Bridge and later processors).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '2'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use Intel AVX level 2 instructions (for Haswell and later processors).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use Intel AVX-512 instructions (for Knights Landing and later processors).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The default value for this flag will depend on the processor running the JVM;
+    the JVM will detect the CPU and pick the highest supported value it can. Java
+    8 has no support for a level of 3, so 2 is the value you’ll see used on most processors.
+    In Java 11 on newer Intel processors, the default is to use 3 in versions up to
+    11.0.5, and 2 in later versions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is one of the reasons I mentioned in [Chapter 1](ch01.html#Introduction)
+    that it is a good idea to use the latest versions of Java 8 or Java 11, since
+    important fixes like this are in those latest versions. If you must use an earlier
+    version of Java 11 on the latest Intel processors, try setting the `-XX:UseAVX=2`
+    flag, which in many cases will give you a performance boost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Speaking of code maturity: for completeness, I’ll mention that the `-XX:UseSSE=*N*`
+    flag supports Intel Streaming SIMD Extensions (SSE) one to four. These extensions
+    are for the Pentium line of processors. Tuning this flag in 2010 made some sense
+    as all the permutations of its use were being worked out. Today, we can generally
+    rely on the robustness of that flag.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tiered Compilation Trade-offs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: I’ve mentioned a few times that the JVM works differently when tiered compilation
+    is disabled. Given the performance advantages it provides, is there ever a reason
+    to turn it off?
+  prefs: []
+  type: TYPE_NORMAL
+- en: One such reason might be when running in a memory-constrained environment. Sure,
+    your 64-bit machine probably has a ton of memory, but you may be running in a
+    Docker container with a small memory limit or in a cloud virtual machine that
+    just doesn’t have quite enough memory. Or you may be running dozens of JVMs on
+    your large machine. In those cases, you may want to reduce the memory footprint
+    of your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Chapter 8](ch08.html#NativeMemory) provides general recommendations about
+    this, but in this section we’ll look at the effect of tiered compilation on the
+    code cache.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 4-3](#TableCodeCache) shows the result of starting NetBeans on my system,
+    which has a couple dozen projects that will be opened at startup.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 4-3\. Effect of tiered compilation on the code cache
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Compiler mode | Classes compiled | Committed code cache | Startup time |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +TieredCompilation | 22,733 | 46.5 MB | 50.1 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| -TieredCompilation | 5,609 | 10.7 MB | 68.5 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: The C1 compiler compiled about four times as many classes and predictably required
+    about four times as much memory for the code cache. In absolute terms, saving
+    34 MB in this example is unlikely to make a huge difference. Saving 300 MB in
+    a program that compiles 200,000 classes might be a different choice on some platforms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What do we lose by disabling tiered compilation? As the table shows, we do spend
+    more time to start the application and load all project classes. But what about
+    a long-running program, where you’d expect all the hot spots to get compiled?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In that case, given a sufficiently long warm-up period, execution should be
+    about the same when tiered compilation is disabled. [Table 4-4](#TableLongServer)
+    shows the performance of our stock REST server after warm-up periods of 0, 60,
+    and 300 seconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 4-4\. Throughput of server applications with tiered compilation
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Warm-up period | `-XX:-TieredCompilation` | `-XX:+TieredCompilation` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0 seconds | 23.72 | 24.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 60 seconds | 23.73 | 24.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 300 seconds | 24.42 | 24.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The measurement period is 60 seconds, so even when there is no warm-up, the
+    compilers had an opportunity to get enough information to compile the hot spots;
+    hence, there is little difference even when there is no warm-up period. (Also,
+    a lot of code was compiled during the startup of the server.) Note that in the
+    end, tiered compilation is still able to eke out a small advantage (albeit one
+    that is unlikely to be noticeable). We discussed the reason for that when discussing
+    compilation thresholds: there will always be a small number of methods that are
+    compiled by the C1 compiler when tiered compilation is used that won’t be compiled
+    by the C2 compiler.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The GraalVM
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The *GraalVM* is a new virtual machine. It provides a means to run Java code,
+    of course, but also code from many other languages. This universal virtual machine
+    can also run JavaScript, Python, Ruby, R, and traditional JVM bytecodes from Java
+    and other languages that compile to JVM bytecodes (e.g., Scala, Kotlin, etc.).
+    Graal comes in two editions: a full open source Community Edition (CE) and a commercial
+    Enterprise Edition (EE). Each edition has binaries that support either Java 8
+    or Java 11.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The GraalVM has two important contributions to JVM performance. First, an add-on
+    technology allows the GraalVM to produce fully native binaries; we’ll examine
+    that in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, the GraalVM can run in a mode as a regular JVM, but it contains a new
+    implementation of the C2 compiler. This compiler is written in Java (as opposed
+    to the traditional C2 compiler, which is written in C++).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The traditional JVM contains a version of the GraalVM JIT, depending on when
+    the JVM was built. These JIT releases come from the CE version of GraalVM, which
+    are slower than the EE version; they are also typically out-of-date compared to
+    versions of GraalVM that you can download directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Within the JVM, using the GraalVM compiler is considered experimental, so to
+    enable it, you need to supply these flags: `-XX:+UnlockExperimentalVMOptions`,
+    `-XX:+EnableJVMCI`, and `-XX:+UseJVMCICompiler`. The default for all those flags
+    is `false`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 4-5](#TableGraal) shows the performance of the standard Java 11 compiler,
+    the Graal compiler from EE version 19.2.1, and the GraalVM embedded in Java 11
+    and 13.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 4-5\. Performance of Graal compiler
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| JVM/compiler | OPS |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 11/Standard C2 | 20.558 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 11/Graal JIT | 14.733 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Graal 1.0.0b16 | 16.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Graal 19.2.1 | 26.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 13/Standard C2 | 21.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 13/Graal JIT | 26.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: This is once again the performance of our REST server (though on slightly different
+    hardware than before, so the baseline OPS is only 20.5 OPS instead of 24.4).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s interesting to note the progression here: JDK 11 was built with a pretty
+    early version of the Graal compiler, so the performance of that compiler lags
+    the C2 compiler. The Graal compiler improved through its early access builds,
+    though even its latest early access (1.0) build wasn’t as fast as the standard
+    VM. Graal versions in late 2019 (released as production version 19.2.1), though,
+    got substantially faster. The early access release of JDK 13 has one of those
+    later builds and achieves close to the same performance with the Graal compiler,
+    even while its C2 compiler is only modestly improved since JDK 11.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Precompilation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We began this chapter by discussing the philosophy behind a just-in-time compiler.
+    Although it has its advantages, code is still subject to a warm-up period before
+    it executes. What if in our environment a traditional compiled model would work
+    better: an embedded system without the extra memory the JIT requires, or a program
+    that completes before having a chance to warm up?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we’ll look at two experimental features that address that scenario.
+    Ahead-of-time compilation is an experimental feature of the standard JDK 11, and
+    the ability to produce a fully native binary is a feature of the Graal VM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ahead-of-Time Compilation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Ahead-of-time (AOT) compilation* was first available in JDK 9 for Linux only,
+    but in JDK 11 it is available on all platforms. From a performance standpoint,
+    it is still a work in progress, but this section will give you a sneak peek at
+    it.^([1](ch04.html#idm45775555226680))'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'AOT compilation allows you to compile some (or all) of your application in
+    advance of running it. This compiled code becomes a shared library that the JVM
+    uses when starting the application. In theory, this means the JIT needn’t be involved,
+    at least in the startup of your application: your code should initially run at
+    least as well as the C1 compiled code without having to wait for that code to
+    be compiled.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In practice, it’s a little different: the startup time of the application is
+    greatly affected by the size of the shared library (and hence the time to load
+    that shared library into the JVM). That means a simple application like a “Hello,
+    world” application won’t run any faster when you use AOT compilation (in fact,
+    it may run slower depending on the choices made to precompile the shared library).
+    AOT compilation is targeted toward something like a REST server that has a relatively
+    long startup time. That way, the time to load the shared library is offset by
+    the long startup time, and AOT produces a benefit. But remember as well that AOT
+    compilation is an experimental feature, and smaller programs may see benefits
+    from it as the technology evolves.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To use AOT compilation, you use the `jaotc` tool to produce a shared library
+    containing the compiled classes that you select. Then that shared library is loaded
+    into the JVM via a runtime argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `jaotc` tool has several options, but the way that you’ll produce the best
+    library is something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: This command will use a set of compile commands to produce a compiled version
+    of the *java.base* module in the given output file. You have the option of AOT
+    compiling a module, as we’ve done here, or a set of classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The time to load the shared library depends on its size, which is a factor of
+    the number of methods in the library. You can load multiple shared libraries that
+    pre-compile different parts of code as well, which may be easier to manage but
+    has the same performance, so we’ll concentrate on a single library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While you might be tempted to precompile everything, you’ll obtain better performance
+    if you judiciously precompile only subsets of the code. That’s why this recommendation
+    is to compile only the *java.base* module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The compile commands (in the */tmp/methods.txt* file in this example) also
+    serve to limit the data that is compiled into the shared library. That file contains
+    lines that look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: This line tells `jaotc` that when it compiles the `java.net.URI` class, it should
+    include only the `getHost()` method. We can have other lines referencing other
+    methods from that class to include their compilation as well; in the end, only
+    the methods listed in the file will be included in the shared library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To create the list of compile commands, we need a list of every method that
+    the application actually uses. To do that, we run the application like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When the program exits, it will print lines of each method the program used
+    in a format like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: To produce the *methods.txt* file, save those lines, prepend each with the `compileOnly`
+    directive, and remove the colon immediately preceding the method arguments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The classes that are precompiled by `jaotc` will use a form of the C1 compiler,
+    so in a long-running program, they will not be optimally compiled. So the final
+    option that we’ll need is `--compile-for-tiered`. That option arranges the shared
+    library so that its methods are still eligible to be compiled by the C2 compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are using AOT compilation for a short-lived program, it’s fine to leave
+    out this argument, but remember that the target set of applications is a server.
+    If we don’t allow the precompiled methods to become eligible for C2 compilation,
+    the warm performance of the server will be slower than what is ultimately possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Perhaps unsurprisingly, if you run your application with a library that has
+    tiered compilation enabled and use the `-XX:+PrintCompilation` flag, you see the
+    same code replacement technique we observed before: the AOT compilation will appear
+    as another tier in the output, and you’ll see the AOT methods get made not entrant
+    and replaced as the JIT compiles them.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once the library has been created, you use it with your application like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you want to make sure that the library is being used, include the `-XX:+PrintAOT`
+    flag in your JVM arguments; that flag is `false` by default. Like the `-XX:+PrintCompilation`
+    flag, the `-XX:+PrintAOT` flag will produce output whenever a precompiled method
+    is used by the JVM. A typical line looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first column here is the milliseconds since the program started, so it
+    took 373 milliseconds until the constructor of the `HashSet` class was loaded
+    from the shared library and began execution. The second column is an ID assigned
+    to the method, and the third column tells us which library the method was loaded
+    from. The index (1 in this example) is also printed by this flag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*JavaBaseFilteredMethods.so* is the first (and only) library loaded in this
+    example, so its index is 1 (the second column) and subsequent references to `aot`
+    with that index refer to this library.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GraalVM Native Compilation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: AOT compilation was beneficial for relatively large programs but didn’t help
+    (and could hinder) small, quick-running programs. That is because it’s still an
+    experimental feature and because its architecture has the JVM load the shared
+    library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The GraalVM, on the other hand, can produce full native executables that run
+    without the JVM. These executables are ideal for short-lived programs. If you
+    ran the examples, you may have noticed references in some things (like ignored
+    errors) to GraalVM classes: AOT compilation uses GraalVM as its foundation. This
+    is an Early Adopter feature of the GraalVM; it can be used in production with
+    the appropriate license but is not subject to warranty.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The GraalVM produces binaries that start up quite fast, particularly when comparing
+    them to the running programs in the JVM. However, in this mode the GraalVM does
+    not optimize code as aggressively as the C2 compiler, so given a sufficiently
+    long-running application, the traditional JVM will win out in the end. Unlike
+    AOT compilation, the GraalVM native binary does not compile classes using C2 during
+    execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, the memory footprint of a native program produced from the GraalVM
+    starts out significantly smaller than a traditional JVM. However, by the time
+    a program runs and expands the heap, this memory advantage fades.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Limitations also exist on which Java features can be used in a program compiled
+    into native code. These limitations include the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dynamic class loading (e.g., by calling `Class.forName()`).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finalizers.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Java Security Manager.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: JMX and JVMTI (including JVMTI profiling).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use of reflection often requires special coding or configuration.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use of dynamic proxies often requires special configuration.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use of JNI requires special coding or configuration.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We can see all of this in action by using a demo program from the GraalVM project
+    that recursively counts the files in a directory. With a few files to count, the
+    native program produced by the GraalVM is quite small and fast, but as more work
+    is done and the JIT kicks in, the traditional JVM compiler generates better code
+    optimizations and is faster, as we see in [Table 4-6](#TableAOTList).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 4-6\. Time to count files with native and JIT-compiled code
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of files | Java 11.0.5 | Native application |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7 | 217 ms (36K) | 4 ms (3K) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 271 | 279 ms (37K) | 20 ms (6K) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 169,000 | 2.3 s (171K) | 2.1 s (249K) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1.3 million | 19.2 s (212K) | 25.4 s (269K) |'
+  prefs: []
+  type: TYPE_TB
+- en: The times here are the time to count the files; the total footprint of the run
+    (measured at completion) is given in parentheses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, the GraalVM itself is rapidly evolving, and the optimizations within
+    its native code can be expected to improve over time as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter contains a lot of background about how the compiler works. This
+    is so you can understand some of the general recommendations made in [Chapter 1](ch01.html#Introduction)
+    regarding small methods and simple code, and the effects of the compiler on microbenchmarks
+    that were described in [Chapter 2](ch02.html#SampleApplications). In particular:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Don’t be afraid of small methods—and, in particular, getters and setters—because
+    they are easily inlined. If you have a feeling that the method overhead can be
+    expensive, you’re correct in theory (we showed that removing inlining significantly
+    degrades performance). But it’s not the case in practice, since the compiler fixes
+    that problem.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Code that needs to be compiled sits in a compilation queue. The more code in
+    the queue, the longer the program will take to achieve optimal performance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Although you can (and should) size the code cache, it is still a finite resource.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The simpler the code, the more optimizations that can be performed on it. Profile
+    feedback and escape analysis can yield much faster code, but complex loop structures
+    and large methods limit their effectiveness.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finally, if you profile your code and find some surprising methods at the top
+    of your profile—methods you expect shouldn’t be there—you can use the information
+    here to look into what the compiler is doing and to make sure it can handle the
+    way your code is written.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch04.html#idm45775555226680-marker)) One benefit of AOC compilation is
+    faster startup, but application class data sharing gives—at least for now—a better
+    benefit in terms of startup performance and is a fully supported feature; see
+    [“Class Data Sharing”](ch12.html#ClassDataSharing) for more details.
+  prefs: []
+  type: TYPE_NORMAL

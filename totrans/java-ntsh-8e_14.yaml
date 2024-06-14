@@ -1,0 +1,1048 @@
+- en: Chapter 12\. Java Platform Modules
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we will provide a basic introduction to the *Java Platform
+    Modules System* (JPMS). However, this is a large, complex subject—​interested
+    readers may well require a more in-depth reference, such as [*Java 9 Modularity*](http://shop.oreilly.com/product/0636920049494.do)
+    by Sander Mak and Paul Bakker (O’Reilly).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modules, a relatively advanced feature, are primarily about packaging and deploying
+    entire applications and their dependencies. They were added to the platform roughly
+    20 years after the first version of Java and so can be seen as orthogonal to the
+    rest of the language syntax.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java’s strong promotion of backwards compatibility also plays a role here, as
+    non-modular applications must continue to run. This has led the architects and
+    stewards of the Java platform to adopt a pragmatic view of the necessity of teams
+    to adopt modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is no need to switch to modules.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: There has never been a need to switch to modules.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Java 9 and later releases support traditional JAR files on the traditional classpath,
+    via the concept of the unnamed module, and will likely do so until the heat death
+    of the universe.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Whether to start using modules is entirely up to you.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Mark Reinhold
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: https://oreil.ly/4RjDH
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Due to the advanced nature of modules, this chapter assumes you are familiar
+    with a modern Java build tool, such as Gradle or Maven.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are new to Java, you can safely ignore references to those tools and
+    just read the chapter to get a first, high-level overview of JPMS. It is not necessary
+    for a new Java programmer to fully understand this topic while still learning
+    how to write Java programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why Modules?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There were several major motivating reasons for wanting to add modules to the
+    Java platform. These included a desire for:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Strong encapsulation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Well-defined interfaces
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Explicit dependencies
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'These are all language (and application design) level, and they were combined
+    with the promise of new platform-level capabilities as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scalable development
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improved performance (especially startup time) and reduced footprint
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reduced attack surface and better security
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Evolvable internals
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The encapsulation point was driven by the fact that the original language specification
+    supports only private, public, protected, and package-private visibility levels.
+    There is no way to control access in a more fine-grained way to express concepts
+    such as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only specified packages are available as an API—others are internal and may
+    not be accessed
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Certain packages can be accessed by this list of packages but no others
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Defining a strict exporting mechanism
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The lack of these and related capabilities has been a significant shortcoming
+    when architecting larger Java systems. Not only that, but without a suitable protection
+    mechanism, it would be very difficult to evolve the internals of the JDK—as nothing
+    prevents user applications from directly accessing implementation classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The modules system attempts to address all of these concerns at once and to
+    provide a solution that works both for the JDK and for user applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modularizing the JDK
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The monolithic JDK that shipped with Java 8 was the first target for the modules
+    system, and the familiar `rt.jar` was broken up into modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Java 8 had begun the work of modularization, by shipping a feature called *Compact
+    Profiles* that tidied up the code and made it possible to ship a reduced runtime
+    footprint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`java.base` is the module that represents the minimum that’s actually needed
+    for a Java application to start up. It contains core packages, such as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'along with some subpackages and nonexported implementation packages such as
+    `sun.text.resources`. Some of the differences in compilation behavior between
+    Java 8 and modular Java can be seen in this simple program, which extends an internal
+    public class contained in `java.base`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Attempting to compile the code on Java 11 produces this error message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With a modular Java, even classes that are public cannot be accessed unless
+    they are explicitly exported by the module they are defined in. We can temporarily
+    force the compiler to use the internal package (basically reasserting the old
+    access rules) with the `--add-exports` switch, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We need to specify that the export is being granted to the *unnamed module*,
+    as we are compiling our class standalone and not as part of a module. The compiler
+    warns us that we’re using an internal API and that this might break with a future
+    release of Java. When compiled and run under Java 11, this produces a list of
+    Japanese eras, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, if we try to run under Java 17, then we have a different result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is because Java 17 now enforces additional checks as part of the tightening
+    up of encapsulation of the internals. To get the program to run, we need to add
+    the `--add-exports` runtime flag as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although `java.base` is the absolute runtime minimum that an application needs
+    to start up, at compile time we want the visible platform to be as close to the
+    old (Java 8) experience as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that we use a much larger set of modules, contained under an *umbrella*
+    module, `java.se`. This module has a dependency graph, shown in [Figure 12-1](#javanut8-CHP-12-FIG-1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![JN7 1201](assets/jns8_1201.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-1\. Module dependency graph of java.se
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This brings in almost all of the classes and packages that most Java developers
+    expect to be available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, one important exception is that the Java 8 packages defining the CORBA
+    and Java EE APIs (now know as Jakarta EE) have been removed and are not part of
+    `java.se`. This means that any project that depends on those APIs will not compile
+    by default on Java 11 onward and a special build config must be used, to explicitly
+    depend upon external libraries that provide these APIs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Along with these changes to compilation visibility, due to the modularization
+    of the JDK, the modules system is also intended to allow developers to modularize
+    their own code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing Your Own Modules
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will discuss the basic concepts needed to start writing
+    modular Java applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Basic Modules Syntax
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The key to modularizing is the new file *module-info.java*, which contains a
+    description of a module. This is referred to as a *module descriptor*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A module is laid out for compilation correctly on the filesystem in the following
+    way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Below the source root of the project (*src*), there needs to be a directory
+    named the same as the module (the *moduledir*).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Inside the *moduledir* is the *module-info.java*, at the same level as where
+    the packages start from.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The module info is compiled to a binary format, *module-info.class*, which
+    contains the metadata that will be used when a modular runtime attempts to link
+    and run our application. Let’s look at a simple example of a *module-info.java*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This introduces some new syntax: `module`, `exports`, and `requires`—but these
+    are not really full keywords in the accepted sense. As stated in the Java Language
+    Specification SE 11:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A further ten character sequences are restricted keywords: `open`, `module`,
+    `requires`, `transitive`, `exports`, `opens`, `to`, `uses`, `provides`, and `with`.
+    These character sequences are tokenized as keywords solely where they appear as
+    terminals in the `ModuleDeclaration` and `ModuleDirective` productions.'
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'This means that these restricted keywords can appear only in the module metadata
+    and are compiled into the binary format by `javac`. The meanings of the major
+    restricted keywords are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`module`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Starts the module’s metadata declaration
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`requires`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lists a module on which this module depends
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`exports`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Declares which packages are exported as an API
+  prefs: []
+  type: TYPE_NORMAL
+- en: The remaining (module-related) restricted keywords will be introduced throughout
+    the rest of the chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The concept of *restricted keyword* is considerably expanded in Java 17, and
+    as a result the description is much longer and less clear. We use the older specification
+    here because it refers specifically to the modules system and is more suited to
+    our purposes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our example, this means that we’re declaring a module `httpchecker` that
+    depends upon the module `java.net.http` that was standardized in Java 11 (as well
+    as an implicit dependency on `java.base`). The module exports a single package,
+    `httpchecker.main`, which is the only package in this module that will be accessible
+    from other modules at compile time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a Simple Modular Application
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As an example, let’s build a simple tool that checks whether websites are using
+    HTTP/2 yet, using the API that we met in [Chapter 10](ch10.xhtml#javanut8-CHP-10):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This relies on two modules—`java.net.http` and the ubiquitous `java.base`.
+    The module file for the app is very simple:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Assuming a simple, standard module layout, this can be compiled like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This creates a compiled module in the *out/* directory. For use, it needs to
+    be packaged as a JAR file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `--create` switch tells `jar` to create a new jar, which will include the
+    classes contained in the directory. The final `.` at the end of the command is
+    mandatory and signifies that all of the class files (relative to the path specified
+    with `-C`) should be packaged into the jar.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We used the `--main-class` switch to set an *entry point* for the module—​that
+    is, a class to be executed when we use the module as an application. Let’s see
+    it in action:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: This shows that, at the time of writing, Google’s website was using HTTP/2 to
+    serve its main page over HTTPS but still using HTTP/1.1 for the legacy unencrypted
+    HTTP service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have seen how to compile and run a simple modular application, let’s
+    meet some more of the core features of modularity that are needed to build and
+    run full-size applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Module Path
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Many Java developers are familiar with the concept of the classpath. When working
+    with modular Java applications, we instead need to work with the *module path*.
+    This is a new concept for modules that replaces the classpath wherever possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modules carry metadata about their exports and dependencies—they are not just
+    a long list of types. This means a graph of module dependencies can be built easily
+    and module resolution can proceed efficiently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code that is not yet modularized continues to be placed on the classpath. This
+    code is loaded into the *unnamed module*, which is special and can read all other
+    modules that can be reached from `java.se`. Using the unnamed module happens automatically
+    when classes are placed on the classpath.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This provides a migration path to adopting a modular Java runtime without having
+    to migrate to a fully modular application path. However, it does have two major
+    drawbacks: none of the benefits of modules will be available until the app is
+    fully migrated, and the self-consistency of the classpath must be maintained by
+    hand until modularization is complete.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Automatic Modules
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One of the constraints of the modules system is that we can’t reference JARs
+    on the classpath from named modules. This is a safety feature—the designers of
+    the module system wanted the module dependency graph to utilize full metadata
+    and be able to rely on the completeness of that metadata.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, there may be times when modular code needs to reference packages that
+    have not yet been modularized. The solution for this is to place the unmodified
+    JAR onto the module path directly (and remove it from the classpath). A JAR placed
+    on the module path like this becomes an *automatic module*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This has the following features:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Module name derived from JAR name (or read from `MANIFEST.MF`)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exports every package
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Requires all other modules (including the unnamed module)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This is another feature designed to mitigate and help with migration, but some
+    safety is still being given up by using automatic modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Open Modules
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As noted, simply marking a method `public` no longer guarantees that the element
+    will be accessible everywhere. Instead, accessibility also now depends upon whether
+    the package containing that element is exported by its defining module. Another
+    major issue in the design of modules is the use of reflection to access classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reflection is such a wide-ranging, general-purpose mechanism that it is difficult
+    to see, at first glance, how it can be reconciled with the strong encapsulation
+    goals of JPMS. Worse yet, so many of the Java ecosystem’s most important libraries
+    and frameworks rely on reflection (e.g., unit testing, dependency injection, and
+    many more) that not having a solution for reflection would make modules impossible
+    to adopt for any real application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The solution provided is twofold. First, a module can declare itself an `open`
+    module, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This declaration has the effect that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: All packages in the module can be accessed via reflection
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compile-time access is *not* provided for nonexported packages
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This means that the configuration behaves like a standard module at compile
+    time. The overall intent is to provide simple compatibility with existing code
+    and frameworks and ease migration pain. With an open module, the previous expectation
+    of being able to reflectively access code is restored. In addition, the `setAccessible()`
+    hack that allows access to `private` and other methods that would not normally
+    permit access is preserved for open modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finer-grained control over reflective access is also provided via the `opens`
+    restricted keyword. This does not create an open module but instead selectively
+    opens specific packages for reflective access by explicitly declaring certain
+    packages to be accessible via reflection:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: This type of usage is likely to be useful when, for example, you are providing
+    a domain model to be used by a module-aware *object-relational mapping* (ORM)
+    system that needs full reflective access to the core domain types of a module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is possible to go further and restrict reflective access to specific client
+    packages, using the `to` restricted keyword. Where possible, this can be a good
+    design principle, but of course such a technique will not work well with a general-purpose
+    framework such as an ORM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In a similar way, it is possible to restrict the export of a package to only
+    specific external packages. However, this feature was added largely to help with
+    the modularization of the JDK itself, and it has limited applicability to user
+    modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not only that, it is also possible to both export and open a package, but this
+    is not recommended—during migration, access to a package should ideally be either
+    compile-time or reflective but not both.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case where reflective access is required to a package now contained in
+    a module, the platform provides some switches to act as band-aids for the transitional
+    period.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In particular, the `java` option `--add-opens module/package=ALL-UNNAMED` can
+    be used to open a specific package of module for reflective access to all code
+    from the classpath, overriding the behavior of the modules system. For code that
+    is already modular, it can also be used to allow reflective access to a specific
+    module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you are migrating to modular Java, any code that reflectively accesses
+    internal code of another module should be run with that switch at first, until
+    the situation can be remediated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Related to this issue of reflective access (and a special case of it) is the
+    issue of widespread use of internal platform APIs by frameworks. This is usually
+    characterized as the “Unsafe problem” and we will encounter it toward the end
+    of the chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Providing Services
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The modules system includes the *services* mechanism, to mitigate another problem
+    with an advanced form of encapsulation. This problem is simply explained by considering
+    a familiar piece of code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Even if `Service` lives in an exported API package, this line of code still
+    will not compile unless the package containing `ServiceImpl` is also exported.
+    What we need is a mechanism to allow fine-grained access to classes implementing
+    service classes without needing the entire package to be imported. For example,
+    we could write something like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now the `ServiceImpl` class is accessible at compile time as an implementation
+    of the `Service` interface. Note that the `services` package must be contained
+    in another module, which is required by the current module for this provision
+    to work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multi-Release JARs
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To explain the problem that is solved by multi-release JARs, let’s consider
+    a simple example: finding the process ID (PID) of the currently executing process
+    (i.e., the JVM that’s executing our code).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We don’t use the HTTP/2 example from earlier on, as Java 8 doesn’t have an HTTP/2
+    API—so we would have had to do a huge amount of work (essentially a full backport!)
+    to provide the equivalent functionality for 8.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This may seem like a simple task, but on Java 8 this requires a surprising
+    amount of boilerplate code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As we can see, this is nowhere near as straightforward as we might like. Worse
+    still, it is not supported in a standard way across all Java 8 implementations.
+    Fortunately, from Java 11 onward, we can use the new `ProcessHandle` API, like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This now utilizes a standard API, but it leads to an essential problem: how
+    can the developer write code that is guaranteed to run on all current Java versions?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What we want is to build and run a project correctly in multiple Java versions.
+    We want to depend on library classes that are only available in later versions
+    but still run on an earlier version by using some code “shims.” The end result
+    must be a single JAR, and we do not require the project to switch to a multimodule
+    format—​in fact, the JAR must work as an automatic module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at an example project that has to run correctly in both Java 8 and
+    Java 11 or higher. The main codebase is built with Java 8, and the Java 11 portion
+    must be built with Java 11. This part of the build must be isolated from the main
+    codebase to prevent compilation failures, although it can depend on the build
+    artifacts of the Java 8 build.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To keep the build configuration simple, this feature is controlled using an
+    entry in `MANIFEST.MF` within the JAR file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The variant code (i.e., that for a later version) is then stored in a special
+    directory in *META-INF*. In our case, this is *META-INF/versions/11*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a Java runtime that implements this feature, any classes in the version-specific
+    directory override the versions in the content root. On the other hand, for Java
+    8 and earlier versions, both the manifest entry and the *versions/* directory
+    are ignored and only the classes in the content root are found.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Converting to a Multi-Release JAR
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To start deploying your software as a multi-release JAR, follow this outline:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Isolate code that is JDK-version-specific
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If possible, place that code into a package or group of packages
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Get the version 8 project building cleanly
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create a new, separate project for the supplementary classes
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Set up a single dependency for the new project (the version 8 artifact)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'For Gradle, you can also use the concept of a *source set* and compile the
+    v11 code using a different (later) compiler. This can then be built into a JAR
+    using a stanza like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: For Maven, the current easiest route is to use the Maven Dependency Plug-in
+    and add the modular classes to the overall JAR as part of the separate `generate-resources`
+    phase.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Migrating to Modules
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Many Java developers are facing the question of whether, and when, they should
+    migrate their applications to use modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Modules should be the default for all greenfield apps, especially those that
+    are architected in a microservices style.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Many applications will not need to be migrated at all. However, modularizing
+    existing code bases can be worthwhile because the better encapsulation and overall
+    architectural benefits do pay off over the longer term—allowing new developers
+    to be brought onto the team faster and providing a clear structure that is easier
+    to understand and maintain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When considering migration of an existing app (especially a monolithic design),
+    you can use the following roadmap:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First upgrade the application runtime to Java 17 (running from the classpath
+    initially)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Identify any application dependencies that have been modularized and migrate
+    those dependencies to modules
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Retain any nonmodularized dependencies as automatic modules
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Introduce a single *monolithic module* of all application code
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: At this point, a minimally modularized application should be ready for production
+    deployment. This module will usually be an `open` module at this stage of the
+    process. The next step is architectural refactoring; at this point, applications
+    can be broken out into individual modules as needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the application code runs in modules, it can make sense to limit reflective
+    access to your code via `opens`. This access can be restricted to specific modules
+    (such as ORM or dependency injection modules) as a first step toward removing
+    any unnecessary access.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For Maven users, it’s worth remembering that Maven is not a modules system,
+    but it does have dependencies—and (unlike JPMS dependencies) they are versioned.
+    The Maven tooling is still evolving to fully integrate with JPMS (and many plug-ins
+    have not caught up at the time of this writing). However, some general guidelines
+    for modular Maven projects are emerging, specifically:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Aim to produce one module per Maven POM
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Don’t modularize a Maven project until you are ready (or have an immediate need
+    to)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Remember that running on a Java 11+ runtime does not require building on a Java
+    11+ toolchain
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The last point indicates that one path for migration of Maven projects is to
+    start by building as a Java 8 project and ensuring that those Maven artifacts
+    can deploy cleanly (as automatic modules) on a Java 11 (or 17) runtime. Only once
+    that first step is working properly should a full modularization be undertaken.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some good tooling support is available to help with the modularization process.
+    Java 8 and up ships with `jdeps` (see [Chapter 13](ch13.xhtml#javanut8-CHP-13)),
+    a tool for determining which packages and modules your code depends upon. This
+    is very helpful for migrations from Java 8 and the use of `jdeps` when rearchitecting
+    is recommended.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Custom Runtime Images
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'One of the key goals of JPMS is the possibility that applications may need
+    not every class present in the traditional monolithic runtime of Java 8 and instead
+    can manage with a smaller subset of modules. Such applications can have a much
+    smaller footprint in terms of startup time and memory overhead. This can be taken
+    further: if not all classes are needed, then why not ship an application together
+    with a reduced, custom runtime image that includes only what’s necessary?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To demonstrate the idea, let’s package the HTTP/2 checker into a standalone
+    tool with a custom runtime. We can use the `jlink` tool (which has been part of
+    the platform since Java 9) to achieve this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that this assumes that JAR file *httpchecker.jar* was created with a main
+    class (aka entry point). The result is an output directory, *http2chk-image*,
+    which is about 39M in size, much less than the full image. This also notes that
+    because the tool uses the new HTTP module, it requires the libraries for security,
+    crypto, and so on when connecting using HTTPS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From within the custom image directory, we can run the `http2chk` tool directly
+    and see that it works even when the machine does not have the required version
+    of `java`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The deployment of custom runtime images is still quite a new tool, but it has
+    great potential to reduce your code footprint and help Java remain competitive
+    in the age of microservices. In the future, `jlink` could even be combined with
+    new approaches to compilation, including an ahead-of-time (AOT) compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Issues with Modules
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The modules system, despite being the flagship feature of Java 9 and having
+    had a large amount of engineering time devoted to it, is not without its problems.
+    This was, perhaps, inevitable—the feature fundamentally changes how Java applications
+    are architected and delivered. It would have been almost impossible for modules
+    to avoid running up against some problems when trying to retrofit over the large,
+    mature ecosystem that is Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unsafe and Related Problems
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '`sun.misc.Unsafe` is a class that is both widely used and popular with framework
+    writers and other implementors within the Java world. However, it is an internal
+    implementation class and is not part of the standard API of the Java platform
+    (as the package name clearly indicates). The class name also provides a fairly
+    strong clue that this is not really intended for use by Java applications.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Unsafe` is an unsupported, internal API and so could be withdrawn or modified
+    by any new Java version, without regard to the effect on user applications. Any
+    code that does use it is technically directly coupled to the HotSpot JVM and is
+    also potentially nonstandard and may not run on other implementations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although not an official part of Java SE in any way, `Unsafe` has become a
+    de facto standard and key part of the implementation of basically every major
+    framework in one way or another. Over subsequent versions it has evolved into
+    a kind of dumping ground for nonstandard but necessary features. This admixture
+    of features is a real mixed bag, with varying degrees of safety provided by each
+    capability. Example uses of `Unsafe` include:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fast serialization/deserialization
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Threadsafe 64-bit sized native memory access (e.g., offheap)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Atomic memory operations (e.g., Compare-and-Swap)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fast field/memory access
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Multi-operating system replacement for JNI
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Access to array items with volatile semantics (see [Chapter 6](ch06.xhtml#javanut8-CHP-6))
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The essential problem is that many frameworks and libraries were unable to move
+    to a modular JDK without replacement for some `Unsafe` features. In turn, this
+    impacts everyone using any libraries from a wide range of frameworks—basically
+    every application in the Java ecosystem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To fix this problem, Oracle created new, supported APIs for some of the needed
+    functionality and segregated APIs that could not be encapsulated in time into
+    a module, `jdk.unsupported`. This makes it clear this is not a supported API and
+    that developers use it at their own risk. This gives `Unsafe` a temporary pass
+    (which is strictly limited time) while encouraging library and framework developers
+    to move to the new APIs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An example of a replacement API is VarHandles. These extend the *Method Handles*
+    concept (from [Chapter 11](ch11.xhtml#javanut8-CHP-11)) and add new functionality,
+    such as concurrency barrier modes for Java 11. These, along with some modest updates
+    to JMM, are intended to produce a standard API for accessing new low-level processor
+    features without allowing developers full access to dangerous capabilities, as
+    were found in `Unsafe`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: More details about `Unsafe` and related low-level platform techniques can be
+    found in [*Optimizing Java*](http://shop.oreilly.com/product/0636920121718.do)
+    (O’Reilly).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lack of Versioning
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The JPMS standard as of Java 17 does not include the versioning of dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This was a deliberate design decision to reduce the complexity of the delivered
+    system and does not preclude the possibility that modules could include versioned
+    dependencies in the future.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The current situation requires external tools to handle the versioning of module
+    dependencies. In the case of Maven, this will be within the Project Object Model
+    (POM). An advantage to this approach is that the download and management of versions
+    are also handled within the local repository of the build tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However it is done, though, the simple fact is that the dependency version information
+    must be stored out of the module and does not form part of the JAR artifact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There’s no getting away from it—this is pretty ugly, but the counterpoint is
+    that the situation is no worse than it was with dependencies being deduced from
+    the classpath.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Slow Adoption Rates
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With the release of Java 9, the Java release model fundamentally changed. Java
+    8 and 9 used the “keystone release” model—where one keystone (or landmark) feature
+    such as lambdas for Java 8 or modules for Java 9—essentially defined the release
+    and so the ship date was determined by when the feature was complete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The problem with this model is that it can cause inefficiencies due to uncertainty
+    about when versions will ship. In particular, a small feature that just misses
+    a release will have to wait a long time for the next major release. As a result,
+    from Java 10 onward, a new release model was adopted, which introduces *strict
+    time-based versioning*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This means:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java releases are now classified as *feature* releases, which occur at a regular
+    cadence of once every six months.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Features are not merged into the platform until they are essentially complete.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The mainline repo is in a releasable state at all times.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These releases are good for only six months, after which time they are no longer
+    supported. Certain releases are designated by Oracle as *long-term support* (LTS)
+    releases. These have extended, paid-for support available from Oracle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The release cadence of these LTS releases was initially three years but at time
+    of writing is expected to change to two years. This means that Oracle LTS releases
+    are currently 8 (retrospectively added), 11, and 17; the expected next release
+    will be Java 21 in September 2023.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, as well as Oracle, builds of OpenJDK are available from other providers
+    including Amazon, Azul, Eclipse Adoptium, IBM, Microsoft, Red Hat, and SAP. These
+    vendors offer various ways to get JDK updates (including security) at zero cost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are also new and existing paid support models available from several of
+    the above vendors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For an in-depth write-up of this topic, please see the guide: [“Java Is Still
+    Free”](https://oreil.ly/Cz61R) by the [Java Champions community](https://oreil.ly/NGIpB),
+    an independent body of Java leaders in the software industry.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although the Java community is generally positive on the new faster release
+    cycle, adoption rates of Java 9 and above have been much smaller than for previous
+    releases. This may be due to the desire of teams to have longer support cycles,
+    rather than upgrading to each feature release after only six months. In practice,
+    only the LTS releases are seeing widespread adoption, and even that has been slow
+    compared to the rapid uptake of Java 8.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is also the case that the upgrade from Java 8 to 11 (or 17) is not a drop-in
+    replacement (unlike 7 to 8, and to a lesser extent 6 to 7). The modules subsystem
+    fundamentally changes many aspects of the Java platform, even if end-user applications
+    do not take advantage of modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Four years after the release of Java 11, it seems to have finally overtaken
+    Java 8, with more workloads now running on Java 11 than 8. It remains to be seen
+    how quickly Java 17 will be adopted and what the impact of Java 21 will be (assuming
+    that 21 is indeed the next LTS).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The modules feature, first introduced in Java 9, aims to solve several problems
+    at once. The aims of shorter startup time, lower footprint, and reduced complexity
+    by denying access to internals have all been met. The longer-term goals of enabling
+    better architecture of applications and starting to think about new approaches
+    for compilation and deployment are still in progress.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, the plain fact is that, as of the release of Java 17, not many teams
+    and projects have moved wholeheartedly to the modular world. This is to be expected,
+    as modularity is a long-term project that has a slow payoff and relies on network
+    effects within the ecosystem to achieve the full benefit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: New applications should definitely consider building in a modular way from the
+    get-go, but the overall story of platform modularity within the Java ecosystem
+    is still only beginning.
+  prefs: []
+  type: TYPE_NORMAL

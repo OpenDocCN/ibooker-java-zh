@@ -1,0 +1,975 @@
+- en: Chapter 13\. Streams to Iterables to Sequences
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java and Kotlin both allow us to transform and reduce collections. They have
+    different design goals and implementations, though. What does Kotlin use instead
+    of Java streams, when should we convert, and how?
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Java Streams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Java 8 introduced streams in 2014, making good use of the new lambdas. Say
+    we want to work out the average length of some strings, except that blank strings
+    (those with only whitespace characters) should be treated as if they are empty.
+    Previously we might have written:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With Java streams, we can express this algorithm as `filter`, `map`, and `reduce`
+    by first converting the `List` to a `Stream` and applying transformations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Rather than having to run the for-loop in our heads to see what this code is
+    doing, we can see the steps of the algorithm declared line by line and rely on
+    the runtime to implement those steps for us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we are really in a hurry for those results, we can even write:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_CO21-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`parallelStream` will divide the work across multiple threads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are different types of fundamental operations going on here: `map` changes
+    the type of items, not their number; `filter` keeps or rejects items depending
+    on some property, but keeps their type the same; and `sum` is a reduction of the
+    collection to a single property. Not shown in this example are the operations
+    `skip(n)` and `limit(n)`. These return streams without the first and last `n`
+    elements, respectively.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java streams are lazy: `strings.filter(...).mapToInt(...)` does nothing but
+    set up a pipeline for some terminal operation, `sum` in this case, to suck values
+    through. Laziness means that later pipeline stages can limit the amount of work
+    earlier stages have to perform. Consider translating a list of words until we
+    see the word `STOP`. The loop version might look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By breaking out of the loop, we don’t translate all the words, only the minimum
+    we need. Java 9 introduced `dropWhile` and `takeWhile`, which allow us to express
+    this as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: This works because the `collect` causes values to be sucked through the pipeline,
+    and `takeWhile` stops sucking from its predecessor when its predicate returns
+    `false`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the subject of sucking, streams can be surprisingly slow for small collections.
+    They are great for large-scale data crunching where we want to throw all available
+    cores at a problem—not so great for summing the cost of five items in a shopping
+    cart. The problem is that Java streams were designed to provide general collection
+    transformations, lazy evaluation, *and* parallel processing, and these have different
+    demands. Kotlin doesn’t try to implement parallel operations, leaving two abstractions;
+    iterables are good for transforming and reducing collections, whereas sequences
+    give lazy evaluation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kotlin Iterables
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Instead of creating a new interface to define collections operations, Kotlin
+    provides extension functions on `Iterable`. The simplest Kotlin expression of
+    the same algorithm is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here `filter` is an extension function on `Iterable`. Unlike the `Stream.filter`,
+    though, which returns another `Stream`, the Kotlin `filter` returns a `List` (which
+    is `Iterable`, so we can continue the chain); `map` returns a `List`, too, so
+    this single expression creates two additional lists in memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first is a `List` of the nonblank strings, the second is a `List` of the
+    lengths of those strings. When (if) we care about performance, this can be a problem,
+    because both of those lists will take time to populate and memory to support.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `List` of lengths is a particular issue, because the integers will have
+    been *boxed* (wrapped in an `Integer` object) to fit in the list. The Java streams
+    example used `mapToInt(String::length)` to avoid this problem. `IntStream` (and
+    `LongStream` and `DoubleStream`, but curiously not `BooleanStream` or `CharStream`)
+    were created to prevent streams having to box and unbox, but you have to remember
+    to use them, and `IntStream` is not a `Stream<Integer>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Should we care about performance? Mostly no—this Kotlin will be fast *unless*
+    we have large collections, the opposite of streams, which are only fast *if* we
+    have large collections. When we do have large collections, we can switch over
+    to sequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kotlin Sequences
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The Kotlin `Sequence` abstraction offers the same lazy evaluation as Java streams.
+    The `map` operation on a `Sequence` returns another `Sequence`: the operations
+    in the chain are only performed when some terminal operation requires their evaluation.
+    If we have a `Collection`, `Iterable`, or even an `Iterator`, there are `asSequence()`
+    extension functions to convert. After that the API is suspiciously familiar:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The familiarity is suspicious because all those operations (`filter`, `map`,
+    `sum`) are now extensions not on `Iterable` but `Sequence`, and they don’t return
+    a `List`; they return another `Sequence`. Except, that is, for `sum`, which can’t
+    even pretend to do its job without reading all the data, so it is a terminal operation.
+    This code reads the same as the iterable version, but each of the functions is
+    actually different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The sequence version of `averageNonBlankLength` won’t pay the price of creating
+    the intermediate lists to hold the results of each stage, but for small numbers
+    of items, the cost of setting up and executing the pipeline may be higher than
+    creating the lists. In this case the `Int` lengths will still be boxed as `Integer`,
+    albeit one at a time rather than creating a whole list of them. In many cases,
+    the API designers will have provided a clever solution to remove boxing. In this
+    case, it is `sumBy`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`sumBy` (also available as an extension on `Iterable`) avoids boxing by taking
+    a function that returns an `Int`. It can do this because it is a terminal operation,
+    so it doesn’t return another sequence or collection.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multiple Iterations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'If you use Java streams, you have probably tried to do something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This looks very plausible: we’ve just extracted a function, taking a `Stream`
+    parameter rather than the `List`. There is no `size` property on `Stream`, but
+    `count()` gives the same result, so we use that. When we run it, though, we get
+    `java.lang.IllegalState​Excep⁠tion: stream has already been operated upon or closed`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The problem is that a `Stream` has hidden state. Once we have consumed all its
+    items (and `sum` does just that), we can’t go around again to `count` them. Even
+    though `sum` is actually a method on `IntStream`, each stream in the pipeline
+    consumes its predecessor, so the input `strings` is consumed by the `sum`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Java this is enough to put you off extracting `Stream` operations into functions.
+    Let’s try the same thing with a Kotlin `Sequence`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: In Kotlin, we can call the `Sequence` version from the `List` version and all
+    is fine…for now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are storing up trouble though. To see why, let’s step out another layer
+    and add a function that takes an `Iterator`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we call this function, we now get `java.lang.IllegalStateException: This
+    sequence can be consumed only once.` (Comparing this to the streams error, we
+    see that the Kotlin developers seem to be more grammatically pedantic than the
+    JVM developers.) Now the `Sequence` is acting like a Java `Stream`, but previously
+    it wasn’t. What changed?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It turns out that some sequences can safely be iterated over multiple times:
+    those backed by a collection that is held in memory, for example. Others cannot.
+    Now that our `Sequence` is provided by an `Iterator`, the first run through (to
+    calculate the `sum`) continued until `Iterator.hasNext()` returned `false`. If
+    we were to try to run through the `Sequence` again (to `count`), the `Iterator`
+    state would not have changed, so `hasNext()` would immediately return `false`.
+    This would lead `strings.count()` to return `0`, resulting in `averageNonBlankLength`
+    always returning `Infinity` (if there was any input).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This sort of behavior is, erm, *undesirable*, so sequences wrapping iterators
+    are deliberately hobbled with `Sequence.constrainOnce()` to prevent this. It is
+    `constrainOnce()` that throws the `IllegalStateException` if we try to consume
+    twice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The other canonical example of a `Sequence` that cannot be consumed more than
+    once is one backed by reading from an external resource, such as a file or network
+    socket. In such cases we can’t in general just go back and replay input to iterate
+    again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, the difference between the two types of `Sequence` is not reflected
+    in the type system, so we will only discover any incompatibility between our algorithm
+    and our input at runtime. As we will see in [Chapter 20](ch20.html#performing-io-to-passing-data),
+    this is exacerbated by the common technique of using `sequenceOf(...)` or `List.asSequence()`
+    as our test data; these sequences *do* support multiple iterations and won’t warn
+    us of the problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In practice, this problem is usually only an irritation, causing some wasted
+    time and reworking. It will tend not to happen if you are converting from streams
+    code, because that will not have had the issue in the first place, but rather
+    when applying a `Sequence` from scratch or converting from an `Iterable`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this particular case, we can make things work by keeping count of items
+    as they whiz past in the first iteration, rather than counting again at the end:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is the first problem that we have solved in this book with a mutable local
+    variable! We can hide our shame inside a more generally useful utility class:
+    `CountingSequence`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This a recurrent theme in Kotlin algorithms: we might occasionally need to
+    stoop to mutation to implement something in a sensible or efficient way, but we
+    can usually hide the mutation in a way that both reduces its visibility and makes
+    for a useful abstraction. In this case, this is aided by the fact that `Sequence`
+    is an interface with just one method, making it very easy to implement it ourselves.
+    Java’s `Stream` is also an interface, but with 42 methods and no `AbstractStream`
+    class to provide default implementations!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we leave this section, you may have been silently fuming ever since we
+    introduced `Stream.count()`. If not, can you see what the issue is?
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the points of `Stream` and `Sequence` is that they allow us to work on
+    arbitrarily large datasets, and finding the size of these datasets by counting
+    them individually is not very efficient, even if it can sometimes be done. In
+    general, even if we can, in practice, iterate over a `Sequence` more than once,
+    it is likely to be inefficient in the use cases that caused us to use `Sequence`
+    in the first place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only Iterate Over a Sequence Once
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As a rule of thumb, if they operate on a `Sequence`, our algorithms should complete
+    in a single pass. This way, they will be able to work with sequences that do not
+    support multiple iteration and can be efficient with large numbers of items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can use `Sequence.constrainOnce()` in our tests to make sure that we don’t
+    accidentally go around again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Choosing Between Streams, Iterables, and Sequences
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'If we already have code using Java streams, it will continue to run just fine
+    on the JVM, even when converted to Kotlin. It will even look a little nicer, since
+    Kotlin can move the lambda outside the method and allow the use of the implicit
+    `it` lambda parameter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: In addition, we can use extension functions to *add* operations to streams,
+    in the same way as Kotlin defines its `Sequence` operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If our code is working on large collections, and in particular using `parallelStream()`,
+    then the default should be to leave the streams alone, because in these cases
+    they are well optimized by the JVM. The Kotlin standard library even provides
+    extensions `Stream<T>.asSequence()` and `Sequence<T>.asStream()` that allow us
+    to swap horses mid, erm, `Stream`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we decide to convert to a Kotlin abstraction, then we can choose `Iterable`
+    or `Sequence`, depending on whether the streams code takes advantage of lazy evaluation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Lazy evaluation is required if:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We need to produce results before we have finished reading the input.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We need to process more data than we can fit into memory (including intermediate
+    results).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lazy evaluation may give better performance for:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large collections with many pipeline stages, where building intermediate collections
+    may be slow.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Pipelines where early stages could be skipped, depending on information only
+    available in later stages.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We can illustrate the last point with the same translation example we saw with
+    streams:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can convert this to the equivalent iterable expression:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But then *all* words in the input `List` will be translated to another `List`
+    by `map`, even those after `STOP`. Using a `Sequence` avoids translating words
+    we aren’t going to return:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we don’t need lazy evaluation, and for smaller collections, or when writing
+    from scratch in Kotlin, `Iterable` pipelines are simple, generally quick, and
+    easy to reason with. Your authors will often convert streams to iterables to take
+    advantage of the far richer API that Kotlin provides. If iterables prove too slow
+    (or sometimes too greedy for memory) with large collections, then we can convert
+    to sequences. If that still isn’t enough, we can move (hopefully not back) to
+    streams, and maybe even take advantage of parallelism.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algebraic Transformation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Laziness and parallelism will of course affect *when* the stages of our pipeline
+    are invoked. If any of our algorithm depends on the order of operations, it may
+    be broken if we swap between streams, iterables, and sequences. What we want is
+    code with a predictable *algebra*: a set of rules for manipulating operations
+    while preserving behavior.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We saw in [Chapter 7](ch07.html#actions-to-calculations) that we can categorize
+    functions (actually any code, including lambdas) according to whether they depend
+    on when they are run. Calculations ([“Calculations”](ch07.html#calculations))
+    are safe to refactor because we can move their invocations around without affecting
+    their result or the result of any other code. In contrast, moving an action ([“Actions”](ch07.html#actions))
+    from an iterable to a sequence, or vice versa, may change when it is invoked,
+    and hence the outcome of our program. The more of our code that is expressed as
+    calculations, the more we can treat its representation as something that we can
+    transform according to rules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can also apply another algebra—arithmetic—to simplify our definition of
+    `averageNonBlankLength`. This is currently:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'All that complication arises because we don’t want the simple average, but
+    the average where blank strings are counted as if empty. Filtering the blanks
+    from the sum, but not the count, is one way to do this. Mathematically, though,
+    it is equivalent to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is a mathematical rearrangement, and, as with our code refactoring, works
+    only if all the operations are calculations. It is also dangerously seductive,
+    because we have slipped back to boxing our integers to pass them to `average`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What we need is an `averageBy` analog of `sumBy`. We can do that by mating
+    the Kotlin runtime definitions of `Sequence.sumBy` with `Sequence.average` to
+    give:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This again stoops to mutation in the name of efficiency, and finally allows
+    us to write:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Why did we not just write it that way in the first place? Well, sometimes we
+    see these equivalences, sometimes we don’t! Remember that we started here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Given this code, it is natural to translate the `if` statement to a `filter`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'What if our original code had been more functional? Rather than using an `if`
+    statement to decide *whether* to add, it might have used a ternary expression
+    to calculate *the amount* to add:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Ah—then our initial translation would probably have been:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: In that case, we would have had a shorter chapter but learned less.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refactoring from Streams to Iterables and Sequences
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Travelator logs operational events as it runs, so we know that it is working
+    as we expect. These are sent as JSON to an indexing server, which can generate
+    pretty graphs and alerts specified with its own query language. Somehow, though,
+    those nice people in marketing are always asking questions that we can’t write
+    queries for.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In these cases, we fetch events from the server and process them locally. The
+    querying, marshaling, and paging of the events is hidden behind a simple `EventStore`
+    interface that returns an `Iterator<Map<String, Object>>`, where `Map<String,
+    Object>` represents JSON objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.1 [streams-to-sequences.0:src/main/java/travelator/analytics/EventStore.java]](https://java-to-kotlin.dev/code.html?ref=13.1&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.1&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The interface contains its own conversion of the `Iterator` to a `Stream` for
+    our happy convenience. (Amazingly, no conversion function is built into the JDK.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the sort of thing that we haven’t been able to write in the indexing
+    server’s query language. It calculates the average number of interactions customers
+    make to complete a booking successfully:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.2 [streams-to-sequences.0:src/main/java/travelator/analytics/MarketingAnalytics.java]](https://java-to-kotlin.dev/code.html?ref=13.2&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.2&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We did our best when we wrote this to make it understandable. We named intermediate
+    variables, and specified their types when and only when it seemed to help, and
+    formatted carefully—and it still looks like someone knocked the code onto the
+    floor and tried to put it back together in the hope that we didn’t notice. We
+    sometimes end up in a losing battle like this: we could extract a function to
+    simplify code at the call site, but if we can’t give that function a good name,
+    we have just kicked the can down the source file.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implicit or Explicit Types
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Sometimes a variable’s type is essential to understanding how code works; other
+    times it just clutters an already wordy block. In this respect, explicit types
+    are like comments, but they have the added advantage of being checked and enforced
+    by the compiler. As with comments, we should try to write code that doesn’t need
+    explicit variable types. Good naming can help, as can refactoring into functions
+    where the return type can be shown.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If these fail though, there is no shame in showing a variables type if it improves
+    the readability of the code, and we should certainly prefer to communicate in
+    types rather than comments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We’re going to convert this code to Kotlin in the fervent hope that our favorite
+    language will allow us to do a better job. Here is the result of the automated
+    conversion:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.3 [streams-to-sequences.1:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.3&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.3&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At the time of writing, the Java to Kotlin converter is not as clever as it
+    might be mapping between lambdas in the two languages. This is particularly noticeable
+    in streams code, because that is where most Java lambdas are to be found. Most
+    of the issues can be fixed with Alt-Enter on the odd code and accepting a quick
+    fix. Let’s start by tidying up nullability, removing the vestigial `Function`,
+    and simplifying that ugly `mapToInt` lambda:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.4 [streams-to-sequences.2:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.4&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.4&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Java code before conversion mixed some old-style explicitly typed variables:
+    `Stream<Map<String, Object>>`, for example, with the implicit `var averageNumberOf​Event⁠sPerCompletedBooking`.
+    The conversion has dropped the explicit types. It is certainly less intimidating
+    this way, but also less comprehensible if we actually care how it is doing whatever
+    it is doing. We’ll leave it this way for now but review our decision before we
+    finish.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this point, we have Kotlin code using Java streams that runs just fine. We
+    could leave it alone. Travelator is a huge success, with many thousands of completed
+    bookings a day, and streams are a good choice for throughput, so why convert to
+    Kotlin? You didn’t buy this book for that sort of attitude though, so we’ll push
+    on under the pretense that we are measuring performance at every stage and will
+    stop if we see it degrade significantly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Iterables First
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Looking at the code, we see that it has two stages. The first stage processes
+    an input of indeterminate length, producing a collection in memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.5 [streams-to-sequences.2:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.5&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.5&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second processes that collection:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.6 [streams-to-sequences.2:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.6&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.6&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we saw earlier, Java uses streams for both these cases, whereas in Kotlin
+    we would tend to use a `Sequence` to process input of unknown length and an `Iterable`
+    to process data in memory. Acting on in-memory data is easier to reason with,
+    so we’ll convert `averageNumberOfEventsPerCompletedBooking` first.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Until IntelliJ comes up with automated refactoring, we are left having to do
+    this by hand. Usually, we would have tests to make this safer, but this is fast-moving
+    and arbitrary analytics code, so it turns out we cut corners. Before we begin
+    refactoring proper, we write a quick test that talks to production and shows that
+    the result for yesterday was 7.44; now we can keep running that to check that
+    it doesn’t change.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We know that we can apply collection operations directly to `Map.values` in
+    Kotlin (those on `Iterable`), so we can remove the `.stream()`; `average()` is
+    an operation on `IntStream` in Java, but Kotlin conveniently declares `Iterable<Int>.average()`,
+    so we don’t have to `mapToInt`, just `map`. Finally, where `IntStream.average()`
+    returns an empty `OptionalDouble` if the stream has no elements, Kotlin’s `Iterable<Int>.average()`
+    returns `NaN` (not a number), which means we can use the result directly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.7 [streams-to-sequences.3:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.7&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.7&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Has this been a good change though?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looking at the code, we are now creating an intermediate `List<Int>` on which
+    to call `average()`. This will result in boxing each value, and this time there
+    is no `averageBy()` (as there was `sumBy()` in the previous example) to prevent
+    this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Whether this code performs better or worse than the stream version will depend
+    on the number of values in the `Map`, how our particular JVM optimizes boxing,
+    and how heavily HotSpot has optimized this path; only measuring in real conditions
+    will tell. If we have to choose a generic solution, we should probably write our
+    own `Collection.averageBy`. That way we can leverage knowing the size of a `Collection`.
+    We could use the one we prepared earlier in the chapter (albeit for `Sequence`)
+    or refactor from here. We can refactor from here by extracting `values` and using
+    `sumBy()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.8 [streams-to-sequences.4:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.8&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.8&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now “Extract Function” `averageBy` on the returned expression:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.9 [streams-to-sequences.5:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.9&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.9&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.10 [streams-to-sequences.5:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.10&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.10&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Eeek! It turns out that the type of `bookingEventsByInteractionId` was a lot
+    more mutable than we wanted. It came from `Collectors.groupingBy`, a stream operation
+    that only has Java collections to return after all. We’ll change it to use `Collection`
+    in place of the `MutableCollection` for now, and then “Introduce Parameter” named
+    `selector` on the lambda:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.11 [streams-to-sequences.6:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.11&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.11&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we don’t want to care about the actual type of items in the `Collection`.
+    If we select the `MutableList<MutableMap<String, Any>>`, and “Extract/Introduce
+    Type Parameter”, we get the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.12 [streams-to-sequences.7:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.12&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.12&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That refactoring is clever enough that we don’t begrudge having to tell IntelliJ
+    that `T` can be anything really (by removing the `MutableList<MutableMap<String,
+    Any>>` type restriction):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.13 [streams-to-sequences.8:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.13&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.13&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'IntelliJ also added the type to the call for some reason:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.14 [streams-to-sequences.7:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.14&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.14&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So we remove the `MutableList<MutableMap<String, Any>>` from there too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we can make `averageBy` the tiny single-expression inline extension
+    function it was born to be (see Chapters [9](ch09.html#multi-to-single-expression-functions)
+    and [10](ch10.html#functions-to-extension-functions)):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.15 [streams-to-sequences.9:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.15&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.15&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This version doesn’t box integers nor iterate more than once, so it is probably
+    as efficient as we are going to get. But again, only measuring in our specific
+    circumstances will tell for sure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that when we wrote `Sequence.averageNonBlankLength` earlier, we had to
+    count the number of items. By defining `averageBy` as an extension on `Collection`
+    rather than on `Iterable`, we can use the fact that we can ask the `size` of in-memory
+    collections to avoid the tedious bookkeeping.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then Sequences
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far, we have converted the in-memory pipeline. Now we are left with the code
+    that reads an unknown number of events from the `eventStore`. We will want to
+    keep this code lazy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Returning to the entry point, we now have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.16 [streams-to-sequences.9:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.16&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.16&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now the variable `bookingEventsByInteractionId` is only really there to give
+    a checkpoint in the algorithm: it names an intermediate in the hope that it aids
+    understanding. Moving up the function, `eventsForSuccessfulBookings` is a `Stream`,
+    so we can convert the `collect(groupingBy(...))` to Kotlin with `asSequence().groupBy
+    {...}`; the lambda remains unchanged:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.17 [streams-to-sequences.10:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.17&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.17&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Swapping out one method for another method (or extension function) with a similar
+    name that takes a compatible lambda is a good sign that we are on the right track.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now for that `flatMap`, used to fetch all the events for any interaction that
+    had a completed booking:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.18 [streams-to-sequences.10:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.18&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.18&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This would also *probably just work™* if we had sequences rather than streams.
+    Thankfully, we know how to convert from the `Stream` to a `Sequence`: it’s the
+    `.asSequence()` extension provided by the Kotlin JDK interop. We need to apply
+    it to both streams:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.19 [streams-to-sequences.11:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.19&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.19&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Awesomely, this continues to compile and pass our (cursory) test! It compiles
+    because, although we have changed the type of `eventsForSuccessfulBookings` from
+    `Stream` to `Sequence`, we then call `eventsForSuccessfulBookings.asSequence()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.20 [streams-to-sequences.11:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.20&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.20&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This resolves to `Sequence.asSequence()`, which is a no-op. We can inline `asSequence`
+    to prove it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.21 [streams-to-sequences.12:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.21&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.21&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Returning to `eventsForSuccessfulBookings`, we now have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.22 [streams-to-sequences.11:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.22&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.22&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What we really wanted was for `EventStore` to support `queryAsSequence`. We
+    can do this without modifying it by introducing an extension function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.23 [streams-to-sequences.12:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.23&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.23&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This allows us to remove the `asSequence` calls from the calling function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.24 [streams-to-sequences.12:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.24&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.24&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: OK, time to review. We’ve converted our Java to Kotlin, and are using iterables
+    to process the in-memory operations, and sequences (backed by streams in `EventStore`)
+    to process the unbounded operations. We really can’t claim, though, that the structure
+    of the algorithm has become much clearer. A little less noisy, yes, but hardly
+    expressive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The function is currently divided into three parts, and if we’re honest, they
+    are pretty arbitrary. Sometimes we can gain greater insight by inlining everything
+    and seeing what we have, so let’s do that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.25 [streams-to-sequences.13:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.25&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.25&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It looks like the part starting with `flatMap` and ending before `groupBy` might
+    standalone. Let’s see how to extract part of a pipeline into its own function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extracting Part of a Pipeline
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'First we select from the start of the pipeline to the last stage we want to
+    include, so from `eventStore` up to but not including `.groupBy`. “Extract Function”,
+    calling it (in this case) `allEventsInSameInteractions`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.26 [streams-to-sequences.14:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.26&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.26&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we select the bits of the pipeline that we don’t want in the new function,
+    so `e⁠v⁠e⁠n⁠t​S⁠t⁠o⁠r⁠e` to before `.flatMap`, and “Introduce Parameter”. Accept
+    any name that IntelliJ chooses—it won’t live long:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.27 [streams-to-sequences.15:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.27&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.27&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That’s really ugly, but once we convert the `sequence` parameter of `allEventsInSame​In⁠teractions`
+    to a receiver and reformat, we have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.28 [streams-to-sequences.16:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.28&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.28&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we discussed in [Chapter 10](ch10.html#functions-to-extension-functions),
+    extension functions really come into their own when we are chaining operations.
+    In Java, we couldn’t extend the Streams API with `allEventsInSameInteractions()`,
+    so we ended up breaking the chain, either by calling a function or by introducing
+    an explaining variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Final Tidy
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This is still a little clunky, and we could probably make it more efficient
+    by not creating lists in the grouping, but that will do. Oh, except for a wafer-thin
+    type alias and extension property:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.29 [streams-to-sequences.17:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.29&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.29&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This lets us concentrate on the hard stuff when we read the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 13.30 [streams-to-sequences.17:src/main/java/travelator/analytics/MarketingAnalytics.kt]](https://java-to-kotlin.dev/code.html?ref=13.30&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=13.30&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In passing, note that `allEventsInSameInteractions` is an example of an extension
+    function as method that we discussed in [Chapter 10](ch10.html#functions-to-extension-functions).
+    It has access to both `this` from `MarketingAnalytics` (to access `eventStore`)
+    and `this` from `Sequence<Event>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Moving On
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We aren’t going to claim that the refactored Kotlin code in this example is
+    beautiful, but we do think that it is a significant improvement on the original
+    Java. Extension functions, Kotlin’s lambda syntax, and improved type inference
+    combine to reduce a lot of the noise associated with Java streams. When we have
+    in-memory collections, using iterables rather than streams can also be more efficient
+    as well as cleaner.
+  prefs: []
+  type: TYPE_NORMAL

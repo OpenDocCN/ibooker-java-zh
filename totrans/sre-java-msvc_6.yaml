@@ -1,0 +1,1570 @@
+- en: Chapter 6\. Source Code Observability
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Achieving safe delivery via pipelines or some other repeatable process is a
+    step forward. It helps, though, to look forward to how you can observe the state
+    of the running system beginning with deployed assets. Too much of a focus on just
+    the pipeline itself could leave you without a means to inventory your suite of
+    deployed assets later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Source code is just as important to monitor as live processes. In an organization’s
+    source code, dependencies between internal components and third-party libraries
+    are specified. Small changes in dependencies can render an application unusable.
+    Patterns are found to repeat across an organization as developers emulate the
+    work they see done elsewhere. Even patterns that expose attack vectors into your
+    organization are emulated until an awareness of a vulnerability is developed.
+    In codebases of a significant enough size, even the smallest API change can seem
+    like an insurmountable task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the Netflix codebase, we found Guava version drift across deep dependency
+    trees to be almost crippling at times. An attempt to make a shift from one logging
+    library to another across the whole codebase had taken years and was still not
+    achieved until an organization-wide refactoring solution was developed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another significant challenge is identifying what code is actually deployed
+    where across a myriad of environments. As your organization makes advances in
+    continuous delivery, for example, the possibility of rollbacks means that the
+    latest release version available in your artifact repository for a given microservice
+    may not be the version that is running in production. Or in the case of a canary
+    test, or a blue/green deployment with greater than one active cluster, you won’t
+    even have one particular version running exclusively in production!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The need to map deployed assets to source code is particularly important for
+    organizations that aren’t monorepo-based (and most aren’t). Any pressures present
+    that limit the adoption of new internal dependencies in your organization effectively
+    place a ceiling on how effectively you *continuously integrate* as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter is all about build tools. Examples given here are for the [Gradle](https://gradle.org)
+    build tool. The patterns described here could be implemented in Maven or any other
+    Java build tool, but the Gradle ecosystem provides the most readily available
+    concrete examples, especially with its recent advances in binary dependency management
+    and the Netflix Nebula plug-in ecosystem that was developed for an organization
+    skilled at delivering microservices at scale. We’ll also assume that binary artifacts
+    for microservices, along with any core platform dependencies that they include,
+    are published to a Maven-style artifact repository like [JFrog Artifactory](https://oreil.ly/3l06u)
+    or [Sonatype Nexus](https://oreil.ly/R7wOr).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The focus on build tools may seem strange, given that in the software delivery
+    life cycle, build tools come much earlier than continuous delivery, which has
+    just been covered in [Chapter 5](part0010_split_000.html#9H5K4-2d714b853a094e9a910510217e0e3d73).
+    A sense of what a stateful continuous delivery tool can do for you in terms of
+    inventorying production assets, however, is an important prerequisite to a consideration
+    of versioning strategies and the kinds of metadata we need to include as a microservice’s
+    artifacts are produced. Given the right data, the production asset inventory presented
+    by your delivery solution should be the first step in a provenance chain. We’re
+    going to cover a few pieces that need to be injected into a conventional software
+    delivery life cycle in order for you to ultimately be able to map deployed assets
+    back to the source code that is running in them, as shown in [Figure 6-1](part0011_split_000.html#from_change_to_production).
+    The provenance chain should lead at least down to an immutable artifact version
+    and commit hash, and possibly all the way down to source code method-level references.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0601](../images/00057.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-1\. The provenance chain leading from a code change to production
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Suppose we start with a continuous delivery tool like Spinnaker (introduced
+    in [Chapter 5](part0010_split_000.html#9H5K4-2d714b853a094e9a910510217e0e3d73))
+    telling us that an application representing a microservice is spread over multiple
+    cloud platforms, with multiple versions of the code running in different clusters.
+    If the deployed resources are tagged with the artifact information that went into
+    them, we consider what we can do to ensure that this artifact information leads
+    us to a uniquely identifiable place in the history of this microservice’s code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It begins with the characteristics we need from our delivery system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Meaning of Terms Used in This Chapter
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter will use terms like *instance*, *server group*, and *cluster* as
+    defined in [“Resource Types”](part0010_split_002.html#resource_types) at the start
+    of [Chapter 5](part0010_split_000.html#9H5K4-2d714b853a094e9a910510217e0e3d73).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Stateful Asset Inventory
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A queryable stateful asset inventory of code all the way to deployed assets
+    allows you to answer questions about the current state of your systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first objective in building this inventory is to have some system of record
+    that we can query to itemize our deployed resources (in both production and lower-level
+    nonproduction testing environments). How difficult this is depends on how many
+    and what types of places your code can be deployed. Some organizations, even with
+    virtualized hardware in the datacenter, have a fixed set of virtual machine names
+    that don’t change much (numbered in the dozens or hundreds), each dedicated to
+    a particular application. You could quite reasonably maintain a static list of
+    application names and the virtual machines that host them. In an IaaS or CaaS
+    where resources are provisioned more elastically, we really need to query the
+    cloud provider for the list of currently deployed assets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: GitOps Doesn’t Achieve a Deployed Asset Inventory
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: With GitOps, you store the state of what you *want* to happen in Git. What materializes
+    in the environment can be something very different. The easiest example of this
+    divergence comes from Kubernetes. When you commit a manifest in Git, and this
+    causes a deployment action, that manifest is mutated by Kubernetes controllers
+    in the target cluster into something potentially different. The scope and number
+    of mutations is only growing as vendors and projects layer more and more CRDs
+    on top of Kubernetes. What you get with a `kubectl get pod -o yaml` is not the
+    same manifest as what you committed in Git. And in fact, it can be different from
+    one Kubernetes cluster to another! The point is, even if you successfully gate
+    all *intention actions* through Git, you still don’t really have a true picture
+    of the deployed environment in Git.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A key benefit of a system like Spinnaker is its model of polling live environments
+    for the state of deployed infrastructure, spanning every cloud provider that Spinnaker
+    supports. In other words, you can retrieve in one API call a consistent representation
+    (in terms of application/cluster/server group/instance) of deployed infrastructure
+    across many cloud platforms. It is a single-pane-of-glass experience for asset
+    inventorying. There are two levels to this benefit:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: No need to coordinate through one system
+  prefs: []
+  type: TYPE_NORMAL
+- en: By actively polling, we don’t need to centralize all possible mutations of the
+    state of the deployed environment through one system that can maintain state separately.
+    In theory you could require this, for example, by enforcing “gitops,” i.e., a
+    management update to the application requires an update in Git. In such a setup,
+    there can be no rollback, load balancer changes, manual launching of server groups,
+    or any other mutation that would result in Git not having a full picture of the
+    state of the deployed environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Real-time instance-level status
+  prefs: []
+  type: TYPE_NORMAL
+- en: What a GitOps or similar system cannot do is track the state of individual instances
+    in a server group. AWS EC2, for example, makes no guarantees about an individual
+    virtual machine’s survivability, just that the Auto Scaling Group will do its
+    best to maintain the specified number of instances in the ASG at any given time.
+    The same is true in Kubernetes, where an individual pod’s survivability is not
+    guaranteed. If metrics telemetry is tagged instance ID, instance ordinal, or pod
+    ID, it is convenient to be able to receive an alert on the violation of some service
+    level objective, be able to drill down to a particular failing instance(s), and
+    navigate to a real-time view of the cluster at an instance level to take some
+    remediating action. For example, you could take a failing instance out of the
+    load balancer, allowing the “server group” mechanism to launch another instance
+    and addressing immediate user impact while allowing you time to investigate root
+    cause on the failing instance before eventually terminating it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As beneficial as it is to operations, real-time instance-level status is not
+    immediately relevant to our discussion of artifact provenance. We really just
+    need *some* source we can interrogate to list running server groups, clusters,
+    and applications (see [Example 6-1](part0011_split_003.html#mapping_deployed_resources_1)).
+    For the remainder of this chapter, we’ll use a Java pseudocode that describes
+    the kinds of insights you should be able to derive by achieving a certain level
+    of provenance information. The first part of the model encapsulates the resource
+    types (see [“Resource Types”](part0010_split_002.html#resource_types)) whose definitions
+    were given earlier. The implementation of the methods, like `getApplications()`,
+    is dependent on the deployment automation you use. For example, `getApplications()`
+    is an API call to Spinnaker’s Gate service to the endpoint `/applications`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-1\. Listing running deployed assets
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0011_split_003.html#co_source_code_observability_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, `us-east-1` in AWS or namespace in K8S.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](../images/00059.png)](part0011_split_003.html#co_source_code_observability_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The promotion level of the environment, like `test` or `production`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a GitOps system, `getApplications()` would interrogate the status of one
+    or more Git repositories. For the private datacenter with a set of named virtual
+    machines that rarely changes, this could be a manually maintained static list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Notice how at various stages, you should be able to drill down on various characteristics
+    of the data in a stateful delivery system. For example, see [Example 6-2](part0011_split_003.html#mapping_deployed_resources_2)
+    to get a list of teams that have applications that have some running footprint
+    in Kubernetes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-2\. Discovering teams that have applications running in Kubernetes
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: This ability to drill down leads to better actionability. When a full provenance
+    chain is established, we should be able to, for example, look for a recently revealed
+    method-level security vulnerability. For a critical vulnerability, it might be
+    desirable to first address the production stack and later follow up on the lower-level
+    environments that contain code on a path to production eventually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to be able to determine which `Artifact` a server group contains, we
+    need proper immutable release versioning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Release Versioning
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Since the artifact repository is the part of the software delivery life cycle
+    immediately preceding continuous delivery, a unique binary artifact version is
+    the first step in the artifact provenance chain. For a given pipeline run, Spinnaker
+    keeps track of the artifact inputs to that pipeline. Any resulting deployed assets
+    will also be tagged with this provenance information. [Figure 6-2](part0011_split_004.html#spinnaker_resolved_artifact)
+    shows how Spinnaker has kept track of the docker image tag and digest that was
+    an input to a pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0602](../images/00003.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-2\. Spinnaker resolved expected artifact (notice the artifact is identified
+    by digest instead of tag)
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: For this image version tag to uniquely identify a piece of code, the tag has
+    to be unique for each unique combination of source code and dependencies. That
+    is, if *either* the source code or dependencies that make up an application change,
+    the version needs to change, and it is this unique version number that needs to
+    be used to retrieve the artifact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Docker Image Tags Are Mutable
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Docker registries don’t make any guarantee about tag immutability. And digests
+    are not necessarily 1:1 with tags, though they are immutable. A common convention
+    when publishing a new version of a Docker container to a container registry is
+    to publish the image with the tag “latest” and some fixed version like “1.2.0.”
+    The “latest” tag effectively gets overriden, and it shares the same digest as
+    “1.2.0” until the next published version. Despite the fact that image tags are
+    mutable from the registry’s perspective, you can build a release process that
+    never actually mutates fixed version numbers so that this more human-readable
+    tag can be used to associate an image with the code that is in it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The type of artifact that becomes the input to a deployment depends on the target
+    cloud platform. For a PaaS like Cloud Foundry it is a JAR or WAR; for Kubernetes,
+    it is a container image, and for an IaaS like AWS EC2, an Amazon Machine Image
+    is “baked” (see [“Packaging for IaaS Platforms”](part0010_split_005.html#packaging_iaas))
+    from a system package like a Debian or RPM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Regardless of whether we are producing a JAR, a container image, or a Debian/RPM,
+    the same versioning scheme considerations apply.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ll narrow this discussion to JARs published to a Maven repository (the discussion
+    applies equally to Debians published to a Maven repository), but the end goal
+    of producing an immutable version would be the same for publishing container images
+    to a container registry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maven Repositories
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In artifact repositories, there are generally two types of Maven repositories:
+    release repositories and snapshot repositories. The structure of the release repository
+    is the repository’s base URL plus the artifact’s group, artifact, and version.
+    Any dots in the group name are separated by `/` in the path to arrive at the location
+    of an artifact. In Gradle, a dependency on Micrometer core 1.4.1 can be defined
+    as `implementation io.micrometer:micrometer-core:1.4.1`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The artifacts for this dependency in Maven Central look like [Figure 6-3](part0011_split_006.html#maven_repo_path).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0603](../images/00013.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-3\. Maven Central directory listing for micrometer-core 1.4.1
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The directory listing contains the binary JAR (micrometer-core-1.4.1.jar), checksums,
+    a Maven POM file describing the module, a set of checksums, and optionally sources
+    and javadoc JARs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maven Release Versions Are Immutable
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Generally an artifact version like 1.4.1 in a Maven repository is immutable.
+    No other code should ever be published over this version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maven snapshot repositories are structured a little differently. [Figure 6-4](part0011_split_007.html#maven_snapshot_repo_path)
+    shows how RSocket’s snapshots are structured in a Maven repository for the dependency
+    `implementation io.rsocket:rsocket-core:1.0.0-RC7-SNAPSHOT`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0604](../images/00014.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-4\. Spring Artifactory snapshot repository for RSocket 1.0.0-RC7-SNAPSHOT
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The path to this directory listing has the path segment `1.0.0-RC7-SNAPSHOT`,
+    but notice that none of the actual artifacts do. Instead they replace `SNAPSHOT`
+    with a timestamp when they were published. If we look in `maven-metadata.xml`,
+    we’ll see that it maintains a record of the last timestamp that was published
+    to this snapshot repository, as shown in [Example 6-3](part0011_split_007.html#maven_metadata_snapshot).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-3\. Maven metadata for RSocket 1.0.0-RC7-SNAPSHOT
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each time a new snapshot is published, this `maven-metadata.xml` is updated
+    by the artifact repository. This means that the dependency `implementation io.rsocket:rsocket-core:1.0.0-RC7-SNAPSHOT`
+    is *not* immutable. If we tagged some deployed asset with the version `1.0.0-RC7-SNAPSHOT`,
+    we don’t have enough specific information to tie this snapshot back to the particular
+    snapshot timestamp that was latest at the time that the deployment happened.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In other words, Maven snapshot versioning is a problem for artifact provenance
+    because it doesn’t uniquely identify a binary dependency in the artifact repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microservice versioning is different than library versioning as well in that
+    at any time a candidate version that is being tested in a lower environment could
+    be *promoted* to production. It’s safest if we don’t examine a candidate binary
+    with a snapshot-like version in a lower-level environment and, deciding that it
+    is fit for promotion to production, *rebuild* the binary with a “release” version
+    number. Rebuilding the binary is wasteful in both time and artifact repository
+    storage. More significantly, it introduces the possibility that any part of the
+    build (or the conditions of the machine on which the build is occurring, which
+    might influence the resulting binary) is not repeatable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To summarize everything we’ve discussed about versioning into two principles
+    for microservice versioning, we need the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Uniqueness
+  prefs: []
+  type: TYPE_NORMAL
+- en: A version number for each unique combination of source code and dependencies
+  prefs: []
+  type: TYPE_NORMAL
+- en: Immutability
+  prefs: []
+  type: TYPE_NORMAL
+- en: A guarantee that artifact versions are never overwritten in the artifact repository
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maven snapshots fail the uniqueness test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While there are a variety of release versioning schemes that could work, there
+    is a relatively simple approach using open source build tooling that takes quite
+    a bit of the toil out of microservice versioning while meeting both of these tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Build Tools for Release Versioning
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The Netflix Nebula suite of plug-ins contains a release plug-in that provides
+    a convenient workflow for calculating a version number that meets both of these
+    tests. It contains a set of Gradle tasks for versioning your project: `final`,
+    `candidate`, and `devSnapshot`. When working on libraries, it is typical to build
+    snapshots until you are close to a release, then maybe do one or more release
+    candidates, and finally produce a final release. For microservice versioning,
+    the situation is a bit different, again because at any time a particular iteration
+    of code running in a lower-level environment could be promoted to production.
+    An iteration cycle is shown in [Figure 6-5](part0011_split_008.html#microservice_versioning_cycle).
+    In this example workflow, tagging at the end of the deployment pipeline advances
+    the minor release number *N* for the next development iteration.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0605](../images/00063.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-5\. Microservice release versioning cycle
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This cycle of code change, continuous integration building and producing an
+    artifact and storing it in an artifact repository, and delivery automation provisioning
+    the new artifact in a lower-level environment can be performed potentially many
+    times before finally promoting a deployment to production. The specialized case
+    where there is only one loop is the idealized continuous deployment model. This
+    is the case when any successful deployment to a lower-level environment (and maybe
+    some automated tests against that lower-level environment) results in a production
+    promotion. Whether you get to this level of comfort with immediately shipping
+    changes or not is not important to the versioning scheme.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whenever the build is run, Nebula release looks at the latest tag on the repository,
+    say, `v0.1.0`, and selects (by default) to generate snapshots (and candidates,
+    and final builds for libraries) for the *next* minor version. In this case, that
+    would be the minor release 0.2.0.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the proposed versioning cycle, CI will execute a Gradle build for a repository
+    that uses Nebula release to generate immutable snapshots. The minor revision remains
+    consistent until a deployment is eventually promoted to production, at which point
+    your delivery automation, like a Spinnaker pipeline stage, tags the repository
+    (e.g., a Spinnaker job stage specifically executes `./gradlew final` on the repository,
+    pushing a tag to the Git remote for the current minor release iteration).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Releasing SaaS Versus Packaged Software
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Even packaged software can consist of a series of microservices. For example,
+    Spinnaker itself is a suite of microservices that are intended to be deployed
+    together. Generally there is an extra step for packaged software: producing some
+    sort of bill of materials that itself is revisioned containing versions for each
+    individual microservice. These versions are included in the bill of materials
+    to indicate that they are tested *together* and known to work as a group. Bills
+    of materials help to create potentially many running copies of a set of microservices.
+    When running SaaS, the production environment tends to be the only running copy,
+    and the bill of materials isn’t necessary.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Nebula release plug-in is applied to the root project of a Gradle project,
+    as shown in [Example 6-4](part0011_split_009.html#AFMJJ-2d714b853a094e9a910510217e0e3d73).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-4\. The Nebula release plug-in applied to the root project of a Gradle
+    project
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0011_split_009.html#co_source_code_observability_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Replace `LATEST` with the version listed on the [Gradle plug-in portal](https://oreil.ly/_MRA2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](../images/00059.png)](part0011_split_009.html#co_source_code_observability_CO2-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whenever the CI build executes `devSnapshot`, build and publish an artifact
+    to Artifactory. Because we *haven’t* attached `final` to publishing, running `./gradlew
+    final` in a stage after promotion to production will tag the repository with the
+    current minor release (e.g., v0.1.0) and push the tag to the repository, but not
+    unnecessarily upload another artifact to the artifact repository. The existence
+    of this tag completes the development cycle. Any subsequent code pushes, and therefore
+    runs of `./gradlew devSnapshot`, then generate snapshots for the next minor release
+    (e.g., `0.2.0-snapshot.<timestamp>+<commit_hash>`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](../images/00067.png)](part0011_split_009.html#co_source_code_observability_CO2-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optionally, ensure that developers don’t accidentally use the other types of
+    snapshot tasks made available by Nebula release that would generate snapshots
+    with different version number semantics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](../images/00016.png)](part0011_split_009.html#co_source_code_observability_CO2-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Define the repository that is referenced in the `dependsOn` clause of `devSnapshot`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the continuous deployment model of every commit (that passes automated tests)
+    resulting in a production deployment, provided that there is no need for an automated
+    test suite in a lower environment, there will be precisely one snapshot per minor
+    release. If all your checks were run prior to artifact publishing, and you trust
+    the outcome enough to promote to production immediately, you could easily use
+    `./gradlew final` and avoid immutable snapshots altogether. Few enterprises are
+    going to be comfortable with this, and there is no pressure to ever reach this
+    level of automation. As mentioned in [“Separating Platform and Application Metrics”](part0007_split_021.html#6LM03-2d714b853a094e9a910510217e0e3d73),
+    you “ship your org chart” to some extent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Associating every deployment with an immutable release version is the first
+    phase in the artifact provenance chain. When you have a combination of the ability
+    to interrogate your delivery service for all current deployments *and* your delivery
+    automation somehow tags each deployment with an immutable release version (whether
+    this is stored in the Auto Scaling Group name in EC2, a Kubernetes tag, etc.),
+    you unlock the ability to iterate over all production deployment resources and
+    map to artifact coordinates that are retrievable from your artifact repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The pseudocode showing the extent of the artifact provenance chain to this point
+    is in [Example 6-5](part0011_split_009.html#mapping_to_artifact).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-5\. Mapping deployed resources to artifact versions
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0011_split_009.html#co_source_code_observability_CO3-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type is `Stream<Artifact>` because there is a 1:1 correspondence between a deployment
+    and an artifact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](../images/00059.png)](part0011_split_009.html#co_source_code_observability_CO3-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because `devSnapshot` produces immutable artifact versions that are unique for
+    every unique combination of source code and dependencies, two artifacts with the
+    same group/artifact/version coordinates are guaranteed to have the same dependencies
+    as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](../images/00067.png)](part0011_split_009.html#co_source_code_observability_CO3-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this stage, we don’t yet have the ability to determine dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We need more configuration up front to provide artifact provenance that includes
+    dependencies as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Capturing Resolved Dependencies in Metadata
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Extending the provenance chain deeper to include the dependencies of applications
+    allows us to quickly find which deployed assets contain a version of a *library*
+    that may be problematic, for example, because of an identified security vulnerability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generally, when we publish a Maven POM file along with the application, it contains
+    a `<dependencies>` block that only lists the first-level dependencies. These are
+    the dependencies that are directly listed in the `dependencies { }` section of
+    the Gradle build as well. For example, for a sample Spring Boot application generated
+    from [start.spring.io](https://start.spring.io), the first-level dependencies
+    would be something like [Example 6-6](part0011_split_010.html#first_level_dependencies).
+    Specifically, `spring-boot-starter-actuator` and `spring-boot-starter-webflux`
+    are the two first-level dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-6\. First-level dependencies of a sample Spring Boot application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: For the sake of establishing a provenance chain, test dependencies are not really
+    important. They are only on the classpath during test execution on local developer
+    machines and on continuous integration builds, and they aren’t packed in the final
+    application that is running in the deployed environment. Any problem or vulnerability
+    in test dependencies is safely confined to the continuous integration environment
+    and doesn’t cause problems in running deployed applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When this application is published to an artifact repository like Artifactory,
+    a Maven POM file is published alongside the binary artifact which contains a `dependencies`
+    section like in [Example 6-7](part0011_split_010.html#first_level_dependencies_pom).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-7\. First-level dependencies as they appear in the Maven POM
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: First-level dependencies of course bring in *other* dependencies. The set of
+    all other dependencies, resolved recursively from the first level down, is called
+    the transitive closure of dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It may be tempting to think that the transitive closure of dependencies in this
+    sample application could be determined simply by recursively fetching the POM
+    files of each dependency from the artifact repository. This is unfortunately not
+    the case. Commonly enough, additional constraints are present in the build that
+    influence in some way the transitive dependencies that were resolved and packaged
+    with the application. For example, a particular version could be denied with a
+    replacement because some critical bug is fixed by a later version, as in [Example 6-8](part0011_split_010.html#dependency_denied_replacement).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-8\. Denying a version with a replacement
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: No Process That Determines Dependencies from the Artifact Repository Alone Is
+    Correct
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The consequence of build-time features like resolution strategies is that no
+    process that tries to determine the transitive closure of dependencies from standard
+    artifact metadata alone (such as the POM `<dependencies>` block) will be correct.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vendors trying to build universal component analysis tools strictly from standard
+    metadata can only give you an *approximation* of what dependencies are in use.
+    And this approximation is often not trivially divergent from reality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a result of resolution strategies, forced versions, etc., the transitive
+    closure must be persisted somehow as the application binary is published. One
+    easy way to do this is to include the resolved transitive closure in a POM `<properties>`
+    element for later consumption by any tooling you build to examine the dependencies
+    in use across your organization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The [Nebula Info](https://oreil.ly/ASOpi) plug-in specializes in just this,
+    attaching build-time metadata to the `<properties>` section of a POM. Out of the
+    box, Nebula Info adds properties for things like Git commit hash and branch, the
+    source and target Java version, and build host.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `InfoBrokerPlugin` allows us to add new properties at will by key-value
+    pair. [Example 6-9](part0011_split_011.html#AFN3T-2d714b853a094e9a910510217e0e3d73)
+    shows how to traverse the transitive dependency closure of the runtime classpath
+    and add the list of dependencies as a property. [`nebula.maven-manifest`](https://oreil.ly/Bb-hM),
+    included automatically by `nebula.maven-publish`, reads all the properties managed
+    by the info broker and adds them as POM properties.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-9\. List all transitive dependencies sorted in a flat list
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0011_split_011.html#co_source_code_observability_CO4-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Replace `LATEST` with whatever the latest version is on the [Gradle Plug-in
+    Portal](https://oreil.ly/TNrDy).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This results in a properties listing in the POM that looks something like [Example 6-10](part0011_split_011.html#nebula_info_dependencies_flat_pom).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-10\. A flattened transitive dependency closure listed, sorted, and
+    added as a POM property
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, to build tooling to find all deployments that contain `logback-core` version
+    1.2.3, we can use something like the pseudocode in [Example 6-11](part0011_split_011.html#mapping_to_artifact_dependencies)
+    to list all the server groups containing a particular `logback-core` dependency.
+    The population of `dependencies` on the `Artifact` type consists of downloading
+    the POM from the artifact repository, given the Artifact’s group/artifact/version
+    coordinates, and parsing the contents of the `<nebula_Resolved_Dependencies>`
+    POM property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-11\. Mapping deployed resources to the set of all dependencies included
+    in them
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The flattened list representation can be improved upon a little for readability
+    when glancing at an individual POM file without really affecting how we parse
+    the transitive closure for a given artifact. [Example 6-12](part0011_split_011.html#AFND5-2d714b853a094e9a910510217e0e3d73)
+    shows how to instead create a pretty-printed minimum spanning tree of the transitive
+    closure of dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-12\. A tree view of the transitive dependency closure added as a POM
+    property
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: This generates a resolved dependencies property that looks something like [Example 6-13](part0011_split_011.html#nebula_info_dependencies_tree_pom).
+    This looks a bit more readable individually, and consuming such a property from
+    tooling is equivalent to the flattened representation—simply strip the whitespace
+    off the front of each line no matter how much whitespace there is.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-13\. A tree view of the transitive dependency closure shown as a POM
+    property
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can see a hint in this Nebula info output of how we can go further to the
+    commit (`<nebula_Change>`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Capturing Method-Level Utilization of the Source Code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Going a step further, we can capture the source code level for a given artifact
+    version. This is the last phase in the provenance chain. Once complete, the chain
+    leads from a conceptual “application,” consisting of clusters spread across potentially
+    multiple cloud providers, all the way down to the method declarations and invocations
+    of the source code in these applications. For example, for an AWS EC2 IaaS-based
+    deployment footprint, the provenance chain now looks like [Example 6-14](part0011_split_012.html#full_provenance_chain).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-14\. An AWS EC2 full provenance chain from application to method-level
+    source code
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](../images/00112.png)](part0011_split_012.html#co_source_code_observability_CO5-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How this is constructed is the topic of this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since this chain is linked top-to-bottom with just enough uniquely identifying
+    metadata, we can answer almost any question about our running production environment.
+    Each of these scenarios now has an exact answer that can be updated at will against
+    the current state of a deployed footprint:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Zero-day exploit in an open source third-party library
+  prefs: []
+  type: TYPE_NORMAL
+- en: The security team learns of a vulnerability in a method in an open source third-party
+    library that might be used in the company. This exposure could lead to sensitive
+    personally identifiable customer information leaking if exploited and have significant
+    legal liability and brand implications for the company. Because this vulnerability
+    is widespread, the security team wants to address this problem in two phases,
+    first focusing on production public-facing assets invoking the vulnerable method,
+    and then later addressing internal tools and application code in lower environments
+    on a path to eventual production deployment. Which teams does the security team
+    need to communicate with in the first phase that have potential execution paths
+    leading to the vulnerable method?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Platform team wants to deprecate or change an API
+  prefs: []
+  type: TYPE_NORMAL
+- en: A centralized tools team, responsible for providing a library that every microservice
+    team uses to check whether a given request is subject to a running A/B experiment,
+    would like to make an API change in the way its library is used. The tools team
+    used the source code search mechanism on its Github Enterprise instance to see
+    where the existing API was used and noticed that some of the results pointed to
+    dead code. If the team was to go ahead with the API change, which actively developed
+    and deployed code would be affected? What is the set of teams affected by this
+    potential change? If it is a small number of teams, the tools team can likely
+    meet individually with its affected users or hold a small meeting and feedback
+    session and proceed with the change. If it affects a much broader swath of the
+    organization, perhaps the change is approached more incrementally or reconsidered
+    altogether.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When it comes to identifying which methods are being used in the execution
+    paths of running microservices, there are two approaches:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Live monitoring of execution paths
+  prefs: []
+  type: TYPE_NORMAL
+- en: An agent can be attached to a running Java process to monitor which methods
+    are actually executed. The set of all observed method signatures over a period
+    of time approximates the reachable execution paths. For example, [Snyk](https://snyk.io),
+    which specializes in security vulnerability analysis, provides a Java agent that
+    monitors demonstrable execution paths to match against its method-level vulnerability
+    research and alert organizations to known vulnerabilities. Live monitoring like
+    this naturally *underreports* the real set of execution paths to a point, since
+    some execution paths may be rarely exercised (e.g., exception-handling paths).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Statically analyzing potential execution paths from the source code
+  prefs: []
+  type: TYPE_NORMAL
+- en: Several Java tools exist to construct an [abstract syntax tree](https://oreil.ly/f0r4M)
+    (an intermediate representation of the source code). This tree can be walked to
+    look for method invocations. The set of all method invocations across the abstract
+    syntax trees for every class in a source repository represents the set of all
+    potential executions. This naturally *overreports* the real set of execution paths,
+    since some method invocations are going to exist buried in a set of conditionals
+    that never evaluate to true or request mappings that are never exercised. An example
+    of one of these tools available in the open is given in [“Structured Code Search
+    with OpenRewrite”](part0011_split_013.html#AFNN3-2d714b853a094e9a910510217e0e3d73).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because of the under/overreporting nature of these approaches, it can be useful
+    to combine them. Any applications which are reporting the use of a method through
+    live monitoring are certain to require a change. Potential execution paths can
+    be evaluated on a second pass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Static analysis tools need to evaluate source code. The combination of `nebula.info`
+    and `nebula.maven-publish`, shown again in [Example 6-15](part0011_split_012.html#nebula_info_commit_branch),
+    gives us a Git commit hash and branch, the right amount of detail to connect an
+    artifact version known to be running in a given server group to the source code
+    that is included in it. Also, you can follow the application artifact’s transitive
+    dependency closure, looking at a POM file for each dependency and peeking at what
+    commit hash and branch each dependency used to examine their source code in turn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-15\. Gradle plug-ins that generate POM properties for Git commit hash
+    and branch
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The POM properties this generates, shown in [Example 6-16](part0011_split_012.html#nebula_info_commit_branch_pom),
+    are easily scraped by tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-16\. Maven POM properties for Git commit hash and branch
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: To set expectations about what kinds of capabilities a structured code search
+    tool should have that could analyze execution paths, consider OpenRewrite.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Structured Code Search with OpenRewrite
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The [OpenRewrite](http://github.com/openrewrite) project is a mass refactoring
+    ecosystem for Java and other source code, designed to eliminate technical debt
+    across an engineering organization. Rewrite is designed to be plugged into various
+    workflows, including the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discover and fix code as a build tool task (e.g., Gradle and Maven).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Subsecond organization-wide code search for a pattern of arbitrary complexity.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mass pull-request issuance to fix a security vulnerability, eliminate the use
+    of a deprecated API, migrate from one technology to another (e.g., JUnit asserts
+    to AssertJ), etc.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mass organization-wide Git commits to do the same.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It builds on a custom abstract syntax tree (AST) that encodes the structure
+    and formatting of source code. The AST is printable to reconstitute the source
+    code, including its original formatting. Rewrite provides high-level search and
+    refactoring functions that can transform the AST, as well as utilities for unit
+    testing refactoring logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Two key capabilities of the Rewrite AST make it suited for the purpose of the
+    provenance chain:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type-attributed
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each AST element is imbued with type information. For a field reference, for
+    example, the source code may just refer to myField. The Rewrite AST element for
+    `myField` would also contain information about what the type of `myField` is,
+    even if it isn’t defined in the same source file or even the same project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acyclic and serializable
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most ASTs containing type information are potentially cyclic. Cycles usually
+    come from generic type signatures like class `A<T extends A<T>>`. This kind of
+    pattern is generally found in things like abstract builder types in Java. Rewrite
+    cuts these cycles off and adds serialization annotations to its types so the AST
+    can be serialized/deserialized with libraries like Jackson.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type attribution is necessary for accurate matching of patterns. How do we know
+    if `logger` is an SLF4J or a Logback logger when looking at a statement like [Example 6-17](part0011_split_013.html#logging_statement_type_attribution)?
+    The class type of the instance that a method is invoked against is called the
+    receiver type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-17\. A logging statement with an ambiguous receiver type
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: The production of type-attributed ASTs for a whole organization is arbitrarily
+    computationally complex, since it requires dependency resolution, parsing of the
+    source code, and type attribution (basically Java compilation up to the point
+    of bytecode generation). Since Rewrite ASTs are serializable, we can store them
+    off centrally as a byproduct of compilation in continuous integration environments
+    and then operate on them en masse later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once we have a serialized AST for a particular source file, and because it also
+    contains type information, it can be refactored/searched completely independently
+    of other source files in the same source package or repository. This makes mass
+    search and refactoring a truly linearly scalable operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a Rewrite AST from Java source code
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To build a Rewrite AST for Java source code, construct a `JavaParser` either
+    with or without the runtime classpath using one of the constructor signatures
+    shown in [Example 6-18](part0011_split_013.html#constructing_java_parser).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-18\. Constructing a JavaParser instance
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Providing a classpath is optional, because type attribution is a *best effort*
+    for each element. If we are storing ASTs in a datastore for organization-wide
+    search, ideally they are stored fully type-attributed, because you don’t know
+    what kinds of searches will be made in advance. The kinds of searches include
+    the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: No types needed at all
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are applying a refactoring rule like autoremediation for Checkstyle’s
+    `WhitespaceBefore` rule, we’re strictly looking at source formatting, and it’s
+    OK if none of the AST elements have types on them, as it doesn’t influence the
+    outcome.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Partial types needed
+  prefs: []
+  type: TYPE_NORMAL
+- en: If searching for occurrences of deprecated Guava methods, it is OK to construct
+    a `JavaParser` with a path to a Guava binary. It doesn’t even have to be the Guava
+    version that the project is using! The resulting ASTs will have limited type information,
+    but just enough to search for what we want.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Full types needed
+  prefs: []
+  type: TYPE_NORMAL
+- en: When ASTs are emitted as a side effect of compilation to a central datastore
+    for later arbitrary code search, they need to have full type information, because
+    we can’t be sure in advance what kinds of searches people will attempt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`JavaParser` contains a convenience method for building a `JavaParser` from
+    the runtime classpath of the Java process that is constructing the parser, shown
+    in [Example 6-19](part0011_split_013.html#parser_with_classpath).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-19\. Giving the parser the compile dependencies necessary to do type
+    attribution
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: This utility takes the “artifact name” of the dependency to look for. The artifact
+    name is the artifact portion of `group:artifact:version` coordinates. For example,
+    for Google’s Guava (`com.google.guava:guava:VERSION`), the artifact name is `guava`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once you have a `JavaParser` instance, you can parse all the source files in
+    a project with the `parse` method, which takes a `List<Path>`. [Example 6-20](part0011_split_013.html#parsing_source_paths)
+    shows the process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-20\. Parsing a list of Java source paths
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`J.CompilationUnit`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the top-level AST element for Java source files, which contains information
+    about the package, imports, and any class/enum/interface definitions contained
+    in the source file. `J.CompilationUnit` is the basic building block upon which
+    we’ll build refactoring and search operations for Java source code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`JavaParser`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This contains `parse` method overloads for constructing an AST from a string,
+    which is useful for quickly constructing unit tests for different search and refactoring
+    operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For JVM languages like Kotlin that support multiline strings, this can be especially
+    convenient, as shown in [Example 6-21](part0011_split_013.html#parsing_java_source).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-21\. Parsing Java source
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice how this returns a single `J.CompilationUnit`, which can be immediately
+    acted upon. Ultimately, [JEP-355](https://oreil.ly/9p7X8) will bring multiline
+    strings to Java as well, so beautiful unit tests for Rewrite operations will be
+    possible to write in plain Java code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `dependenciesFromClasspath` method demonstrated in [Example 6-22](part0011_split_013.html#parsing_source_with_classpath)
+    is especially useful for building unit tests, as you can place a module for which
+    you are affecting some transformation on the test runtime classpath and bind it
+    to the parser. In this way, any references to classes, methods, etc., in that
+    dependency are type-attributed in ASTs produced for unit tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-22\. Parsing source with a classpath for type attribution
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Performing a search with Rewrite
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Extending on the previous example, we can search for uses of Guava’s `Files#createTempDir()`,
+    shown in [Example 6-23](part0011_split_013.html#search_with_rewrite). The argument
+    for `findMethodCalls` takes the [AspectJ syntax](https://oreil.ly/4UaEQ) for pointcut
+    matching on methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-23\. Performing a search with Rewrite
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Many other search methods exist on `J.CompilationUnit`, among them the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`boolean hasImport(String clazz)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looks for imports
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`boolean hasType(String clazz)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checks whether a source file has a reference to a type
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Set<NameTree> findType(String clazz)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Returns all the AST elements that are type-attributed with a particular type
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can also move down a level to individual classes (`cu.getClasses()`) inside
+    a source file and perform additional operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`List<VariableDecls> findFields(String clazz)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finds fields declared in this class that refer to a specific type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`List<JavaType.Var> findInheritedFields(String clazz)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finds fields that are inherited from a base class. Note that since they are
+    inherited, there is no AST element to match on, but you’ll be able to determine
+    if a class has a field of a particular type coming from a base class and then
+    look for uses of this field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Set<NameTree> findType(String clazz)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Returns all AST elements inside this class referring to a type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`List<Annotation> findAnnotations(String signature)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finds all annotations matching a signature as defined in the AspectJ pointcut
+    definition for annotation matching.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`boolean hasType(String clazz)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checks whether a class refers to a type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`hasModifier(String modifier)`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checks for modifiers on the class definition (e.g., public, private, static).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`isClass()/isEnum()/isInterface()/isAnnotation()`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checks the type of declaration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: More search methods are available further down the AST.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can build custom search visitors by extending `JavaSourceVisitor` and implementing
+    any `visitXXX` methods that you need to perform your search. These don’t have
+    to be complex. `FindMethods` only extends `visitMethodInvocation` to check whether
+    a given invocation matches the signature we are looking for, as shown in [Example 6-24](part0011_split_013.html#find_methods_visitor).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-24\. The implementation of the FindMethods operation in Rewrite
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Invoke a custom visitor by instantiating the visitor and calling `visit` on
+    the root AST node, as shown in [Example 6-25](part0011_split_013.html#invoke_custom_visitor).
+    `JavaSourceVisitor` can return any type. You define a default return with `defaultTo`
+    and can provide a custom reduction operation by overriding `reduce` on the visitor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-25\. Invoking a custom Rewrite visitor
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Refactoring Java source
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'One of the benefits of establishing this artifact provenance chain all the
+    way down to the method invocation level on source code is you can actually perform
+    some *remediating* action on the source code in a targeted way: first iterating
+    over deployed assets and mapping them to binaries, then mapping to a commit, then
+    to the ASTs built from that commit.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refactoring code starts at the root of the AST, which for Java is `J.CompilationUnit`.
+    Call `refactor()` to begin a refactoring operation. We’ll detail the kinds of
+    refactoring operations that you can do in a moment, but at the end of this process
+    you can call `fix()`, which generates a `Change` instance that allows you to generate
+    git diffs and print out the original and transformed source. [Example 6-26](part0011_split_013.html#parsing_to_printing)
+    shows the whole process end-to-end.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example 6-26\. End to end: parsing Java source code to printing a fix'
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`rewrite-java` packs with a series of refactoring building blocks that can
+    be used to perform low-level refactoring operations. For example, to change all
+    fields from `java.util.List` to `java.util.Collection`, we could use the `ChangeFieldType`
+    operation, as shown in test form in [Example 6-27](part0011_split_013.html#testing_change_field_type).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-27\. A unit test for changing a field type
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `rewrite-java` module comes with basic refactoring building blocks that
+    resemble many of the individual refactoring tools you would find in an IDE:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add annotation to a class, method, or variable.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Add a field to a class.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Add/remove an import, which can be configured to expand/collapse star imports.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Change field name (including its references, even across other source files
+    that *use* this field, not just where the field is defined).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Change a field type.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Change a literal expression.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Change a method name, including anywhere that method is referenced.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Change a method target to a static from an instance method.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Change a method target to an instance method from a static.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Change a type reference anywhere it is found in the tree.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Insert/delete method arguments.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Delete any statement.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Generate constructors using fields.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rename a variable.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reorder method arguments.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Unwrap parentheses.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement an interface.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Each one of these operations is defined as a `JavaRefactorVisitor`, which is
+    an extension of `JavaSourceVisitor` designed for mutating the AST, ultimately
+    leading to a `Change` object at the end of the refactoring operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Visitors can be cursored or not. Cursored visitors maintain a stack of AST elements
+    that have been traversed in the tree thus far. In exchange for the extra memory
+    footprint, such visitors can operate based on the location of AST elements in
+    the tree. Many refactoring operations don’t require this state. [Example 6-28](part0011_split_013.html#make_classes_final)
+    provides an example of a refactoring operation that makes each top-level class
+    final. Since class declarations can be nested (e.g., inner classes), we use the
+    cursor to determine if the class is top level or not. Refactoring operations should
+    also be given a fully qualified name with a package representing the group of
+    operations and a name signifying what it does.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-28\. An example of a refactoring operation that makes each top-level
+    class final
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Visitors can be chained together by calling `andThen(anotherVisitor)`. This
+    is useful for building up pipelines of refactoring operations made of lower-level
+    components. For example, when `ChangeFieldType` finds a matching field that it
+    is going to transform, it chains together an `AddImport` visitor to add the new
+    import if necessary, and a `RemoveImport` to remove the old import if there are
+    no longer any references to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A platform of open source out-of-the-box remediations continues to grow in open
+    source.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this point, the provenance chain is complete. Connecting the dots down to
+    source code method-level detail allows you to observe your deployed footprint
+    in a fine-grained way, answering a wide array of questions in real time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s switch focus now to a different aspect of building reliability in your
+    source: managing binary dependencies.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dependency Management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Binary dependencies (those defined in Gradle build files or Maven POMs) present
+    a series of systemic challenges. We’ll go over several of these issues and present
+    strategies for how to solve them. You’ll notice that in each case the remediation
+    is something that is applied at the build tool layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some organizations attempt to limit the impact of dependency problems through
+    *curation*, i.e., barring the use of dependencies from public artifact repository
+    sources like Maven Central or JCenter in favor of an approved and curated set
+    of dependencies. Curation of dependencies presents its own series of challenges.
+    Specifically, given how interconnected libraries are, deciding to add another
+    library to the curated set involves adding its entire transitive closure. There
+    also is a natural tendency to avoid the toil necessary to get new artifacts added,
+    which means your organization will skew toward slightly older versions of libraries,
+    increasing the security vulnerability and bug footprint. Ironically, the goal
+    of curation is usually to *improve* security. At the very least, this trade-off
+    is worth evaluating against your stated goal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Version Misalignments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Version misalignments caused by conflict resolution of dependency families like
+    Jackson cause the family to not function correctly. Curated artifact repositories
+    increase the likelihood of version misalignments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Jackson is a great example of this. Suppose we brought a new version of Spring
+    Boot and its transitive dependencies into our curated repository. [Figure 6-6](part0011_split_015.html#spring_transitive_jackson_dependencies)
+    uses the Gradle `dependencyInsight` task to show the Jackson dependencies that
+    are included in Spring Boot’s transitive dependency closure and the paths by which
+    they are included.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notably absent from this list are all the other Jackson modules that aren’t
+    directly required by the framework, e.g., `jackson-module-kotlin`, `jackson-module-afterburner`,
+    and `jackson-modules-java8`. Any microservice using one of these other modules
+    that updates to the new version of Spring Boot included in the curated repository
+    now has an unresolvable version misalignment (which may or may not create runtime
+    issues) until the new versions of those modules are also added to the curated
+    set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0606](../images/00007.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-6\. Spring Boot transitive Jackson dependencies
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Dynamic versions create a different set of problems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dynamic Version Constraints
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Java build tooling unfortunately still lacks advanced range selectors for semantic
+    versioning like [NPM’s selector](https://oreil.ly/17iNf). Instead, we are left
+    with coarser selectors like `latest.release` and `2.10.+` in Gradle and `RELEASE`
+    and `(,2.11.0]` (range selection) in Maven.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whenever possible, it is best to avoid `+` type selectors, because they *lexicographically*
+    sort versions. So `2.10.9` is considered later than `2.10.10`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Maven-style range selector unfortunately pins you to an upper bound that
+    isn’t static. When a further release comes out, the upper bounds need to be updated
+    everywhere they are defined.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While for the most part, common open source libraries are cautious to only publish
+    releases to public repositories, periodically we still see even heavily used libraries
+    publish release candidates. Unfortunately, the `latest.release` (Gradle) and `RELEASE`
+    (Maven) selectors don’t know how to distinguish between release version numbers
+    and version numbers that to a human are clearly release candidates. For example,
+    in March 2020, Jackson published a `2.11.0.rc1`, which would be selected by `latest.release`.
+    Less than a year earlier, in September 2019, Jackson published a `2.10.0.pr1`
+    version (the unconventional “pr” suffix apparently meaning “pre-release”). Neither
+    one of these versions semantically matches the intent behind “latest release.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can bar known patterns for release candidates by adding two Maven repositories
+    to the Gradle build that together form a disjoint subset of resolvable artifacts,
+    in the case of [Example 6-29](part0011_split_016.html#bar_jackson_rcs), the set
+    of all nonrelease candidate Jackson modules, and everything other than Jackson
+    modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-29\. Barring the use of Jackson release candidates in Gradle
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Unused dependencies pose a different sort of problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unused Dependencies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In addition to bloating the size of a packaged microservice (which is rarely
+    a major issue), unused dependencies can result in implicit autoconfiguration of
+    features, with serious consequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Spring Data REST [vulnerability](https://oreil.ly/m6n_W) caught by surprise
+    many who weren’t even using the library but, being present in the runtime classpath,
+    caused Spring to the autoconfigure a series of REST endpoints that exposed an
+    attack vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Guice-based [Governator](https://oreil.ly/yrGcx) autoconfigures any Guice module
+    in the classpath. Governator’s scanning mechanism is not constrained by package
+    name. Modules located in the classpath could have dependencies on other modules,
+    but these dependencies weren’t necessarily reliably in the classpath. Frequently,
+    unused but autoconfigured Guice modules caused application failure because dependencies
+    that were previously accidentally on the classpath were removed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unused dependencies can be detected and removed automatically by the [Nebula
+    Lint](https://oreil.ly/4YFe8) Gradle plug-in. It can be configured in a Gradle
+    project, as shown in [Example 6-30](part0011_split_017.html#nebula_lint_unused_dependencies).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-30\. Nebula Lint configuration for unused dependencies
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: When `nebula.lint` is applied, build scripts will be automatically linted by
+    a task called `lintGradle` after the last task in the task graph executes. Results
+    are reported in the console, as shown in [Figure 6-7](part0011_split_017.html#lint_output).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0607](../images/00030.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-7\. Nebula Lint warning about dependency formatting
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Run `./gradlew fixGradleLint` to automatically fix your build scripts. The autofix
+    process lists all violations and how they were fixed, as shown in [Figure 6-8](part0011_split_017.html#lint_autofix).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![srej 0608](../images/00048.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-8\. Nebula Lint automatically fixing dependency formatting
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The last problem represents the mirror opposite of unused dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Undeclared Explicitly Used Dependencies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: An application class imports a class from a dependency that is defined transitively.
+    The first-order dependency that effectively brought the transitive dependency
+    onto the classpath is either removed or its tree changes such that the transitive
+    dependency is no longer on the classpath.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Undeclared dependencies can also be detected and added automatically by Nebula
+    Lint. It can be configured in a Gradle project, as shown in [Example 6-31](part0011_split_018.html#nebula_lint_undeclared_dependencies).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 6-31\. Nebula Lint configuration for undeclared dependencies
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once added as a first-order dependency, its visibility as a dependency whose
+    version matters to this application is more important.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter introduced some of the basic requirements to set up your software
+    delivery life cycle in such a way that you can map deployed assets back to the
+    source code that was included inside of them. With an increase in the number of
+    deployed assets (smaller microservices), the existence of some queryable system
+    of record to determine where particular code patterns are present in production-executable
+    code becomes more important.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will discuss traffic management and call resiliency
+    patterns that can be used to compensate for and limit the extent of failure, which
+    will naturally be present in any microservice architecture.
+  prefs: []
+  type: TYPE_NORMAL

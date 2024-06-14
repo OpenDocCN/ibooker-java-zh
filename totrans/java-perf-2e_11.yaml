@@ -1,0 +1,1642 @@
+- en: Chapter 11\. Database Performance Best Practices
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter investigates the performance of Java-driven database applications.
+    Applications that access a database are subject to non-Java performance issues:
+    if a database is I/O-bound or if it is executing SQL queries that require full
+    table scans because an index is missing, no amount of Java tuning or application
+    coding is going to solve the performance issues. When dealing with database technologies,
+    be prepared to learn (from another source) about how to tune and program the database.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is not to say that the performance of an application that uses a database
+    is insensitive to things under the control of the JVM and the Java technologies
+    that are used. Rather, for good performance, it is necessary to ensure that both
+    the database and the application are correctly tuned and executing the best possible
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter starts by looking at JDBC drivers, since those influence the data
+    frameworks that talk to relational databases. Many frameworks abstract the JDBC
+    details, including the JPA and the Spring data modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sample Database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The examples in this chapter use a sample database set up to store the data
+    for 256 stock entities for the period of one year. The year has 261 business days.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prices for the individual stocks are held in a table called STOCKPRICE, which
+    has a primary key of the stock symbol and the date. There are 66,816 rows in that
+    table (256 × 261).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each stock has a set of five associated options, which are also priced daily.
+    The STOCKOPTIONPRICE table holds that data with a primary key of the symbol, the
+    date, and an integer representing the option number. There are 334,080 rows in
+    that table (256 × 261 × 5).
+  prefs: []
+  type: TYPE_NORMAL
+- en: JDBC
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter covers database performance from the perspective of JPA version
+    2.*x*. However, JPA uses JDBC under the covers, and many developers still write
+    applications directly to the JDBC APIs—so it is important to look at the most
+    important performance aspects of JDBC also. Even for applications that use JPA
+    (or another database framework from something like Spring Data), understanding
+    JDBC performance will help get better performance out of the framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JDBC Drivers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The JDBC driver is the most important factor in the performance of database
+    applications. Databases come with their own set of JDBC drivers, and alternate
+    JDBC drivers are available for most popular databases. Frequently, the justification
+    for these alternate drivers is that they offer better performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s impossible to adjudicate the performance claims of all database drivers,
+    but here are some things to consider when evaluating drivers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Where work is performed
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'JDBC drivers can be written to perform more work within the Java application
+    (the database client) or to perform more work on the database server. The best
+    example of this is the thin and thick drivers for Oracle databases. The *thin
+    driver* is written to have a fairly small footprint within the Java application:
+    it relies on the database server to do more processing. The *thick driver* is
+    just the opposite: it offloads work from the database at the expense of requiring
+    more processing and more memory on the Java client. That kind of trade-off is
+    possible in most databases.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Competing claims disagree on which model gives the better performance. The truth
+    is that neither model offers an inherent advantage—the driver that will offer
+    the best performance depends on the specifics of the environment in which it is
+    run. Say an application host is a small, two-core machine connecting to a huge,
+    well-tuned database. The CPU of the application host is likely to become saturated
+    well before any significant load is placed on the database. A thin-style driver
+    will give the better performance in that case. Conversely, an enterprise that
+    has 100 departments accessing a single HR database will see the best performance
+    if database resources are preserved and the clients deploy a thick-style driver.^([1](ch11.html#idm45775546052104))
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is a reason to be suspicious of any performance claims when it comes to
+    JDBC drivers: it is easy to pick a driver that is well suited to a particular
+    environment and show that it is superior to another vendor’s driver that performs
+    badly on the exact same setup. As always, test in your own environment, and make
+    sure that environment mirrors what you will deploy on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JDBC driver type
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: JDBC drivers come in four types (1–4). The driver types in wide use today are
+    type 2 (which uses native code) and type 4 (which is pure Java).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type 1 drivers provide a bridge between Open Database Connectivity (ODBC) and
+    JBDC. If an application must talk to a database using ODBC, it must use this driver.
+    Type 1 drivers generally have quite bad performance; you would choose that only
+    if you had to talk via the ODBC protocol to a legacy database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type 3 drivers are, like type 4 drivers, written purely in Java, but they are
+    designed for a specific architecture in which a piece of middleware (sometimes,
+    though usually not, an application server) provides an intermediary translation.
+    In this architecture, a JDBC client (usually a standalone program, though conceivably
+    an application server) sends the JDBC protocol to the middleware, which translates
+    the requests into a database-specific protocol and forwards the request to the
+    database (and performs the reverse translation for the response).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In some situations, this architecture is required: the middleware can sit in
+    the network demilitarized zone (DMZ) and provide additional security for connections
+    to the database. From a performance standpoint, potential advantages and disadvantages
+    exist. The middleware is free to cache database information, which offloads the
+    database (making it faster) and returns data to the client sooner (decreasing
+    the latency of the request). Without that caching, however, performance will suffer,
+    as two round-trip network requests are now required to perform a database operation.
+    In the ideal case, those will balance out (or the caching will be even faster).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a practical situation, though, this architecture has not really been widely
+    adopted. It is generally easier to put the server itself in the middle tier (including
+    in the DMZ if needed). The server can then perform the database operations, but
+    it needn’t provide a JDBC interface to clients: it is better off providing servlet
+    interfaces, web service interfaces, and so on—isolating the client from any knowledge
+    of the database.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: That leaves type 2 and 4 drivers, both of which are quite popular, and neither
+    of which has an inherent performance advantage over the other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Type 2 drivers use a native library to access the database. These drivers are
+    popular with some database vendors because they allow the Java driver to leverage
+    the years of work that has been put into writing the C library that other programs
+    use to access the database. Because they rely on a native library, they are harder
+    to deploy: the database vendor must provide a platform-specific native library
+    for the driver, and the Java application must set up environmental variables to
+    use that library. Still, given the work that the vendor has already put into the
+    C library, type 2 drivers tend to perform very well.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Type 4 drivers are pure Java drivers that implement the wire protocol that
+    the database vendor has defined for accessing their database. Because they are
+    written completely in Java, they are easy to deploy: the application simply needs
+    to add a JAR file to their classpath. Type 4 drivers typically perform as well
+    as type 2 drivers because both use the same wire protocol. From the vendor’s perspective,
+    the type 4 driver may be additional code to write, but from a user’s perspective,
+    they are generally the easiest to use.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Don’t conflate the driver type (2 or 4) with whether the driver is considered
+    thick or thin, as discussed in the previous section. It is true that type 2 drivers
+    tend to be thick and type 4 drivers tend to be thin, but that is not a requirement.
+    In the end, whether a type 2 or type 4 driver is better depends on the environment
+    and the specific drivers in question. There is really no a priori way to know
+    which will perform better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Spend time evaluating the best JDBC driver for the application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The best driver will often vary depending on the specific deployment. The same
+    application may be better with one JDBC driver in one deployment and a different
+    JDBC driver in a different deployment.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If you have a choice, avoid ODBC and type 1 JDBC drivers.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: JDBC Connection Pools
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Connections to a database are time-consuming to create, so JDBC connections
+    are another prototypical object that you should reuse in Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In most server environments, all JDBC connections come from the server’s connection
+    pool. In a Java SE environment with JPA, most JPA providers will use a connection
+    pool transparently, and you can configure the connection pool within the *persistence.xml*
+    file. In a standalone Java SE environment, the connections must be managed by
+    the application. To deal with that last case, you can use one of several connection
+    pool libraries that are available from many sources. Often, though, it is easier
+    to create a connection and store it in a thread-local variable for each thread
+    in a standalone application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As usual, it is important to strike the right balance between the memory occupied
+    by the pooled objects and the amount of extra GC the pooling will trigger. This
+    is particularly true because of the prepared statement caches that we’ll examine
+    in the next section. The actual connection objects may not be very big, but statement
+    caches (which exist on a per connection basis) can grow to be quite big.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this case, striking the correct balance applies to the database as well.
+    Each connection to the database requires resources on the database (in addition
+    to the memory held in the application). As connections are added to the database,
+    the database needs more resources: it will allocate additional memory for each
+    prepared statement used by the JDBC driver. Database performance can be adversely
+    affected if the application server has too many open connections.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The general rule of thumb for connection pools is to have one connection for
+    every thread in the application. In a server, start by applying the same sizing
+    to the thread pool and the connection pool. In a standalone application, size
+    the connection pool based on the number of threads the application creates. In
+    a typical case, this will offer the best performance: no thread in the program
+    will have to wait for a database connection to be available, and typically there
+    are enough resources on the database to handle the load imposed by the application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the database becomes a bottleneck, however, this rule can become counterproductive.
+    Having too many connections to an undersized database is another illustration
+    of the principle that injecting load into a busy system will decrease its performance.
+    Using a connection pool to throttle the amount of work that is sent to an undersized
+    database is the way to improve performance in that situation. Application threads
+    may have to wait for a free connection, but the total throughput of the system
+    will be maximized if the database is not overburdened.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Connections are expensive objects to initialize; they are routinely pooled in
+    Java—either in the JDBC driver itself or within JPA and other frameworks.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As with other object pools, it is important to tune the connection pool so it
+    doesn’t adversely affect the garbage collector. In this case, it is also necessary
+    to tune the connection pool so it doesn’t adversely affect the performance of
+    the database itself.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Prepared Statements and Statement Pooling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In most circumstances, code should use a `PreparedStatement` rather than a
+    `Statement` for its JDBC calls. This aids performance: prepared statements allow
+    the database to reuse information about the SQL that is being executed. That saves
+    work for the database on subsequent executions of the prepared statement. Prepared
+    statements also have security and programming advantages, particularly in specifying
+    parameters to the call.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Reuse* is the operative word here: the first use of a prepared statement takes
+    more time for the database to execute, since it must set up and save information.
+    If the statement is used only once, that work will be wasted; it’s better to use
+    a regular statement in that case.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When there are only a few database calls, the `Statement` interface will let
+    the application finish faster. But even batch-oriented programs may make hundreds
+    or thousands of JDBC calls to the same few SQL statements; later examples in this
+    chapter will use a batch program to load the database with its 400,896 records.
+    Batch programs that have many JDBC calls—and servers that will service many requests
+    over their lifetime—are better off using a `PreparedStatement` interface (and
+    database frameworks will do that automatically).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Prepared statements provide their performance benefit when they are pooled—that
+    is, when the actual `PreparedStatement` object is reused. For proper pooling,
+    two things must be considered: the JDBC connection pool and the JDBC driver configuration.^([2](ch11.html#idm45775545987720))
+    These configuration options apply to any program that uses JDBC, whether directly
+    or via a framework.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the statement pool
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Prepared statement pools operate on a per connection basis. If one thread in
+    a program pulls a JDBC connection out of the pool and uses a prepared statement
+    on that connection, the information associated with the statement will be valid
+    only for that connection. A second thread that uses a second connection will end
+    up establishing a second pooled instance of the prepared statement. In the end,
+    each connection object will have its own pool of all the prepared statements used
+    in the application (assuming that they are all used over the lifetime of the application).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is one reason a standalone JDBC application should use a connection pool.
+    It also means that the size of the connection pool matters (to both JDBC and JPA
+    programs). That is particularly true early in the program’s execution: when a
+    connection that has not yet used a particular prepared statement is used, that
+    first request will be a little slower.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The size of the connection pool also matters because it is caching those prepared
+    statements, which take up heap space (and often a lot of heap space). Object reuse
+    is certainly a good thing in this case, but you must be aware of how much space
+    those reusable objects take up and make sure it isn’t negatively affecting the
+    GC time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing statement pools
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The second thing to consider about the prepared statement pool is what piece
+    of code will actually create and manage the pool. This is done by using the `setMaxStatements()`
+    method of the `ConnectionPoolDataSource` class to enable or disable statement
+    pooling. Statement pooling is disabled if the value passed to the `setMaxStatements()`
+    method is 0\. That interface specifically does not define where the statement
+    pooling should occur—whether in the JDBC driver or another layer, such as the
+    application server. And that single interface is insufficient for some JDBC drivers,
+    which require additional configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So, when writing a Java SE application that uses JDBC calls directly, we have
+    two choices: either the JDBC driver must be configured to create and manage the
+    statement pool or the pool must be created and managed within the application
+    code. When using a framework, the statement pool is often managed by the framework.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The tricky thing is that no standards exist in this area. Some JDBC drivers
+    do not provide a mechanism to pool statements at all; they expect to be used only
+    within an application server that is doing the statement pooling and want to provide
+    a simpler driver. Some application servers do not provide and manage a pool; they
+    expect the JDBC driver to handle that task and don’t want to complicate their
+    code. Both arguments have merit (though a JDBC driver that does not provide a
+    statement pool puts a burden on you if you are the developer of a standalone application).
+    In the end, you’ll have to sift through this landscape and make sure that the
+    statement pool is created somewhere.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since there are no standards, you may encounter a situation where both the JDBC
+    driver and the data layer framework are capable of managing the prepared statement
+    pool. In that case, it is important that only one of them be configured to do
+    so. From a performance perspective, the better choice will again depend on the
+    exact combination of driver and server. As a general rule, you can expect the
+    JDBC driver to perform better statement pooling. Since the driver is (usually)
+    specific to a particular database, it can be expected to make better optimizations
+    for that database than the more generic application server code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To enable statement pooling (or caching) for a particular JDBC driver, consult
+    that driver’s documentation. In many cases, you need only set up the driver so
+    that the `maxStatements` property is set to the desired value (i.e., the size
+    of the statement pool). Other drivers may require additional settings: for example,
+    the Oracle JDBC drivers require that specific properties be set to tell it whether
+    to use implicit or explicit statement caching, and MySQL drivers require that
+    you set a property to enable statement caching.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java applications will typically execute the same SQL statement repeatedly.
+    In those cases, reusing prepared statements will offer a significant performance
+    boost.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Prepared statements must be pooled on a per connection basis. Most JDBC drivers
+    and data frameworks can do this automatically.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Prepared statements can consume a significant amount of heap. The size of the
+    statement pool must be carefully tuned to prevent GC issues from pooling too many
+    very large objects.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Transactions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Applications have correctness requirements that ultimately dictate how transactions
+    are handled. A transaction that requires repeatable-read semantics will be slower
+    than a transaction that requires only read-committed semantics, but knowing that
+    is of little practical benefit for an application that cannot tolerate nonrepeatable
+    reads. So while this section discusses how to use the least intrusive isolation
+    semantics for an application, don’t let the desire for speed overcome the correctness
+    of the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Database transactions have two performance penalties. First, it takes time for
+    the database to set up and then commit the transaction. This involves making sure
+    that changes to the database are fully stored on disk, that the database transaction
+    logs are consistent, and so on. Second, during a database transaction, it is common
+    for the transaction to obtain a lock for a particular set of data (not always
+    a row, but I’ll use that as the example here). If two transactions are contending
+    for a lock on the same database row, the scalability of the application will suffer.
+    From a Java perspective, this is exactly analogous to the discussion in [Chapter 9](ch09.html#ThreadPerformance)
+    about contended and uncontended locks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For optimal performance, consider both of these issues: how to program the
+    transactions so that the transaction itself is efficient and how to hold locks
+    on the database during a transaction so that the application as a whole can scale.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: JDBC transaction control
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Transactions are present within both JDBC and JPA applications, but JPA manages
+    transactions differently (those details are discussed later in this chapter).
+    For JDBC, transactions begin and end based on the way the `Connection` object
+    is used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In basic JDBC usage, connections have an autocommit mode (set via the `setAutoCommit()`
+    method). If autocommit is turned on (and for most JDBC drivers, that is the default),
+    each statement in a JDBC program is its own transaction. In that case, a program
+    need take no action to commit a transaction (in fact, if the `commit()` method
+    is called, performance will often suffer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: If autocommit is turned off, a transaction implicitly begins when the first
+    call is made on the connection object (e.g., by calling the `executeQuery()` method).
+    The transaction continues until the `commit()` method (or the `rollback()` method)
+    is called. A new transaction will begin when the connection is used for the next
+    database call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Transactions are expensive to commit, so one goal is to perform as much work
+    in a transaction as is possible. Unfortunately, that principle is completely at
+    odds with another goal: because transactions can hold locks, they should be as
+    short as possible. There is definitely a balance here, and striking the balance
+    will depend on the application and its locking requirements. The next section,
+    on transaction isolation and locking, covers that in more detail; first let’s
+    look into the options for optimizing the transaction handling itself.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider some sample code that inserts data into a database for use by the
+    stock application. For each day of valid data, one row must be inserted into the
+    STOCKPRICE table, and five rows into the STOCKOPTIONPRICE table. A basic loop
+    to accomplish that looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the full code, the prices are precalculated into the `stockPrices` array.
+    If that array represents data for the year 2019, this loop will insert 261 rows
+    into the STOCKPRICE table (via the first call to the `executeUpdate()` method)
+    and 1,305 rows into the STOCKOPTIONPRICE table (via the `for` loop). In the default
+    autocommit mode, that means 1,566 separate transactions, which will be quite expensive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Better performance will be achieved if autocommit mode is disabled and an explicit
+    commit is performed at the end of the loop:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'From a logical point of view, that probably makes sense as well: the database
+    will end up with either an entire year’s worth of data or no data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If this loop is repeated for multiple stocks, we have a choice of committing
+    all the data at once or committing all the data for a symbol at once:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Committing all the data at once offers the fastest performance. In this example,
+    though, the application semantics might dictate that each year of data be committed
+    individually. Sometimes, other requirements intrude on attempts to get the best
+    performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each time the `executeUpdate()` method is executed in the preceding code, a
+    remote call is made to the database and work must be performed. In addition, locking
+    will occur when the updates are made (to ensure, at least, that another transaction
+    cannot insert a record for the same symbol and date). The transaction handling
+    can be further optimized in this case by batching the inserts. When inserts are
+    batched, the JDBC driver holds them until the batch is completed; then all statements
+    are transmitted in one remote JDBC call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is how batching is achieved:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code could equally well choose to execute each batch on a per stock basis
+    (similar to the way we committed after each stock symbol change). Some JDBC drivers
+    have a limitation on the number of statements they can batch (and the batch does
+    consume memory in the application), so even if the data is committed at the end
+    of the entire operation, the batches may need to be executed more frequently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These optimizations can yield very large performance increases. [Table 11-1](#TableJDBCCommit)
+    shows the time required to insert one year of data for 256 stocks (a total of
+    400,896 insertions).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 11-1\. Seconds required to insert data for 256 stocks
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Programming mode | Time required | DB calls | DB commits |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Autocommit enabled, no batching | 537 ± 2 seconds | 400,896 | 400,896 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 commit for each stock | 57 ± 4 seconds | 400,896 | 256 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 commit for all data | 56 ± 14 seconds | 400,448 | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 batch per commit for each stock | 4.6 ± 2 seconds | 256 | 256 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 batch per stock; 1 commit | 3.9 ± 0.7 seconds | 256 | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 batch/commit for all data | 3.8 ± 1 seconds | 1 | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Note one interesting fact about this table that is not immediately obvious:
+    the difference between rows 1 and 2 is that autocommit has been turned off and
+    the code is explicitly calling the `commit()` method at the end of each `while`
+    loop. The difference between rows 1 and 4 is that statements are being batched—but
+    autocommit is still enabled. A batch is considered one transaction, which is why
+    there is a one-to-one correspondence between database calls and commits (and eliminating
+    more than 400,000 calls yields that impressive speedup).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s also interesting to note that the difference between 400,896 and 256 calls
+    to commit data (rows 1 and 2) is an order of magnitude, yet the difference between
+    having 1 and 256 commits is not really significant (i.e., the difference between
+    rows 2 and 3, or the differences between rows 5 and 6). Committing the data is
+    fast enough that when there are 256 calls, the overhead is just noise; when there
+    are 400,896 of them, it adds up.^([3](ch11.html#idm45775545357736))
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transaction isolation and locking
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The second factor affecting transaction performance concerns the scalability
+    of the database as data within transactions is locked. Locking protects data integrity;
+    in database terms, it allows one transaction to be isolated from other transactions.
+    JDBC and JPA support the four major transaction isolation modes of databases,
+    though they differ in the way they accomplish that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Isolation modes are briefly covered here, though since programming to a correct
+    isolation mode isn’t really a Java-specific issue, you are urged to consult a
+    database programming book for more information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here are the basic transaction isolation modes (in order from most to least
+    expensive):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: TRANSACTION_SERIALIZABLE
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the most expensive transaction mode; it requires that all data accessed
+    within the transaction be locked for the duration of the transaction. This applies
+    both to data accessed via a primary key and to data accessed via a `WHERE` clause—and
+    when there is a `WHERE` clause, the table is locked such that no new records satisfying
+    the clause can be added for the duration of the transaction. A serialized transaction
+    will always see the same data each time it issues a query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: TRANSACTION_REPEATABLE_READ
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This requires that all accessed data is locked for the duration of the transaction.
+    However, other transactions can insert new rows into the table at any time. This
+    mode can lead to *phantom reads*: a transaction that reissues a query with a `WHERE`
+    clause may get back different data the second time the query is executed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: TRANSACTION_READ_COMMITTED
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This mode locks only rows that are written during a transaction. This leads
+    to *nonrepeatable reads*: data that is read at one point in the transaction may
+    be different from data that is read at another point in the transaction.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: TRANSACTION_READ_UNCOMMITTED
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the least expensive transaction mode. No locks are involved, so one
+    transaction may read the written (but uncommitted) data in another transaction.
+    This is known as a *dirty read*; the problem here arises because the first transaction
+    may roll back (meaning the write never actually happens), and hence the second
+    transaction is operating on incorrect data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Databases operate in a default mode of transaction isolation: MySQL starts
+    with a default of `TRANSACTION_REPEATABLE_READ`; Oracle and IBM Db2 start with
+    a default of `TRANSACTION_READ_COMMITTED`; and so on. There are lots of database-specific
+    permutations here. Db2 calls its default transaction mode `CS` (for *cursor stability*)
+    and has different names for the other three JDBC modes. Oracle doesn’t support
+    either `TRANSACTION_READ_UNCOMMITTED` or `TRANSACTION_REPEATABLE_READ`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a JDBC statement is executed, it uses the database’s default isolation
+    mode. Alternately, the `setTransaction()` method on the JDBC connection can be
+    called to have the database supply the necessary transaction isolation level (and
+    if the database doesn’t support the given level, the JDBC driver will either throw
+    an exception or silently upgrade the isolation level to the next strictest level
+    it supports).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For simple JDBC programs, this is sufficient. More commonly—and particularly
+    when used with JPA—programs may want to mix isolation levels on data within a
+    transaction. In an application that queries my employee information so as to ultimately
+    give me a large raise, access to my employee record must be protected: that data
+    needs to be treated as `TRANSACTION_REPEATABLE_READ`. But that transaction is
+    also likely to access data in other tables, such as the table that holds my office
+    ID. There is no real reason to lock that data during the transaction, so access
+    to that row could certainly operate as `TRANSACTION_READ_COMMITTED` (or possibly
+    even lower).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: JPA allows you to specify locking levels on a per entity basis (and, of course,
+    an entity is, at least usually, simply a row in the database). Because getting
+    these locking levels correct can be difficult, it is easier to use JPA than to
+    perform the locking in JDBC statements. Still, it is possible to use different
+    locking levels in JDBC applications, employing the same pessimistic and optimistic
+    locking semantics that JPA uses (and if you’re not familiar with those semantics,
+    this example should serve as a good introduction).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At a JDBC level, the basic approach is to set the isolation level of the connection
+    to `TRANSACTION_READ_UNCOMMITTED` and then to lock explicitly only that data that
+    needs to be locked during the transaction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `ps1` statement establishes an explicit lock on the employee data table:
+    no other transaction will be able to access that row for the duration of this
+    transaction. The SQL syntax to accomplish that is nonstandard. You must consult
+    your database vendor’s documentation to see how to achieve the desired level of
+    locking, but the common syntax is to include the `FOR UPDATE` clause. This kind
+    of locking is called *pessimistic locking*. It actively prevents other transactions
+    from accessing the data in question.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Locking performance can often be improved by using optimistic locking. If the
+    data access is uncontended, this will be a significant performance boost. If the
+    data is even slightly contended, however, the programming becomes more difficult.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In a database, optimistic concurrency is implemented with a version column.
+    When data is selected from a row, the selection must include the desired data
+    plus a version column. To select information about me, I could issue the following
+    SQL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This query will return my names (Scott and Oaks) plus whatever the current
+    version number is (say, 1012). When it comes time to complete the transaction,
+    the transaction updates the version column:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the row in question requires repeatable-read or serialization semantics,
+    this update must be performed even if the data was only read during the transaction—those
+    isolation levels require locking read-only data used in a transaction. For read-committed
+    semantics, the version column needs to be updated only when other data in the
+    row is also updated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Under this scheme, if two transactions use my employee record at the same time,
+    each will read a version number of 1012. The first transaction to complete will
+    successfully update the version number to 1013 and continue. The second transaction
+    will not be able to update the employee record—there is no longer any record where
+    the version number is 1012, so the SQL update statement will fail. That transaction
+    will get an exception and be rolled back.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This highlights a major difference between optimistic locking in the database
+    and Java’s atomic primitives: in database programming, when the transaction gets
+    that exception, it is not (and cannot be) transparently retried. If you are programming
+    directly to JDBC, the `commit()` method will get an `SQLException`; in JPA, your
+    application will get an `OptimisticLockException` when the transaction is committed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Depending on your perspective, this is either a good or a bad thing. In [Chapter 9](ch09.html#ThreadPerformance),
+    we looked at the performance of the atomic utilities that use CAS-based features
+    to avoid explicit synchronization. Those utilities are essentially using optimistic
+    concurrency with an infinite, automatic retry. Performance in highly contended
+    cases will suffer when a lot of retries are chewing up a lot of CPU resources,
+    though in practice that tends not to be an issue. In a database, the situation
+    is far worse, since the code executed in a transaction is far more complicated
+    than simply incrementing the value held in a memory location. Retrying a failed
+    optimistic transaction in the database has a far greater potential to lead to
+    a never-ending spiral of retries. Plus, it is often infeasible to determine automatically
+    what operation(s) to retry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So not retrying transparently is a good thing (and often the only possible solution),
+    but on the other hand, that does mean the application is now responsible for handling
+    the exception. The application can choose to retry the transaction (maybe only
+    once or twice), it can choose to prompt the user for different data, or it can
+    simply inform the user that the operation has failed. No one-size-fits-all answer
+    exists.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Optimistic locking works best, then, when there is little chance of a collision
+    between two sources. Think of a joint checking account: there is a slight chance
+    that my husband and I may be in different parts of the city withdrawing money
+    from our checking account at exactly the same time. That would trigger an optimistic
+    lock exception for one of us. Even if that does happen, asking one of us to try
+    again is not too onerous, and now the chance of an optimistic lock exception is
+    virtually nil (or so I would hope; let’s not address how frequently we make ATM
+    withdrawals). Contrast that scenario to something involving the sample stock application.
+    In the real world, that data is updated so frequently that locking it optimistically
+    would be counterproductive. In truth, stock applications would frequently use
+    no locking when possible just because of the volume of changes, although actual
+    trade updates would require some locking.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Transactions affect the speed of applications in two ways: transactions are
+    expensive to commit, and the locking associated with transactions can prevent
+    database scaling.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Those two effects are antagonistic: waiting too long to commit a transaction
+    increases the amount of time that locks associated with the transaction are held.
+    Especially for transactions using stricter semantics, the balance should be toward
+    committing more frequently rather than holding the locks longer.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For fine-grained control of transactions in JDBC, use a default `TRANSACTION_READ_UNCOMMITTED`
+    level and explicitly lock data as needed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Result Set Processing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Typical database applications will operate on a range of data. The stock application,
+    for example, deals with a history of prices for an individual stock. That history
+    is loaded via a single `SELECT` statement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That statement returns 261 rows of data. If the option prices for the stock
+    are also required, a similar query would be executed that would retrieve five
+    times that amount of data. The SQL to retrieve all data in the sample database
+    (256 stocks covering one year) will retrieve 400,896 rows of data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To use this data, code must scroll through the result set:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The question here is where that data for the 400,896 rows lives. If the entire
+    set of data is returned during the `executeQuery()` call, the application will
+    have a very large chunk of live data in its heap, probably causing GC and other
+    issues. Instead, if only one row of data is returned from the call to the `next()`
+    method, a lot of back-and-forth traffic will occur between the application and
+    the database as the result set is processed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As usual, there is no correct answer here; in some cases it will be more efficient
+    to keep the bulk of the data in the database and retrieve it as needed, while
+    in other cases it will be more efficient to load all the data at once when the
+    query is executed. To control this, use the `setFetchSize()` method on the `PreparedStatement`
+    object to let the JDBC driver know how many rows at a time it should transfer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The default value for this varies by JDBC driver; for example, in Oracle’s JDBC
+    drivers, the default value is 10\. When the `executeQuery()` method is called
+    in the loop shown previously, the database will return 10 rows of data, which
+    will be buffered internally by the JDBC driver. Each of the first 10 calls to
+    the `next()` method will process one of those buffered rows. The 11th call will
+    return to the database to retrieve another 10 rows, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though the value varies, JDBC drivers will typically set the default fetch size
+    to a fairly small number. That approach is reasonable in most circumstances; in
+    particular, it is unlikely to lead to any memory issues within the application.
+    If the performance of the `next()` method (or the performance of the first getter
+    method on the result set) is particularly slow every now and then, consider increasing
+    the fetch size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Applications that process large amounts of data from a query should consider
+    changing the fetch size of the data.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A trade-off exists between loading too much data in the application (putting
+    pressure on the garbage collector) and making frequent database calls to retrieve
+    a set of data.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: JPA
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The performance of JPA is directly affected by the performance of the underlying
+    JDBC driver, and most of the performance considerations regarding the JDBC driver
+    apply to JPA. JPA has additional performance considerations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'JPA achieves many of its performance enhancements by altering the bytecode
+    of the entity classes. In most server frameworks, this happens transparently.
+    In a Java SE environment, it is important to make sure that the bytecode processing
+    is set up correctly. Otherwise, JPA application performance will be unpredictable:
+    fields that are expected to be loaded lazily might be loaded eagerly, data saved
+    to the database might be redundant, data that should be in the JPA cache may need
+    to be refetched from the database, and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is no JPA-defined way for the bytecode to be processed. Typically, this
+    is done as part of compilation—after the entity classes are compiled (and before
+    they are loaded into JAR files or run by the JVM), they are passed through an
+    implementation-specific postprocessor that “enhances” the bytecode, producing
+    an altered class file with the desired optimizations. Hibernate, for example,
+    does this via a Maven or Gradle plug-in during compilation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some JPA implementations also provide a way to dynamically enhance the bytecode
+    as the classes are loaded into the JVM. This requires running an agent within
+    the JVM that is notified when classes are loaded; the agent interposes on the
+    classloading and alters the bytes before they are used to define the class. The
+    agent is specified on the command line of the application; for example, for EclipseLink
+    you include the `-javaagent:path_to/eclipselink.jar` argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimizing JPA Writes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In JDBC, we looked at two critical performance techniques: reusing prepared
+    statements and performing updates in batches. It is possible to accomplish both
+    of those optimizations with JPA, but the way it is done depends on the JPA implementation
+    in use; there are no calls within the JPA API to do that. For Java SE, these optimizations
+    typically require setting a particular property in the application’s *persistence.xml*
+    file.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, using the JPA EclipseLink reference implementation, statement
+    reuse is enabled by adding the following property to the *persistence.xml* file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that this enables statement reuse within the EclipseLink implementation.
+    If the JDBC driver is capable of providing a statement pool, it is usually preferable
+    to enable the statement caching in the driver and to leave this property out of
+    the JPA configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Statement batching in the reference JPA implementation is achieved by adding
+    these properties:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'JDBC drivers cannot automatically implement statement batching, so this is
+    a useful property to set in all cases. The batch size can be controlled in two
+    ways: first, the `size` property can be set, as is done in this example. Second,
+    the application can periodically call the `flush()` method of the entity manager,
+    which will cause all batched statements to be executed immediately.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 11-2](#TableJPAWrite) shows the effect of the statement reuse and batching
+    to create and write stock entities into the database.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 11-2\. Seconds required to insert data for 256 stocks via JPA
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Programming mode | Time required |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No batching, no statement pool | 83 ± 3 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No batching, statement pool | 64 ± 5 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Batching, no statement pool | 10 ± 0.4 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Batching, statement pooling | 10 ± 0.3 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: JPA applications, like JDBC applications, can benefit from limiting the number
+    of write calls to the database (with the potential trade-off of holding transaction
+    locks).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Statement caching can be achieved at the JPA layer or the JDBC layer. Caching
+    at the JDBC layer should be explored first.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Batching JPA updates can be done declaratively (in the *persistence.xml* file)
+    or programmatically (by calling the `flush()` method).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Optimizing JPA Reads
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Optimizing when and how JPA reads data from the database is more complicated
+    than it might seem, because JPA will cache data in the hope that it might be used
+    to satisfy a future request. That’s usually a good thing for performance, but
+    it means that the JPA-generated SQL used to read that data may seem, on the face
+    of it, suboptimal. The data retrieval is optimized to serve the needs of the JPA
+    cache, rather than being optimized for whatever particular request is in progress.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The details of the cache are covered in the next section. For now, let’s look
+    at the basic ways to apply database read optimizations to JPA. JPA reads data
+    from the database in three cases: when the `find()` method of the `EntityManager`
+    is called, when a JPA query is executed, and when code navigates to a new entity
+    using the relationship of an existing entity. In the stock class, that latter
+    case means calling the `getOptions()` method on a `Stock` entity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Calling the `find()` method is the most straightforward case: only a single
+    row is involved, and (at least) that single row is read from the database. The
+    only thing that can be controlled is the amount of data retrieved. JPA can retrieve
+    only some of the fields in the row, it can retrieve the entire row, or it can
+    prefetch other entities related to the row being retrieved. Those optimizations
+    apply to queries as well.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Two possible paths are available: read less data (because the data won’t be
+    needed) or read more data at a time (because that data will definitely be needed
+    in the future).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reading less data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To read less data, specify that the field in question is loaded lazily. When
+    an entity is retrieved, the fields with a lazy annotation will be excluded from
+    the SQL used to load the data. If the getter of that field is ever executed, it
+    will mean another trip to the database to retrieve that piece of data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is rare to use that annotation for simple columns of basic types, but consider
+    using it if the entity contains large BLOB- or CLOB-based objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this case, the entity is mapped to a table storing binary image data. The
+    binary data is large, and the example assumes it shouldn’t be loaded unless it
+    is needed. Not loading the unneeded data in this case serves two purposes: it
+    makes for faster SQL when the entity is retrieved, and it saves a lot of memory,
+    leading to less GC pressure.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note also that the lazy annotation is, in the end, only a hint to the JPA implementation.
+    The JPA implementation is free to request that the database eagerly provide that
+    data anyway.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other hand, perhaps other data should be preloaded—for example, when
+    one entity is fetched, data for other (related) entities should also be returned.
+    That is known as *eager fetching*, and it has a similar annotation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By default, related entities are already fetched eagerly if the relationship
+    type is `@OneToOne` or `@ManyToOne` (and so it is possible to apply the opposite
+    optimization to them: mark them as `FetchType.LAZY` if they are almost never used).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This also is just a hint to the JPA implementation, but it essentially says
+    that anytime a stock price is retrieved, make sure also to retrieve all related
+    option prices. Beware here: a common expectation about eager relationship fetching
+    is that it will employ a `JOIN` in the generated SQL. In typical JPA providers,
+    that is not the case: they will issue a single SQL query to fetch the primary
+    object, and then one or more SQL commands to fetch any additional, related objects.
+    From a simple `find()` method, there is no control over this: if a `JOIN` statement
+    is required, you will have to use a query and program the `JOIN` into the query.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using JOIN in queries
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The JPA Query Language (JPQL) doesn’t allow you to specify fields of an object
+    to be retrieved. Take the following JPQL query:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That query will always yield this SQL statement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you want to retrieve fewer fields in the generated SQL, you have no option
+    but to mark them as lazy. Similarly, for fields that are marked as lazy, there
+    is no real option for fetching them in a query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If relationships exist between entities, the entities can be explicitly joined
+    in a query in JPQL, which will retrieve the initial entities and their related
+    entities in one shot. For example, in the stock entities, this query can be issued:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That results in an SQL statement similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The exact SQL will differ among JPA providers (this example is from EclipseLink),
+    but this is the general process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Join fetching is valid for entity relationships regardless of whether they are
+    annotated as eager or lazy. If the join is issued on a lazy relationship, the
+    lazily annotated entities that satisfy the query are still retrieved from the
+    database, and if those entities are later used, no additional trip to the database
+    is required.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When all the data returned by a query using a join fetch will be used, the join
+    fetch often provides a big improvement in performance. However, a join fetch also
+    interacts with the JPA cache in unexpected ways. An example is shown in [“JPA
+    Caching”](#JPACaching); be sure you understand those ramifications before writing
+    custom queries using a join fetch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Batching and queries
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'JPA queries are handled like a JDBC query yielding a result set: the JPA implementation
+    has the option of getting all the results at once, getting the results one at
+    a time as the application iterates over the query results, or getting a few results
+    at a time (analogous to how the fetch size worked for JDBC).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is no standard way to control this, but JPA vendors have proprietary
+    mechanisms to set the fetch size. In EclipseLink, a hint on the query specifies
+    the fetch size:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Hibernate offers a custom `@BatchSize` annotation instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If a very large set of data is being processed, the code may need to page through
+    the list returned by the query. This has a natural relationship to how the data
+    might be displayed to the user on a web page: a subset of data is displayed (say
+    100 rows), along with Next and Previous page links to navigate (page) through
+    the data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is accomplished by setting a range on the query:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This returns a list suitable for display on the second page of the web application:
+    items 101–200\. Retrieving only the range of data needed will be more efficient
+    than retrieving 200 rows and discarding the first 100 of them.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that this example uses a named query (the `createNamedQuery()` method)
+    rather than an ad hoc query (the `createQuery()` method). In many JPA implementations,
+    named queries are faster: the JPA implementation will almost always use a prepared
+    statement with bind parameters, utilizing the statement cache pool. Nothing prevents
+    JPA implementations from using similar logic for unnamed, ad hoc queries, though
+    implementing that is more difficult, and the JPA implementation may simply default
+    to creating a new statement (i.e., a `Statement` object) each time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: JPA can perform several optimizations to limit (or increase) the amount of data
+    read in a single operation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Large fields (e.g., BLOBs) that are not frequently used should be loaded lazily
+    in a JPA entity.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When a relationship exists between JPA entities, the data for the related items
+    can be loaded eagerly or lazily. The choice depends on the needs of the application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When eagerly loading relationships, named queries can be used to issue a single
+    SQL statement using a `JOIN` statement. Be aware that this affects the JPA cache;
+    it is not always the best idea (as the next section discusses).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reading data via named queries will often be faster than a regular query, since
+    it is easier for the JPA implementation to use a `PreparedStatement` for named
+    queries.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: JPA Caching
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One of the canonical performance-related use cases for Java is to supply a middle
+    tier that caches data from backend database resources. The Java tier performs
+    architecturally useful functions (such as preventing clients from directly accessing
+    the database). From a performance perspective, caching frequently used data in
+    the Java tier can greatly speed up response times for the clients.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'JPA is designed with that architecture in mind. Two kinds of caches exist in
+    JPA. Each entity manager instance is its own cache: it will locally cache data
+    that it has retrieved during a transaction. It will also locally cache data that
+    is written during a transaction; the data is sent to the database only when the
+    transaction commits. A program may have many entity manager instances, each executing
+    a different transaction, and each with its own local cache. (In particular, the
+    entity managers injected into Java servers are distinct instances.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When an entity manager commits a transaction, all data in the local cache can
+    be merged into a global cache. The global cache is shared among all entity managers
+    in the application. The global cache is also known as the *Level 2 (L2) cache*
+    or the *second-level cache*; the cache in the entity manager is known as the *Level
+    1*, *L1*, or *first-level cache*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is little to tune within an entity manager transaction cache (the L1
+    cache), and the L1 cache is enabled in all JPA implementations. The L2 cache is
+    different: most JPA implementations provide one, but not all of them enable it
+    by default (e.g., Hibernate does not, but EclipseLink does). Once enabled, the
+    way in which the L2 cache is tuned and used can substantially affect performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JPA cache operates only on entities accessed by their primary keys, that
+    is, items retrieved from a call to the `find()` method, or items retrieved from
+    accessing (or eagerly loading) a related entity. When the entity manager attempts
+    to find an object via either its primary key or a relationship mapping, it can
+    look in the L2 cache and return the object(s) if they are found there, thus saving
+    a trip to the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Items retrieved via a query are not held in the L2 cache. Some JPA implementations
+    do have a vendor-specific mechanism to cache the results of a query, but those
+    results are reused only if the exact same query is reexecuted. Even if the JPA
+    implementation supports query caching, the entities themselves are not stored
+    in the L2 cache and cannot be returned in a subsequent call to the `find()` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The connections between the L2 cache, queries, and the loading of objects affect
+    performance in many ways. To examine them, code based on the following loop will
+    be used:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_database_performance_best_practices_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: SQL Call Site 1
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_database_performance_best_practices_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: SQL Call Site 2
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because of the L2 cache, this loop will perform one way the first time it is
+    executed, and another (generally faster) way on subsequent executions. The specific
+    difference of that performance depends on various details of the queries and the
+    entity relationships. The next few subsections explain the results in detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The differences in this example are based in some cases on different JPA configurations
+    but also occur because some tests are executed without traversing the relationship
+    between the `Stock` and `StockOptions` classes. In those tests without traversal
+    of the relationship, the `processOptions` value in the loop is `false`; only the
+    `StockPrice` objects are actually used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Default caching (lazy loading)
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the sample code, the stock prices are loaded via a named query. In the default
+    case, this simple query is executed to load the stock data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `StockPrice` class has a `@OneToMany` relationship with the `StockOptionPrice`
+    class using the `optionsPrices` instance variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`@OneToMany` relationships are loaded lazily by default. [Table 11-3](#TableJPACache)
+    shows the time to execute this loop.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 11-3\. Seconds required to read data for 256 stocks (default configuration)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Test case | First execution | Subsequent executions |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Lazy relationship | 22.7 ± 2 seconds (66,817 SQL calls) | 1.1 ± 0.7 seconds
+    (1 SQL call) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Lazy relationship, no traversal | 2.0 ± 0.3 seconds (1 SQL call) | 1.0 ±
+    0.02 seconds (1 SQL call) |'
+  prefs: []
+  type: TYPE_TB
+- en: The first time the sample loop is executed in this scenario (for 256 stocks
+    with one year of data), the JPA code executes one SQL statement in the call to
+    the `executeQuery()` method. That statement is executed at SQL Call Site 1 in
+    the code listing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the code loops through the stock and visits each collection of option prices,
+    JPA will issue SQL statements to retrieve all the options associated with the
+    particular entity (that is, it retrieves the entire collection for one stock/date
+    combination at once). This occurs at SQL Call Site 2, and it results in 66,816
+    individual `SELECT` statements during execution (261 days × 256 stocks), yielding
+    66,817 total calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That example takes almost 23 seconds for the first execution of the loop. The
+    next time that code is executed, it takes only a little more than 1 second. That’s
+    because the second time the loop is executed, the only SQL executed is the named
+    query. The entities retrieved via the relationship are still in the L2 cache,
+    so no database calls are needed in that case. (Recall that the L2 cache works
+    only for entities loaded from a relationship or a find operation. So the stock
+    option entities can be found in the L2 cache, but the stock prices—since they
+    were loaded from a query—do not appear in the L2 cache and must be reloaded.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second line in [Table 11-3](#TableJPACache) represents the code that does
+    not visit each of the options in the relationship (i.e., the `processOptions`
+    variable is `false`). In that case, the code is substantially faster: it takes
+    2 seconds for the first iteration of the loop and 1 second for subsequent iterations.
+    (The difference in performance between those two cases is due to the warm-up period
+    of the compiler. Although it wasn’t as noticeable, that warm-up occurred in the
+    first example as well.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Caching and eager loading
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In the next two experiments, the relationship between the stock prices and option
+    prices is redefined so that the option prices are loaded eagerly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When all the data is used (i.e., the first rows in Tables [11-3](#TableJPACache)
+    and [11-4](#TableJPACacheEager)), the performance of the eager and lazy loading
+    cases is essentially the same. But when the relationship data isn’t actually used
+    (the second rows in each table), the lazy relationship case saves some time—particularly
+    on the first execution of the loop. Subsequent executions of the loop don’t save
+    time since the eager-loading code isn’t reloading the data in those subsequent
+    iterations; it is loading data from the L2 cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 11-4\. Seconds required to read data for 256 stocks (eager loading)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Test case | First execution | Subsequent executions |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Eager relationship | 23 ± 1.0 seconds (66,817 SQL calls) | 1.0 ± 0.8 seconds
+    (1 SQL call) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Eager relationship, no traversal | 23 ± 1.3 seconds (66,817 SQL calls) |
+    1.0 ± 0.5 seconds (1 SQL call) |'
+  prefs: []
+  type: TYPE_TB
+- en: Join fetch and caching
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As discussed in the previous section, the query could be written to explicitly
+    use a `JOIN` statement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using that named query (with full traversal) yields the data in [Table 11-5](#TableJPACacheQuery).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 11-5\. Seconds required to read data for 256 stocks (`JOIN` query)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Test case | First execution | Subsequent executions |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Default configuration | 22.7 ± 2 seconds (66,817 SQL calls) | 1.1 ± 0.7 seconds
+    (1 SQL call) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Join fetch | 9.0 ± 0.3 seconds (1 SQL call) | 5.6 ± 0.4 seconds (1 SQL call)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Join fetch with query cache | 5.8 ± 0.2 seconds (1 SQL call) | 0.001 ± 0.0001
+    seconds (0 SQL calls) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The first time the loop is executed with a `JOIN` query, a big performance
+    win results: it takes only 9 seconds. That is the result of issuing only one SQL
+    request rather than 66,817 of them.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, the next time the code is executed, it still needs that one SQL
+    statement, since query results are not in the L2 cache. Subsequent executions
+    of the example take 5.6 seconds—because the SQL statement that is executed has
+    the `JOIN` statement and is retrieving more than 400,000 rows of data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the JPA provider implements query caching, this is clearly a good time to
+    use it. If no SQL statements are required during the second execution of the code,
+    only 1 ms is required on the subsequent executions. Be aware that query caching
+    works only if the parameters used in the query are exactly the same each time
+    the query is executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Avoiding queries
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'If entities are never retrieved via a query, all entities can be accessed through
+    the L2 cache after an initial warm-up period. The L2 cache can be warmed up by
+    loading all entities, so slightly modifying the previous example gives this code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The results of executing this code are given in [Table 11-6](#TableJPACacheNoQuery).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 11-6\. Seconds required to read data for 256 stocks (L2 cache used)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Test case | First execution | Subsequent executions |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Default configuration | 22.7 ± 2 seconds (66,817 SQL calls) | 1.1 ± 0.7 seconds
+    (1 SQL call) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No query | 35 ± 3 seconds (133,632 SQL calls) | 0.28 ± 0.3 seconds (0 SQL
+    calls) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The first execution of this loop requires 133,632 SQL statements: 66,816 for
+    the call to the `find()` method, and an additional 66,816 for the call to the
+    `getOptions()` method. Subsequent executions of that code are very fast indeed,
+    since all the entities are in the L2 cache, and no SQL statements need to be issued.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recall that the sample database includes five option prices for every date and
+    symbol pair, or a total of 334,080 option prices for 256 stocks over one year
+    of data. When the five stock options for a particular symbol and date are accessed
+    via a relationship, they can all be retrieved at once. That’s why only 66,816
+    SQL statements are required to load all the option price data. Even though multiple
+    rows are returned from those SQL statements, JPA is still able to cache the entities—it
+    is not the same thing as executing a query. If the L2 cache is warmed up by iterating
+    through entities, don’t iterate through related entities individually—do that
+    by simply visiting the relationship.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As code is optimized, you must take into account the effects of the cache (and
+    particularly the L2 cache). Even if you think you could write better SQL than
+    what JPA generates (and hence should use complex named queries), make sure that
+    code is worthwhile after the cache comes into play. Even if it seems that using
+    a simple named query will be faster to load data, consider what would happen in
+    the long run if those entities were loaded into the L2 cache via a call to the
+    `find()` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sizing the JPA cache
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As with all cases where objects are reused, the JPA cache has a potential performance
+    downside: if the cache consumes too much memory, it will cause GC pressure. This
+    may require that the cache be tuned to adjust its size or that you control the
+    mode in which entities remain cached. Unfortunately, these are not standard options,
+    so you must perform these tunings based on which JPA provider you are using.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'JPA implementations typically provide an option to set the size of the cache,
+    either globally or per entity. The latter case is obviously more flexible, though
+    it also requires more work to determine the optimal size for each entity. An alternative
+    approach is for the JPA implementation to use soft and/or weak references for
+    the L2 cache. EclipseLink, for example, provides five cache types (plus additional
+    deprecated types) based on various combinations of soft and weak references. That
+    approach, while potentially easier than finding optimal sizes for each entity,
+    still requires some planning: in particular, recall from [Chapter 7](ch07.html#Memory)
+    that weak references do not really survive any GC operation and are hence a questionable
+    choice for a cache.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If a cache based on soft or weak references is used, the performance of the
+    application will also depend on what else happens in the heap. The examples of
+    this section all used a large heap so that caching the 400,896 entity objects
+    in the application would not cause issues with the garbage collector. Tuning a
+    heap when there are large JPA L2 caches is quite important for good performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The JPA L2 cache will automatically cache entities for an application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The L2 cache does not cache entities retrieved via queries. This means that
+    in the long run it can be beneficial to avoid queries altogether.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Unless query caching is supported by the JPA implementation in use, using a
+    `JOIN` query turns out to frequently have a negative performance effect, since
+    it bypasses the L2 cache.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Spring Data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Although JDBC and JPA are standard parts of the Java platform, other third-party
+    Java APIs and frameworks manage database access. NoSQL vendors all have their
+    own APIs to access their databases, and various frameworks provide database access
+    via different abstractions than JPA.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The most-widely used of these is Spring Data, which is a collection of database
+    access modules for both relational and NoSQL databases. This framework contains
+    several modules, including these:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spring Data JDBC
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is designed as a simple alternative to JPA. It provides a similar entity
+    mapping as JPA but without caching, lazy loading, or dirty entity tracking. This
+    sits on top of standard JDBC drivers so it has wide support. That means you can
+    track the performance aspects from this chapter in the Spring code: make sure
+    to use prepared statements for repeated calls, implement the necessary interfaces
+    in your code to support Spring batched statement models, and/or work directly
+    with the connection objects to change autocommit semantics.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spring Data JPA
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is designed as a wrapper around standard JPA. One large benefit is that
+    it reduces the amount of boilerplate code developers need to write (which is good
+    for developer performance but doesn’t really impact the performance we’re discussing).
+    Because it wraps standard JPA, the JPA performance aspects mentioned in this chapter
+    all apply: setting up eager versus lazy loading, batching updates and inserts,
+    and the L2 caches all still apply.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spring Data for NoSQL
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spring has various connectors for NoSQL (and NoSQL-like) technologies, including
+    MongoDB, Cassandra, Couchbase, and Redis. This somewhat simplifies the NoSQL access,
+    since the techniques to access the store are then the same, though differences
+    in setup and initialization remain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spring Data R2DBC
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Spring Data R2DBC, mentioned in [Chapter 10](ch10.html#JavaServers), allows
+    asynchronous JDBC access to Postgres, H2, and Microsoft SQL Server databases.
+    It follows the typical Spring Data programming model rather than direct JDBC,
+    so it is similar to Spring Data JDBC: access is via simple entities in repositories,
+    though without the caching, lazy loading, and other features of JPA.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Properly tuning JDBC and JPA access to a database is one of the most significant
+    ways to affect the performance of a middle-tier application. Keep in mind these
+    best practices:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Batch reads and writes as much as possible by configuring the JDBC or JPA configuration
+    appropriately.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Optimize the SQL the application issues. For JDBC applications, this is a question
+    of basic, standard SQL commands. For JPA applications, be sure to consider the
+    involvement of the L2 cache.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Minimize locking where possible. Use optimistic locking when data is unlikely
+    to be contended, and use pessimistic locking when data is contended.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Make sure to use a prepared statement pool.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Make sure to use an appropriately sized connection pool.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Set an appropriate transaction scope: it should be as large as possible without
+    negatively affecting the scalability of the application because of the locks held
+    during the transaction.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ^([1](ch11.html#idm45775546052104-marker)) You might prefer to scale the database
+    instead, but that is often difficult in real-world deployments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch11.html#idm45775545987720-marker)) Statement pooling is often called
+    *statement caching* by database vendors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch11.html#idm45775545357736-marker)) In the first edition of this book,
+    when the tests were run on Oracle 11g, that also wasn’t the case; there was a
+    clear difference between rows 2 and 3 and between rows 5 and 6\. These tests were
+    run on Oracle 18c, which has its own improvements.
+  prefs: []
+  type: TYPE_NORMAL

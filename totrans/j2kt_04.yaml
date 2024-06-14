@@ -1,0 +1,529 @@
+- en: Chapter 4\. Optional to Nullable
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Tony Hoare may consider the invention of null references his billion dollar
+    mistake,^([1](ch04.html#idm46393409336056)) but we still need to represent the
+    absence of things in our software systems. How can we use Kotlin to embrace null
+    while still having safe software?
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Representing Absence
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Perhaps Kotlin’s most attractive feature for Java programmers is its representation
+    of nullability in the type system. This is another area where the grains of Java
+    and Kotlin are different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prior to Java 8, Java relied on convention, documentation, and intuition to
+    distinguish between references that could or could not be null. We can deduce
+    that methods that return an item from a collection must be able to return `null`,
+    but can `addressLine3` be `null`, or do we use an empty string when there is no
+    information?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Over the years, your authors and their colleagues settled into a convention
+    where Java references are assumed to be nonnull unless otherwise flagged. So we
+    might name a field `addressLine3OrNull`, or a method `previousAddressOrNull`.
+    Within a codebase, this works well enough (even if it is a little verbose, and
+    requires eternal vigilance to avoid the scourge of `NullPointerException`s).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some codebases opted to use `@Nullable` and `@NotNullable` annotations instead,
+    often supported by tools that would check for correctness. Java 8, released in
+    2014, enhanced support for annotations to the extent that tools like the [Checker
+    Framework](https://oreil.ly/qGYlH) could statically check much more than just
+    null safety. More crucially, though, Java 8 also introduced a standard `Optional`
+    type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By this time, many JVM developers had dabbled in Scala. They came to appreciate
+    the advantages of using an *Optional* type (named `Option` in Scala’s standard
+    library) when absence was possible, and plain references when it was not. Oracle
+    muddied the waters by telling developers not to use its `Optional` for field or
+    parameter values, but as with many features introduced in Java 8, it was good
+    enough and was adopted into the mainstream usage of Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Depending on its age, your Java code may use some or all of these strategies
+    for dealing with absence. It is certainly possible to have a codebase in which
+    `Null⁠Pointer​Excep⁠tion`s are practically never seen, but the reality is that
+    this is hard work. Java is weighed down by null and embarrassed by its halfhearted
+    `Optional` type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In contrast, Kotlin *embraces* null. Making optionality part of the type system
+    rather than the standard library means that Kotlin codebases have refreshing uniformity
+    in their treatment of missing values. It isn’t all perfect: `Map<K, V>.get(key)`
+    returns `null` if there is no value for `key`; but `List<T>.get(index)` throws
+    `IndexOutOfBoundsException` when there is no value at `index`. Likewise, `Iterable<T>.first()`
+    throws `No⁠Such​Ele⁠ment⁠Exception` rather than returning `null`. Such imperfections
+    are generally caused by the desire for backward compatibility with Java.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Where Kotlin has its own APIs, they are generally good examples of how to safely
+    use null to represent optional properties, parameters, and return values, and
+    we can learn a lot from studying them. After you’ve experienced first-class nullability,
+    returning to languages without this support feels unsafe; you are acutely aware
+    that you are always only a dereference away from a `NullPointerException`, and
+    that you’re relying on convention to find the safe path through the minefield.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Functional programmers may advise you to use an optional (also known as *Maybe*)
+    type rather than nullability in Kotlin. We counsel against this, even though it
+    will give you the option to use the same (monadic—there, we said it) tools to
+    represent potential absence, errors, asynchrony, and so on. One reason not to
+    use `Optional` in Kotlin is that you will lose access to the language features
+    designed specifically to support nullability; in this area the grain of Kotlin
+    is different from the grain of, say, Scala.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another reason not to use a wrapper type to represent optionality is subtle
+    but important. In the Kotlin type system, `T` is a subtype of `T?`. If you have
+    a `String` that cannot be null, you can always use it where a nullable `String`
+    is required. In contrast, `T` is not a subtype of `Optional<T>`. If you have a
+    `String` and want to assign it to an optional variable, you first have to wrap
+    it in an `Optional`. Worse, if you have a function that returns an `Optional<String>`
+    and later discover a way to always return a result, changing the return type to
+    `String` will break all your clients. Had your return type been the nullable `String?`,
+    you could have strengthened it to `String` while maintaining compatibility. The
+    same applies to properties of data structures: you can easily migrate from optional
+    to nonoptional with nullability—but not, ironically, with `Optional`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Your authors love Kotlin’s support for nullability, and have learned to lean
+    on it to solve many problems. It takes a while to wean yourself off of avoiding
+    nulls, but once you have, there is literally a whole new dimension of expressiveness
+    to explore and exploit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It seems a shame not to have that facility in Travelator, so let’s look at how
+    to migrate from Java code using `Optional`, to Kotlin and nullable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refactoring from Optional to Nullable
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Travelator trips are divided into `Leg`s, where each `Leg` is an unbroken journey.
+    Here is one of the utility functions we’ve found in the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.1 [nullability.0:src/main/java/travelator/Legs.java]](https://java-to-kotlin.dev/code.html?ref=4.1&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.1&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The tests check that the code works as intended, and allow us to see its behavior
+    at a glance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.2 [nullability.0:src/test/java/travelator/LongestLegOverTests.java]](https://java-to-kotlin.dev/code.html?ref=4.2&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.2&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s see what we can do to make things better in Kotlin. Converting `Legs.java`
+    to Kotlin gives us this (after a little reformatting):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.3 [nullability.3:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.3&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.3&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The method parameters are as we might expect, with Kotlin `List<Leg>` transparently
+    accepting a `java.util.List`. (We examine Java and Kotlin collections more in
+    [Chapter 6](ch06.html#java-to-kotlin-collections).) It’s worth mentioning here
+    that when a Kotlin function declares a nonnullable parameter (`legs` and `duration`
+    here), the compiler inserts a null check before the function body. That way, if
+    Java callers sneak in a `null`, we’ll know straightaway. Because of these defensive
+    checks, Kotlin detects unexpected nulls as close as possible to their source,
+    in contrast to Java, where a reference can be set to `null` a long way in time
+    and space from where it finally explodes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Returning to the example, the Kotlin `for` loop is very similar to Java’s, except
+    for the use of the `in` keyword rather than `:`, and similarly applies to any
+    type that extends `Iterable`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The converted `findLongestLegOver` code is not very idiomatic Kotlin. (Arguably,
+    since the introduction of streams, it isn’t very idiomatic Java either.) Instead
+    of a `for` loop, we should look for something more intention revealing, but let’s
+    park that for now because our primary mission is to migrate from `Optional` to
+    nullable. We’ll illustrate that by converting our tests one by one, so that we
+    have a mix, as we would in a codebase that we were migrating. To make use of nullability
+    in our clients, they have to be Kotlin, so let’s convert the tests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.4 [nullability.4:src/test/java/travelator/LongestLegOverTests.kt]](https://java-to-kotlin.dev/code.html?ref=4.4&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.4&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now to migrate gradually, we’ll need two versions of `findLongestLegOver`:
+    the existing `Optional<Leg>`-returning one, and a new one that returns `Leg?`.
+    We can do that by extracting the guts of the current implementation. This is currently:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.5 [nullability.4:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.5&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.5&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We “Extract Function” on all but the return statement of this `findLongestLegOver`.
+    We can’t give it the same name, so we use `longestLegOver`; we make it public
+    because this is our new interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.6 [nullability.5:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.6&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.6&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The refactoring has left a vestigial `result` variable in `findLongestLegOver`.
+    We can select it and “Inline” to give:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.7 [nullability.6:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.7&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.7&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we have two versions of our interface, one defined in terms of the other.
+    We can leave our Java clients consuming the `Optional` from `findLongestLegOver`
+    and convert our Kotlin clients to call the nullable-returning `longestLegOver`.
+    Let’s show the conversion with our tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We’ll do the absent ones first. They currently call `assert⁠Equals​(Optional.empty<Any>(),
+    findLongestLegOver…)`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.8 [nullability.6:src/test/java/travelator/LongestLegOverTests.kt]](https://java-to-kotlin.dev/code.html?ref=4.8&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.8&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So we change them to `assertNull(longestLegOver(...)`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.9 [nullability.7:src/test/java/travelator/LongestLegOverTests.kt]](https://java-to-kotlin.dev/code.html?ref=4.9&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.9&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that we’ve changed the test names to use `backtick quoted identifiers`.
+    IntelliJ will do this for us if we Alt-Enter on function_names with_underscores_in_tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now for the calls that don’t return empty:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.10 [nullability.6:src/test/java/travelator/LongestLegOverTests.kt]](https://java-to-kotlin.dev/code.html?ref=4.10&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.10&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Kotlin equivalent of `Optional.orElseThrow()` (aka `get()` pre-Java 10)
+    is the `!!` (bang-bang or dammit) operator. Both the Java `orElseThrow` and the
+    Kotlin `!!` return the value or throw an exception if there isn’t one. Kotlin
+    logically throws a `NullPointerException`. Java equally logically throws a `NoSuchElementExecption`;
+    they just think of absence in different ways! Provided we haven’t relied on the
+    type of the exception, we can replace `findLongestLegOver(...).orElseThrow()`
+    with `longestLegOver(...)!!`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.11 [nullability.8:src/test/java/travelator/LongestLegOverTests.kt]](https://java-to-kotlin.dev/code.html?ref=4.11&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.11&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We’ve converted the first of the nonnull-returning tests (`is longest leg when
+    one match`) with the `!!` operator. If it were to fail (which it doesn’t, but
+    we like to plan for these things), it would fail with a thrown `NullPointerException`
+    rather than with a nice diagnostic. In the second case, we’ve solved that problem
+    with the safe call operator `?.`, which continues evaluation only if its receiver
+    is not `null`. This means that if the leg *is* `null`, the error will read as
+    follows, which is much nicer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tests are one of the few places we use `!!` in practice, and even here there
+    is usually a better alternative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can work this refactoring through our clients, converting them to Kotlin
+    and then to using `longestLegOver`. Once we have converted all of them, we can
+    delete the `Optional`-returning `findLongestLegOver`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refactoring to Idiomatic Kotlin
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now all the code in this example is Kotlin, and we’ve seen how to migrate from
+    optional to nullable. We could stop there, but consistent with our policy of going
+    the extra refactoring mile, we’ll press on to see what else this code has to teach
+    us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the current version of `Legs`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.12 [nullability.9:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.12&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.12&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The functions are contained in an `object` because our Java methods were static,
+    so the conversion needed somewhere to put them. As we’ll see in [Chapter 8](ch08.html#static-methods-to-top-level-functions),
+    Kotlin doesn’t need this extra level of namespace, so we can “Move to top level”
+    on `longestLegOver`. At the time of writing, this doesn’t work very well, because
+    IntelliJ fails to bring `isLongerThan` with its calling function, leaving it in
+    `Legs`. The breakage is easy to fix though, leaving us with a top-level function
+    and fixed-up references in existing code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.13 [nullability.10:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.13&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.13&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may have noticed that `isLongerThan` has lost its braces and return statement.
+    We’ll talk though the pros and cons of single-expression functions in [Chapter 9](ch09.html#multi-to-single-expression-functions).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While we’re here, there’s something odd about the phrase `isLongerThan(leg,
+    ...)`. It just doesn’t read right in English. You’ll no doubt get bored of our
+    infatuation with extension functions (certainly by the end of [Chapter 10](ch10.html#functions-to-extension-functions)),
+    but while we still have your goodwill, let’s Alt-Enter on the `leg` parameter
+    and “Convert parameter to receiver”, so that we can write `leg.isLongerThan(...)`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.14 [nullability.11:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.14&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.14&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, our changes have all been structural, changing where code is defined
+    and how we call it. Structural refactors are inherently quite (as in mostly, rather
+    than completely) safe. They can change the behavior of code that relies on polymorphism
+    (either through methods or functions) or reflection, but otherwise, if the code
+    continues to compile, it probably behaves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we are going to turn our attention to the *algorithm* in `longestLegOver`.
+    Refactoring algorithms is more dangerous, especially ones like this that rely
+    on mutation, because tool support for transforming them is not good. We have good
+    tests though, and it’s hard to work out what this does by reading it, so let’s
+    see what we can do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The only suggestion IntelliJ gives is to replace `compareTo` with `>`, so let’s
+    do that first. At this point, Duncan at least has run out of refactoring talent
+    (if we were actually pairing maybe you would have a suggestion?) and so decides
+    to rewrite the function from scratch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To reimplement the functionality, we ask ourselves, “What is the code trying
+    to do?” The answer is, helpfully, in the name of the function: `longestLegOver`.
+    To implement this calculation, we can find the longest leg, and if it is longer
+    than duration, return it, otherwise `null`. After typing `legs.` at the beginning
+    of the function, we look at the suggestions and find `maxByOrNull`. Our longest
+    leg is going to be `legs.max⁠By​Or⁠Null(Leg::plannedDuration)`. This API helpfully
+    returns `Leg?` (and includes the phrase `orNull`) to remind us that it can’t give
+    a result if `legs` is empty. Converting our algorithm “find the longest leg, and
+    if it is longer than duration, return it, otherwise null” to code directly, we
+    get:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.15 [nullability.12:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.15&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.15&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That passes the tests, but those multiple returns are ugly. IntelliJ will helpfully
+    offer to lift the `return` out of the `if`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.16 [nullability.13:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.16&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.16&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, Kotlin’s nullability support allows several ways to refactor this, depending
+    on your tastes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can use the Elvis operator `?:`, which evaluates to its lefthand side unless
+    that is `null`, in which case it evaluates its righthand side. This lets us return
+    early if we have no longest leg:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.17 [nullability.14:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.17&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.17&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We could go with a single `?.let` expression. The `?.` evaluates to `null`
+    if fed a `null`; otherwise, it pipes the longest leg into the `let` block for
+    us:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.18 [nullability.15:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.18&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.18&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So inside the `let`, `longestLeg` cannot be `null`. That is succinct, and it
+    is a pleasing single expression, but it may be hard to comprehend in a single
+    glance. Spelling out the options with a `when` is clearer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.19 [nullability.17:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.19&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.19&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To simplify further, we need a trick that Duncan (who is writing this) has
+    so far failed to internalize: `takeIf` returns its receiver if a predicate is
+    `true`; otherwise, it returns `null`. This is exactly the logic of our previous
+    `let` block. So we can write:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.20 [nullability.16:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.20&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.20&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Depending on our team’s experience with Kotlin, that may be too subtle. Nat
+    thinks it’s fine, but we’re going to err on the side of explicitness, so the `when`
+    version gets to stay, at least until the next time someone refactors here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, let’s convert the `legs` parameter to the receiver in an extension
+    function. This allows us to rename the function to something less dubious:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.21 [nullability.18:src/main/java/travelator/Legs.kt]](https://java-to-kotlin.dev/code.html?ref=4.21&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.21&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Just before we finish this chapter, take the time to compare this version with
+    the original. Are there any advantages to the old version?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.22 [nullability.0:src/main/java/travelator/Legs.java]](https://java-to-kotlin.dev/code.html?ref=4.22&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.22&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Usually we would say “it depends,” but in this case we think that the new version
+    is better on pretty much every front. It is shorter and simpler; it’s easier to
+    see how it works; and in most cases it results in fewer calls to `getPlannedDuration()`,
+    which is a relatively expensive operation. What if we had taken the same approach
+    in Java? A direct translation is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.23 [nullability.1:src/main/java/travelator/Legs.java]](https://java-to-kotlin.dev/code.html?ref=4.23&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.23&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Actually, that isn’t bad, but compared with the Kotlin version, you can see
+    how `Optional` adds noise to pretty much every line of the method. Because of
+    this, a version using `Optional.filter` is probably preferable, even though it
+    suffers from the same comprehension problems as the Kotlin `takeIf`. Which is
+    to say, Duncan can’t tell that it works without running the tests, but Nat prefers
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 4.24 [nullability.2:src/main/java/travelator/Legs.java]](https://java-to-kotlin.dev/code.html?ref=4.24&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=4.24&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Moving On
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The absence or presence of information is inescapable in our code. By raising
+    it to first-class status, Kotlin makes sure that we take account of absence when
+    we have to and are not overwhelmed by it when we don’t. In comparison, Java’s
+    `Optional` type feels clumsy. Luckily, we can easily migrate from `Optional` to
+    nullable and support both simultaneously when we are not ready to convert all
+    our code to Kotlin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Chapter 10, *Functions to Extension Functions*](ch10.html#functions-to-extension-functions),
+    we’ll see how nullable types combine with other Kotlin language features—the safe
+    call and Elvis operators, and extension functions—to form a grain that results
+    in designs quite different from those we write in Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But that’s getting ahead of ourselves. In the next chapter, we’ll look at a
+    typical Java class and translate it into a typical Kotlin class. Translation from
+    Java to Kotlin is more than syntactic: the two languages differ in their acceptance
+    of mutable state.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^([1](ch04.html#idm46393409336056-marker)) “Null References: The Billion Dollar
+    Mistake” [on YouTube](https://oreil.ly/Ue3Ct).'
+  prefs: []
+  type: TYPE_NORMAL

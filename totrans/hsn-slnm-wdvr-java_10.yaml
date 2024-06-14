@@ -1,0 +1,573 @@
+- en: Chapter 7\. The Page Object Model (POM)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A *design pattern* is a reusable solution to a recurring problem in software
+    engineering. This chapter presents the Page Object Model (POM), a popular design
+    pattern used to develop Selenium WebDriver tests. The use of POM has different
+    benefits, such as improving reusability and avoiding code duplication. POM is
+    based on creating *page classes* for modeling the SUT UI in a single repository,
+    which is later used from the test logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Motivation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Some of the biggest challenges of developing end-to-end tests with Selenium
+    WebDriver are *maintainability* and *flakiness*. Regarding the former, the problem
+    might happen during the development or evolution of the SUT. The changes made
+    in the UI can cause existing end-to-end tests to break. The maintenance costs
+    for fixing these tests can be relevant when having a large test suite in which
+    code duplication exists in several tests cases (e.g., when the same locators are
+    used repeatedly in different tests).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concerning flakiness (i.e., lack of reliability), a test is *flaky* when it
+    has inconsistent behavior, i.e., it both passes and fails periodically under the
+    same conditions (test logic, input data, setup, etc.). There are two major causes
+    of test flakiness in Selenium WebDriver tests. First, the root of the problem
+    might be the SUT. For instance, a bug in the server-side logic (e.g., a race condition)
+    can expose erratic behavior in end-to-end tests. In this case, developers and
+    testers should work together to detect and solve the problem, typically fixing
+    server-side bugs. Second, the cause could be in the test itself. This is an undesirable
+    situation that testers should avoid. There are different strategies to prevent
+    flakiness in Selenium WebDriver tests, such as implementing a robust locator strategy
+    (to avoid brittle tests due to responsiveness or viewport changes) or using a
+    waiting strategy (to handle the distributed and asynchronous nature of web applications,
+    as explained in [“Waiting Strategies”](ch03.html#waiting_strategies)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Utilizing a design pattern like POM can help reduce code duplication and enhance
+    maintainability issues. Moreover, we can use POM for including reusable robust
+    locating and waiting strategies. The following section describes how to carry
+    out the POM design pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The POM design pattern itself is not strictly a solution for test flakiness.
+    However, as explained in the following sections, it enables the encapsulation
+    of reusable code that prevents test unreliability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The POM Design Pattern
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The principle of the POM design pattern is to separate the logic for handling
+    UI elements in separate classes (called *page classes*) from the test logic. In
+    other words, we model the appearance and behavior of our SUT following an object-oriented
+    paradigm, i.e., as *page objects*. Then, these page objects are used by Selenium
+    WebDriver tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at a simple example to illustrate POM. Consider [Figure 7-1](#login-form),
+    which contains a login form. As usual, this page is contained on the practice
+    site. [Example 7-1](#vanilla_basic_login) shows a test case using *vanilla* Selenium
+    WebDriver. In programming, we use the term “vanilla” to refer to technology used
+    without customization from the original form. In this case, we use the standard
+    Selenium WebDriver API, explained in [Part II](part02.html#part02) of this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![hosw 0701](assets/hosw_0701.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-1\. Practice web page with a login form
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Example 7-1\. Test using vanilla Selenium WebDriver to implement a successful
+    login
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_page_object_model__pom__CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We type the word `user` as username in the web form.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_page_object_model__pom__CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We type the same word as password in the web form.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_the_page_object_model__pom__CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We click on the Submit button.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_the_page_object_model__pom__CO1-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We verify the success box is displayed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This test is perfectly correct, but a potential problem might occur if we implement
+    additional tests using the same web page. For instance, [Example 7-2](#vanilla_basic_login_2)
+    shows another test case using vanilla Selenium WebDriver to implement a negative
+    test (a failed login) using the same web form. This test is again sound, but together
+    with [Example 7-1](#vanilla_basic_login), we duplicate most of the logic for locating
+    web elements, only using different input data and the expected outcome. This way
+    of proceeding violates one of the most relevant principles in software design:
+    Don’t Repeat Yourself (DRY). This is problematic since using the same code in
+    different places makes maintainability harder.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-2\. Test using vanilla Selenium WebDriver to implement a failed login
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Page Objects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Page object classes enable the separation of the code devoted to the UI, such
+    as locators and page layout, from the test logic. We can see page classes as a
+    single repository that encapsulates the operations or services provided by the
+    application under test. These classes are instantiated as *page objects* in different
+    test cases. We can implement end-to-end tests using the method exposed in these
+    objects while avoiding code repetition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here is a basic example using page objects. In the following example, we refactor
+    the test explained in the previous section (i.e., using the login form) using
+    a page object instead of vanilla Selenium WebDriver. The first step is to create
+    a Java class that models the login page. [Example 7-3](#basic_login_page) shows
+    a very basic implementation of this page class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-3\. Basic page class to model the practice login form
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_page_object_model__pom__CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We declare a `WebDriver` class attribute. This variable is used in the page
+    object to implement the interaction with the web page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_page_object_model__pom__CO2-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We declare all the required locators as additional attributes. In this case,
+    we locate the text input for the username and password, the Submit button, and
+    the success box.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_the_page_object_model__pom__CO2-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The constructor defined by this page class accepts the `WebDriver` object. We
+    use the constructor to load the page under test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_the_page_object_model__pom__CO2-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We declare a method to model the required interaction to log in, i.e., type
+    the username and password, and click on the Submit button.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](assets/5.png)](#co_the_page_object_model__pom__CO2-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We declare another method to check if the success box is visible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, we can use this page class in a test case. [Example 7-4](#basic_login_test)
+    illustrates how. Notice that we create a `WebDriver` instance, as usual before
+    each test, and quit it after each test. We use this driver as an argument in the
+    page class constructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-4\. Test using the basic page class to implement a succesful login
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_page_object_model__pom__CO3-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We declare the page class as an attribute in the test class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_page_object_model__pom__CO3-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We create the page object, passing the `WebDriver` instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_the_page_object_model__pom__CO3-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We invoke the method `with` defined by the page class to make the login operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_the_page_object_model__pom__CO3-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We verify the success box is available on the resulting web page using a method
+    provided by the page object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This approach is a handy start for improving the maintainability of our tests
+    because now, all the logic related to the login web page is centralized as a reusable
+    class. Nevertheless, the code in the page classes is still brittle. For instance,
+    imagine we need to implement a negative test for the login page, i.e., a login
+    attempt using incorrect credentials. [Example 7-5](#basic_login_test_2) seems
+    a reasonable way to do that, given the current implementation of the page class.
+    However, if you run this test, you will discover that the test fails due to a
+    `NoSuchElementException` exception. The next section explains how to solve this
+    potential problem by creating more robust page objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-5\. Test using the basic page class to implement a failed login
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Robust Page Objects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The example presented in the previous sections improves code maintainability
+    since the page operations are encapsulated in a single class instead of having
+    them scattered throughout the test suite. That said, there are different ways
+    to enhance the previous page classes implementation. First of all, our SUT is
+    likely to have several web pages, not only one. For this reason, a common strategy
+    is to follow an object-oriented approach and create a *base page* class that encapsulates
+    the common logic for all the page classes. [Example 7-6](#base_page) shows a Java
+    class implementing a typical base for page classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-6\. Example of a base class for page classes
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_page_object_model__pom__CO4-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We define an explicit wait (`WebDriverWait`) attribute in the base class. We
+    instantiate this attribute in the constructor using a default timeout value (five
+    seconds in this example).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_page_object_model__pom__CO4-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We create a setter method to change the default value for the wait timeout.
+    For instance, we might need to adjust this timeout depending on the system response
+    time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_the_page_object_model__pom__CO4-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We create several common methods that page classes can reuse, such as `visit()`
+    (to open a web page), `find()` (to locate a web element), or `type()` (to send
+    data to a writable element, such as an input field).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_the_page_object_model__pom__CO4-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We implement a method to check if a web element is displayed or not. Notice
+    that this method hides the complexity of waiting for this element, returning a
+    simple boolean value that tests can use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use the previous base class as the parent of specific page classes. For instance,
+    [Example 7-7](#login_page) shows a Java class that extends this base to implement
+    the page class, using the login sample page in the practice site.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-7\. Login page class using the previous base
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_page_object_model__pom__CO5-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We define the page locators as class attributes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_page_object_model__pom__CO5-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We define a constructor with two parameters: the `WebDriver` object and the
+    timeout value (in seconds).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_the_page_object_model__pom__CO5-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We define another constructor that opens the web page under test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_the_page_object_model__pom__CO5-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We include a method to log in using username and password as credentials. This
+    uses the methods defined in the parent (`type()` and `click()`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![5](assets/5.png)](#co_the_page_object_model__pom__CO5-5)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We include another method to check if the success box is visible or not (using
+    the method `isDisplayed()` defined in the base class).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we can use the page class to implement a Selenium WebDriver test. [Example 7-8](#test_login_page)
+    shows a test using JUnit 5 (as usual, you can find the JUnit 4, TestNG, and Selenium-Jupiter
+    flavors in the [examples repository](https://github.com/bonigarcia/selenium-webdriver-java)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-8\. Test using the page class to implement a successful and failed
+    login
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_page_object_model__pom__CO6-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We instantiate the page object before each test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_page_object_model__pom__CO6-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since the page class logic is robust, we can invoke `successBoxPresent()` to
+    implement a negative test. This method internally implements an explicit wait
+    for the web element, which eventually returns `false` when the success box is
+    not displayed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a Domain Specific Language (DSL)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We can push things a little more in our journey of modeling our SUT and create
+    a complete Domain Specific Language (DSL) using the page classes. In computing,
+    a DSL is a specialized language for a particular domain. When using the POM and
+    Selenium WebDriver, we can see a DSL as the encapsulation of all the SUT operations
+    and services in the methods provided by the page classes. This way, test cases
+    use a simple, readable API provided by the page classes. These classes encapsulate
+    all the calls to the Selenium WebDriver API to interact with the SUT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Continuing with the example shown in the previous sections, [Example 7-9](#dsl_base)
+    shows a base page class for the login page following a DSL approach. This base
+    class is quite similar to [Example 7-6](#base_page), but in this case, this class
+    also encapsulates the required logic to create a `WebDriver` instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-9\. Example of base class following a DSL approach
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_page_object_model__pom__CO7-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We declare a `String` parameter in the base constructor. This string will be
+    the browser name (specified in the tests).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_page_object_model__pom__CO7-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use WebDriverManager to resolve the required driver and create the `WebDriver`
+    instance. As explained in [“Generic Manager”](app02.html#generic_manager), WebDriverManager
+    allows the use of a parameterized manager by invoking the method `getInstance()`.
+    In this case, we use the browser name (e.g., `chrome,` `firefox,` etc.) to select
+    the manager.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_the_page_object_model__pom__CO7-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also encapsulate the method to terminate the session and close the browser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Example 7-10](#dsl_page) shows the page class that extends this base. As you
+    can see, the only difference from [Example 7-7](#login_page) is that this page
+    class uses a string parameter (the browser name) in the constructor.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-10\. Login page class following a DSL approach
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, [Example 7-11](#dsl_test) shows the resulting test. Notice that this
+    test does not contain any single call to Selenium WebDriver or WebDriverManager.
+    The page class encapsulates all the low-level details of the interaction with
+    the browser, exposing a high-level, readable API used in the test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-11\. Test case using POM and following a DSL approach
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_page_object_model__pom__CO8-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We instantiate the page object, simply specifying the browser type to be used
+    (`chrome` in this case).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_page_object_model__pom__CO8-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As usual, we terminate the browser session after each test, but this time using
+    a method provided by the page object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Page Factory
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Page Factory is the name given to several support classes provided by the Selenium
+    WebDriver API to ease the implementation of page object classes. The most relevant
+    of these support classes are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`FindBy`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Annotation used at the attribute level to identify web elements in a page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`FindAll`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Annotation that allows composing different `@FindBy` locators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`PageFactory`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Class used to initialize all the previously declared web elements with `@FindBy`
+    (and `@FindAll`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CacheLookup`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One downside of using the `@FindBy` annotation to locate web elements is that
+    as each locator is used, the driver will try to find it on the current page. This
+    feature is helpful in dynamic web applications. However, it would be desirable
+    to cache the web elements in static web applications. For this reason, the annotation
+    `@CacheLookup` allows caching the web elements once they are located, improving
+    the performance of the resulting tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Example 7-12](#factory_page) shows a page class that uses these Selenium WebDriver
+    support classes. You can find the resulting test using this page class in the
+    repository object. This test is equivalent to [Example 7-11](#dsl_test), but uses
+    `FactoryLoginPage` instead of `ExtendedLoginPage` for interaction with the login
+    page.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-12\. Class using the Page Factory provided by Selenium WebDriver
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_page_object_model__pom__CO9-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We declare the web elements in the page using the `WebElement` type decorated
+    with two annotations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`@FindBy`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To specify the locator (by `id` and `css` in this example).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`@CacheLookup`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To cache the web element location results (since the web page is static and
+    its content will not change in different calls).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_page_object_model__pom__CO9-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We invoke the `initElements` method to locate the web elements using the `WebDriver`
+    instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The Page Factory approach is only recommended when the web page tested with
+    Selenium WebDriver is static. This approach can lead to undesirable effects such
+    as stale web elements (i.e., old or no-longer-available elements) when using dynamic
+    web pages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary and Outlook
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter provided a comprehensive overview of the Page Object Model (POM)
+    in Selenium WebDriver tests. POM is a design pattern in which we separate the
+    logic to interact with web pages and the test code. This way, *page classes* contain
+    the logic related to web locators and page layout, and test classes determine
+    how to exercise and verify the SUT. The POM pattern improves the maintainability
+    of test suites based on Selenium WebDriver since the page classes are stored in
+    a single repository that models the SUT. This repository is used later in different
+    test cases. We can create robust web pages using proper location and waiting strategies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter presents specific aspects of the used unit testing frameworks
+    (JUnit, TestNG, and Selenium-Jupiter) to improve the overall testing process with
+    Selenium WebDriver. These features allow creating parameterized tests (for cross-browser
+    testing), categorizing tests (for test filtering), ordering and retrying tests,
+    or executing tests in parallel.
+  prefs: []
+  type: TYPE_NORMAL

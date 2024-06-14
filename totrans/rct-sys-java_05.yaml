@@ -1,0 +1,971 @@
+- en: Chapter 3\. The Dark Side of Distributed Systems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that you have a better understanding of Reactive and had a brief overview
+    of Quarkus, let’s focus on why you would want to use them and, more specifically,
+    build reactive systems. The reason emanates from the cloud and, more generally,
+    the need to build *better* distributed systems. The cloud has been a game changer.
+    It’s making the construction of distributed systems easier. You can create virtual
+    resources on the fly and use off-the-shelf services. However, *easier* does not
+    mean *straightforward*. Building such systems is a considerable challenge. Why?
+    Because the cloud is a distributed system, and distributed systems are complicated.
+    We need to understand the kind of animal we are trying to tame.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What’s a Distributed System?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are many definitions of distributed systems. But let’s start with a loose
+    one, written by professor emeritus Andrew Tanenbaum, and see what we can learn:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A distributed system is a collection of independent computers that appears to
+    its users as a single coherent system.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'This definition highlights two important aspects of distributed systems:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A distributed system is composed of *independent* machines that are autonomous.
+    They can be started and stopped at any time. These machines operate concurrently
+    and can fail independently without affecting the whole system’s uptime (in theory,
+    at least).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Consumers (users) should not be aware of the system’s structure. It should
+    provide a consistent experience. Typically, you may use an HTTP service, which
+    is served by an API gateway ([Figure 3-1](#figure:machine)), delegating requests
+    to various *machines*. For you, the caller, a distributed system behaves as a
+    single coherent system: you have a single entry point and ignore the underlying
+    structure of the system.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![Example of an HTTP service delegating calls to other machines/services](assets/rsij_0301.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 3-1\. Example of an HTTP service delegating calls to other machines/services
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: To achieve this level of coherence, the autonomous machines must collaborate
+    one way or another. This collaboration and the need for good communications that
+    arise from it are the heart of distributed systems but also their primary challenge.
+    But that definition does not explain why we are building distributed systems.
+    Initially, distributed systems were workarounds. The resources of each machine
+    were too limited. Connecting multiple machines was a smart way to extend the whole
+    system’s capacity, making resources available to the other members of the network.
+    Today, the motivations are slightly different. Using a set of distributed machines
+    gives us more business *agility*, eases evolution, reduces the time to market,
+    and from an operational standpoint, allows us to scale more quickly, improves
+    resilience via replication, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Distributed systems morphed from being a workaround to being the norm. Why?
+    We can’t build a single machine powerful enough to handle all the needs of a major
+    corporation, while *also* being affordable. If we could, we’d all use the giant
+    machine and deploy independent applications on it. But this necessity for distribution
+    draws new operational and business boundaries based on physical system boundaries.
+    Microservices, serverless architecture, service-oriented architecture (SOA), REST
+    endpoints, mobile applications—all are distributed systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This distribution is stressing, even more, the need for collaboration among
+    all the components forming the system. When an application (for instance, implemented
+    in Java), needs to interact locally, it just uses a method call. For example,
+    to collaborate with a `service` exposing a `hello` method, you use `service.hello`.
+    We stay inside the same process. Calls can be synchronous; no network I/O is involved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, the dispersed nature of distributed systems implies interprocess communication,
+    and most of the time, crossing the network ([Figure 3-2](#figure:network)). Dealing
+    with I/O and traversing the network makes these interactions considerably different.
+    A lot of middleware tried to make the distribution transparent, but, don’t be
+    mistaken, complete transparency is a lie, as explained in [“A Note on Distributed
+    Computing”](https://oreil.ly/iCz3c) by Jim Waldo et al. It always backfires one
+    way or another. You need to understand the unique nature of remote communications
+    and realize how distinctive they are in order to build robust distributed systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Remote interactions are leaving one process space and crossing into another
+    process space via a network connection.](assets/rsij_0302.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 3-2\. Remote interactions leave one process space and cross into another
+    process space via a network connection
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The first difference is the duration. A remote call is going to take much more
+    time than a local call. That time is several degrees of magnitude higher. When
+    everything is fine, sending a request from New York City to Los Angeles takes
+    around 72 ms.^([1](ch03.html#idm45358832499760)) Calling a local method takes
+    less than a nanosecond.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A remote call also leaves the process space, so we need an exchange protocol.
+    This protocol defines all the aspects of the exchange, such as who is initiating
+    the communication, how the information is written to the wire (serialization and
+    deserialization), how the messages are routed to the destination, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you develop your application, most of these choices are hidden from you
+    but present under the hood. Let’s take a REST endpoint you want to call. You will
+    use HTTP and most probably some JSON representation to send data and interpret
+    the response. Your code is relatively simple, as you can see in [Example 3-1](#distributed-system::http-example).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-1\. Invoke an HTTP service using a Java built-in client (*chapter-3/http-client-example/src/main/java/http/Main.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s describe what’s happening when you execute it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Your application creates an HTTP request (`request`).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: It establishes an HTTP connection with the remote server.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: It writes the HTTP request following the protocol.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The request travels to the server.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The server interprets the request and looks for the resource.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The server creates an HTTP response with the representation of the resource
+    state in JSON.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: It writes the response following the protocol.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The application receives the response and extracts the body (as `String` in
+    this example).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: It’s the role of middleware (HTTP server and client, JSON mappers…) to make
+    these interactions easy for us developers. In our previous example, steps 2 to
+    8 are all hidden in the `send` method. But we need to be aware of them. Especially
+    today, with the cloud, distributed systems and distributed communications are
+    everywhere. It becomes rare to build an application that is not a distributed
+    system. As soon as you call a remote web service, print a document, or use an
+    online collaboration tool, you are creating a distributed system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The New Kids on the Block: Cloud Native and Kubernetes Native Applications'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The role of the cloud can’t be overstated, and it’s a significant factor in
+    the popularization of distributed systems. If you need a new machine, database,
+    API gateway, or persistent storage, the cloud can enable the delivery of these
+    on-demand computing services. As a reminder, though, for as much as the cloud
+    improves efficiencies, you must never forget that running your application on
+    the cloud is equivalent to running on someone else’s machine. Somewhere there
+    are CPUs, disks, and memory used to execute your application, and while cloud
+    providers are responsible for maintaining these systems and have built a reputation
+    around reliability, the hardware is outside your control.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cloud providers provide fantastic infrastructure facilities, making running
+    applications much more straightforward. Thanks to dynamic resources, you can create
+    many instances of your application and even autotune this number based on the
+    current load. It also offers failover mechanisms such as routing requests to a
+    healthy instance if another instance crashed. The cloud helps to reach high availability
+    by making your service always available, restarting unhealthy parts of your systems,
+    and so on. This is a first step toward elastic and resilient systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That being said, it’s not because your application can run in the cloud that
+    it will benefit from it. You need to tailor your application to use the cloud
+    efficiently, and the distributed nature of the cloud is a big part of it. *Cloud
+    native* is an approach to building and running applications that exploit the cloud
+    computing delivery model. Cloud native applications should be easy to deploy on
+    virtual resources, support elasticity through application instances, rely on location
+    transparency, enforce fault-tolerance, and so on. The [Twelve-Factor App](https://12factor.net)
+    lists some characteristics to become a *good cloud citizen*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Codebase
+  prefs: []
+  type: TYPE_NORMAL
+- en: One codebase tracked in version control, many deploys.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dependencies
+  prefs: []
+  type: TYPE_NORMAL
+- en: Explicitly declare and isolate dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Config
+  prefs: []
+  type: TYPE_NORMAL
+- en: store config in the environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Backing services
+  prefs: []
+  type: TYPE_NORMAL
+- en: Treat backing services as attached resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Build, release, run
+  prefs: []
+  type: TYPE_NORMAL
+- en: Strictly separate build and run stages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Processes
+  prefs: []
+  type: TYPE_NORMAL
+- en: Execute the app as one or more stateless processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Port binding
+  prefs: []
+  type: TYPE_NORMAL
+- en: Export services via port binding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrency
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scale out via the process model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Disposability
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maximize the robustness with fast startup and graceful shutdown.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dev/prod parity
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keep development, staging, and production as similar as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Logs
+  prefs: []
+  type: TYPE_NORMAL
+- en: Treat your logs as event streams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Admin processes
+  prefs: []
+  type: TYPE_NORMAL
+- en: Run admin/management tasks as one-off processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing these factors helps to embrace the cloud native ideology. But achieving
+    cloud native is not an easy task. Each factor comes with technical challenges
+    and architectural constraints.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition, each cloud provider provides its own set of facilities and APIs.
+    This heterogeneity makes cloud native applications nonportable from one cloud
+    provider to another. Very quickly, you end up in some kind of vendor lock-in,
+    because of a specific API or services, or tooling, or even description format.
+    It may not be an issue for you right now, but having the possibility to move and
+    combine multiple clouds improves your agility, availability, and user experience.
+    Hybrid cloud applications, for example, run on multiple clouds, mixing private
+    and public clouds, to reduce response time and prevent global unavailability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fortunately, both public and private clouds tend to converge around Kubernetes,
+    a container orchestration platform. Kubernetes abstracts the differences between
+    providers using *standard* deployment and runtime facilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To use Kubernetes, you package and run your application inside a container.
+    A *container* is a box in which your application is going to run. So, your application
+    is somewhat isolated from the other applications running in their own box.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To create containers, you need an image. A *container image* is a lightweight,
+    executable software package. When you deploy a container, you actually deploy
+    an image, and this image is instantiated to create the container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The image includes everything needed to run an application: code, runtime,
+    system libraries, and configuration. You can create container images by using
+    various tools and descriptors such as *Dockerfile*. As you have seen in [Chapter 2](ch02.html#quarkus),
+    Quarkus offers image creation facilities without having to write a single line
+    of code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To distribute your image, you push it to an image registry such as [Docker Hub](https://hub.docker.com).
+    Then you can pull it and finally instantiate it to start your application ([Figure 3-3](#figure:containers)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Creation, Distribution and Execution of Containers](assets/rsij_0303.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 3-3\. Creation, distribution, and execution of containers
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: While containerization is a well-known technique, when you start having dozens
+    of containers, their management becomes complicated. Kubernetes provides facilities
+    to reduce this burden. It instantiates containers and monitors them, making sure
+    your application is still running.^([2](ch03.html#idm45358832353200)) As you can
+    imagine, this can be useful for implementing the responsiveness and resilience
+    characteristics from reactive systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Though Kubernetes facilitates reactive systems through responsiveness and resilience,
+    that does not mean you cannot implement a reactive system outside of Kubernetes.
+    It’s definitely possible. In this book, we use Kubernetes to avoid having to implement
+    the underlying infrastructure features such as deployment, replication, and fault
+    detection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Under the hood, Kubernetes pulls container images, instantiates containers,
+    and monitors them. To achieve this, Kubernetes needs to have access to *nodes*
+    to run the containers. This set of nodes forms a *cluster*. Thinking of a machine
+    as a node allows us to insert a layer of abstraction. Whether these machines are
+    Amazon Elastic Compute Cloud (EC2) instances, physical hardware from a data center,
+    or virtualized is irrelevant. Kubernetes controls these nodes and decides which
+    part of the system will run where.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once Kubernetes has access to your container image, you can instruct Kubernetes
+    to instantiate the image so that it becomes a running container. Kubernetes decides
+    on which node the container is executed. It may even move it later to optimize
+    resource utilization, another characteristic that fits with reactive architectures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Just as applications need to be cloud native to benefit from the cloud, they
+    need to be Kubernetes native to benefit from Kubernetes. That includes supporting
+    Kubernetes service discovery, exposing health checks used for monitoring, and,
+    more importantly, running efficiently in a container. You will see in the next
+    chapter how these three characteristics are essential from a Reactive point of
+    view. You can wrap almost any application in a container. But it may not be a
+    good idea.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When running in a container, your application lives in a shared environment.
+    Multiple containers share the resources from the *host*, the machine executing
+    them. They share the CPU, the memory, and so on. If one container is too greedy,
+    it penalizes the other containers, which may starve. Of course, you can use quotas,
+    but how would the greedy container behave under resource restrictions? So, yes,
+    containers provide isolation, *and* enable resource sharing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One role of containers and Kubernetes is to increase the deployment density:
+    running more using the finite set of available resources. Deployment density is
+    becoming essential to many organizations because of the economic benefits. It
+    allows reducing costs, either by reducing the monthly cloud bill or by running
+    more applications on the current in-house infrastructure.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 3-1](#table::kube) summarizes concepts presented so far around containers
+    and Kubernetes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 3-1\. Important concepts around containers and Kubernetes
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Name | Description | Associated command |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Container image | Lightweight, executable software package | `docker build
+    -f my-docker-file -t my-image:version` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Container | A box in which your application is going to run | `docker run
+    my-image:version` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Pod | The unit of replication in Kubernetes, composed of one or more containers
+    | `kubectl get pods` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Deployment | Describes the content of a pod and number of pod instances we
+    need | `kubectl get deployments` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Service | A channel of communication delegating to a set of pods, selected
+    by labels | `kubectl get services` |'
+  prefs: []
+  type: TYPE_TB
+- en: If you missed it, check out [“Kubernetes with Quarkus in 10 Minutes”](ch02.html#quarkus::kube-ten),
+    where we deployed a Quarkus service to Kubernetes!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Dark Side of Distributed Systems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our system is simple, but even such a basic system can illustrate the hard reality
+    of distributed systems. Cloud providers and Kubernetes provide excellent infrastructure
+    facilities, but the laws of distributed systems still rule the system you are
+    building. The technical complexity around provisioning and delivery has been replaced
+    with fundamental issues from the nature of distributed systems. The size and complexity
+    of modern applications make them undeniable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At the beginning of this chapter, you saw a first definition of distributed
+    systems. It was capturing the need for collaboration and communication to provide
+    a consistent experience. [Leslie Lamport](http://www.lamport.org), a computer
+    scientist and Turing Award winner, gives a different definition that describes
+    the dark nature of distributed systems: “A distributed system is one in which
+    the failure of a computer you didn’t even know existed can render your own computer
+    unusable.”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In other words, failures are inevitable. They are an inherent component of distributed
+    systems. No matter how your system is built, it is going to fail. As a corollary,
+    the bigger the distributed system, the higher the level of *dynamism* (the fluctuating
+    availability of the surrounding services) and the greater the chance of failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What kind of failures can we encounter? There are three types:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transient failure
+  prefs: []
+  type: TYPE_NORMAL
+- en: Occurs once and then disappears, like a temporary network disruption
+  prefs: []
+  type: TYPE_NORMAL
+- en: Intermittent failure
+  prefs: []
+  type: TYPE_NORMAL
+- en: Occurs, then vanishes and then reappears, like a failure happening once in a
+    while for no apparent reason
+  prefs: []
+  type: TYPE_NORMAL
+- en: Permanent failure
+  prefs: []
+  type: TYPE_NORMAL
+- en: Continues to exist until the faulty component (either software or hardware)
+    is fixed
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each type of failure can have two kinds of consequences. First, it can crash
+    the application. We call these *fail-stop* failures. There are *bad*, of course,
+    but we can easily detect them and repair the system. Second, a failure may introduce
+    unpredictable responses at random times. We call them *Byzantine failures*. They
+    are much harder to detect and to circumvent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fallacies of Distributed Computing in a Kubernetes World
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As developers, imagining and planning for all the types of failure and consequences
+    can be challenging. How would you detect them? How would you handle them gracefully?
+    How can you continue to provide a consistent experience and service if anything
+    can fall apart? Building and maintaining distributed systems is a complex topic
+    full of pitfalls and landmines. The [“Eight Fallacies of Distributed Computing”](https://oreil.ly/0g3lL)
+    list, created by L. Peter Deutsch along with others at Sun Microsystems, walks
+    us through many false assumptions around distributed systems:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The network is reliable.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Latency is zero.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Bandwidth is infinite.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The network is secure.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Topology doesn’t change.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: There is one administrator.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Transport cost is zero.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The network is homogeneous.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'These fallacies were published in 1997, long before the era of the cloud and
+    Kubernetes. But these fallacies are still relevant today—even more relevant. We
+    won’t discuss all of them but focus on the ones related to the cloud and Kubernetes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The network is reliable
+  prefs: []
+  type: TYPE_NORMAL
+- en: The developer often assumes that the network is reliable on the cloud or Kubernetes.
+    Indeed, it’s the role of the infrastructure to handle the network and make sure
+    things work. Health checks, heartbeats, replications, automatic restart—a lot
+    of mechanisms are built in at the infrastructure layer. The network will do its
+    best, but sometimes, bad things happen, and you need to be prepared for that.
+    Data centers can fall apart; parts of the system can become unreachable, and so
+    on.^([3](ch03.html#idm45358832286384))
+  prefs: []
+  type: TYPE_NORMAL
+- en: Latency is zero
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second fallacy seems obvious: a network call is slower than a local call,
+    and the latency of any given call can vary significantly, even from one invocation
+    to the next. We already discussed this. The latency is not limited to that aspect;
+    it can change over time for various reasons.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bandwidth is infinite *and* the network is homogeneous
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may reach the bandwidth limit, or parts of the system may use a faster network
+    than some other parts because they are running on the same *node*. Estimating
+    latency is not trivial. Many capacity-planning techniques and time-out computation
+    are based on network latency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Topology doesn’t change
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the cloud or on Kubernetes, services, applications, and containers move.
+    Kubernetes can move containers from one node to another anytime. Containers are
+    frequently moving because of the deployment of new applications, updates, rescheduling,
+    optimization, and so on. Mobility is a great benefit as it allows optimizing the
+    whole system, but interacting with services always on the move can be challenging.
+    You may interact with multiple instances of your service, while, for you, it acts
+    as one. Some instances can be close to you (and provide a better response time),
+    while some may be farther or just slower because of limited resources.^([4](ch03.html#idm45358832279664))
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is one administrator
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing systems has drastically changed over the past few years. The old-school
+    system administration processes and maintenance downtimes are becoming less common.
+    DevOps philosophies and techniques such as continuous delivery and continuous
+    deployment are reshaping the way we manage applications in production. Developers
+    can easily deploy small incremental changes throughout the day. DevOps tools and
+    site reliability engineers (SREs) work hard to provide an almost constant availability,
+    while a continuous stream of updates provides new features and bug fixes. The
+    administration role is shared among SREs, software engineers, and software. For
+    example, [Kubernetes operators](https://oreil.ly/cX8nN) are programs deployed
+    on Kubernetes and responsible for installing, updating, monitoring, and repairing
+    parts of the system automatically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transport cost is zero
+  prefs: []
+  type: TYPE_NORMAL
+- en: Considering the network to be free is not only a fallacy, but also an economic
+    mistake. You must pay attention to the cost of network calls and look for optimization.
+    For example, crossing cloud regions, transferring large amounts of data, or (especially)
+    communicating to separate cloud providers can be expensive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, not that simple, right? When you build a distributed system, consider all
+    these issues and take them into account in your architecture and application code.
+    Those are just some of the issues. Another one is the inability to reach a consensus.^([5](ch03.html#idm45358832272336))
+    In addition, the CAP theorem prevents a distributed data store from simultaneously
+    providing more than two out of the following three guarantees:^([6](ch03.html#idm45358832270720))
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consistency
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every read receives the most recent write.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Availability
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every request receives a response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Partition tolerance
+  prefs: []
+  type: TYPE_NORMAL
+- en: The system continues to operate despite an arbitrary number of messages being
+    dropped (or delayed) by the network.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Can things get even darker? Oh yes, distributed systems can be wonderfully imaginative
+    to drive us crazy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A Question of Timing: The Synchronous Communication Drawback'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Time is an often misunderstood issue. When two computers communicate and exchange
+    messages, we make the natural assumption that the two machines are both available
+    and reachable. We often trust the network between them. Why wouldn’t it be entirely
+    operational? Why can’t we invoke remote services as we would for a local service?
+  prefs: []
+  type: TYPE_NORMAL
+- en: But that may not be the case, and not considering this possibility leads to
+    fragility. What happens if the machine you want to interact with is not reachable?
+    Are you prepared for such a failure? Should you propagate the failure? Retry?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a hypothetical microservices-based example, it’s common to use synchronous
+    HTTP as the main communication protocol between services. You send a request and
+    expect a response from the service you invoked. Your code is synchronous, waiting
+    for the response before continuing its execution. Synchronous calls are simpler
+    to reason about. You structure your code sequentially, you do one thing, then
+    the next one, and so on. This leads to *time-coupling*, one of the less considered
+    and often-misunderstood forms of coupling. Let’s illustrate this coupling and
+    the uncertainty that derives from it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the *chapter-3/quarkus-simple-service* [directory of the GitHub repository](https://oreil.ly/vZR3j),
+    you will find a simple Hello World Quarkus application. This application is similar
+    to the one built in [Chapter 2](ch02.html#quarkus). It contains a single HTTP
+    endpoint, as shown in [Example 3-2](#Jax-rs-simple-service).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-2\. JAX-RS simple service (*chapter-3/quarkus-simple-service/src/main/java/org/acme/reactive/SimpleService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Hard to have code simpler than this, right? Let’s deploy this application to
+    Kubernetes. Make sure minikube is started. If it’s not, start it as shown in [Example 3-3](#start-minikube-3-3).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-3\. Start minikube
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_dark_side_of_distributed_systems_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Don’t forget to connect the Docker socket to minikube.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Verify that everything is fine by running the `kubectl get nodes` command ([Example 3-4](#get-node-names)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-4\. Get the node names and roles
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, navigate in the *chapter-3/simple-service* directory and run [Example 3-5](#deploy-quarkus-app-to-kubs).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-5\. Deploy a Quarkus application to Kubernetes
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Wait for the pod to be *ready*, as shown in [Example 3-6](#get-list-of-running-pods).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-6\. Get the list of running pods
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Then expose the service by using [Example 3-7](#retrieving-url-of-service).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-7\. Retrieve the URL of the service
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Don’t forget that the port is assigned randomly, so you will need to replace
+    the port in the following commands.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, let’s invoke our service by running [Example 3-8](#invoking-service)
+    in another terminal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-8\. Invoke the service
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: So far, so good. But this application contains a *mechanism* to simulate distributed
+    system failures to illustrate the problem of synchronous communication. You can
+    look at the implementation in *chapter-3/quarkus-simple-service/src/main/java/org/acme/reactive/fault/FaultInjector.java*.
+    It’s basically a *Quarkus route* (a kind of interceptor) that monitors the HTTP
+    traffic and allows simulating various failures. It intercepts the incoming HTTP
+    request and outgoing HTTP response and introduces delays, losses, or application
+    failures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we call our service in a synchronous way (expecting a response, such as
+    with `curl` or a browser), three types of failure can happen:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The request between the caller and the service can be lost. This results in
+    the service not being invoked. The caller waits until a time-out is reached. This
+    simulates a transient network partition. This type of failure can be enabled by
+    using the `INBOUND_REQUEST_LOSS` mode.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The service receives the request but fails to handle it correctly. It may return
+    an incorrect response or maybe no response at all. In the best case, the caller
+    would receive the failure or wait until a time-out is reached. This simulates
+    an intermittent bug in the called service. This type of failure can be enabled
+    by using the `SERVICE_FAILURE` mode.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The service receives the request, processes it, and writes the response, but
+    the response is lost on its way back, or the connection is closed before the response
+    reaches the caller. The service got the request, handled it, and produced the
+    response. The caller just doesn’t get it. As in the first type of failure noted
+    previously, the response is in a transient network partition but happening after
+    the service invocation. This type of failure can be enabled using the `OUTBOUND_RESPONSE_LOSS`
+    mode.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Don’t forget to update the port in the previous and following commands, as minikube
+    randomly picks a port.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To illustrate how the system behaves when facing failures, let’s inject some
+    request losses ([Example 3-9](#configure-system-lose-50)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-9\. Configure the system to lose 50% of the incoming requests
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This command configures `FaultInjector` to randomly lose 50% of the incoming
+    requests. The caller waits for a response that will never arrive half of the time,
+    and will eventually time out. Try the command in [Example 3-10](#invoke-service-timeout)
+    until you experience a time-out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-10\. Invoke the service with a configured time-out
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_dark_side_of_distributed_systems_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`--max-time 5` configures a time-out of 5 seconds. Again, do not forget to
+    update the port.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To simulate the second type of failure, execute the command in [Example 3-11](#configure-system-inject).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-11\. Configure the system to inject faulty responses
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: You have now a 50% chance of receiving a faulty response; see [Example 3-12](#invoke-faulty).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-12\. Invoke the faulty application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, let’s simulate the last type of failure. Execute the commands in [Example 3-13](#configure-system-to-lose).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-13\. Configure the system to lose responses
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, the caller has a 50% chance of getting no response. The connection is closed
+    abruptly before the response reaches the caller. You don’t get a valid HTTP response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The purpose of these examples is to illustrate the strong coupling and uncertainty
+    arising from synchronous communication. This type of communication, often used
+    because of simplicity, hides the distributed nature of the interaction. However,
+    it makes the assumption that everything (including the services and the network)
+    is operational. But that’s not always the case. As a caller using synchronous
+    communication, you must gracefully handle faulty responses and the absence of
+    response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, what can we do? We immediately think about a time-out and retries. With
+    `curl`, you can specify a time-out (`-max-time`) and retries (`--retry`), as shown
+    in [Example 3-14](#invoke-app-3-14).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 3-14\. Invoke the application by using a time-out and `retry`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: There is a good chance that we can reach our service with 100 tries. However,
+    bad luck and random numbers may decide otherwise, and even 100 may not be enough.
+    Note that during the time that the caller (you) is waiting, that’s a rather bad
+    user experience.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Yet, do we know for sure that if we get a time-out, the service was not invoked?
+    Maybe the service or the network was just slow. What would be the ideal duration
+    of the time-out? It depends on many factors: where the service is located, the
+    latency of the network, and the load of the service. Maybe there isn’t a single
+    instance of this service but several, all with different characteristics.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retries are even more sneaky. As you can’t know for sure whether the service
+    was invoked, you can’t assume it was not. Retrying may reprocess the same request
+    multiple times. But you can retry safely only if the service you are calling is
+    idempotent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So, what can we do? It’s essential to understand the impact of the time and
+    decouple our communication. Complex exchanges involving multiple services cannot
+    expect all the participants and the network to be operational for the complete
+    duration of that exchange. The dynamic nature of the cloud and Kubernetes stresses
+    the limit of synchronous communications. Bad things happen: partitions, data loss,
+    crashes…'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Chapter 4](ch04.html#reactive-systems), you will see how Reactive addresses
+    this issue. By using message passing, and spatial and time decoupling, a reactive
+    system not only is more elastic and resilient, but also improves the overall responsiveness.
+    In other words, reactive systems are distributed systems done right. Also, in
+    [Chapter 5](ch05.html#reactive-programming), you will see the approaches Reactive
+    is proposing to embrace the asynchronous nature of distributed systems and how
+    we can elegantly develop event-driven and asynchronous code. The result not only
+    is concurrent and efficient applications, but also paves the road to new classes
+    of applications such as data streaming, API gateways, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Distributed systems are challenging. To build distributed systems, you need
+    to understand their nature and always plan for the worst-case scenario. Hiding
+    the nature of distributed systems to seek simplicity does not work. It results
+    in fragile systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter covered the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The erratic nature of distributed systems
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The evolution of distributed systems from a workaround to the norm
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use of the cloud and Kubernetes to simplify the construction of distributed
+    systems
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Potential failures of distributed communications caused by network disruptions,
+    or slowness
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: But we won’t stop on a failure! Time to rebound! Let’s look a bit more into
+    Reactive and see how it proposes to address these issues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch03.html#idm45358832499760-marker)) You can check the latency between
+    the main American cities at [the Current Network Latency site](https://oreil.ly/ws4Xd).
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch03.html#idm45358832353200-marker)) Kubernetes provides health checks
+    that constantly verify the state of the application. In addition, [Prometheus](https://prometheus.io)
+    is becoming the standard framework for metric collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch03.html#idm45358832286384-marker)) In 2018, a power loss incident in
+    AWS US-East-1 caused many Amazon service disruptions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([4](ch03.html#idm45358832279664-marker)) Kubernetes may move containers to
+    achieve a higher deployment density, but also be instructed to move interacting
+    applications on the same node to reduce the response time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([5](ch03.html#idm45358832272336-marker)) See [“Distributed Consensus Revised”](https://oreil.ly/qRVeD)
+    by Heidi Howard for a discussion on the problem of consensus in modern distributed
+    system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([6](ch03.html#idm45358832270720-marker)) [“Perspectives on the CAP Theorem”](https://oreil.ly/p33qM)
+    by Seth Gilbert and Nancy A. Lynch explains the technical implications of the
+    CAP theorem in *future* distributed systems.
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,1113 @@
+- en: 'Chapter 11\. The Event Bus: The Backbone'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 10](ch10.html#messaging), we discussed Reactive Messaging and utilizing
+    its annotations to produce, consume, and process messages, as well as to bridge
+    imperative and reactive programming. This chapter dives deeper into the backbone
+    of a reactive system built with Reactive Messaging, focusing on Apache Kafka and
+    Advanced Message Queuing Protocol (AMQP).^([1](ch11.html#idm45358818317616))
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Kafka or AMQP: Picking the Right Tool'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Plenty of messaging solutions let you implement event-driven architecture, event
+    streaming, and reactive systems in general. Recently, Apache Kafka became a prominent
+    player in this space. AMQP is another approach for messaging that should not be
+    immediately ruled out. Both have pros and cons. Your choice depends entirely on
+    your use cases, and to a lesser extent the existing skills and experience of a
+    team.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rather than favoring one event bus over another, this section details the characteristics
+    and behaviors of each, along with their relative strengths and weaknesses. We
+    want to provide you sufficient information about each system, enabling you to
+    determine how they may fit into the use cases for a particular system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At a high level, Kafka can be described as smart consumers with a dumb broker,
+    while AMQP has a smart broker but dumb consumers. Sometimes the choice comes down
+    to the amount of flexibility needed when implementing a solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sure it’s cliché, but there really is no one-size-fits-all event bus. Each situation
+    has specific requirements and use cases to be fulfilled, requiring careful evaluation
+    of the pros and cons of each. Note that other messaging solutions might be better
+    for your use case, such as the [Solace PubSub+ Platform](https://solace.com),
+    [Microsoft Azure Event Hubs](https://oreil.ly/eXz0E), [RabbitMQ](https://rabbitmq.com),
+    or [NATS](https://nats.io).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building Reactive Systems with Kafka
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Since 2011, when Apache Kafka was open sourced by LinkedIn, it has skyrocketed
+    to becoming one of the most prominent actors in the event-driven space. Fueled
+    by the rise of microservices, serverless architecture, and distributed systems
+    in general, Kafka is a popular choice for developers needing a messaging backbone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While [Chapter 10](ch10.html#messaging) already gave examples of using Kafka,
+    we didn’t explain the important details of how it works underneath, which are
+    necessary to understand it well. This chapter dives a bit deeper and explains
+    how to use Kafka as the connective tissue in a reactive system. We don’t intend
+    to cover Kafka in full detail, but enough to appreciate how Kafka operates to
+    effectively develop a reactive system. First off, we need to cover the basics
+    of Kafka.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Apache Kafka
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Kafka is a powerful distributed commit log, and if you’re a developer, you’re
+    probably familiar with another distributed commit log, Git! When communicating
+    with Kafka, we use a *record*, or event, as the piece of information we want written
+    to the log, and which we then read from the log later. The log contains a *topic*
+    for each record grouping we want to track ([Figure 11-1](#image:kafka-topic)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Kafka topic](assets/rsij_1101.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-1\. Kafka topic
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'A record can hold only four pieces of information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Key
+  prefs: []
+  type: TYPE_NORMAL
+- en: Assigned by Kafka when writing a record into the log, but can also be used in
+    partitioning, which we cover later
+  prefs: []
+  type: TYPE_NORMAL
+- en: Value
+  prefs: []
+  type: TYPE_NORMAL
+- en: The actual value, or payload, we want to be stored in the log for retrieval
+    by consumers
+  prefs: []
+  type: TYPE_NORMAL
+- en: Timestamp
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optionally set when we create the record, or set by Kafka when the record is
+    written to the log
+  prefs: []
+  type: TYPE_NORMAL
+- en: Headers
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optional metadata about the record to provide extra information to Kafka, or
+    for downstream consumers to utilize
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 11-2](#image:log-produce-consume) outlines the process of interacting
+    with the log.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Producing and consuming records](assets/rsij_1102.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-2\. Producing and consuming records
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: With a record created, we write it to the log in Kafka with a producer. We can
+    have one or many producer instances writing the same type of record to the log,
+    because the way we write records to the log is decoupled from the way they’re
+    consumed. Once a record is written to the log, we use a consumer to read the record
+    from the log and perform whatever processing is needed with it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When writing records to the log, a producer always appends. A producer cannot
+    insert or delete records. An append-only approach means Kafka can offer high scalability
+    for writes. Because there is no contention or locking for existing records, every
+    write is a new record.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Separation of producers and consumers is a key concept with Kafka. This decoupling
+    of time between when records are written to the log and consumed from it is key
+    for reactive systems. Granted, this is 100% achievable only when the log retention
+    policies are sufficiently long enough to prevent any produced records from being
+    removed before they’re consumed! We don’t want to log all the records and have
+    them deleted by Kafka before we consume them years later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Chapter 10](ch10.html#messaging), you saw how to produce messages with `@Outgoing`.
+    Let’s modify that example slightly to also set a key for the record, as shown
+    in [Example 11-1](#data::config-outgoing-meta).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-1\. Configure the Kafka outgoing metadata
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here we have a key to indicate whether the person is part of the *light* or
+    *dark* side of the force. To switch to producing the message to Kafka, we need
+    to make two changes. First, modify *pom.xml* to include the SmallRye Reactive
+    Messaging for Kafka dependency ([Example 11-2](#data:connector-dependency)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-2\. Kafka connector dependency (*/Users/clement/Documents/book/code-repository/chapter-11/processor/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Lastly, configure the dependency, as shown in [Example 11-3](#data::config-dependency).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-3\. Configure the Kafka connector to write records (*chapter-11/processor/src/main/resources/application.properties*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The configuration indicates the connector we’re using, `smallrye-kafka`, the
+    name of the topic the channel should be writing to, and the serializer for converting
+    the payload content. If the topic being written to matches the name of the channel,
+    we would not need the `topic` configuration, as the channel name is the default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the consuming side, we can read the key with [Example 11-4](#data::extract-metadata).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-4\. Extract the incoming Kafka metadata
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: We also need similar configuration as outgoing for us to use Kafka; see [Example 11-5](#data::config-poll-records).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-5\. Configure the Kafka connector to poll records (*chapter-11/processor/src/main/resources/application.properties*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: So far, we’ve been generically referring to write records to and consume records
+    from a log. As you have seen in [Figure 11-1](#image:kafka-topic), a *topic* is
+    a log, a means of organizing and durably storing records. This log is for a specific
+    type of record, or group of records, enabling us to customize the behavior specifically
+    to the needs of those records. For instance, if the records are of extremely high
+    volume and not meaningful to the application for longer than a week, we could
+    change the retention policy for one topic to retain records for only that period
+    of time, even if they haven’t been consumed. We could also have another topic
+    that has records retained for six months or even indefinitely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also in [Figure 11-1](#image:kafka-topic) you can see each record as a box with
+    a number; this represents the *offset*, or index, of where a record is written
+    in a topic. In this instance, six records have already been written, and a producer
+    is about to write the seventh, which is offset 6. We also see a consumer reading
+    the record at offset 0, the first record in the topic. Though the default is for
+    a new consumer to begin reading records from the first offset, we could decide
+    to start at any offset we wanted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another way to consider a topic is as a virtual address representing an external
+    destination. When a producer writes a record to a topic, it has no knowledge of
+    when, if, or even where the record will be read by a consumer. Use of a virtual
+    address, or topic, provides the means of decoupling our reactive system components
+    from one another in space and time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A consumer can be combined with others to form a *consumer group*. Any consumer
+    created with the same consumer group name, or identifier, will be placed in the
+    same consumer group. When creating a consumer without setting a consumer group
+    identifier, we end up with a consumer group containing a single consumer by default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, what we’ve described implies a topic with a single log of records. A
+    *partition* is how we improve the problems associated with a single-log approach.
+    Partitions are useful for improving the read and write performance of a topic,
+    as we split a single topic into multiple partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of a single partition with a single consumer, we could have three partitions
+    with a separate consumer reading records from each of them. Looking at this situation
+    unscientifically, we could expect there to be three times the amount of throughput
+    with three partitions and three consumers, as opposed to a single partition and
+    consumer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though we mentioned three consumers for three partitions, in [Figure 11-3](#image:kafka-topic-partitions)
+    we have two consumers within a single consumer group. One consumer is assigned
+    to read records from two partitions, to ensure that all partitions have consumers.
+    We’ve now improved our throughput by partitioning the topic, enabling multiple
+    consumers to consume records.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Topic partitions](assets/rsij_1103.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-3\. Topic partitions
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In the situation shown in [Figure 11-3](#image:kafka-topic-partitions), a producer
+    can write a record to the topic, leaving the broker to decide which partition
+    the record is actually written to. Alternatively, the producer can explicitly
+    define the partition that a record should be written to. If records have a key
+    unique to the record’s contents, such as username for a `Person` record, it can
+    be efficient to determine the appropriate partition with the Kafka key-hashing
+    algorithm. It will ensure that all records with an identical key are written to
+    the same partition. We need to be careful, though, to ensure that any key is reasonably
+    distributed. Otherwise, we risk creating a *hot partition* (for example, partitioning
+    by country may see trillions of records placed in a USA partition, but only a
+    few thousand records in the Andorra partition).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Right now we have an issue with resiliency because all our partitions are on
+    the same broker instance. In [Figure 11-4](#image:kafka-topic-partition-replication),
+    we’ve replicated the topic across three partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Topic partition replication](assets/rsij_1104.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-4\. Topic partition replication
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: To support resiliency and ensure that consumers don’t read the same record in
+    a partition from different brokers, a *leader partition* is elected for consumers
+    to read from. Partition 0 in the first broker, Partition 1 in the second, and
+    Partition 2 in the third broker are the leader partitions in this example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the design we have in [Figure 11-4](#image:kafka-topic-partition-replication),
+    Kafka ensures that our consumers cannot read a record from a partition before
+    it has been successfully replicated. It does this by tracking the *high watermark
+    offset*, the offset of the last message successfully replicated across all partitions.
+    The broker prevents consumers from reading beyond the high watermark offset, stopping
+    unreplicated records from being read.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Point-to-Point Communication
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Kafka is not a traditional messaging system. It can be confusing to implement
+    the standard delivery patterns with it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With *point-to-point communication*, we want the same message to be consumed
+    once, by the same consumer or by any other consumer within the same consumer group.
+    Note that when facing network failures, you cannot guarantee that records are
+    consumed only once per consumer group. You need to be prepared to see duplicated
+    messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use *consumer groups* to scale a consumer in Kafka to perform identical processing
+    with greater throughput. In [Figure 11-5](#image:kafka-topic-consumer-groups),
+    only one consumer within the group is able to read records from a single topic
+    partition, conforming to the needs of point-to-point communication. Here we see
+    Consumer 2 unable to read records because it’s part of the same consumer group
+    as Consumer 1, effectively making Consumer 2 idle, as we have only one partition
+    in this situation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Consumer groups](assets/rsij_1105.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-5\. Consumer groups
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Why can’t we have two consumers in the same group reading from the same partition?
+    Kafka tracks the last committed offset per partition for a given consumer group
+    and uses the offset for restarting processing. However, consumers don’t commit
+    the offset until they’ve completely finished processing a record. This creates
+    a window where multiple consumers in the same group could read the same record,
+    thus duplicating the processing of a message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a new consumer subscribes to a consumer group, and Kafka does not know
+    the last committed offset for the partition, there are two strategies. The strategies
+    are *Earliest*, where the consumer starts reading events from the first offset
+    of the partition, and *Latest*, which consumes only events received after the
+    consumer subscribed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Publish/Subscribe
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Point-to-point ensures that messages are consumed once. Another popular pattern
+    dispatches a message to multiple consumers. With a *publish/subscribe* model,
+    we can have many subscribers, or consumers, reading the same message, usually
+    for different purposes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 11-6](#image:kafka-topic-multiple-consumer-groups) has two consumer
+    groups consuming messages from the same topic. One consumer group has three consumers,
+    while the other has two consumers. We see each partition being read by only a
+    single consumer from the same consumer group, but multiple consumers across consumer
+    groups. Though the two consumer groups are connected to the same topic and its
+    partitions, there is no requirement for each consumer to be at the same offset.
+    Such a requirement would remove the benefits of being able to consume records
+    with different groups.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Multiple consumer groups](assets/rsij_1106.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-6\. Multiple consumer groups
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Elasticity Patterns
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Elasticity* is one of the pillars of reactive systems. The partition mechanism
+    offered by Kafka lets us implement elasticity patterns. [Figure 11-6](#image:kafka-topic-multiple-consumer-groups)
+    also highlights the elasticity patterns of consumer groups in Kafka. Consumer
+    group 1 has three consumers, each consuming from a different partition. If a consumer
+    fails for any reason, another consumer takes up the load of reading from the partition
+    that is now without a consumer. Consumer elasticity ensures that all partitions
+    are being consumed as long as at least one consumer is present. Granted, such
+    an occurrence does reduce the throughput, but it is preferable over no records
+    being consumed. Consumer group 2 could represent such an occurrence.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consumer group elasticity is limited, though. As we mentioned earlier, it is
+    not possible for multiple consumers within the same group to read from the same
+    partition. In [Figure 11-6](#image:kafka-topic-multiple-consumer-groups), with
+    three partitions we’re limited to three consumers within a single consumer group.
+    Any additional consumers in the same group would be idle, as we cannot have multiple
+    consumers in the same group connected to the same partition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Elasticity is a key factor to consider when determining the number of partitions
+    we want for a topic. With too few, we limit the throughput for processing records,
+    while too many can lead to idle consumers if the records are not distributed across
+    the partitions sufficiently evenly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dealing with Failures
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Failures happen! It’s the nature of distributed systems, and not one we can
+    avoid even when developing reactive systems. However, Kafka provides us with mechanisms
+    for appropriately dealing with failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Commit strategies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Each consumer periodically informs the broker of its latest *offset commit*.
+    The number represents the last message that was successfully processed from a
+    topic partition by the consumer. The offset commit then becomes the starting point
+    for the new consumer of the partition when the current consumer fails or crashes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Committing an offset is not a cheap operation. For performance reasons, we
+    recommend not committing the offset after every record processed. Quarkus provides
+    a few options for commit strategies to use with Kafka:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Throttled
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ignore
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Latest
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The *Throttled* strategy, the default option, tracks the received records for
+    a consumer and monitors their acknowledgment. When all records before a position
+    are successfully processed, that position is committed to the broker as the new
+    offset for that consumer group. If any record is neither acked nor nacked, it’s
+    no longer possible to commit a new offset position, and records will be continually
+    enqueued. Without the ability to bail out, it would lead to out-of-memory errors
+    eventually. The Throttled strategy can detect this problem by reporting a failure
+    to the connector, enabling the application to be marked as unhealthy. Note that
+    this situation is often an application bug causing a message to be “forgotten.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: The *Ignore* strategy utilizes the default offset commit of the Kafka consumer,
+    which occurs periodically when polling for new records. This strategy ignores
+    message acknowledgment and relies on record processing to be synchronous. This
+    strategy is the default when `enabled.auto.commit=true` is used. Any asynchronous
+    processing that fails will be unknown to the process that is polling for new records
+    to consume.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we’ve set `commit-strategy` to `ignore` and `enable.auto.commit` to `false`,
+    as shown in [Example 11-6](#ebus::config-commit-strat), no offset is ever committed.
+    Every time a new consumer starts reading messages from a topic, it will always
+    start from offset 0. In some situations, this approach is desired, but it needs
+    to be a conscious choice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-6\. Configure the commit strategy
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Latest* will commit the offset after every message is acknowledged, which
+    as we described earlier will impact performance of the consumer. In lower-throughput
+    scenarios, this strategy may be preferable to have a higher confidence that the
+    offset is accurate.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgment strategies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In [“Acknowledgments”](ch10.html#acknowledgements_aspect), you learned how Reactive
+    Messaging utilizes `ack` and `nack` to inform the upstream reactive streams of
+    the record-processing status. These acknowledgment methods are part of the failure-handling
+    strategies we have available for Kafka. The application configures the Kafka connector
+    with one of these strategies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The simplest, and default, strategy is *Fail Fast*. When an application rejects
+    a message, the connector is notified of the failure, and the application is stopped.
+    If the failure is transient in origin, such as network issues, restarting the
+    application should allow processing to continue without an issue. However, if
+    a particular record causes a consumer failure, the application will be in a perpetual
+    loop of failure → stop → restart, as it will be continually trying to process
+    the record causing a failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another simple strategy is *Ignore*. Any nacked message is logged and then ignored
+    as the consumer continues processing new records. The Ignore strategy is beneficial
+    when our application handles any failure internally, and we thus don’t need to
+    inform the message producer of a failure, or when an ignored message occasionally
+    is acceptable because of the type of messages being processed. If, on the other
+    hand, large numbers of messages are being ignored, it is worth investigating the
+    root cause as it’s likely not an intended consequence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last strategy for failure handling is *Dead-Letter Queue*. It sends the
+    failing records to a specific topic to be handled later either automatically or
+    manually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dead-letter queue
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This strategy has been a part of messaging systems for as long as messaging
+    systems have existed! Instead of failing straight away, or ignoring any failures,
+    this strategy stores the messages that fail to a separate destination, or topic.
+    Storing the failed messages enables an administration process, human or automated,
+    to determine the correct cause of action to resolve the failed handling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s important to note that the use of the Dead-Letter Queue strategy will work
+    only when ordering of all messages is unnecessary, as we don’t stop processing
+    new messages waiting for a message failure to be resolved off the dead-letter
+    queue (DLQ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When choosing this strategy, the default topic is named `dead-letter-topic-*[topic-name]*`.
+    For our previous examples, it would be `dead-letter-topic-my-channel`. It is possible
+    to configure the topic name as shown in [Example 11-7](#ebus::config-fail-strat-dlq).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-7\. Configure the failure strategy to use a DLQ
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can even retrieve the failure reason associated with the message from the
+    `dead-letter-reason` header ([Example 11-8](#ebus::retr-fail-reason)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-8\. Retrieve the failure reason
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Don’t forget that using a DLQ requires having another application or a human
+    operator to process the records sent to the DLQ. The records may be reintroduced
+    in the initial topic (but the order is lost) or dropped, or a mitigation logic
+    would need to happen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Backpressure and Performance Considerations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There is no way to have a truly reactive system without appropriate backpressure
+    to avoid overloading components. So how do we handle backpressure for Kafka?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The outbound connector for Kafka, used with `@Outgoing` or `Emitter`, uses the
+    number of in-flight messages waiting for acknowledgment from the broker. *In-flight
+    messages* are those the connector has sent to a Kafka broker for writing to a
+    topic, but for which the connector has not received acknowledgment that the record
+    was successfully stored.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We tweak the number of in-flight messages to adjust the backpressure of the
+    outbound Kafka connector. The default number of in-flight messages is 1,024. Too
+    high a number can lead to higher memory use, potentially out-of-memory errors
+    depending on the payload size, while too few causes a reduction in throughput.
+    We can customize the number of in-flight messages in the connector with the property
+    `max-inflight-messages`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the side of the consumer, Kafka will pause the consumer and then resume it,
+    according to the Reactive Streams requests. We’ve talked a lot about Kafka, so
+    in the next section we explore it in Kubernetes!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kafka on Kubernetes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To use Kafka on Kubernetes, we need Kafka installed. We will use the [Strimzi](https://strimzi.io)
+    project for installing Kafka. This project has an operator for managing Kafka
+    deployments in Kubernetes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before setting up Kafka in Kubernetes, we need a Kubernetes environment. If
+    you already have one, great! If you don’t, we recommend you use minikube, as covered
+    in [“The New Kids on the Block: Cloud Native and Kubernetes Native Applications”](ch03.html#distributed-system::cloud-native-kube).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Running Kafka in minikube can require more memory than usual deployments, so
+    we recommend starting it with at least 4 GB of RAM:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: With a Kubernetes environment running, we need to install Strimzi, as shown
+    in [Example 11-9](#ebus::install-strimzi). Be sure to have [Helm](https://helm.sh)
+    installed, as we will use it to install Strimzi.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-9\. Install Strimzi
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_event_bus__the_backbone_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a `strimzi` namespace for the Kubernetes operator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_event_bus__the_backbone_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Namespace for the Kafka cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_the_event_bus__the_backbone_CO1-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add the Strimzi chart repository to Helm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![4](assets/4.png)](#co_the_event_bus__the_backbone_CO1-4)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Install the Strimzi operator into the `strimzi` namespace.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the installation has succeeded, verify that the operator is running (as
+    illustrated in [Example 11-10](#ebus::strimzi-op-status)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-10\. Strimzi operator status
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now it’s time to create the Kafka cluster! First we need to define the cluster
+    we want to create, as shown in [Example 11-11](#bus::kafka-cluster).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-11\. Kafka cluster definition
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_the_event_bus__the_backbone_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Name of the cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_the_event_bus__the_backbone_CO2-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Number of Kafka replicas to create in the cluster. In production, we would want
+    more than one, but for testing this reduces the memory requirements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_the_event_bus__the_backbone_CO2-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We choose ephemeral storage, again to reduce the requirements from a testing
+    perspective.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we use [Example 11-11](#bus::kafka-cluster) to create a Kafka cluster matching
+    the requested definition, as shown in [Example 11-12](#ebus::create-kafka-clust).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-12\. Create a Kafka cluster
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Verify that the cluster we wanted was created ([Example 11-13](#ebus:kafka-cluster-stat)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-13\. Kafka cluster status
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: With the cluster running, we create the Kafka topics we need ([Example 11-14](#ebus::create-kafka-topics)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-14\. Create Kafka topics
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To show you how Kafka works with Kubernetes, we will use an example that consists
+    of three services: produce a *tick* every two seconds, receive the message and
+    add details of the consumer processing it, and expose all messages via SSE. These
+    three services will be used to showcase consumer handling with Kafka. Follow the
+    instructions in */chapter-11/README.md* under *Application deployment* for building
+    the required Docker images and installing the services with Helm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the services are running, it’s time to test it! Open the SSE endpoint in
+    a browser, and you will see data similar to [Example 11-15](#ebus::sse-output-1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example 11-15\. SSE output: all the messages are consumed by the same pod'
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can see all the ticks consumed by a single consumer, even though we have
+    three partitions for our topic. Let’s scale up `processor` to add more consumers
+    to the same group ([Example 11-16](#ebus:inc-app-instances)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-16\. Increase the number of application instances
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the browser, we now see the messages processed by three consumers of the
+    same group, increasing throughput and concurrency ([Example 11-17](#ebus::sse-output-2)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example 11-17\. SSE output: the messages are consumed by the three pods'
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we started another `processor` instance but without `mp.messaging.incoming.ticks.group.
+    id=tick-consumer` set, we would see the duplication of message numbers from the
+    new consumer, as they have their own consumer group and offset position.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building Reactive Systems with AMQP
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '*Advanced Message Queuing Protocol*, or *AMQP*, is an application layer protocol
+    for message-oriented middleware that has been around since 2002. The AMQP Broker
+    is a highly advanced message broker with a tremendous amount of flexibility and
+    customization dependent on application requirements.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We don’t cover all the possible uses of the AMQP Broker here. With a huge array
+    of possible broker topologies to support many varied use cases, there is simply
+    too much information to even attempt to squeeze it all into this section! [Robert
+    Godfrey on InfoQ](https://oreil.ly/xC0ar) presents the AMQP 1.0 core features
+    and introduces some possibilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlike Kafka, all the *smarts* are inside the AMQP Broker, which knows about
+    topologies, clients, message statuses, what is delivered, and what is yet to be
+    delivered.
+  prefs: []
+  type: TYPE_NORMAL
+- en: AMQP 1.0
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*AMQP 1.0* is an open standard for passing business messages among applications
+    or organizations. It consists of several layers, the lowest of which is a binary
+    wire-level protocol for transferring a message between two processes. On top of
+    the wire-level protocol is the messaging layer, which defines an abstract message
+    format and encoding. The wire-level protocol is what enables many clients of different
+    types to be able to send and receive messages with the AMQP Broker, as long as
+    they support the same 1.0 version of the AMQP specification.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Utilizing the AMQP 1.0 connector in Quarkus requires the dependency in [Example 11-18](#bus::amqp-dep).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-18\. Dependency for the AMQP connector
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Point-to-Point Communication
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With AMQP, point-to-point communication is achieved with a *queue* and not a
+    *topic*. In AMQP-speak a queue is referred to as *anycast*, meaning any consumer
+    can read the message, but only one of them ([Figure 11-7](#image:amqp-queue)).
+    Messages we add to a queue can be durable, as with Kafka, but they can also be
+    nondurable. When a message is nondurable, it will be lost if the broker restarts
+    before the message is consumed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![AMQP queue consumers](assets/rsij_1107.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-7\. AMQP queue consumers
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: A key difference between Kafka and AMQP for point-to-point is that once a message
+    is read by a consumer in AMQP, the message is removed from the queue and not retained
+    in any way. AMQP temporarily stores messages until they’ve been consumed, whereas
+    Kafka retains all messages in the log, at least until the log-retention policy
+    begins removing older ones. This makes AMQP unsuitable for use cases that could
+    require a replay of messages within the reactive system at some point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can also have many consumers reading messages from the same queue, but the
+    broker ensures that only one of them ever reads a single message. AMQP does not
+    have the same throughput restrictions as Kafka with respect to scaling consumers.
+    We can have dozens of consumers reading from a single queue with AMQP, provided
+    order is not important.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s send a message to AMQP! After adding the dependency we mentioned earlier
+    ([Example 11-18](#bus::amqp-dep)), we need to configure the broker properties
+    as shown in [Example 11-19](#ebus::config-amqp-broker), so the connector knows
+    the location of the AMQP Broker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-19\. Configure the AMQP Broker location and credentials
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: We’ve set the AMQP Broker configuration for host, port, username, and password
+    globally, meaning any channel we define will use the identical AMQP Broker configuration.
+    If desired, the configuration can be set on a per-channel basis. We’ve also indicated
+    to use the `smallrye-amqp` connector for the `data` outgoing channel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By default, the channel uses durable messages for the queue, or we make them
+    nondurable with `mp.messaging.outgoing.data.durable=false`. We can also override
+    the message durability directly when sending the message, as shown in [Example 11-20](#ebus::use-outgoing-meta).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-20\. Use outgoing metadata to send durable messages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can then consume the message similarly to Kafka, but using the AMQP metadata
+    object to retrieve more detailed information about the message ([Example 11-21](#ebus:extract-amqp-meta)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-21\. Extract AMQP metadata from incoming messages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Successful receipt and processing of a message results in the connector notifying
+    the broker with an `accepted` acknowledgment. On receiving this acknowledgment,
+    the broker will delete the message from the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Publish/Subscribe
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: AMQP also supports a publish/subscribe model, similarly to Kafka, allowing many
+    subscribers for a single queue to read messages. In AMQP, a queue can be of type
+    *multicast* (the opposite of *unicast*) to indicate that many consumers can receive
+    the same message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 11-8](#image:amqp-topics) has three consumers of a multicast queue
+    reading messages, and we see how far through the messages each of the consumers
+    has gotten. As with unicast queues, the messages are durable by default but can
+    also be made nondurable if desired.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![AMQP multicast queue consumers](assets/rsij_1108.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-8\. AMQP multicast queue consumers
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The code for sending and receiving messages from a multicast queue is identical
+    to the code we used for point-to-point in [“Point-to-Point Communication”](#amqp-ptp).
+    The *address* defaults to the channel name; it can be customized in configuration
+    of the channel or set directly on the metadata of the message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Elasticity Patterns
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The elasticity patterns for AMQP with point-to-point communication are a little
+    different. With Kafka, we can have only one consumer reading from a single partition.
+    With AMQP, we can have as many consumers as we want reading from the same queue,
+    given the order in which the messages are processed is not important.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Granted, we may not want a lot of consumers reading the queue from the same
+    broker node, but we are able to cluster the brokers to spread the load across
+    them. With a cluster of brokers, the broker is smart enough to shift messages
+    from one broker to another if it notices the consumers of a queue on that broker
+    are underutilized compared to other brokers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgment and Redelivery
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When we send a message to an AMQP Broker, it is acknowledged if the broker successfully
+    committed the message. However, this will not be the case when routers are utilized
+    between the producer and a broker. In this situation, it is recommended to set
+    `auto-acknowledgement` to `true` to ensure that the producer receives acknowledgment
+    when the message is sent to the router. Any response from the broker of `rejected`,
+    `released`, or `modified` results in the message being nacked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The consumption side has a few more possibilities for acknowledgment. We can
+    `fail` the message, causing the application to enter a failed state and process
+    no further messages. The message being processed resulting in the failure is marked
+    as `rejected` with the broker. This is the default behavior for the AMQP connector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Accept, Release, and Reject strategies all result in the failure being logged,
+    and the application to continue processing additional messages. The only difference
+    between them is in the way the AMQP messages are designated on the broker. The
+    Accept strategy marks the message as `accepted`, the Release one marks it as `released`,
+    and, finally, the Reject one marks it as `rejected`. When we want to continue
+    processing messages on failure, which of the three options you set depends on
+    how you want the AMQP Broker to handle the message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What about redelivery? If we mark the AMQP message as `released`, the broker
+    can redeliver the message, to the same or different consumer, at a later time.
+    When setting a message as `modified`, we have two available strategies. Using
+    the `modified-failed` strategy sets a `delivery-failed` attribute on the message,
+    enabling the broker to attempt redelivery of the message while processing continues
+    with the next message. However, using the `modified-failed-undeliverable-here`
+    strategy also sets the `delivery-failed` attribute, and while the broker can attempt
+    redelivery of the message, it won’t do so with this consumer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If at any point the consumer loses the session with a broker, any in-progress
+    work will be rolled back. This allows for other consumers, or restarting of the
+    current consumer, to accept redelivery of any messages that were in-flight at
+    the time the session with the broker was severed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Credit-Flow Backpressure Protocol
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: AMQP enables backpressure in producers with a credit system. Producers are able
+    to send messages to a broker only as long as they have credits available, preventing
+    producers from overloading the broker with too many messages in a small amount
+    of time. The credits represent the number of bytes a producer can send. For example,
+    if we had 1,000 credits, representing 1,000 bytes, a producer would be able to
+    send 1 message of 1,000 bytes or 10 messages of 100 bytes before the credits expired.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a producer has spent all its credits, it waits in a nonblocking manner
+    until additional credits are granted from the broker. The default is to request
+    additional credits every 2,000 ms, but this setting can be configured with the
+    `credit-retrieval-period` configuration property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When running out of credit, the connector marks the application as `not ready`.
+    This information is then reported to the application health check. If you deploy
+    the application to Kubernetes, the readiness health check will fail, and Kubernetes
+    will stop sending traffic to the pod until it becomes ready again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: AMQP on Kubernetes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Setting up a production-ready AMQP Broker on Kubernetes is not a straightforward
+    task, so we’re opting to use a single Docker image to keep it simple. With a Kubernetes
+    environment running, run an AMQP Broker container, as shown in [Example 11-22](#bus::amqp-broker).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-22\. Start AMQP Broker container
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we start an AMQP Broker in a Kubernetes pod, but we need to expose the
+    broker as a service to make it accessible to the services, as shown in [Example 11-23](#ebus::expose-broker).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-23\. Expose AMQP Broker service port
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: To be able to use AMQP, we need to switch our code to utilize a different dependency
+    and configuration, but the bulk of the services remain unchanged. For each service,
+    comment out the `quarkus-smallrye-reactive-messaging-kafka` dependency and uncomment
+    the `quarkus-smallrye-reactive-messaging-amqp` dependency in each *pom.xml*. In
+    the *application.properties* file for each service, comment out the `smallrye-kafka`
+    connector configuration and uncomment the `smallrye-amqp` connector. Don’t forget
+    to change both connectors in the `processor` service! Be sure to run `mvn clean
+    package` on all the services after making these changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All the AMQP Broker configuration is present in the Helm charts, with the actual
+    values in *values.yaml*. Follow the instructions in */chapter-11/README.md* under
+    *Application deployment* for building the required Docker images and installing
+    the services. They are the same steps we used for Kafka earlier in the chapter.
+    Once the services are running, it’s time to test it! Open the SSE endpoint in
+    a browser to see data as we did with Kafka ([Example 11-24](#ebus::sse-output-3)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example 11-24\. SSE output: all the messages are consumed by a single pod'
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let’s scale up `processor` to add more consumers, as shown in [Example 11-25](#ebus::increase-pods).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 11-25\. Increase the number of application instances (pods)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Scaling with AMQP has a different outcome from that of scaling with Kafka; see
+    [Example 11-26](#ebus::sse-output-4).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example 11-26\. SSE output: the messages are consumed by the three pods'
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: We’re now seeing the same message consumed by all three producers, instead of
+    a message consumed once!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter went deeper into understanding the event bus when we use AMQP or
+    Kafka with Reactive Messaging. If we don’t need metadata classes for specific
+    Kafka or AMQP behavior, we can easily switch between the two with a dependency
+    change and modifying configuration. We covered how each of the event bus options
+    support point-to-point communication, publish/subscribe, acknowledgments, failure
+    handling, and backpressure. These are all key concepts in understanding the totality
+    of a reactive system and its components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kafka is the current popular choice for many event-driven reactive systems.
+    Kafka can handle a massive number of messages and makes ordering an essential
+    characteristic. AMQP does have a lot more flexibility than Kafka in the way it
+    can be configured and customized. It also has higher elasticity in point-to-point
+    scenarios, as the limit is not constrained by the number of partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we discuss using an HTTP client with Java interfaces representing
+    an external service, as well as how to use the lower-level web client and why
+    that’s still useful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch11.html#idm45358818317616-marker)) Throughout this chapter, we will
+    be talking about AMQP 1.0.
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,1486 @@
+- en: Chapter 2\. Introduction to Quarkus
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Before continuing with understanding Reactive, let’s take a few moments to learn
+    more about Quarkus. So what is Quarkus?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Quarkus* is a Kubernetes-native Java stack. It has been tailored for Kubernetes,
+    containers, and the cloud, but works perfectly well on bare metal and virtual
+    machines.^([1](ch02.html#idm45358839670352)) Quarkus applications require less
+    memory and start faster than applications using traditional frameworks. They also
+    have the capability to be compiled into native executables, which make them consume
+    even less memory and start instantly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One exciting, and central, aspect of Quarkus is the reactive engine. When running
+    in containers or virtualized environments, a reactive engine is essential to reducing
+    memory and CPU consumption. The engine makes any Quarkus application efficient
+    while also enabling the creation of reactive applications and systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, you will see the main characteristics of Quarkus and learn
+    to create an application, deploy it to Kubernetes, and create native builds. In
+    [Chapter 6](ch06.html#quarkus-reactive), we cover the reactive engine in detail
+    and show how to develop on Quarkus with a unified reactive and imperative programming
+    model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java on the Cloud
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java is now 25 years old! That’s hard to imagine sometimes. From the era of
+    three-tier and client/server architecture, Java has evolved with many changes
+    in architecture over the years. However, when a language is 25 years old, there
+    will be pieces lingering that may not be suited to modern development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What do we mean by that? When the initial versions of Java came out, *clouds*,
+    *containers*, *microservices*, *serverless*, and any other term associated with
+    computing today had not been imagined yet. There is no way we can expect the Java
+    language created in the era of three-tier and client/server architecture to perform
+    as we need in containers today.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yes, many advancements have occurred over the years in Java, especially over
+    the last couple of years with a new and faster release cadence. At the same time,
+    Java prides itself on not breaking backward compatibility for developers and users.
+    A large cost of that approach is that Java still retains pieces that were conceived
+    without the benefits and knowledge of containers and what they provide.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For many applications, Java will continue to work fine, and as is, for many
+    more years to come. However, over the last few years, with the explosion of microservices,
+    and most recently the evolution to serverless, Java does not fit these deployment
+    models naturally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only a few years ago, Java’s lack of suitability in containers became apparent
+    for all as we found out [Java ignored cgroups](https://oreil.ly/Mbux3). For containers,
+    this created a huge problem. Java, unable to see the amount of memory allocated
+    to a container, could only see the memory of the entire physical machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In an environment where each container needs to work within a constrained amount
+    of memory, Java didn’t *play nice*. Java was greedy. In addition, Java would create
+    application threads based on the number of CPU cores. This caused many more threads
+    to be allocated in a memory- and CPU-constrained container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Is it a big deal? You might get lucky with your Java applications deployed in
+    containers, if deploying to a Kubernetes node with other containers staying well
+    within their memory limits. Then one day there’s a load spike, along with a spike
+    in the memory consumed by the Java Virtual Machine (JVM), and then *boom*! Kubernetes
+    kills the container for using too much memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This specific problem with Java and cgroups has been fixed since Java 10, and
+    since Java Development Kit (JDK) 8u131 options are available for enabling the
+    same behavior. Check out the [“Java Inside Docker” article](https://oreil.ly/L5Yh7)
+    on the Red Hat Developer’s site by Rafael Benevides with all the details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You might be thinking that Java should now be *good* in containers or in the
+    cloud, right? Though this fix is available with an appropriate JDK version, many
+    enterprises are using JDK 8 or older, and quite possibly not using a JDK 8 with
+    the flags available. And Java’s issue in the cloud is more than cgroups alone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Containers not being killed for grabbing more memory than the container expected
+    is great. However, Java in containers raises concerns about the speed with which
+    applications start receiving requests and the amount of memory they consume while
+    running. Neither of these are great for Java applications, compared with other
+    languages running in containers. Maybe startup speed isn’t a concern for many
+    applications running today, but it can impact microservices needing to scale quickly
+    for large traffic spikes, or the cold start time for serverless applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What do we mean by *start receiving requests*? While it’s common for frameworks
+    used in building applications to log their startup time, it refers to the amount
+    of time taken for a *framework* to start. The time does not represent the time
+    taken by an *application* before being able to start receiving requests. This
+    time is a critical indicator with containers and the cloud!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The time to start receiving requests can also be called *time to first request*.
+    Whether a framework can start in half a second doesn’t mean much, if another 2–3
+    seconds passes before any traffic can be received and processed by the application.
+    In such an example, it could be anywhere from 2.5 to 3.5 seconds before a new
+    application instance can begin receiving user requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Granted, time to start receiving requests and memory consumption may not be
+    a concern for a monolithic application with a few hundred, or even thousand, internal
+    users. Monolithic applications can be developed with Quarkus, though the benefits
+    we talk of for Quarkus will not be as prominent when developing monoliths. However,
+    for microservices, and especially serverless, both these factors impact the costs
+    of running a service and the availability to users.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Warning
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Frameworks can often have low startup times by delaying work until receiving
+    the first request. The remainder of any startup tasks are performed before processing
+    the first request. *Lazy initialization* is another name for this behavior, offering
+    a false indication on when an application is really ready. The time to *start
+    receiving requests* is the best measure of application startup time. Having a
+    low *time to first request* is essential in serverless workloads, as well as any
+    kind of mechanism using a *scale-to-zero* approach, where the services are started
+    only when needed. In more common architectures, such fast startup time reduces
+    the recovery time after a crash.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How can we measure startup time? Many approaches are possible, including modification
+    of endpoints to output a timestamp when they’re accessed. To make our lives a
+    bit simpler, we’re going to use a Node.js script developed by John O’Hara from
+    Red Hat.^([2](ch02.html#idm45358839636416)) The script uses the application start
+    command, and the URL to access it, to start the application in another process.
+    The script waits for the URL to return `200`, meaning success, before computing
+    the time to first request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: For ease of use, we included [the contents of the GitHub repository](https://github.com/cescoffier/reactive-systems-in-java)
+    along with the code in the *chapter-2/startup-measurement* directory. Ensure that
+    you have Node.js installed, and run `npm install request` to install the script
+    dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Right now you might be thinking that this discussion about startup speed and
+    memory consumption is a very *hand wavy* topic that’s too subjective. We totally
+    agree, which is why we’re now going to use a traditional Java EE stack, in this
+    case [Thorntail](https://thorntail.io), to illustrate these concepts in practice.
+    We chose Thorntail for the comparison as the first microservice framework from
+    Red Hat, while Quarkus is the latest. Though the Thorntail project is no longer
+    maintained, sadly, the good news is Quarkus incorporates lots of ideas from Thorntail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One last thing before we get coding and running applications. *Memory* can
+    be a somewhat vague term, as there are many types of memory. When we’re talking
+    about memory, we’re referring to [*resident set size* (RSS)](https://oreil.ly/o4TzC),
+    and not the JVM heap size, as heap is only part of the total memory that a Java
+    application consumes. When running an application on the JVM, the total allocated
+    memory can include the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap space
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Class metadata
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Thread stacks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compiled code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Garbage collection
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: RSS represents the amount of memory that a process is occupying from main memory
+    (RAM). RSS includes all the memory that the JVM requires to run an application,
+    providing a more accurate value for the amount of memory actually occupied. As
+    we’re running a single application in a single JVM process, we can easily ensure
+    that we’re not measuring memory consumption of nonapplication processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: All performance numbers are from our MacBook computer. As such, the results
+    you see in this chapter may differ slightly, depending on your particular hardware
+    configuration. If you happen to have an Apple M1, you could see even better results!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Okay, time to run some code and see what we’re talking about with startup speed
+    and memory consumption.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thorntail Example
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We start by creating a *traditional* application with Thorntail to provide a
+    comparison of the memory, or RSS, and time-to-first-request metrics. For anyone
+    not familiar with Thorntail, the project focused on the idea of a customizable
+    [WildFly server](https://wildfly.org). Thorntail takes only the bits you need
+    for a specific application, removing everything else.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Thorntail application requires a [Java API for RESTful Web Services](https://oreil.ly/eYjXF)
+    (JAX-RS) application, and a simple resource endpoint for us to make requests against.
+    The Thorntail example needs a JAX-RS application, and a JAX-RS resource with a
+    single method returning a greeting for an HTTP GET request. All the source code
+    for the Thorntail example can be found in the */chapter-2/thorntail-hello* directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There’s nothing special about the classes. They’re the bare minimum required
+    to provide an HTTP endpoint with JAX-RS to make requests against. Let’s build
+    the Thorntail application and then start it, as shown in [Example 2-1](#thorntail-2-1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-1\. Build and run the Thorntail Hello World application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once the application has started, hit the *[*http://localhost:8080/hello*](http://localhost:8080/hello)*
+    endpoint with `curl` or a browser. After you’ve made a few requests, or more if
+    you prefer, it’s time to take a look at the RSS memory used by the process. Accessing
+    the endpoint before measuring RSS is important because an application may not
+    have loaded all classes during startup, meaning we could see a misleading figure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To be able to find out the memory used, we need the ID of the process the Thorntail
+    application is running in. On Linux-based systems, including Mac, we can use `ps
+    -e | grep thorntail`, which lists all the active processes and restricts the results
+    to those containing `thorntail` in the name. With the process ID in hand, we can
+    now find out how much RSS the process is using (as seen in [Example 2-2](#measure-2-2)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-2\. Measure the RSS usage of the Thorntail application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_to_quarkus_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ps` retrieves the RSS and command, and `awk` converts the RSS value to megabytes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will see something like the preceding terminal output, showing the process
+    ID, RSS converted to megabytes (`M`), and the command. Full details on how to
+    find RSS for a process can be found on the Quarkus website.^([3](ch02.html#idm45358841838240))
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can see that a “Hello World” style application with a single endpoint returning
+    a string uses 441 megabytes (MB). Whoa! That’s a lot of memory for a single JAX-RS
+    endpoint returning a fixed string!
+  prefs: []
+  type: TYPE_NORMAL
+- en: We should caution we’re running these tests on OpenJDK 11 without any customization
+    for limiting the amount of memory the JVM captures, or any other tuning available
+    to the JVM. We can limit what the JVM is able to grab and see how that affects
+    the overall RSS ([Example 2-3](#start-thorntail-2-3)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-3\. Start the Thorntail application to configure the heap size
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now we get the output in [Example 2-4](#measure-rss-2-4).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-4\. Measure the RSS usage
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: That dropped the memory usage down to 265 MB! We saved nearly 200 MB of RSS
+    by limiting the amount of heap the JVM grabbed to 48 MB. Maybe 48 MB isn’t quite
+    the sweet spot in terms of throughput, but that’s something to verify with your
+    own applications, to find the balance between reduced memory consumption and increased
+    throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve shown the RSS usage, and now we need to calculate the time to first request.
+    Ensure that all previous instances of the Thorntail application are stopped before
+    continuing. Let’s check out time to first request, as shown in [Example 2-5](#measure-time-2-5).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-5\. Measure the time to first request of the Thorntail application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: We see a bunch of `404` messages fly past in the console until the application
+    returns a `200` response, and then we see the time taken. In our case, it was
+    6,810 milliseconds (ms)! That’s not exactly fast in the world of microservices
+    and functions. You can run it a few times to see whether the time varies much
+    or not really at all. With a 7-second startup time, scaling microservices can’t
+    meet traffic spikes quick enough, causing user delays and possibly errors. From
+    a serverless perspective, we’re even worse off as we’d expect a serverless function
+    to be started, run, and stopped well before 7 seconds elapsed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The time to first request captured with *time.js* may be fractionally longer
+    than it actually is, as a very small amount of time will be included as the child
+    process spawns but before the JVM starts. We’re not too worried about such a small
+    amount, as the impact applies to each runtime we test in the same manner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, we’ve seen what a traditional application consumes for RSS, and how long
+    it can take to reach time to first request. Now it’s time to see how Quarkus compares.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quarkus Example
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We’re going to create an identical Hello World endpoint, though it doesn’t say
+    “Hello from Thorntail!” With Quarkus, we don’t need the JAX-RS application class;
+    we need only the JAX-RS resource that has the same content as the Thorntail version,
+    except for the message.^([4](ch02.html#idm45358833902576)) The source code for
+    the Quarkus example can be found in the */chapter-2/quarkus-hello* directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [“Create Your First Quarkus Application”](#quarkus::create-first-application),
+    we cover how to create a Quarkus application. Now build and run the Quarkus Hello
+    World application, as shown in [Example 2-6](#build-start-quarkus-2-6).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-6\. Build and start the Quarkus Hello World application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: As with Thorntail, we’re not optimizing the JVM to see what raw RSS usage we
+    see. Hit *[*http://localhost:8080/hello*](http://localhost:8080/hello)* a few
+    times as we did with Thorntail. Hopefully, you’re seeing the message “Hello from
+    Quarkus!” Otherwise, you’re still running the Thorntail application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Go find the process ID for the Quarkus application and check out the RSS ([Example 2-7](#measure-rss-2-7)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-7\. Measure the RSS usage of the Quarkus Hello World application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here we see Quarkus using 133 MB of RSS, over 300 MB less than the 441 MB with
+    Thorntail! That’s an astonishing improvement for what is essentially the same
+    application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we limit the maximum heap size to 48 MB, as we did for Thorntail, how much
+    of an improvement do we get? Review [Example 2-8](#constrain-2-8). Don’t forget
+    to use the endpoint once the application is started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-8\. Constrain the heap usage and measure the RSS usage
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: That got it down to 114 MB, but let’s see how far we can push Quarkus into smaller
+    heap sizes! Refer to [Example 2-9](#constrain-2-9). Once again, don’t forget to
+    use the endpoint once started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-9\. Constrain the heap usage of the Quarkus application even more
+    and measure the RSS usage
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: With a max heap of 24 MB, we’re down to 98 MB of RSS! More importantly, the
+    application still works! See how low you can reduce the maximum heap before Quarkus
+    is unable to start. Although for regular applications, and even microservices,
+    you wouldn’t be setting the maximum heap so low, being able to set it this low
+    is critical for serverless environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Setting the heap size to a very low value may penalize the performance of the
+    application, especially if the application does a lot of allocations. Don’t aim
+    for the smallest value as possible, but verify the value according to your expected
+    performance and deployment density gain. Note that the Quarkus architecture tries
+    to avoid having such a penalty. However, we highly recommend you check with your
+    application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Time for startup speed (see [Example 2-10](#measure-time-2-10)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-10\. Measure the time to first request for the Quarkus application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: If your hardware is similar to ours, you should see a time to first request
+    of around 1,001 ms! That’s nearly seven times faster than the traditional application!
+  prefs: []
+  type: TYPE_NORMAL
+- en: All this is really great, but what’s the point? Recalling our earlier discussion
+    about Java in containers, let’s see the impact when running in containers. Assuming
+    we have a node with 2 GB of RAM available, how many containers of each application
+    can fit? Take a look at [Figure 2-1](#image:java-memory-containers).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Java memory in containers](assets/rsij_0201.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2-1\. Java memory in containers: Quarkus allows increasing the deployment
+    density'
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '*Container density* is a key characteristic of cloud deployments with Kubernetes.
+    Given a specific node size, such as 2 GB of RAM, the more containers that can
+    run in that single node, the greater container density we can provide. Improving
+    container density enables better utilization of the resources available. From
+    the example in [Figure 2-1](#image:java-memory-containers), will more throughput
+    be achieved with 4 instances or 14? If each of the 14 containers supports less
+    throughput, or requests per second, compared with one of the traditional containers,
+    it doesn’t matter. A minor reduction in throughput in a container is more than
+    offset by supporting 14 containers instead of 4.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Container density is an important metric in determining the number of instances
+    that are required. What a developer needs to determine is their expected, or desired,
+    throughput to be supported. Maybe fewer containers with larger memory requirements
+    are fine for today’s needs, but keep in mind that things change, and you could
+    easily need more than four to support your users!
+  prefs: []
+  type: TYPE_NORMAL
+- en: You’ve now seen the amount of RSS memory and time to first request with traditional
+    applications on the JVM, and how Quarkus can significantly reduce these aspects
+    for an application. Quarkus wants to tackle the challenge of improving Java in
+    containers with a new approach. This approach improves the startup speed and the
+    memory consumption of Java in a container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next section explains the details of how Quarkus makes this possible, and
+    more importantly, how it differs from a traditional framework approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Quarkus Way
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We’re sure you want to know all the intricate details of how Quarkus starts
+    faster and consumes less memory than a traditional framework, right? We need to
+    slow down a bit first, by explaining how traditional frameworks work, so you can
+    understand what changes with Quarkus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some well-known features of traditional frameworks are depicted in [Figure 2-2](#image:quarkus-build):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Annotations within code defining expected behavior, with many examples of this
+    we’ve all used over the years. Typical ones include `@Entity`, `@Autowired`, `@Inject`,
+    and many, many more.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Configuration files of various kinds. These files do everything from defining
+    how classes should be wired together to configuring persistent data sources, and
+    everything in between.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Classes used only during startup for creating runtime metadata and classes for
+    the application to function.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Utilizing reflection in determining methods to invoke, setting values into objects,
+    and dynamically loading classes by name only.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![Quarkus build time approach](assets/rsij_0202.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2-2\. The Quarkus way
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We’re certainly not saying that Quarkus doesn’t have annotations, configuration
+    files, or any other features of traditional frameworks. We *are* saying Quarkus
+    handles them in a very different manner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why would these features of traditional frameworks be considered “bad”? That’s
+    a good question, and the answer requires some understanding of how these frameworks
+    handle the preceding features. When there’s any type of configuration to be parsed
+    or annotations to be discovered, framework classes are required to perform this
+    work. Depending on how complex the process might be, anywhere from dozens to hundreds
+    of classes could be needed to perform the task. In addition, each class would
+    typically be holding state within itself representing intermediate states as startup
+    occurs, or a final desired state after everything is processed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There’s nothing particularly special about this; frameworks have worked this
+    way for years, decades even. What you may not realize, though, is that any classes
+    used to perform these startup tasks are still present, even if the JVM process
+    has been running for six months without a restart! While any memory those classes
+    grabbed should be eventually garbage collected, provided the classes properly
+    released their hold on the memory when work was complete, the class metadata for
+    them is still present in the JVM, even on the latest Java versions. It may not
+    seem like much, but a couple of hundred classes that are no longer needed can
+    impact the amount of memory required by the JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This problem impacts all JVMs today, without special handling by a framework.
+    All the classes used during startup, and never again, can be garbage collected
+    by the JVM only if all objects of the class can be garbage collected, all references
+    to the class are removed, and most importantly, all other classes in the same
+    classloader are also no longer referenced. To facilitate the garbage collection
+    of startup classes, a framework would need to utilize a classloader for startup
+    classes and another classloader for runtime classes. It can be difficult to enable
+    garbage collection for startup classes when thread pools are used, especially
+    `ForkJoinPool`, and when thread-local variables are set during startup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why should we retain classes in JVM memory if they will never be used again?
+    Ideally, we shouldn’t, as it’s wasteful. This is where Quarkus shines. Quarkus
+    extensions are designed and built to separate the various pieces of the traditional
+    framework startup processing into smaller chunks of work. Doing this enables the
+    build process, with Maven or Gradle, to take advantage of those smaller chunks
+    and execute them during the build, instead of waiting until the runtime start.
+    Utilizing startup classes *during build time* means those classes don’t need to
+    be included in the JVM at runtime! This saves us memory and startup time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How does it help to do this at build time, and where does the output go that’s
+    needed during runtime? Extensions use bytecode recorders to do everything from
+    setting static values on classes for runtime, to creating new classes to hold
+    metadata that’s needed for runtime. What do we mean by that? Earlier we talked
+    about frameworks doing a lot of work during startup, and Quarkus is able to create
+    the output of that work during build time and write bytecode equating to the same
+    result as with traditional frameworks at startup. At runtime, instead of performing
+    the startup work, the JVM loads the class written by a Quarkus extension into
+    memory as if all that startup work just happened without the cost of the memory
+    and classes to do the work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looking at some steps a traditional framework performs at startup, we can see
+    in [Figure 2-3](#image:quarkus-framework-phases) how Quarkus handles them differently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Framework startup phases in Traditional Frameworks vs Quarkus](assets/rsij_0203.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2-3\. Framework startup phases in traditional frameworks versus Quarkus
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'While Quarkus reads the configuration at build time, some properties, such
+    as locations and credentials, are still configured and read at runtime. However,
+    everything application-centric that can be decided at build time is handled during
+    the build process. So far, we’ve been using build time to describe when Quarkus
+    completes these typically startup-related tasks, but there is another term: *ahead-of-time*
+    (AOT) compilation. You’ve seen that Quarkus differs from traditional frameworks
+    in the way it approaches optimizing your application code and dependencies. Yes,
+    this approach reduces the variability that is generally handled at runtime.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, modern workloads deployed in the cloud or in containers do not need
+    such variability, as almost everything is known at build time. We hope you now
+    have a clearer understanding of what Quarkus offers with this innovative approach,
+    and why it is bringing excitement to Java development in the cloud again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create Your First Quarkus Application
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are quite a few ways to create a Quarkus application for the first time:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Manually creating the project *pom.xml* or *build.gradle* file, adding Quarkus
+    dependencies, setting up and configuring the plug-ins, and defining the source
+    folders. Pretty messy and tedious, in our view!
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using Maven and the Quarkus plug-in to construct the project skeleton.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Browsing to [*https://code.quarkus.io*](https://code.quarkus.io) and selecting
+    the dependencies that are needed. This is the simplest, quickest way to get started,
+    and the method we’ll use.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It’s time to dive into creating a project! Head over to [*https://code.quarkus.io*](https://code.quarkus.io),
+    and you will be presented with the page in [Figure 2-4](#image:quarkus-code-start).
+    We’ve circled some key parts to explain them in detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the very top of the page is the Quarkus version of the generated project.
+    Just below it to the left, you can customize the group and artifact names that
+    will be set for the project. These can be changed later if desired as well; you’re
+    not stuck with *org.acme* if you forget to customize it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To the right, users can decide whether they want starter code added to the project.
+    The default is yes, so if you select any extensions with the *CODE* marker, such
+    as *RESTEasy JAX-RS*, starter code for that extension will be generated for the
+    project. Below the top part of the page is the list of all available Quarkus extensions.
+    A lot of extensions are available; the screenshot shows only the ones that would
+    fit on a single page. Use each checkbox to select specific extensions to include
+    in your project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Quarkus project selection](assets/rsij_0204.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2-4\. Quarkus project selection
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Lastly, if you don’t want to scroll through all the extensions, start typing
+    terms into the search box above all the extensions. As you type, the list of extensions
+    below it will filter, showing only the extensions matching your search criteria.
+    As extensions are selected, they appear under the Selected Extensions area next
+    to “Generate your application.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 2-5](#image:quarkus-code-start-generate) shows how the screen looks
+    when we’re about to generate the application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Quarkus project generation](assets/rsij_0205.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2-5\. Quarkus project generation
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: You can see we’ve chosen not to generate any starter code, and the RESTEasy
+    JAX-RS extension is selected. We’re sticking with plain JAX-RS for now. We will
+    explore a more reactive JAX-RS in [Chapter 8](ch08.html#http).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we hover over “Generate your application,” we can decide to download the
+    project as a ZIP file or publish it to a GitHub repository. Right now, we will
+    download as a ZIP file. The file will be automatically downloaded, with a name
+    matching the artifact name. Once the download is finished, extract the ZIP file
+    to a directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With that done, we open a terminal window and change to the directory where
+    the generated project was extracted. Let’s dive into using live reload ([Example 2-11](#run-app-dev-mode))
+    and experience real Developer Joy!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-11\. Run the application in dev mode
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding command starts Quarkus in live reload, enabling us to quickly
+    iterate with code and instantly see the impact. A successful start will have the
+    terminal output, shown in [Example 2-12](#output-quarkus-app).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-12\. Output the Quarkus application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: We’re off and running. Open *[*http://localhost:8080*](http://localhost:8080)*
+    in a browser, and you will see `Resource not found`. Oh, no! What went wrong?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Actually, nothing went wrong. Eagle-eyed readers might have noticed the startup
+    log listed only `cdi` as an installed feature. What about RESTEasy? We selected
+    the extension for it when creating the project. Have a look inside *pom.xml*,
+    and you will see the dependencies ([Example 2-13](#quarkus-ext-dep-gen-proj)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-13\. Quarkus extension dependencies of generated project (*chapter-2/code-with-quarkus/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: RESTEasy is definitely there as a dependency, so what’s going on? During the
+    build process, Quarkus recognized there wasn’t actually any code present utilizing
+    RESTEasy, making the feature uninstalled and available for removal to save memory.
+    Let’s fix that now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With Quarkus still running, create the *org.acme* package within */src/main/java*.
+    Now create a class named `MyResource` within the package and the content in [Example 2-14](#jaxrs-myresource).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-14\. JAX-RS `MyResource` (*chapter-2/code-with-quarkus/src/main/java/org/acme/MyResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: You may wonder why in the preceding snippet none of the `import` lines are Quarkus
+    specific. Quarkus provides a cohesive full-stack framework by leveraging a growing
+    list of over 50 best-of-breed libraries. In the preceding example, we use JAX-RS,
+    a simple but efficient and flexible approach to building HTTP and REST APIs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refresh *[*http://localhost:8080*](http://localhost:8080)*. Wow, we now see
+    `Hi` in the browser; what happened? Take a look in the terminal window ([Example 2-15](#automatic-restart-of-app)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-15\. Automatic restart of the application after a code change
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can see Quarkus noticed modifications to *MyResource.java*, stopped, and
+    then restarted itself. Looking at the installed features, we see it now includes
+    `resteasy`. How cool is that? Even better, the server stopped and restarted in
+    just over 300 ms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why don’t we explore live reload some more to have a better feel of the real
+    Developer Joy! With `mvn quarkus:dev` still running, open *[*http://localhost:8080/welcome*](http://localhost:8080/welcome)*
+    in a browser ([Figure 2-6](#image:quarkus-resource-not-found)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Resource not found](assets/rsij_0206.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2-6\. Resource not found
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We got an error. Oh no!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Don’t fear too much; we did expect it because we don’t have anything to respond
+    to the */welcome* endpoint yet. However, Quarkus offers us some links to help
+    diagnose the problem based on what it knows about the application. We are shown
+    the list of valid endpoints—in this case, there is only an HTTP GET on */*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Under “Additional endpoints,” there are endpoints to assist while developing
+    applications. In this example, we have endpoints related to *ArC*, which is the
+    bean container based on Contexts and Dependency Injection (CDI) for Quarkus, as
+    well as a link to the developer console. Clicking the developer console link will
+    bring you to its main page ([Figure 2-7](#image:quarkus-dev-console)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Quarkus Dev console](assets/rsij_0207.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2-7\. Quarkus Dev console
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: There isn’t a lot there now, but we need to remember that the only extension
+    we’ve added is RESTEasy. As we enhance an application with more extensions, more
+    options and abilities will be available from the developer console. We went down
+    a side track there, so let’s get back to resolving our failed page load! With
+    the */welcome* page open to the failure in the browser, go back to the source
+    and create a new class called `WelcomeResource` ([Example 2-16](#jaxrs-welcome-resource)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-16\. JAX-RS `WelcomeResource` (*chapter-2/code-with-quarkus/src/main/java/org/acme/WelcomeResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: With the class written, head back to the browser and click Refresh.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Triggering an HTTP request causes Quarkus to check whether any files were modified
+    since the last request, as we’re running with live reload. Quarkus notices the
+    presence of `WelcomeResource`, compiles it, and then restarts the server. If you’re
+    like us, you may not have realized everything happening behind the scenes because
+    the browser gave the expected response without much delay.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Are you exhausted yet? We are.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That was a lot of information on creating a Quarkus project for the first time
+    with [*https://code.quarkus.io*](https://code.quarkus.io), and experiencing the
+    ease of development that live reload with Quarkus brings. It does have drawbacks,
+    including less chance to get a coffee during a compile and restart. We will continue
+    to explore everything that live reload can do as we work through the chapters,
+    but take it for a spin yourself, adding new extensions and seeing what can be
+    done without stopping it!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kubernetes with Quarkus in 10 Minutes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous section, we had lots of fun changing code and seeing the application
+    update on the fly. We hope you had fun; we know we did!
+  prefs: []
+  type: TYPE_NORMAL
+- en: While that’s great for developing the code, can we use live coding in production?
+    Well, maybe you could, but we really don’t think you want to do that!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For deploying to production, we want to use immutable containers, which requires
+    container orchestration, which for most means Kubernetes. [“The New Kids on the
+    Block: Cloud Native and Kubernetes Native Applications”](ch03.html#distributed-system::cloud-native-kube)
+    covers cloud native and Kubernetes applications in further detail.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why is Quarkus great for the cloud and, in particular, Kubernetes? Quarkus applications
+    are designed to run efficiently in containers and have built-in health checks
+    and monitoring capabilities. Quarkus also provides a great user experience, including
+    the ability to deploy in a Kubernetes cluster in a single command, without having
+    to write Kubernetes resource descriptors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kubernetes introduces its own specific jargon, which may be confusing. This
+    section introduces its main concepts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What are the steps to take our Quarkus application from the previous section
+    and deploy it to Kubernetes? Let’s extend the application we generated in the
+    previous section. The first thing we do is add the extension for Kubernetes to
+    our application, as shown in [Example 2-17](#kubernetes-ext-dep).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-17\. Kubernetes extension dependency (*chapter-2/code-with-quarkus/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: With this new dependency, the build can generate the necessary resource files
+    for deploying the application to Kubernetes, as well as enable us to deploy the
+    application. What a time-saver! Let’s see how it works!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we can see how it works, we need to choose the preferred containerization
+    mechanism. With Quarkus, we can choose between Docker, [Jib](https://oreil.ly/Ybxcs),
+    and Source-to-Image (S2I). We will choose Jib, as all dependencies are cached
+    in a layer separate from the application, making subsequent container builds much
+    faster. Let’s add the Jib container dependency, as shown in [Example 2-18](#jib-container-ext-dep).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-18\. Jib container extension dependency (*chapter-2/code-with-quarkus/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: We’re nearly there! But first, we need a Kubernetes cluster! The easiest is
+    to use minikube, but you can also use Docker Desktop, or [MicroK8s](https://microk8s.io/).
+    In this book, we will use minikube, as it’s one of the most straightforward solutions.
+    Minikube is not a complete Kubernetes cluster but provides enough features for
+    us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Follow the instructions from [the minikube documentation](https://oreil.ly/Vn7Jf)
+    to download and install minikube. With minikube installed, start it ([Example 2-19](#start-minikube)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-19\. Start minikube
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The default configuration of minikube will be used unless we have specific configuration
+    options set. Right now, the default is fine, which is two CPUs and 4 GB RAM for
+    a virtual machine. If this is the first time minikube is being run, there will
+    be a short delay while minikube downloads the necessary images.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quarkus provides an additional extension for use with minikube, to tailor the
+    Kubernetes resources specifically for minikube. A big advantage to this approach
+    is not requiring a Kubernetes `Ingress` to access services inside Kubernetes;
+    instead, we can access them through a `NodePort` service. This allows us to see
+    localhost-accessible URLs for our services when running `minikube services list`.
+    To activate localhost-accessible URLs, we need another dependency ([Example 2-20](#minikube-ext-dep)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-20\. Minikube extension dependency (*chapter-2/code-with-quarkus/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Before deploying our application, let’s play a bit with Kubernetes to understand
+    some concepts. You can interact with Kubernetes clusters by using the `kubectl`
+    command; see [Example 2-21](#retrieving-the-nodes).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-21\. Retrieve the nodes
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: This command prints the *nodes* managed by Kubernetes. You should not be surprised
+    to see that we have a single node here, named `master`. That’s your machine, or
+    virtual machine, depending on your operating system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlike other systems such as Docker, Kubernetes doesn’t run containers directly.
+    Instead, it wraps one or more containers into a higher-level structure called
+    a *pod*. Pods are used as the unit of replication. If your application is getting
+    too many requests, and a single pod instance can’t carry the load, you can ask
+    Kubernetes to instantiate new replicas. Even when not under heavy load, it is
+    a good idea to have multiple replicas of a pod, to allow load balancing and fault-tolerance.
+    You can get the list of pods by using `kubectl get pods` ([Example 2-22](#get-kubectl-pods-2-22)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-22\. Use the `kubectl` command to list the running pods
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Not a big surprise, our cluster is empty.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [“Java on the Cloud”](#quarkus::java-cloud), we talked a lot about wanting
+    to reduce the amount of memory for services written in Java within a container.
+    To be able to determine that in minikube, we need to install an add-on before
+    deploying our service ([Example 2-23](#add-metric-server-to-minikube)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-23\. Add the metric server to the minikube cluster
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To create pods, we need a *deployment*. Deployments have two primary purposes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Indicate which containers need to run in the pod
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Indicate the number of instances of the pod that should be running at a time
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Generally, to create a deployment, you need the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A container image accessible to your Kubernetes cluster
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A YAML document describing your deployment^([5](ch02.html#idm45358833162544))
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Quarkus provides facilities to avoid having to create the image and write the
+    deployment manually, such as the Kubernetes, minikube, and Jib container extensions
+    we mentioned earlier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With all the pieces in place, it’s time for us to build and deploy the application
+    to Kubernetes in minikube! Open a terminal window and change to the directory
+    of the project. Because we don’t want to run our own Docker daemon for building
+    the containers, we can run `eval $(minikube -p minikube docker-env)` to expose
+    the Docker daemon from minikube to the local terminal environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '`eval $(minikube -p minikube docker-env)` must be run in every terminal window
+    we use to access minikube. Without, it any Docker commands we execute will use
+    the local Docker daemon, which we don’t want.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next we build and deploy the container (as shown in [Example 2-24](#deploy-quarkus-app-to-kub)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-24\. Deploy a Quarkus application to Kubernetes
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_to_quarkus_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Package the application, create the container image, create the deployment descriptor,
+    and deploy it to our cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Execute the `kubeclt get pods` command to verify ([Example 2-25](#list-running-pods-with-kubectl)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-25\. List running pods with `kubectl`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Yeah! Our application is running!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quarkus creates a deployment for us, as shown in [Example 2-26](#list-installed-deployments).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-26\. List the installed deployments
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can check the created deployment in *target/kubernetes/minikube.yml*, or
+    review [Example 2-27](#generated-deployment).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-27\. The generated deployment
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_to_quarkus_CO3-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The number of replicas
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_introduction_to_quarkus_CO3-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The container image name
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, the deployment YAML indicates the number of replicas and the
+    set of containers running in the pod (here, a single one).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you look carefully at the generated descriptor, you will see `service`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_to_quarkus_CO4-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Random local port number we can access the service on
+  prefs: []
+  type: TYPE_NORMAL
+- en: A *service* is a channel of communication delegating to a set of pods (selected
+    using labels). In our example, the service is named `code-with-quarkus`. This
+    name can be used by other applications to discover the functionality we expose.
+    This service delegates the port 8080 on pods with matching labels (*app.kubernetes.io/name*
+    and *app.kubernetes.io/version*). The good news is that our pod is configured
+    with these labels. As a result, calling this `code-with-quarkus` on port 8080
+    delegates to port 8080 of our container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Quarkus generates multiple descriptors. The *minikube.yml* descriptor is tailored
+    for minikube. The *kubernetes.yml* descriptor is more generic. The main difference
+    is the type of service that gets created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, let’s invoke our service! We need to ask minikube to give us the service
+    URL, as shown in [Example 2-28](#retrieve-the-service-url).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-28\. Retrieve the service URL
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Open a browser and use the URL of the service to access it, or `curl` if you
+    prefer. If deployment worked, we see `Hi` as a response on the root path. Add
+    `/welcome` to see `Welcome to Quarkus!` We deployed a Quarkus service to Kubernetes!
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve verified that our Quarkus service deployed and works as expected, but
+    what about the memory situation? Let’s check it out in [Example 2-29](#measure-resource-usage-kubectl).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-29\. Measure resource usage using `kubectl top`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Wow, only 80 MB is really nice and compact! That’s a large improvement over
+    traditional frameworks in containers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You’ve just seen how to take a Quarkus application and add the ability to deploy
+    it to Kubernetes or, in this case, to minikube. There are certainly potential
+    gotchas in defining the Kubernetes resources we need for deployment, but that’s
+    why we use the Kubernetes extension with Quarkus to handle all that for us. We
+    prefer not to handcode YAML or JSON, inadvertently making an error with indentation,
+    and then watching deployment fail!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Going Native
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: What does *going native* mean? We’re referring to the ability to build native
+    executables for an environment. Many applications we use every day on our machines
+    are *native executables*, meaning the code of the application was compiled down
+    to low-level instructions for a specific operating system, in our case macOS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing Java applications has always required the presence of a JVM for execution.
+    However, the ability to build a native executable from Java code has recently
+    been made possible with releases from the [GraalVM](https://www.graalvm.org) project.
+    In this section, we explain how to utilize the GraalVM project with Quarkus to
+    generate a native executable for your Java code!
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [“The Quarkus Way”](#quarkus::quarkus-way), we discussed how Quarkus utilizes
+    AOT compilation to perform actions during build time instead of on application
+    start.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Quarkus extensions achieve this by breaking all the work into three separate
+    phases:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Augmentation
+  prefs: []
+  type: TYPE_NORMAL
+- en: Build steps process descriptors and annotations, and augment the application
+    classes by generating bytecode containing any required metadata. This phase is
+    always executed within the build process on a JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Static initialization
+  prefs: []
+  type: TYPE_NORMAL
+- en: Runs any steps intended to have their resulting output captured in bytecode.
+    There are restrictions on what these steps can do, as they should not open ports
+    for listening or start threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Runtime initialization
+  prefs: []
+  type: TYPE_NORMAL
+- en: These steps are run as part of the application’s main method during startup.
+    Tasks should be kept to a minimum to take the most advantage of AOT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Static and runtime initialization both occur at startup when executing on a
+    JVM. However, with native executables we have an extra benefit. With initialization
+    separated into two phases, we’re able to perform static initialization during
+    the native executable build process. This allows the output from the static initialization
+    phase to be serialized directly into the native executable, allowing any classes
+    used in this phase to be dropped from the native executable as they’re no longer
+    needed. This provides benefits in native executable startup time and reduction
+    in memory requirements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As part of the native executable build process with GraalVM, all execution paths
+    are evaluated. Any classes, methods, or fields deemed to not be on the execution
+    path are removed from the resulting native executable. This is why reflection,
+    dynamic class loading, and other features of JVM usage are disallowed without
+    special flags, because the goal is to *not* retain every piece of code within
+    a native executable. If we were to attempt to build a native executable for the
+    earlier Thorntail example, it would require flags to be set to allow reflection,
+    dynamic class loading, and possibly others. The design of Thorntail is not suitable
+    for a native executable build, whereas Quarkus has the goal of code reduction
+    in mind from the beginning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s see what’s needed to actually build a native executable.^([6](ch02.html#idm45358832739008))
+    Creating the project with [*https://code.quarkus.io*](https://code.quarkus.io)
+    means a Maven profile was already added to the project for us. [Example 2-30](#native-image-gen-maven-profile)
+    shows what that looks like.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-30\. Native image generation Maven profile (*chapter-2/code-with-quarkus/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: We now have the ability to build a native executable for Quarkus, but without
+    GraalVM installed we won’t get very far! Check [the “Building a Native Executable”
+    guide](https://oreil.ly/HFtW1) for all the details on installing GraalVM for building
+    native executables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once GraalVM is installed, let’s build a native executable; see [Example 2-31](#compile-quarkus-app-into-native).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-31\. Compile a Quarkus application into a native executable
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: Unfortunately, building a native executable does take longer than usual JVM
+    builds. For this reason, we suggest not building a native executable regularly,
+    and recommend doing these builds as part of a CI pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running these builds is our new opportunity for coffee breaks!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: As the number of classes grows in an application, a native executable build
+    takes longer to complete. This longer time is caused by the larger number of execution
+    paths requiring evaluation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the native executable built, we can run it with `./target/code-with-quarkus-1.0.0-SNAPSHOT-runner`.
+    Relish in the speed with which it starts, and be sure to verify that the two endpoints
+    we created still work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve now built a native executable for our local environment, but unless we’re
+    using a Linux operating system, our native executable won’t work inside a container!
+    As native executables are specific to an operating system, we need to specially
+    build one for use in a Linux container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To build a native executable for containers, we need to utilize [Docker](https://docker.com).
+    Once Docker is installed, ensure that it’s started. As the current terminal has
+    been switched to use the Docker daemon inside minikube, we need to open a new
+    terminal so we can use local Docker for a build. Navigate to the project directory
+    and run [Example 2-32](#compile-quarkus-app-linux-64).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-32\. Compile a Quarkus application into a Linux 64-bit native executable
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: What we’ve done is utilized our local Docker environment to build a native executable
+    for a Linux operating system. If we tried to run the native executable, and our
+    local operating system is not Linux, we see an error ([Example 2-33](#format-error-start-application)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-33\. Format error when we start an application not compiled for the
+    host operating system
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: We need to go back to the previous terminal now, as we want to interact with
+    the Docker daemon in minikube. Let’s run a Docker build inside minikube, as shown
+    in [Example 2-34](#build-container-running-quarkus-app).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-34\. Build a container running a Quarkus application compiled into
+    a native executable
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Don’t forget to replace `*<your_docker_username>*` with your local Docker username.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We now have a container available inside minikube, so let’s create the application
+    deployment; see [Example 2-35](#deploy-quarkus-application-into-minikube).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-35\. Deploy the Quarkus application into minikube
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: We used the minikube-specific Kubernetes YAML from an earlier build to create
+    the deployment. This version creates the *NodePort* service we need to access
+    a service from our local environment, but also modifies the `imagePullPolicy`
+    of the container to `IfNotPresent` instead of `Always`. This last change prevents
+    minikube from trying to check for a newer container image from Docker Hub, which
+    is good because it wouldn’t find one there!
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the deployment done, grab the URL from `minikube service list` and test
+    out the endpoints again. Everything should be good, and we get the same messages
+    as before.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now for the interesting part! Earlier we installed the metrics server into minikube
+    to track memory utilization, and now it’s time to see what our native executable
+    looks like. Though we’ve made requests and the deployment is present, it can be
+    a few minutes before the metrics are available. Keep trying until they appear.
+    You should see something similar to [Example 2-36](#measure-resource-usages-kubernetes).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 2-36\. Measure resource usage in Kubernetes
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: That’s fantastic! Only 7 MB of RAM used!
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is where the combination of Quarkus and native executables really shines.
+    We can also check the logs of the pod to see how quickly the container started;
+    we would expect it to be around 10–20 ms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We attempted to build a native image for Thorntail to provide a comparison.
+    However, we experienced issues building a usable native image and were stopped
+    by an [`UnsatisfiedLinkError`](https://oreil.ly/hxcqo).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We’ve covered a great deal about Quarkus in a short amount of time, and there’s
+    still plenty more to go through in the remainder of the book. Quarkus is a Kubernetes-native
+    Java stack, focused on minimizing memory requirements with AOT, and amping up
+    the memory reduction even further when we want a native executable. With the Kubernetes
+    and container extensions, Quarkus takes the hassle out of handwriting YAML deployment
+    files, doing it all for us!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, you learned about the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the problems with Java in containers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding how Quarkus differs from traditional frameworks in moving runtime
+    startup tasks to buildtime with AOT
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating a Quarkus project with [*https://code.quarkus.io*](https://code.quarkus.io)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using Kubernetes and minikube extensions to generate the required deployment
+    configuration
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building a native executable for Quarkus with GraalVM
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the Kubernetes extension to deploy Quarkus applications to a container
+    environment
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the next chapters, we will briefly take a step back to detail distributed
+    systems, reactive systems, reactive programming, and how they relate to each other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch02.html#idm45358839670352-marker)) In this book, *container* refers
+    to a form of operating system virtualization, not to Java EE containers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch02.html#idm45358839636416-marker)) You can find the [script to measure
+    startup time on GitHub](https://github.com/cescoffier/reactive-systems-in-java).
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch02.html#idm45358841838240-marker)) [See Platform Specific Memory Reporting
+    on the Quarkus website](https://oreil.ly/eYjXF).
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([4](ch02.html#idm45358833902576-marker)) Quarkus offers multiple ways to implement
+    HTTP endpoints. JAX-RS is one of them. You can also use controller classes with
+    Spring MVC annotation or reactive routes if you prefer more programmatic approaches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([5](ch02.html#idm45358833162544-marker)) YAML (Yet Another Markup Language)
+    is the most used format to describe Kubernetes resources. [Wikipedia provides
+    a gentle introduction](https://oreil.ly/mZOTT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([6](ch02.html#idm45358832739008-marker)) GraalVM is not the first tool to
+    build native executables from Java code. Dalvik, Avian, GNU Compiler for Java
+    (GCJ,) and Excelsior JET predate GraalVM.
+  prefs: []
+  type: TYPE_NORMAL

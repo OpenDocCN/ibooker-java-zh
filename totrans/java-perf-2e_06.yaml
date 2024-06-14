@@ -1,0 +1,2538 @@
+- en: Chapter 6\. Garbage Collection Algorithms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '[Chapter 5](ch05.html#GC) examined the general behavior of all garbage collectors,
+    including JVM flags that apply universally to all GC algorithms: how to select
+    heap sizes, generation sizes, logging, and so on. The basic tunings of garbage
+    collection suffice for many circumstances. When they do not, it is time to examine
+    the specific operation of the GC algorithm in use to determine how its parameters
+    can be changed to minimize the impact of GC on the application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The key information needed to tune an individual collector is the data from
+    the GC log when that collector is enabled. This chapter starts, then, by looking
+    at each algorithm from the perspective of its log output, which allows us to understand
+    how the GC algorithm works and how it can be adjusted to work better. Each section
+    then includes tuning information to achieve that better performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter also covers the details of some new, experimental collectors. Those
+    collectors may not be 100% solid at the time of this writing but will likely become
+    full-fledged, production-worthy collectors by the time the next LTS version of
+    Java is released (just as G1 GC began as an experimental collector and is now
+    the default in JDK 11).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A few unusual cases impact the performance of all GC algorithms: allocation
+    of very large objects, objects that are neither short- nor long-lived, and so
+    on. Those cases are covered at the end of this chapter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the Throughput Collector
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We’ll start by looking at the individual garbage collectors, beginning with
+    the throughput collector. Although we’ve seen that the G1 GC collector is generally
+    preferred, the details of the throughput collector are easier and make a better
+    foundation for understanding how things work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Recall from [Chapter 5](ch05.html#GC) that garbage collectors must do three
+    basic operations: find unused objects, free their memory, and compact the heap.
+    The throughput collector does all of those operations in the same GC cycle; together
+    those operations are referred to as a *collection*. These collectors can collect
+    either the young generation or the old generation during a single operation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 6-1](#FigureParYoung) shows the heap before and after a young collection.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A diagram of the heap before and after a young collection.](assets/jp2e_0601.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-1\. A throughput GC young collection
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'A young collection occurs when eden has filled up. The young collection moves
+    all objects out of eden: some are moved to one of the survivor spaces (S0 in this
+    diagram), and some are moved to the old generation, which now contains more objects.
+    Many objects, of course, are discarded because they are no longer referenced.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because eden is usually empty after this operation, it may seem unusual to consider
+    that it has been compacted, but that’s the effect here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the JDK 8 GC log with `PrintGCDetails`, a minor GC of the throughput collector
+    appears like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: This GC occurred 17.806 seconds after the program began. Objects in the young
+    generation now occupy 14,463 KB (14 MB, in the survivor space); before the GC,
+    they occupied 227,983 KB (227 MB).^([1](ch06.html#idm45775554356120)) The total
+    size of the young generation at this point is 264 MB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Meanwhile, the overall occupancy of the heap (both young and old generations)
+    decreased from 280 MB to 66 MB, and the size of the entire heap at this point
+    was 613 MB. The operation took less than 0.02 seconds (the 0.02 seconds of real
+    time at the end of the output is 0.0169320 seconds—the actual time—rounded). The
+    program was charged for more CPU time than real time because the young collection
+    was done by multiple threads (in this configuration, four threads).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The same log in JDK 11 would look something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The information here is the same; it’s just a different format. And this log
+    entry has multiple lines; the previous log entry is actually a single line (but
+    that doesn’t reproduce in this format). This log also prints out the metaspace
+    sizes, but those will never change during a young collection. The metaspace is
+    also not included in the total heap size reported on the fifth line of this sample.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 6-2](#FigureParOld) shows the heap before and after a full GC.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A diagram of the heap before and after a full GC.](assets/jp2e_0602.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-2\. A throughput full GC
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The old collection frees everything out of the young generation. The only objects
+    that remain in the old generation are those that have active references, and all
+    of those objects have been compacted so that the beginning of the old generation
+    is occupied, and the remainder is free.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The GC log reports that operation like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The young generation now occupies 0 bytes (and its size is 339 MB). Note in
+    the diagram that means the survivor spaces have been cleared as well. The data
+    in the old generation decreased from 457 MB to 392 MB, and hence the entire heap
+    usage has decreased from 473 MB to 392 MB. The size of the metaspace is unchanged;
+    it is not collected during most full GCs. (If the metaspace runs out of room,
+    the JVM will run a full GC to collect it, and you will see the size of the metaspace
+    change; I’ll show that a little further on.) Because there is substantially more
+    work to do in a full GC, it has taken 1.3 seconds of real time, and 4.4 seconds
+    of CPU time (again for four parallel threads).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The similar JDK 11 log is this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The throughput collector has two operations: minor collections and full GCs,
+    each of which marks, frees, and compacts the target generation.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Timings taken from the GC log are a quick way to determine the overall impact
+    of GC on an application using these collectors.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adaptive and Static Heap Size Tuning
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Tuning the throughput collector is all about pause times and striking a balance
+    between the overall heap size and the sizes of the old and young generations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are two trade-offs to consider here. First, we have the classic programming
+    trade-off of time versus space. A larger heap consumes more memory on the machine,
+    and the benefit of consuming that memory is (at least to a certain extent) that
+    the application will have a higher throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second trade-off concerns the length of time it takes to perform GC. The
+    number of full GC pauses can be reduced by increasing the heap size, but that
+    may have the perverse effect of increasing average response times because of the
+    longer GC times. Similarly, full GC pauses can be shortened by allocating more
+    of the heap to the young generation than to the old generation, but that, in turn,
+    increases the frequency of the old GC collections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The effect of these trade-offs is shown in [Figure 6-3](#FigureGCPauses). This
+    graph shows the maximum throughput of the stock REST server running with different
+    heap sizes. With a small 256 MB heap, the server is spending a lot of time in
+    GC (36% of total time, in fact); the throughput is restricted as a result. As
+    the heap size is increased, the throughput rapidly increases—until the heap size
+    is set to 1,500 MB. After that, throughput increases less rapidly: the application
+    isn’t really GC-bound at that point (about 6% of time in GC). The law of diminishing
+    returns has crept in: the application can use additional memory to gain throughput,
+    but the gains become more limited.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After a heap size of 4,500 MB, the throughput starts to decrease slightly.
+    At that point, the application has reached the second trade-off: the additional
+    memory has caused much longer GC cycles, and those longer cycles—even though they
+    are less frequent—can reduce the overall throughput.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The data in this graph was obtained by disabling adaptive sizing in the JVM;
+    the minimum and maximum heap sizes were set to the same value. It is possible
+    to run experiments on any application and determine the best sizes for the heap
+    and for the generations, but it is often easier to let the JVM make those decisions
+    (which is what usually happens, since adaptive sizing is enabled by default).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jp2e 0603](assets/jp2e_0603.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-3\. Throughput with various heap sizes
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Adaptive sizing in the throughput collector will resize the heap (and the generations)
+    in order to meet its pause-time goals. Those goals are set with these flags: `-XX:MaxGCPauseMillis=`*`N`*
+    and `-XX:GCTimeRatio=`*`N`*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `MaxGCPauseMillis` flag specifies the maximum pause time that the application
+    is willing to tolerate. It might be tempting to set this to 0, or perhaps a small
+    value like 50 ms. Be aware that this goal applies to both minor and full GCs.
+    If a very small value is used, the application will end up with a very small old
+    generation: for example, one that can be cleaned in 50 ms. That will cause the
+    JVM to perform very, very frequent full GCs, and performance will be dismal. So
+    be realistic: set the value to something that can be achieved. By default, this
+    flag is not set.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `GCTimeRatio` flag specifies the amount of time you are willing for the
+    application to spend in GC (compared to the amount of time its application-level
+    threads should run). It is a ratio, so the value for *`N`* takes a little thought.
+    The value is used in the following equation to determine the percentage of time
+    the application threads should ideally run:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: <math alttext="upper T h r o u g h p u t upper G o a l equals 1 minus StartFraction
+    1 Over left-parenthesis 1 plus upper G upper C upper T i m e upper R a t i o right-parenthesis
+    EndFraction" display="block"><mrow><mi>T</mi> <mi>h</mi> <mi>r</mi> <mi>o</mi>
+    <mi>u</mi> <mi>g</mi> <mi>h</mi> <mi>p</mi> <mi>u</mi> <mi>t</mi> <mi>G</mi> <mi>o</mi>
+    <mi>a</mi> <mi>l</mi> <mo>=</mo> <mn>1</mn> <mo>-</mo> <mfrac><mn>1</mn> <mrow><mo>(</mo><mn>1</mn><mo>+</mo><mi>G</mi><mi>C</mi><mi>T</mi><mi>i</mi><mi>m</mi><mi>e</mi><mi>R</mi><mi>a</mi><mi>t</mi><mi>i</mi><mi>o</mi><mo>)</mo></mrow></mfrac></mrow></math>
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The default value for `GCTimeRatio` is 99\. Plugging that value into the equation
+    yields 0.99, meaning that the goal is to spend 99% of time in application processing,
+    and only 1% of time in GC. But don’t be confused by how those numbers line up
+    in the default case. A `GCTimeRatio` of 95 does not mean that GC should run up
+    to 5% of the time: it means that GC should run up to 1.94% of the time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s easier to decide the minimum percentage of time you want the application
+    to perform work (say, 95%) and then calculate the value of the `GCTimeRatio` from
+    this equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: <math alttext="upper G upper C upper T i m e upper R a t i o equals StartFraction
+    upper T h r o u g h p u t Over left-parenthesis 1 minus upper T h r o u g h p
+    u t right-parenthesis EndFraction" display="block"><mrow><mi>G</mi> <mi>C</mi>
+    <mi>T</mi> <mi>i</mi> <mi>m</mi> <mi>e</mi> <mi>R</mi> <mi>a</mi> <mi>t</mi> <mi>i</mi>
+    <mi>o</mi> <mo>=</mo> <mfrac><mrow><mi>T</mi><mi>h</mi><mi>r</mi><mi>o</mi><mi>u</mi><mi>g</mi><mi>h</mi><mi>p</mi><mi>u</mi><mi>t</mi></mrow>
+    <mrow><mo>(</mo><mn>1</mn><mo>-</mo><mi>T</mi><mi>h</mi><mi>r</mi><mi>o</mi><mi>u</mi><mi>g</mi><mi>h</mi><mi>p</mi><mi>u</mi><mi>t</mi><mo>)</mo></mrow></mfrac></mrow></math>
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a throughput goal of 95% (0.95), this equation yields a `GCTimeRatio` of
+    19.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The JVM uses these two flags to set the size of the heap within the boundaries
+    established by the initial (`-Xms`) and maximum (`-Xmx`) heap sizes. The `MaxGCPauseMillis`
+    flag takes precedence: if it is set, the sizes of the young and old generations
+    are adjusted until the pause-time goal is met. Once that happens, the overall
+    size of the heap is increased until the time-ratio goal is met. Once both goals
+    are met, the JVM will attempt to reduce the size of the heap so that it ends up
+    with the smallest possible heap that meets these two goals.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because the pause-time goal is not set by default, the usual effect of automatic
+    heap sizing is that the heap (and generation) sizes will increase until the `GCTimeRatio`
+    goal is met. In practice, though, the default setting of that flag is optimistic.
+    Your experience will vary, of course, but I am much more used to seeing applications
+    that spend 3% to 6% of their time in GC and behave quite well. Sometimes I even
+    work on applications in environments where memory is severely constrained; those
+    applications end up spending 10% to 15% of their time in GC. GC has a substantial
+    impact on the performance of those applications, but the overall performance goals
+    are still met.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So the best setting will vary depending on the application goals. In the absence
+    of other goals, I start with a time ratio of 19 (5% of time in GC).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 6-1](#TableGCAutoTuneDefault) shows the effects of this dynamic tuning
+    for an application that needs a small heap and does little GC (it is the stock
+    REST server that has few long-lived objects).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 6-1\. Effect of dynamic GC tuning
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| GC settings | End heap size | Percent time in GC | OPS |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Default | 649 MB | 0.9% | 9.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `MaxGCPauseMillis=50ms` | 560 MB | 1.0% | 9.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Xms=Xmx=2048m` | 2 GB | 0.04% | 9.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'By default, the heap will have a 64 MB minimum size and a 2 GB maximum size
+    (since the machine has 8 GB of physical memory). In that case, the `GCTimeRatio`
+    works just as expected: the heap dynamically resized to 649 MB, at which point
+    the application was spending about 1% of total time in GC.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting the `MaxGCPauseMillis` flag in this case starts to reduce the size of
+    the heap in order to meet that pause-time goal. Because the garbage collector
+    has so little work to perform in this example, it succeeds and can still spend
+    only 1% of total time in GC, while maintaining the same throughput of 9.2 OPS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, notice that more isn’t always better. A full 2 GB heap does mean that
+    the application can spend less time in GC, but GC isn’t the dominant performance
+    factor here, so the throughput doesn’t increase. As usual, spending time optimizing
+    the wrong area of the application has not helped.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the same application is changed so that the previous 50 requests for each
+    user are saved in a global cache (e.g., as a JPA cache would do), the garbage
+    collector has to work harder. [Table 6-2](#TableGCAutoTune) shows the trade-offs
+    in that situation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 6-2\. Effect of heap occupancy on dynamic GC tuning
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| GC settings | End heap size | Percent time in GC | OPS |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Default | 1.7 GB | 9.3% | 8.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `MaxGCPauseMillis=50ms` | 588 MB | 15.1% | 7.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Xms=Xmx=2048m` | 2 GB | 5.1% | 9.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Xmx=3560M`; `MaxGCRatio=19` | 2.1 GB | 8.8% | 9.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: In a test that spends a significant amount of time in GC, the GC behavior is
+    different. The JVM will never be able to satisfy the 1% throughput goal in this
+    test; it tries its best to accommodate the default goal and does a reasonable
+    job, using 1.7 GB of space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Application behavior is worse when an unrealistic pause-time goal is given.
+    To achieve a 50 ms collection time, the heap is kept to 588 MB, but that means
+    that GC now becomes excessively frequent. Consequently, the throughput has decreased
+    significantly. In this scenario, the better performance comes from instructing
+    the JVM to utilize the entire heap by setting both the initial and maximum sizes
+    to 2 GB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the last line of the table shows what happens when the heap is reasonably
+    sized and we set a realistic time-ratio goal of 5%. The JVM itself determined
+    that approximately 2 GB was the optimal heap size, and it achieved the same throughput
+    as the hand-tuned case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Dynamic heap tuning is a good first step for heap sizing. For a wide set of
+    applications, that will be all that is needed, and the dynamic settings will minimize
+    the JVM’s memory use.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It is possible to statically size the heap to get the maximum possible performance.
+    The sizes the JVM determines for a reasonable set of performance goals are a good
+    first start for that tuning.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding the G1 Garbage Collector
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'G1 GC operates on discrete regions within the heap. Each region (there are
+    by default around 2,048) can belong to either the old or new generation, and the
+    generational regions need not be contiguous. The idea behind having regions in
+    the old generation is that when the concurrent background threads look for unreferenced
+    objects, some regions will contain more garbage than other regions. The actual
+    collection of a region still requires that application threads be stopped, but
+    G1 GC can focus on the regions that are mostly garbage and spend only a little
+    bit of time emptying those regions. This approach—clearing out only the mostly
+    garbage regions—is what gives G1 GC its name: garbage first.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That doesn’t apply to the regions in the young generation: during a young GC,
+    the entire young generation is either freed or promoted (to a survivor space or
+    to the old generation). Still, the young generation is defined in terms of regions,
+    in part because it makes resizing the generations much easier if the regions are
+    predefined.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: G1 GC is called a *concurrent collector* because the marking of free objects
+    within the old generation happens concurrently with the application threads (i.e.,
+    they are left running). But it is not completely concurrent because the marking
+    and compacting of the young generation requires stopping all application threads,
+    and the compacting of the old generation also occurs while the application threads
+    are stopped.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'G1 GC has four logical operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A young collection
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A background, concurrent marking cycle
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A mixed collection
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If necessary, a full GC
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We’ll look at each of these in turn, starting with the G1 GC young collection
+    shown in [Figure 6-4](#FigureG1Young).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A diagram of the heap before and after a G1 GC young collection.](assets/jp2e_0604.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-4\. A G1 GC young collection
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Each small square in this figure represents a G1 GC region. The data in each
+    region is represented by the black area, and the letter in each region identifies
+    the generation to which the region belongs ([E]den, [O]ld generation, [S]urvivor
+    space). Empty regions do not belong to a generation; G1 GC uses them arbitrarily
+    for whichever generation it deems necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The G1 GC young collection is triggered when eden fills up (in this case, after
+    filling four regions). After the collection, eden is empty (though regions are
+    assigned to it, which will begin to fill up with data as the application proceeds).
+    At least one region is assigned to the survivor space (partially filled in this
+    example), and some data has moved into the old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The GC log illustrates this collection a little differently in G1 than in other
+    collectors. The JDK 8 example log was taken using `PrintGCDetails`, but the details
+    in the log for G1 GC are more verbose. The examples show only a few of the important
+    lines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the standard collection of the young generation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Collection of the young generation took 0.23 seconds of real time, during which
+    the GC threads consumed 0.85 seconds of CPU time. 1,286 MB of objects were moved
+    out of eden (which was adaptively resized to 1,212 MB); 74 MB of that was moved
+    to the survivor space (it increased in size from 78 M to 152 MB), and the rest
+    were freed. We know they were freed by observing that the total heap occupancy
+    decreased by 1,212 MB. In the general case, some objects from the survivor space
+    might have been moved to the old generation, and if the survivor space were full,
+    some objects from eden would have been promoted directly to the old generation—in
+    those cases, the size of the old generation would increase.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The similar log in JDK 11 looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: A concurrent G1 GC cycle begins and ends as shown in [Figure 6-5](#FigureG1Concurrent).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A diagram of the heap before and after a G1 concurrent cycle.](assets/jp2e_0605.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-5\. Concurrent collection performed by G1 GC
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'This diagram presents three important things to observe. First, the young generation
+    has changed its occupancy: there will be at least one (and possibly more) young
+    collections during the concurrent cycle. Hence, the eden regions before the marking
+    cycle have been completely freed, and new eden regions have started to be allocated.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, some regions are now marked with an X. Those regions belong to the old
+    generation (and note that they still contain data)—they are regions that the marking
+    cycle has determined contain mostly garbage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, notice that the old generation (consisting of the regions marked with
+    an O or an X) is actually more occupied after the cycle has completed. That’s
+    because the young generation collections that occurred during the marking cycle
+    promoted data into the old generation. In addition, the marking cycle doesn’t
+    actually free any data in the old generation: it merely identifies regions that
+    are mostly garbage. Data from those regions is freed in a later cycle.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The G1 GC concurrent cycle has several phases, some of which stop all application
+    threads, and some of which do not. The first phase is called *initial-mark* (in
+    JDK 8) or *concurrent start* (in JDK 11). That phase stops all application threads—partly
+    because it also executes a young collection, and it sets up the next phases of
+    the cycle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In JDK 8, that looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And in JDK 11:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: As in a regular young collection, the application threads were stopped (for
+    0.28 seconds), and the young generation was emptied (so eden ends with a size
+    of 0). 71 MB of data was moved from the young generation to the old generation.
+    That’s a little difficult to tell in JDK 8 (it is 2,093 – 3,242 + 1,220); the
+    JDK 11 output shows that more clearly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other hand, the JDK 11 output contains references to a few things we
+    haven’t discussed yet. First is that the sizes are in regions and not in MB. We’ll
+    discuss region sizes later in this chapter, but in this example, the region size
+    is 1 MB. In addition, JDK 11 mentions a new area: humongous regions. That is part
+    of the old generation and is also discussed later in this chapter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The initial-mark or concurrent start log message announces that the background
+    concurrent cycle has begun. Since the initial mark of the marking cycle phase
+    also requires all application threads to be stopped, G1 GC takes advantage of
+    the young GC cycle to do that work. The impact of adding the initial-mark phase
+    to the young GC wasn’t that large: it used 20% more CPU cycles than the previous
+    collection (which was just a regular young collection), even though the pause
+    was only slightly longer. (Fortunately, there were spare CPU cycles on the machine
+    for the parallel G1 threads, or the pause would have been longer.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, G1 GC scans the root region:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This takes 0.58 seconds, but it doesn’t stop the application threads; it uses
+    only the background threads. However, this phase cannot be interrupted by a young
+    collection, so having available CPU cycles for those background threads is crucial.
+    If the young generation happens to fill up during the root region scanning, the
+    young collection (which has stopped all the application threads) must wait for
+    the root scanning to complete. In effect, this means a longer-than-usual pause
+    to collect the young generation. That situation is shown in the GC log like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The GC pause here starts before the end of the root region scanning. In JDK
+    8, the interleaved output in the GC log indicates that the young collection had
+    to pause for the root region scanning to complete before it proceeded. In JDK
+    11, that’s a little more difficult to detect: you have to notice that the timestamp
+    of the end of the root region scanning is exactly the same at which the next young
+    collection begins.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In either case, it is impossible to know exactly how long the young collection
+    was delayed. It wasn’t necessarily delayed the entire 610 ms in this example;
+    for some period of that time (until the young generation actually filled up),
+    things continued. But in this case, the timestamps show that application threads
+    waited about an extra 100 ms—that is why the duration of the young GC pause is
+    about 100 ms longer than the average duration of other pauses in this log. (If
+    this occurs frequently, it is an indication that G1 GC needs to be better tuned,
+    as discussed in the next section.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After the root region scanning, G1 GC enters a concurrent marking phase. This
+    happens completely in the background; a message is printed when it starts and
+    ends:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Concurrent marking can be interrupted, so young collections may occur during
+    this phase (so there will be lots of GC output where the ellipses are).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Also note that in the JDK 11 example, the output has the same GC entry—20—as
+    did the entry where the root region scanning occurred. We are breaking down the
+    operations more finely than the JDK logging does: in the JDK, the entire background
+    scanning is considered one operation. We’re splitting the discussion into more
+    fine-grained, logical operations, since, for example, the root scanning can introduce
+    a pause when the concurrent marking cannot.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The marking phase is followed by a remarking phase and a normal cleanup phase:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'These phases stop the application threads, though usually for a short time.
+    Next an additional cleanup phase happens concurrently:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: And with that, the normal G1 GC background marking cycle is complete—insofar
+    as finding the garbage goes, at least. But very little has actually been freed
+    yet. A little memory was reclaimed in the cleanup phase, but all G1 GC has really
+    done at this point is to identify old regions that are mostly garbage and can
+    be reclaimed (the ones marked with an X in [Figure 6-5](#FigureG1Concurrent)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now G1 GC executes a series of mixed GCs. They are called *mixed* because they
+    perform the normal young collection but also collect some of the marked regions
+    from the background scan. The effect of a mixed GC is shown in [Figure 6-6](#FigureG1Mixed).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As is usual for a young collection, G1 GC has completely emptied eden and adjusted
+    the survivor spaces. Additionally, two of the marked regions have been collected.
+    Those regions were known to contain mostly garbage, so a large part of them was
+    freed. Any live data in those regions was moved to another region (just as live
+    data was moved from the young generation into regions in the old generation).
+    This is how G1 GC compacts the old generation—moving the objects like this is
+    essentially compacting the heap as G1 GC goes along.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A diagram of the heap before and after a G1 GC mixed collection.](assets/jp2e_0606.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-6\. Mixed GC performed by G1 GC
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The mixed GC operation usually looks like this in the log:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that the entire heap usage has been reduced by more than just the 1,222
+    MB removed from eden. That difference (16 MB) seems small, but remember that some
+    of the survivor space was promoted into the old generation at the same time; in
+    addition, each mixed GC cleans up only a portion of the targeted old generation
+    regions. As we continue, you’ll see that it is important to make sure that the
+    mixed GCs clean up enough memory to prevent future concurrent failures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In JDK 11, the first mixed GC is labeled `Prepared Mixed` and immediately follows
+    the concurrent cleanup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The mixed GC cycles will continue until (almost) all of the marked regions have
+    been collected, at which point G1 GC will resume regular young GC cycles. Eventually,
+    G1 GC will start another concurrent cycle to determine which regions in the old
+    generation should be freed next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although a mixed GC cycle usually says `(Mixed)` for the GC cause, the young
+    collections are sometimes labeled normally following a concurrent cycle (i.e.,
+    `G1 Evacuation Pause`). If the concurrent cycle found regions in the old generation
+    that can be completely freed, those regions are reclaimed during the regular young
+    evacuation pause. Technically, this is not a mixed cycle in the implementation
+    of the collector. Logically, though, it is: objects are being freed from the young
+    generation or promoted into the old generation, and at the same time garbage objects
+    (regions, really) are being freed from the old generation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If all goes well, that’s the entire set of GC activities you’ll see in your
+    GC log. But there are some failure cases to consider.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sometimes you’ll observe a full GC in the log, which is an indication that
+    more tuning (including, possibly, more heap space) will benefit the application
+    performance. This is triggered primarily four times:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrent mode failure
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'G1 GC starts a marking cycle, but the old generation fills up before the cycle
+    is completed. In that case, G1 GC aborts the marking cycle:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: This failure means that heap size should be increased, the G1 GC background
+    processing must begin sooner, or the cycle must be tuned to run more quickly (e.g.,
+    by using additional background threads). Details on how to do that follow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Promotion failure
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'G1 GC has completed a marking cycle and has started performing mixed GCs to
+    clean up the old regions. Before it can clean enough space, too many objects are
+    promoted from the young generation, and so the old generation still runs out of
+    space. In the log, a full GC immediately follows a mixed GC:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: This failure means the mixed collections need to happen more quickly; each young
+    collection needs to process more regions in the old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evacuation failure
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When performing a young collection, there isn’t enough room in the survivor
+    spaces and the old generation to hold all the surviving objects. This appears
+    in the GC logs as a specific kind of young GC:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is an indication that the heap is largely full or fragmented. G1 GC will
+    attempt to compensate, but you can expect this to end badly: the JVM will resort
+    to performing a full GC. The easy way to overcome this is to increase the heap
+    size, though possible solutions are given in [“Advanced Tunings”](#advance-tunings-sec).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Humongous allocation failure
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Applications that allocate very large objects can trigger another kind of full
+    GC in G1 GC; see [“G1 GC allocation of humongous objects”](#HumongousObjects)
+    for more details (including how to avoid it). In JDK 8, it isn’t possible to diagnose
+    this situation without resorting to special logging parameters, but in JDK 11
+    that is shown with this log:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Metadata GC threshold
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As I’ve mentioned, the metaspace is essentially a separate heap and is collected
+    independently of the main heap. It is not collected via G1 GC, but still when
+    it needs to be collected in JDK 8, G1 GC will perform a full GC (immediately preceded
+    by a young collection) on the main heap:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: In JDK 11, the metaspace can be collected/resized without requiring a full GC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: G1 has multiple cycles (and phases within the concurrent cycle). A well-tuned
+    JVM running G1 should experience only young, mixed, and concurrent GC cycles.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Small pauses occur for some of the G1 concurrent phases.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: G1 should be tuned if necessary to avoid full GC cycles.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tuning G1 GC
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The major goal in tuning G1 GC is to make sure that no concurrent mode or evacuation
+    failures end up requiring a full GC. The techniques used to prevent a full GC
+    can also be used when frequent young GCs must wait for a root region scan to complete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tuning to prevent a full collection is critical in JDK 8, because when G1 GC
+    executes a full GC in JDK 8, it does so using a single thread. That creates a
+    longer than usual pause time. In JDK 11, the full GC is executed by multiple threads,
+    leading to a shorter pause time (essentially, the same pause time as a full GC
+    with the throughput collector). This difference is one reason it is preferable
+    to update to JDK 11 if you are using G1 GC (though a JDK 8 application that avoids
+    full GCs will perform just fine).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Secondarily, tuning can minimize the pauses that occur along the way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These are the options to prevent a full GC:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Increase the size of the old generation either by increasing the heap space
+    overall or by adjusting the ratio between the generations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Increase the number of background threads (assuming there is sufficient CPU).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Perform G1 GC background activities more frequently.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Increase the amount of work done in mixed GC cycles.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'A lot of tunings can be applied here, but one of the goals of G1 GC is that
+    it shouldn’t have to be tuned that much. To that end, G1 GC is primarily tuned
+    via a single flag: the same `-XX:MaxGCPauseMillis=`*`N`* flag that was used to
+    tune the throughput collector.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When used with G1 GC (and unlike the throughput collector), that flag does
+    have a default value: 200 ms. If pauses for any of the stop-the-world phases of
+    G1 GC start to exceed that value, G1 GC will attempt to compensate—adjusting the
+    young-to-old ratio, adjusting the heap size, starting the background processing
+    sooner, changing the tenuring threshold, and (most significantly) processing more
+    or fewer old generation regions during a mixed GC cycle.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some trade-offs apply here: if that value is reduced, the young size will contract
+    to meet the pause-time goal, but more frequent young GCs will be performed. In
+    addition, the number of old generation regions that can be collected during a
+    mixed GC will decrease to meet the pause-time goal, which increases the chances
+    of a concurrent mode failure.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If setting a pause-time goal does not prevent the full GCs from happening, these
+    various aspects can be tuned individually. Tuning the heap sizes for G1 GC is
+    accomplished in the same way as for other GC algorithms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tuning the G1 background threads
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'You can consider the concurrent marking of G1 GC to be in a race with the application
+    threads: G1 GC must clear out the old generation faster than the application is
+    promoting new data into it. To make that happen, try increasing the number of
+    background marking threads (assuming sufficient CPU is available on the machine).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Two sets of threads are used by G1 GC. The first set is controlled via the
+    `-XX:ParallelGCThreads=*N*` flag that you first saw in [Chapter 5](ch05.html#GC).
+    That value affects the number of threads used for phases when application threads
+    are stopped: young and mixed collections, and the phases of the concurrent remark
+    cycle where threads must be stopped. The second flag is `-XX:ConcGCThreads=*N*`,
+    which affects the number of threads used for the concurrent remarking.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The default value for the `ConcGCThreads` flag is defined as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: This division is integer-based, so there will be one background scanning thread
+    for up to five parallel threads, two background scanning threads for between six
+    and nine parallel threads, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Increasing the number of background scanning threads will make the concurrent
+    cycle shorter, which should make it easier for G1 GC to finish freeing the old
+    generation during the mixed GC cycles before other threads have filled it again.
+    As always, this assumes that the CPU cycles are available; otherwise, the scanning
+    threads will take CPU away from the application and effectively introduce pauses
+    in it, as you saw when we compared the serial collector to G1 GC in [Chapter 5](ch05.html#GC).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tuning G1 GC to run more (or less) frequently
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: G1 GC can also win its race if it starts the background marking cycle earlier.
+    That cycle begins when the heap hits the occupancy ratio specified by `-XX:InitiatingHeapOccupancyPercent=`*`N`*,
+    which has a default value of 45\. This percentage refers to the entire heap, not
+    just the old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `InitiatingHeapOccupancyPercent` value is constant; G1 GC never changes
+    that number as it attempts to meet its pause-time goals. If that value is set
+    too high, the application will end up performing full GCs because the concurrent
+    phases don’t have enough time to complete before the rest of the heap fills up.
+    If that value is too small, the application will perform more background GC processing
+    than it might otherwise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At some point, of course, those background threads will have to run, so presumably
+    the hardware has enough CPU to accommodate them. Still, a significant penalty
+    can result from running them too frequently, because more small pauses will occur
+    for those concurrent phases that stop the application threads. Those pauses can
+    add up quickly, so performing background sweeping too frequently for G1 GC should
+    be avoided. Check the size of the heap after a concurrent cycle, and make sure
+    that the `InitiatingHeapOccupancyPercent` value is set higher than that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tuning G1 GC mixed GC cycles
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: After a concurrent cycle, G1 GC cannot begin a new concurrent cycle until all
+    previously marked regions in the old generation have been collected. So another
+    way to make G1 GC start a marking cycle earlier is to process more regions in
+    a mixed GC cycle (so that there will end up being fewer mixed GC cycles).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The amount of work a mixed GC does depends on three factors. The first is how
+    many regions were found to be mostly garbage in the first place. There is no way
+    to directly affect that: a region is declared eligible for collection during a
+    mixed GC if it is 85% garbage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second factor is the maximum number of mixed GC cycles over which G1 GC
+    will process those regions, which is specified by the value of the flag `-XX:G1Mixed``GCCountTarget=`*`N`*.
+    The default value for that is 8; reducing that value can help overcome promotion
+    failures (at the expense of longer pause times during the mixed GC cycle).
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, if mixed GC pause times are too long, that value can be increased
+    so that less work is done during the mixed GC. Just be sure that increasing that
+    number does not delay the next G1 GC concurrent cycle too long, or a concurrent
+    mode failure may result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the third factor is the maximum desired length of a GC pause (i.e.,
+    the value specified by `MaxGCPauseMillis`). The number of mixed cycles specified
+    by the `G1MixedGCCountTarget` flag is an upper bound; if time is available within
+    the pause target, G1 GC will collect more than one-eighth (or whatever value has
+    been specified) of the marked old generation regions. Increasing the value of
+    the `MaxGCPauseMillis` flag allows more old generation regions to be collected
+    during each mixed GC, which in turn can allow G1 GC to begin the next concurrent
+    cycle sooner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: G1 GC tuning should begin by setting a reasonable pause-time target.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'If full GCs are still an issue after that and the heap size cannot be increased,
+    specific tunings can be applied for specific failure:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To make the background threads run more frequently, adjust `InitiatingHeapOccupancyPercent`.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If additional CPU is available, adjust the number of threads via the `ConcGCThreads`
+    flag.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To prevent promotion failures, decrease the size of `G1MixedGCCountTarget`.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding the CMS Collector
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Although the CMS collector is deprecated, it is still available in current JDK
+    builds. So this section covers how to tune it, as well as why it has been deprecated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'CMS has three basic operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collecting the young generation (stopping all application threads)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Running a concurrent cycle to clean data out of the old generation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Performing a full GC to compact the old generation, if necessary
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A CMS collection of the young generation appears in [Figure 6-7](#FigureCMSYoung).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A diagram of the heap before and after a CMS young collection.](assets/jp2e_0607.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-7\. Young collection performed by CMS
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'A CMS young collection is similar to a throughput young collection: data is
+    moved from eden into one survivor space (and into the old generation if the survivor
+    space fills up).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The GC log entry for CMS is also similar (I’ll show only the JDK 8 log format):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The size of the young generation is presently 629 MB; after collection, 69 MB
+    of it remains (in a survivor space). Similarly, the size of the entire heap is
+    2,027 MB—772 MB of which is occupied after the collection. The entire process
+    took 0.12 seconds, though the parallel GC threads racked up 0.42 seconds in CPU
+    usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A concurrent cycle is shown in [Figure 6-8](#FigureCMSConcurrent).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'CMS starts a concurrent cycle based on the occupancy of the heap. When it is
+    sufficiently full, the background threads that cycle through the heap and remove
+    objects are started. At the end of the cycle, the heap looks like the bottom row
+    in this diagram. Notice that the old generation is not compacted: there are areas
+    where objects are allocated, and free areas. When a young collection moves objects
+    from eden into the old generation, the JVM will attempt to use those free areas
+    to hold the objects. Often those objects won’t fit into one of the free areas,
+    which is why after the CMS cycle, the high-water mark of the heap is larger.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A diagram of the heap before and after a CMS concurrent cycle.](assets/jp2e_0608.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-8\. Concurrent collection performed by CMS
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In the GC log, this cycle appears as a number of phases. Although a majority
+    of the concurrent cycle uses background threads, some phases introduce short pauses
+    where all application threads are stopped.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The concurrent cycle starts with an initial-mark phase, which stops all the
+    application threads:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: This phase is responsible for finding all the GC root objects in the heap. The
+    first set of numbers shows that objects currently occupy 702 MB of 1,398 MB of
+    the old generation, while the second set shows that the occupancy of the entire
+    2,027 MB heap is 772 MB. The application threads were stopped for a period of
+    0.08 seconds during this phase of the CMS cycle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next phase is the mark phase, and it does not stop the application threads.
+    The phase is represented in the GC log by these lines:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The mark phase took 0.83 seconds (and 1.11 seconds of CPU time). Since it is
+    just a marking phase, it hasn’t done anything to the heap occupancy, so no data
+    is shown about that. If there were data, it would likely show a growth in the
+    heap from objects allocated in the young generation during those 0.83 seconds,
+    since the application threads have continued to execute.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next comes a preclean phase, which also runs concurrently with the application
+    threads:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next phase is a remark phase, but it involves several operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Wait, didn’t CMS just execute a preclean phase? What’s up with this abortable
+    preclean phase?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The abortable preclean phase is used because the remark phase (which, strictly
+    speaking, is the final entry in this output) is not concurrent—it will stop all
+    the application threads. CMS wants to avoid the situation where a young generation
+    collection occurs and is immediately followed by a remark phase, in which case
+    the application threads would be stopped for two back-to-back pause operations.
+    The goal here is to minimize pause lengths by preventing back-to-back pauses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, the abortable preclean phase waits until the young generation is about
+    50% full. In theory, that is halfway between young generation collections, giving
+    CMS the best chance to avoid those back-to-back pauses. In this example, the abortable
+    preclean phase starts at 90.8 seconds and waits about 1.5 seconds for the regular
+    young collection to occur (at 92.392 seconds into the log). CMS uses past behavior
+    to calculate when the next young collection is likely to occur—in this case, CMS
+    calculated it would occur in about 4.2 seconds. So after 2.1 seconds (at 94.4
+    seconds), CMS ends the preclean phase (which it calls *aborting* the phase, even
+    though that is the only way the phase is stopped). Then, finally, CMS executes
+    the remark phase, which pauses the application threads for 0.18 seconds (the application
+    threads were not paused during the abortable preclean phase).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next comes another concurrent phase—the sweep phase:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: This phase took 0.82 seconds and ran concurrently with the application threads.
+    It also happened to be interrupted by a young collection. This young collection
+    had nothing to do with the sweep phase, but it is left in here as an example that
+    the young collections can occur simultaneously with the old collection phases.
+    In [Figure 6-8](#FigureCMSConcurrent), notice that the state of the young generation
+    changed during the concurrent collection—there may have been an arbitrary number
+    of young collections during the sweep phase (and there will have been at least
+    one young collection because of the abortable preclean phase).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next comes the concurrent reset phase:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That is the last of the concurrent phases; the CMS cycle is complete, and the
+    unreferenced objects found in the old generation are now free (resulting in the
+    heap shown in [Figure 6-8](#FigureCMSConcurrent)). Unfortunately, the log doesn’t
+    provide any information about how many objects were freed; the reset line doesn’t
+    give any information about the heap occupancy. To get an idea of that, look to
+    the next young collection:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now compare the occupancy of the old generation at 89.853 seconds (before the
+    CMS cycle began), which was roughly 703 MB (the entire heap occupied 772 MB at
+    that point, which included 69 MB in the survivor space, so the old generation
+    consumed the remaining 703 MB). In the collection at 98.049 seconds, the old generation
+    occupies about 504 MB; the CMS cycle therefore cleaned up about 199 MB of memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If all goes well, these are the only cycles that CMS will run and the only
+    log messages that will appear in the CMS GC log. But there are three more messages
+    to look for, which indicate that CMS ran into a problem. The first is a concurrent
+    mode failure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: When a young collection occurs and there isn’t enough room in the old generation
+    to hold all the objects that are expected to be promoted, CMS executes what is
+    essentially a full GC. All application threads are stopped, and the old generation
+    is cleaned of any dead objects, reducing its occupancy to 1,366 MB—an operation
+    that kept the application threads paused for a full 5.6 seconds. That operation
+    is single-threaded, which is one reason it takes so long (and one reason concurrent
+    mode failures are worse as the heap grows).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This concurrent mode failure is a major reason CMS is deprecated. G1 GC can
+    have a concurrent mode failure, but when it reverts to a full GC, that full GC
+    occurs in parallel in JDK 11 (though not in JDK 8). A CMS full GC will take many
+    times longer to execute because it must execute in a single thread.^([2](ch06.html#idm45775554022120))
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second problem occurs when there is enough room in the old generation to
+    hold the promoted objects but the free space is fragmented and so the promotion
+    fails:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, CMS started a young collection and assumed that space existed to hold
+    all the promoted objects (otherwise, it would have declared a concurrent mode
+    failure). That assumption proved incorrect: CMS couldn’t promote the objects because
+    the old generation was fragmented (or, much less likely, because the amount of
+    memory to be promoted was bigger than CMS expected).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a result, in the middle of the young collection (when all threads were already
+    stopped), CMS collected and compacted the entire old generation. The good news
+    is that with the heap compacted, fragmentation issues have been solved (at least
+    for a while). But that came with a hefty 28-second pause time. This time is much
+    longer than when CMS had a concurrent mode failure because the entire heap was
+    compacted; the concurrent mode failure simply freed objects in the heap. The heap
+    at this point appears as it did at the end of the throughput collector’s full
+    GC ([Figure 6-2](#FigureParOld)): the young generation is completely empty, and
+    the old generation has been compacted.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, the CMS log may show a full GC without any of the usual concurrent
+    GC messages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: This occurs when the metaspace has filled up and needs to be collected. CMS
+    does not collect the metaspace, so if it fills up, a full GC is needed to discard
+    any unreferenced classes. [“Advanced Tunings”](#advance-tunings-sec) shows how
+    to overcome this issue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: CMS has several GC operations, but the expected operations are minor GCs and
+    concurrent cycles.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Concurrent mode failures and promotion failures in CMS are expensive; CMS should
+    be tuned to avoid these as much as possible.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By default, CMS does not collect metaspace.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tuning to Solve Concurrent Mode Failures
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The primary concern when tuning CMS is to make sure that no concurrent mode
+    or promotion failures occur. As the CMS GC log showed, a concurrent mode failure
+    occurs because CMS did not clean out the old generation fast enough: when it comes
+    time to perform a collection in the young generation, CMS calculates that it doesn’t
+    have enough room to promote those objects to the old generation and instead collects
+    the old generation first.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The old generation initially fills up by placing the objects right next to
+    each other. When a certain amount of the old generation is filled (by default,
+    70%), the concurrent cycle begins and the background CMS thread(s) start scanning
+    the old generation for garbage. At this point, the race is on: CMS must complete
+    scanning the old generation and freeing objects before the remainder (30%) of
+    the old generation fills up. If the concurrent cycle loses the race, CMS will
+    experience a concurrent mode failure.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can attempt to avoid this failure in multiple ways:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Make the old generation larger, either by shifting the proportion of the new
+    generation to the old generation or by adding more heap space altogether.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Run the background thread more often.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use more background threads.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If more memory is available, the better solution is to increase the size of
+    the heap. Otherwise, change the way the background threads operate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the background thread more often
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'One way to let CMS win the race is to start the concurrent cycle sooner. If
+    the concurrent cycle starts when 60% of the old generation is filled, CMS has
+    a better chance of finishing than if the cycle starts when 70% of the old generation
+    is filled. The easiest way to achieve that is to set both these flags:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-XX:CMSInitiatingOccupancyFraction=`*`N`*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`-XX:+UseCMSInitiatingOccupancyOnly`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Using both flags also makes CMS easier to understand: if both are set, CMS
+    determines when to start the background thread based only on the percentage of
+    the old generation that is filled. (Note that unlike G1 GC, the occupancy ratio
+    here is only the old generation and not the entire heap.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: By default, the `UseCMSInitiatingOccupancyOnly` flag is `false`, and CMS uses
+    a more complex algorithm to determine when to start the background thread. If
+    the background thread needs to be started earlier, it’s better to start it the
+    simplest way possible and set the `UseCMSInitiatingOccupancyOnly` flag to `true`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Tuning the value of the `CMSInitiatingOccupancyFraction` may require a few
+    iterations. If `UseCMSInitiatingOccupancyOnly` is enabled, the default value for
+    `CMSInitiatingOccupancyFraction` is 70: the CMS cycle starts when the old generation
+    is 70% occupied.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A better value for that flag for a given application can be found in the GC
+    log by figuring out when the failed CMS cycle started in the first place. Find
+    the concurrent mode failure in the log, and then look back to when the most recent
+    CMS cycle started. The `CMS-initial-mark` line will show how full the old generation
+    was when the CMS cycle started:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, that works out to about 50% (702 MB out of 1,398 MB). That
+    was not soon enough, so the `CMSInitiatingOccupancyFraction` needs to be set to
+    something lower than 50\. (Although the default value for that flag is 70, this
+    example started the CMS threads when the old generation was 50% full because the
+    `UseCMS``InitiatingOccupancyOnly` flag was not set.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: The temptation here is just to set the value to 0 or another small number so
+    that the background CMS cycle runs all the time. That’s usually discouraged, but
+    as long as you are aware of the trade-offs being made, it may work out fine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first trade-off comes in CPU time: the CMS background thread(s) will run
+    continually, and they consume a fair amount of CPU—each background CMS thread
+    will consume 100% of a CPU. There will also be very short bursts when multiple
+    CMS threads run and the total CPU on the box spikes as a result. If these threads
+    are running needlessly, that wastes CPU resources.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, it isn’t necessarily a problem to use those CPU cycles. The
+    background CMS threads have to run sometimes, even in the best case. Hence, the
+    machine must always have enough CPU cycles available to run those CMS threads.
+    So when sizing the machine, you must plan for that CPU usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second trade-off is far more significant and has to do with pauses. As the
+    GC log showed, certain phases of the CMS cycle stop all the application threads.
+    The main reason CMS is used is to limit the effect of GC pauses, so running CMS
+    more often than needed is counterproductive. The CMS pauses are generally much
+    shorter than a young generation pause, and a particular application may not be
+    sensitive to those additional pauses—it’s a trade-off between the additional pauses
+    and the reduced chance of a concurrent mode failure. But continually running the
+    background GC pauses will likely lead to excessive overall pauses, which will,
+    in the end, ultimately reduce the performance of the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unless those trade-offs are acceptable, take care not to set the `CMSInitiatingOccupancyFraction`
+    higher than the amount of live data in the heap, plus at least 10% to 20%.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adjusting the CMS background threads
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Each CMS background thread will consume 100% of a CPU on a machine. If an application
+    experiences a concurrent mode failure and extra CPU cycles are available, the
+    number of those background threads can be increased by setting the `-XX:ConcGCThreads=`*`N`*
+    flag. CMS sets this flag differently than G1 GC; it uses this calculation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: So CMS increases the value of `ConcGCThreads` one step earlier than does G1
+    GC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Avoiding concurrent mode failures is the key to achieving the best possible
+    performance with CMS.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The simplest way to avoid those failures (when possible) is to increase the
+    size of the heap.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Otherwise, the next step is to start the concurrent background threads sooner
+    by adjusting `CMSInitiatingOccupancy​Frac⁠tion`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tuning the number of background threads can also help.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Advanced Tunings
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This section on tunings covers some fairly unusual situations. Even though these
+    situations are not encountered frequently, many of the low-level details of the
+    GC algorithms are explained in this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tenuring and Survivor Spaces
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'When the young generation is collected, some objects will still be alive. This
+    includes not only newly created objects that are destined to exist for a long
+    time but also objects that are otherwise short-lived. Consider the loop of `BigDecimal`
+    calculations at the beginning of [Chapter 5](ch05.html#GC). If the JVM performs
+    GC in the middle of that loop, some of those short-lived `BigDecimal` objects
+    will be unlucky: they will have been just created and in use, so they can’t be
+    freed—but they aren’t going to live long enough to justify moving them to the
+    old generation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the reason that the young generation is divided into two survivor spaces
+    and eden. This setup allows objects to have additional chances to be collected
+    while still in the young generation, rather than being promoted into (and filling
+    up) the old generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the young generation is collected and the JVM finds an object that is still
+    alive, that object is moved to a survivor space rather than to the old generation.
+    During the first young generation collection, objects are moved from eden into
+    survivor space 0\. During the next collection, live objects are moved from both
+    survivor space 0 and from eden into survivor space 1\. At that point, eden and
+    survivor space 0 are completely empty. The next collection moves live objects
+    from survivor space 1 and eden into survivor space 0, and so on. (The survivor
+    spaces are also referred to as the *to* and *from* spaces; during each collection,
+    objects are moved out of the from space and into the to space. *from* and *to*
+    are simply pointers that switch between the two survivor spaces on every collection.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clearly this cannot continue forever, or nothing would ever be moved into the
+    old generation. Objects are moved into the old generation in two circumstances.
+    First, the survivor spaces are fairly small. When the target survivor space fills
+    up during a young collection, any remaining live objects in eden are moved directly
+    into the old generation. Second, there is a limit to the number of GC cycles during
+    which an object can remain in the survivor spaces. That limit is called the *tenuring
+    threshold*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Tunings can affect each of those situations. The survivor spaces take up part
+    of the allocation for the young generation, and like other areas of the heap,
+    the JVM sizes them dynamically. The initial size of the survivor spaces is determined
+    by the `-XX:InitialSurvivorRatio=`*`N`* flag, which is used in this equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: For the default initial survivor ratio of 8, each survivor space will occupy
+    10% of the young generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The JVM may increase the survivor spaces size to a maximum determined by the
+    setting of the `-XX:MinSurvivorRatio=`*`N`* flag. That flag is used in this equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: By default, this value is 3, meaning the maximum size of a survivor space will
+    be 20% of the young generation. Note again that the value is a ratio, so the minimum
+    value of the ratio gives the maximum size of the survivor space. The name is hence
+    a little counterintuitive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To keep the survivor spaces at a fixed size, set the `SurvivorRatio` to the
+    desired value and disable the `UseAdaptiveSizePolicy` flag (though remember that
+    disabling adaptive sizing will apply to the old and new generations as well).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JVM determines whether to increase or decrease the size of the survivor
+    spaces (subject to the defined ratios) based on how full a survivor space is after
+    a GC. The survivor spaces will be resized so that they are, by default, 50% full
+    after a GC. That value can be changed with the `-XX:TargetSurvivorRatio=`*`N`*
+    flag.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, there is the question of how many GC cycles an object will remain ping-ponging
+    between the survivor spaces before being moved into the old generation. That answer
+    is determined by the tenuring threshold. The JVM continually calculates what it
+    thinks the best tenuring threshold is. The threshold starts at the value specified
+    by the `-XX:InitialTenuringThreshold=`*`N`* flag (the default is 7 for the throughput
+    and G1 GC collectors, and 6 for CMS). The JVM will ultimately determine a threshold
+    between 1 and the value specified by the `-XX:MaxTenuringThreshold=`*`N`* flag;
+    for the throughput and G1 GC collectors, the default maximum threshold is 15,
+    and for CMS it is 6.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given all that, which values might be tuned under which circumstances? It is
+    helpful to look at the tenuring statistics; these are not printed using the GC
+    logging commands we’ve used so far.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In JDK 8, the tenuring distribution can be added to the GC log by including
+    the flag `-XX:+PrintTenuringDistribution` (which is `false` by default). In JDK
+    11, it is added by including `age*=debug` or `age*=trace` to the `Xlog` argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The most important thing to look for is whether the survivor spaces are so small
+    that during a minor GC, objects are promoted directly from eden into the old generation.
+    The reason to avoid that is short-lived objects will end up filling the old generation,
+    causing full GCs to occur too frequently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In GC logs taken with the throughput collector, the only hint for that condition
+    is this line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: The JDK 11 log with `age*=debug` is similar; it will print the desired survivor
+    size during the collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The desired size for a single survivor space here is 39 MB out of a young generation
+    of 660 MB: the JVM has calculated that the two survivor spaces should take up
+    about 11% of the young generation. But the open question is whether that is large
+    enough to prevent overflow. This log provides no definitive answer, but the fact
+    that the JVM has adjusted the tenuring threshold to 1 indicates that it has determined
+    it is directly promoting most objects to the old generation anyway, so it has
+    minimized the tenuring threshold. This application is probably promoting directly
+    to the old generation without fully using the survivor spaces.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When G1 GC is used, more-informative output is obtained in the JDK 8 log:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: In JDK 11, that information comes by including `age*=trace` in the logging configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The desired survivor space is similar to the previous example—35 MB—but the
+    output also shows the size of all the objects in the survivor space. With 37 MB
+    of data to promote, the survivor space is indeed overflowing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whether this situation can be improved depends on the application. If the objects
+    are going to live longer than a few more GC cycles, they will eventually end up
+    in the old generation anyway, so adjusting the survivor spaces and tenuring threshold
+    won’t really help. But if the objects would go away after just a few more GC cycles,
+    some performance can be gained by arranging for the survivor spaces to be more
+    efficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the size of the survivor spaces is increased (by decreasing the survivor
+    ratio), memory is taken away from the eden section of the young generation. That
+    is where the objects actually are allocated, meaning fewer objects can be allocated
+    before incurring a minor GC. So that option is usually not recommended.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another possibility is to increase the size of the young generation. That can
+    be counterproductive in this situation: objects might be promoted less often into
+    the old generation, but since the old generation is smaller, the application may
+    do full GCs more often.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the size of the heap can be increased altogether, both the young generation
+    and the survivor spaces can get more memory, which will be the best solution.
+    A good process is to increase the heap size (or at least the young generation
+    size) and to decrease the survivor ratio. That will increase the size of the survivor
+    spaces more than it will increase the size of eden. The application should end
+    up having roughly the same number of young collections as before. It should have
+    fewer full GCs, though, since fewer objects will be promoted into the old generation
+    (again, assuming that the objects will no longer be live after a few more GC cycles).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the sizes of the survivor spaces have been adjusted so that they never overflow,
+    objects will be promoted to the old generation only after the `MaxTenuringThreshold`
+    is reached. That value can be increased to keep the objects in the survivor spaces
+    for a few more young GC cycles. But be aware that if the tenuring threshold is
+    increased and objects stay in the survivor space longer, there will be less room
+    in the survivor space during future young collections: it is then more likely
+    that the survivor space will overflow and start promoting directly into the old
+    generation again.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Survivor spaces are designed to allow objects (particularly just-allocated objects)
+    to remain in the young generation for a few GC cycles. This increases the probability
+    the object will be freed before it is promoted to the old generation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the survivor spaces are too small, objects will promoted directly into the
+    old generation, which in turn causes more old GC cycles.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The best way to handle that situation is to increase the size of the heap (or
+    at least the young generation) and allow the JVM to handle the survivor spaces.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In rare cases, adjusting the tenuring threshold or survivor space sizes can
+    prevent promotion of objects into the old generation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Allocating Large Objects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This section describes in detail how the JVM allocates objects. This is interesting
+    background information, and it is important to applications that frequently create
+    a significant number of large objects. In this context, *large* is a relative
+    term; it depends, as you’ll see, on the size of a particular kind of buffer within
+    the JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This buffer is known as a *thread-local allocation buffer* (TLAB). TLAB sizing
+    is a consideration for all GC algorithms, and G1 GC has an additional consideration
+    for very large objects (again, a relative term—but for a 2 GB heap, objects larger
+    than 512 MB). The effects of very large objects on G1 GC can be important—TLAB
+    sizing (to overcome somewhat large objects when using any collector) is fairly
+    unusual, but G1 GC region sizing (to overcome very large objects when using G1)
+    is more common.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread-local allocation buffers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '[Chapter 5](ch05.html#GC) discusses how objects are allocated within eden;
+    this allows for faster allocation (particularly for objects that are quickly discarded).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It turns out that one reason allocation in eden is so fast is that each thread
+    has a dedicated region where it allocates objects—a thread-local allocation buffer,
+    or TLAB. When objects are allocated directly in a shared space such as eden, some
+    synchronization is required to manage the free-space pointers within that space.
+    By setting up each thread with its own dedicated allocation area, the thread needn’t
+    perform any synchronization when allocating objects.^([3](ch06.html#idm45775553858312))
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Usually, the use of TLABs is transparent to developers and end users: TLABs
+    are enabled by default, and the JVM manages their sizes and how they are used.
+    The important thing to realize about TLABs is that they have a small size, so
+    large objects cannot be allocated within a TLAB. Large objects must be allocated
+    directly from the heap, which requires extra time because of the synchronization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a TLAB becomes full, objects of a certain size can no longer be allocated
+    in it. At this point, the JVM has a choice. One option is to “retire” the TLAB
+    and allocate a new one for the thread. Since the TLAB is just a section within
+    eden, the retired TLAB will be cleaned at the next young collection and can be
+    reused subsequently. Alternately, the JVM can allocate the object directly on
+    the heap and keep the existing TLAB (at least until the thread allocates additional
+    objects into the TLAB). Say a TLAB is 100 KB, and 75 KB has already been allocated.
+    If a new 30 KB allocation is needed, the TLAB can be retired, which wastes 25
+    KB of eden space. Or the 30 KB object can be allocated directly from the heap,
+    and the thread can hope that the next object that is allocated will fit in the
+    25 KB of space that is still free within the TLAB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Parameters can control this (as discussed later in this section), but the key
+    is that the size of the TLAB is crucial. By default, the size of a TLAB is based
+    on three factors: the number of threads in the application, the size of eden,
+    and the allocation rate of threads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Hence, two types of applications may benefit from tuning the TLAB parameters:
+    applications that allocate a lot of large objects, and applications that have
+    a relatively large number of threads compared to the size of eden. By default,
+    TLABs are enabled; they can be disabled by specifying `-XX:-UseTLAB`, although
+    they give such a performance boost that disabling them is always a bad idea.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since the calculation of the TLAB size is based in part on the allocation rate
+    of the threads, it is impossible to definitively predict the best TLAB size for
+    an application. Instead, we can monitor the TLAB allocation to see if any allocations
+    occur outside the TLABs. If a significant number of allocations occur outside
+    of TLABs, we have two choices: reduce the size of the object being allocated or
+    adjust the TLAB sizing parameters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Monitoring the TLAB allocation is another case where Java Flight Recorder is
+    much more powerful than other tools. [Figure 6-9](#FigureJFRTLAB) shows a sample
+    of the TLAB allocation screen from a JFR recording.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jp2e 0609](assets/jp2e_0609.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-9\. View of TLABs in Java Flight Recorder
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'In the 5 seconds selected in this recording, 49 objects were allocated outside
+    TLABs; the maximum size of those objects was 48 bytes. Since the minimum TLAB
+    size is 1.35 MB, we know that these objects were allocated on the heap only because
+    the TLAB was full at the time of allocation: they were not allocated directly
+    in the heap because of their size. That is typical immediately before a young
+    GC occurs (as eden—and hence the TLABs carved out of eden—becomes full).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The total allocation in this period is 1.59 KB; neither the number of allocations
+    nor the size in this example is a cause for concern. Some objects will always
+    be allocated outside TLABs, particularly as eden approaches a young collection.
+    Compare that example to [Figure 6-10](#FigureTLABBad), which shows a great deal
+    of allocation occurring outside the TLABs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jp2e 0610](assets/jp2e_0610.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6-10\. Excessive allocation occurring outside TLABs
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The total memory allocated inside TLABs during this recording is 952.96 MB,
+    and the total memory allocated for objects outside TLABs is 568.32 MB. This is
+    a case where either changing the application to use smaller objects or tuning
+    the JVM to allocate those objects in larger TLABs can have a beneficial effect.
+    Note that other tabs can display the actual objects that were allocated out the
+    TLAB; we can even arrange to get the stacks from when those objects were allocated.
+    If there is a problem with TLAB allocation, JFR will pinpoint it quickly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Outside JFR, the best way to look at this is to monitor the TLAB allocation
+    by adding the `-XX:+PrintTLAB` flag to the command line in JDK 8 or including
+    `tlab*=trace` in the log configuration for JDK 11 (which provides the following
+    information plus more). Then, at every young collection, the GC log will contain
+    two kinds of lines: a line for each thread describing the TLAB usage for that
+    thread, and a summary line describing the overall TLAB usage of the JVM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The per thread line looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `gc` in this output means that the line was printed during GC; the thread
+    itself is a regular application thread. The size of this thread’s TLAB is 221
+    KB. Since the last young collection, it allocated eight objects from the heap
+    (`slow allocs`); that was 1.6% (0.01613) of the total amount of allocation done
+    by this thread, and it amounted to 11,058 KB. 0.1% of the TLAB being “wasted,”
+    which comes from three things: 10,336 bytes were free in the TLAB when the current
+    GC cycle started; 2,112 bytes were free in other (retired) TLABs, and 0 bytes
+    were allocated via a special “fast” allocator.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After the TLAB data for each thread has been printed, the JVM provides a line
+    of summary data (this data is provided in JDK 11 by configuring the log for `tlab*=debug`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, 66 threads performed some sort of allocation since the last young
+    collection. Among those threads, they refilled their TLABs 3,234 times; the most
+    any particular thread refilled its TLAB was 105\. Overall, 406 allocations were
+    made to the heap (with a maximum of 14 done by one thread), and 1.1% of the TLABs
+    were wasted from the free space in retired TLABs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the per thread data, if threads show many allocations outside TLABs, consider
+    resizing them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sizing TLABs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Applications that spend a lot of time allocating objects outside TLABs will
+    benefit from changes that can move the allocation to a TLAB. If only a few specific
+    object types are always allocated outside a TLAB, programmatic changes are the
+    best solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Otherwise—or if programmatic changes are not possible—you can attempt to resize
+    the TLABs to fit the application use case. Because the TLAB size is based on the
+    size of eden, adjusting the new size parameters will automatically increase the
+    size of the TLABs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The size of the TLABs can be set explicitly using the flag `-XX:TLABSize=*`N`*`
+    (the default value, 0, means to use the dynamic calculation previously described).
+    That flag sets only the initial size of the TLABs; to prevent resizing at each
+    GC, add `-XX:-ResizeTLAB` (the default for that flag is `true`). This is the easiest
+    (and, frankly, the only useful) option for exploring the performance of adjusting
+    the TLABs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When a new object does not fit in the current TLAB (but would fit within a
+    new, empty TLAB), the JVM has a decision to make: whether to allocate the object
+    in the heap or whether to retire the current TLAB and allocate a new one. That
+    decision is based on several parameters. In the TLAB logging output, the `refill
+    waste` value gives the current threshold for that decision: if the TLAB cannot
+    accommodate a new object that is larger than that value, the new object will be
+    allocated in the heap. If the object in question is smaller than that value, the
+    TLAB will be retired.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That value is dynamic, but it begins by default at 1% of the TLAB size—or,
+    specifically, at the value specified by `-XX:TLABWasteTargetPercent`=*`N`*. As
+    each allocation is done outside the heap, that value is increased by the value
+    of `-XX:TLABWasteIncrement=`*`N`* (the default is 4). This prevents a thread from
+    reaching the threshold in the TLAB and continually allocating objects in the heap:
+    as the target percentage increases, the chances of the TLAB being retired also
+    increases. Adjusting the `TLABWasteTargetPercent` value also adjusts the size
+    of the TLAB, so while it is possible to play with this value, its effect is not
+    always predictable.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, when TLAB resizing is in effect, the minimum size of a TLAB can be
+    specified with `-XX:MinTLABSize=`*`N`* (the default is 2 KB). The maximum size
+    of a TLAB is slightly less than 1 GB (the maximum space that can be occupied by
+    an array of integers, rounded down for object alignment purposes) and cannot be
+    changed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Applications that allocate a lot of large objects may need to tune the TLABs
+    (though often using smaller objects in the application is a better approach).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Humongous objects
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Objects that are allocated outside a TLAB are still allocated within eden when
+    possible. If the object cannot fit within eden, it must be allocated directly
+    in the old generation. That prevents the normal GC life cycle for that object,
+    so if it is short-lived, GC is negatively affected. There’s little to do in that
+    case other than change the application so that it doesn’t need those short-lived
+    huge objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Humongous objects are treated differently in G1 GC, however: G1 will allocate
+    them in the old generation if they are bigger than a G1 region. So applications
+    that use a lot of humongous objects in G1 GC may need special tuning to compensate
+    for that.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: G1 GC region sizes
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'G1 GC divides the heap into regions, each of which has a fixed size. The region
+    size is not dynamic; it is determined at startup based on the minimum size of
+    the heap (the value of `Xms`). The minimum region size is 1 MB. If the minimum
+    heap size is greater than 2 GB, the size of the regions will be set according
+    to this formula (using log base 2):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: In short, the region size is the smallest power of 2 such that there are close
+    to 2,048 regions when the initial heap size is divided. Some minimum and maximum
+    constraints are in use here too; the region size is always at least 1 MB and never
+    more than 32 MB. [Table 6-3](#TableG1RegionSize) sorts out all the possibilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 6-3\. Default G1 region sizes
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Heap size | Default G1 region size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Less than 4 GB | 1 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Between 4 GB and 8 GB | 2 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Between 8 GB and 16 GB | 4 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Between 16 GB and 32 GB | 8 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Between 32 GB and 64 GB | 16 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Larger than 64 GB | 32 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: The size of a G1 region can be set with the `-XX:G1HeapRegionSize=`*`N`* flag
+    (the default is nominally 0, meaning to use the dynamic value just described).
+    The value given here should be a power of 2 (e.g., 1 MB or 2 MB); otherwise, it
+    is rounded down to the nearest power of 2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: G1 GC allocation of humongous objects
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If the G1 GC region size is 1 MB and a program allocates an array of 2 million
+    bytes, the array will not fit within a single G1 GC region. But these humongous
+    objects must be allocated in contiguous G1 GC regions. If the G1 GC region size
+    is 1 MB, then to allocate a 3.1 MB array, G1 GC must find four regions within
+    the old generation in which to allocate the array. (The rest of the last region
+    will remain empty, wasting 0.9 MB of space.) This defeats the way G1 GC normally
+    performs compaction, which is to free arbitrary regions based on how full they
+    are.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In fact, G1 GC defines a *humongous object* as one that is half of the region
+    size, so allocating an array of 512 KB (plus 1 byte) will, in this case, trigger
+    the humongous allocation we’re discussing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because the humongous object is allocated directly in the old generation, it
+    cannot be freed during a young collection. So if the object is short-lived, this
+    also defeats the generational design of the collector. The humongous object will
+    be collected during the concurrent G1 GC cycle. On the bright side, the humongous
+    object can be freed quickly because it is the only object in the regions it occupies.
+    Humongous objects are freed during the cleanup phase of the concurrent cycle (rather
+    than during a mixed GC).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Increasing the size of a G1 GC region so that all objects the program will allocate
+    can fit within a single G1 GC region can make G1 GC more efficient. This means
+    having a G1 region size of twice the largest object’s size plus 1 byte.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Humongous allocation used to be a far bigger problem in G1 GC because finding
+    the necessary regions to allocate the object would usually require a full GC (and
+    because such full GCs were not parallelized). Improvements in G1 GC in JDK 8u60
+    (and in all JDK 11 builds) minimize this issue so it isn’t necessarily the critical
+    problem it sometimes used to be.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: G1 regions are sized in powers of 2, starting at 1 MB.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Heaps that have a very different maximum size than initial size will have too
+    many G1 regions; the G1 region size should be increased in that case.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Applications that allocate objects larger than half the size of a G1 region
+    should increase the G1 region size so that the objects can fit within a G1 region.
+    An application must allocate an object that is at least 512 KB for this to apply
+    (since the smallest G1 region is 1 MB).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: AggressiveHeap
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `AggressiveHeap` flag (by default, `false`), was introduced in an early
+    version of Java as an attempt to make it easier to set a variety of command-line
+    arguments—arguments that would be appropriate for a very large machine with a
+    lot of memory running a single JVM. Although the flag has been carried forward
+    since those versions and is still present, it is no longer recommended (though
+    it is not yet officially deprecated).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The problem with this flag is that it hides the actual tunings it adopts, making
+    it hard to figure out what the JVM is setting. Some of the values it sets are
+    now set ergonomically based on better information about the machine running the
+    JVM, so in some cases enabling this flag hurts performance. I have often seen
+    command lines that include this flag and then later override values that it sets.
+    (For the record, that works: later values in the command line currently override
+    earlier values. That behavior is not guaranteed.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 6-4](#TableAggressiveHeap) lists all the tunings that are automatically
+    set when the `AggressiveHeap` flag is enabled.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 6-4\. Tunings enabled with `AggressiveHeap`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Flag | Value |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Xmx` | The minimum of half of all memory, or all memory: 160 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Xms` | The same as `Xmx` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `NewSize` | 3/8 of whatever was set as `Xmx` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `UseLargePages` | `true` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ResizeTLAB` | `false` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `TLABSize` | 256 KB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `UseParallelGC` | `true` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ParallelGCThreads` | Same as current default |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `YoungPLABSize` | 256 KB (default is 4 KB) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `OldPLABSize` | 8 KB (default is 1 KB) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `CompilationPolicyChoice` | 0 (the current default) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ThresholdTolerance` | 100 (default is 10) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ScavengeBeforeFullGC` | `false` (default is `true`) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `BindGCTaskThreadsToCPUs` | `true` (default is `false`) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Those last six flags are obscure enough that I have not discussed them elsewhere
+    in this book. Briefly, they cover these areas:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: PLAB sizing
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*PLABs* are *promotion-local allocation buffers*—these are per thread regions
+    used during scavenging the generations in a GC. Each thread can promote into a
+    specific PLAB, negating the need for synchronization (analogous to the way TLABs
+    work).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compilation policies
+  prefs: []
+  type: TYPE_NORMAL
+- en: The JVM ships with alternate JIT compilation algorithms. The current default
+    algorithm was, at one time, somewhat experimental, but this is now the recommended
+    policy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Disabling young GCs before full GCs
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting `ScavengeBeforeFullGC` to `false` means that when a full GC occurs,
+    the JVM will not perform a young GC before a full GC. That is usually a bad thing,
+    since it means that garbage objects in the young generation (which are eligible
+    for collection) can prevent objects in the old generation from being collected.
+    Clearly, there was a time when that setting made sense (at least for certain benchmarks),
+    but the general recommendation is not to change that flag.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Binding GC threads to CPUs
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting the last flag in that list means that each parallel GC thread is bound
+    to a particular CPU (using OS-specific calls). In limited circumstances—when the
+    GC threads are the only thing running on the machine, and heaps are very large—that
+    makes sense. In the general case, it is better if GC threads can run on any available
+    CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As with all tunings, your mileage may vary, and if you carefully test the `AggressiveHeap`
+    flag and find that it improves performance, then by all means use it. Just be
+    aware of what it is doing behind the scenes, and realize that whenever the JVM
+    is upgraded, the relative benefit of this flag will need to be reevaluated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `AggressiveHeap` flag is a legacy attempt to set heap parameters to values
+    that make sense for a single JVM running on a very large machine.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Values set by this flag are not adjusted as JVM technology improves, so its
+    usefulness in the long run is dubious (even though it still is often used).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Full Control Over Heap Size
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[“Sizing the Heap”](ch05.html#GCHeapSize) discussed the default values for
+    the initial minimum and maximum sizes of the heap. Those values are dependent
+    on the amount of memory on the machine as well as the JVM in use, and the data
+    presented there had a number of corner cases. If you’re curious about the full
+    details of how the default heap size is calculated, this section explains. Those
+    details include low-level tuning flags; in certain circumstances, it might be
+    more convenient to adjust the way those calculations are done (rather than simply
+    setting the heap size). This might be the case if, for example, you want to run
+    multiple JVMs with a common (but adjusted) set of ergonomic heap sizes. For the
+    most part, the real goal of this section is to complete the explanation of how
+    those default values are chosen.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The default sizes are based on the amount of memory on a machine, which can
+    be set with the `-XX:MaxRAM=`*`N`* flag. Normally, that value is calculated by
+    the JVM by inspecting the amount of memory on the machine. However, the JVM limits
+    `MaxRAM` to 4 GB for 32-bit Windows servers and to 128 GB for 64-bit JVMs. The
+    maximum heap size is one-quarter of `MaxRAM`. This is why the default heap size
+    can vary: if the physical memory on a machine is less than `MaxRAM`, the default
+    heap size is one-quarter of that. But even if hundreds of gigabytes of RAM are
+    available, the most the JVM will use by default is 32 GB: one-quarter of 128 GB.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The default maximum heap calculation is actually this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: Hence, the default maximum heap can also be set by adjusting the value of the
+    `-XX:MaxRAMFraction=`*`N`* flag, which defaults to 4\. Finally, just to keep things
+    interesting, the `-XX:ErgoHeapSizeLimit=`*`N`* flag can also be set to a maximum
+    default value that the JVM should use. That value is 0 by default (meaning to
+    ignore it); otherwise, that limit is used if it is smaller than `MaxRAM` / `MaxRAMFraction`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other hand, on a machine with a very small amount of physical memory,
+    the JVM wants to be sure it leaves enough memory for the operating system. This
+    is why the JVM will limit the maximum heap to 96 MB or less on machines with only
+    192 MB of memory. That calculation is based on the value of the `-XX:MinRAMFraction=`*`N`*
+    flag, which defaults to 2:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The initial heap size choice is similar, though it has fewer complications.
+    The initial heap size value is determined like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: As can be concluded from the default minimum heap sizes, the default value of
+    the `InitialRAMFraction` flag is 64\. The one caveat here occurs if that value
+    is less than 5 MB—or, strictly speaking, less than the values specified by `-XX:OldSize=`*`N`*
+    (which defaults to 4 MB) plus `-XX:NewSize=`*`N`* (which defaults to 1 MB). In
+    that case, the sum of the old and new sizes is used as the initial heap size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The calculations for the default initial and maximum heap sizes are fairly straightforward
+    on most machines.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Around the edges, these calculations can be quite involved.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Experimental GC Algorithms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In JDK 8 and JDK 11 production VMs with multiple CPUs, you’ll use either the
+    G1 GC or throughput collector, depending on your application requirements. On
+    small machines, you’ll use the serial collector if that is appropriate for your
+    hardware. Those are the production-supported collectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JDK 12 introduces new collectors. Although these collectors are not necessarily
+    production-ready, we’ll take a peek into them for experimental purposes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Concurrent Compaction: ZGC and Shenandoah'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Existing concurrent collectors are not fully concurrent. Neither G1 GC nor
+    CMS has concurrent collection of the young generation: freeing the young generation
+    requires all application threads to be stopped. And neither of those collectors
+    does concurrent compaction. In G1 GC, the old generation is compacted as an effect
+    of the mixed GC cycles: within a target region, objects that are not freed are
+    compacted into empty regions. In CMS, the old generation is compacted when it
+    becomes too fragmented to allow new allocations. Collections of the young generation
+    also compact that portion of the heap by moving surviving objects into the survivor
+    spaces or the old generation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: During compaction, objects move their position in memory. This is the primary
+    reason the JVM stops all application threads during that operation—the algorithms
+    to update the memory references are much simpler if the application threads are
+    known to be stopped. So the pause times of an application are dominated by the
+    time spent moving objects and making sure references to them are up-to-date.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Two experimental collectors are designed to address this problem. The first
+    is the Z garbage collector, or ZGC; the second is the Shenandoah garbage collector.
+    ZGC first appeared in JDK 11; Shenandoah GC first appeared in JDK 12 but has now
+    been backported to JDK 8 and JDK 11. JVM builds from AdoptOpenJDK (or that you
+    compile yourself from source) contain both collectors; builds that come from Oracle
+    contain only ZGC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To use these collectors, you must specify the `-XX:+UnlockExperimentalVMOptions`
+    flag (by default, it is `false`). Then you specify either `-XX:+UseZGC` or `-XX:+UseShenandoahGC`
+    in place of other GC algorithms. Like other GC algorithms, they have several tunings
+    knobs, but these are changing as the algorithms are in development, so for now
+    we’ll run with the default arguments. (And both collectors have the goal of running
+    with minimal tuning.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although they take different approaches, both collectors allow concurrent compaction
+    of the heap, meaning that objects in the heap can be moved without stopping all
+    application threads. This has two main effects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, the heap is no longer generational (i.e., there is no longer a young
+    and old generation; there is simply a single heap). The idea behind the young
+    generation is that it is faster to collect a small portion of the heap rather
+    than the entire heap, and many (ideally most) of those objects will be garbage.
+    So the young generation allows for shorter pauses for much of the time. If the
+    application threads don’t need to be paused during collection, the need for the
+    young generation disappears, and so these algorithms no longer need to segment
+    the heap into generations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second effect is that the latency of operations performed by the application
+    threads can be expected to be reduced (at least in many cases). Consider a REST
+    call that normally executes in 200 milliseconds; if that call is interrupted by
+    a young collection in G1 GC and that collection takes 500 ms, then the user will
+    see that the REST call took 700 ms. Most of the calls, of course, won’t hit that
+    situation, but some will, and these outliers will affect the overall performance
+    of the system. Without the need to stop the application threads, the concurrent
+    compacting collectors will not see these same outliers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This simplifies the situation somewhat. Recall from the discussion of G1 GC
+    that the background threads that marked the free objects in the heap regions sometimes
+    had short pauses. So G1 GC has three types of pauses: relatively long pauses for
+    a full GC (well, ideally you’ve tuned well enough for that not to happen), shorter
+    pauses for a young GC collection (including a mixed collection that frees and
+    compacts some of the old generation), and very short pauses for the marking threads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both ZGC and Shenandoah have similar pauses that fall into that latter category;
+    for short periods of time, all the application threads are stopped. The goal of
+    these collectors is to keep those times very short, on the order of 10 milliseconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These collectors can also introduce latency on individual thread operations.
+    The details differ between the algorithms, but in a nutshell, access to an object
+    by an application thread is guarded by a barrier. If the object happens to be
+    in the process of being moved, the application thread waits at the barrier until
+    the move is complete. (For that matter, if the application thread is accessing
+    the object, the GC thread must wait at the barrier until it can relocate the object.)
+    In effect, this is a form of locking on the object reference, but that term makes
+    this process seem far more heavyweight than it actually is. In general, this has
+    a small effect on the application throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Latency effects of concurrent compaction
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To get a feel for the overall impact of these algorithms, consider the data
+    in [Table 6-5](#TableZGC). This table shows the response times from a REST server
+    handling a fixed load of 500 OPS using various collectors. The operation here
+    is very fast; it simply allocates and saves a fairly large byte array (replacing
+    an existing presaved array to keep memory pressure constant).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 6-5\. Latency effects of concurrent compacting collectors
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Collector | Average time | 90th% time | 99th% time | Max time |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Throughput GC | 13 ms | 60 ms | 160 ms | 265 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| G1 GC | 5 ms | 10 ms | 35 ms | 87 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZGC | 1 ms | 5 ms | 5 ms | 20 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Shenandoah GC | 1 ms | 5 ms | 5 ms | 22 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: These results are just what we’d expect from the various collectors. The full
+    GC times of the throughput collector cause a maximum response time of 265 milliseconds
+    and lots of outliers with a response time of more than 50 milliseconds. With G1
+    GC, those full GC times have gone away, but shorter times still remain for the
+    young collections, yielding a maximum time of 87 ms and outliers of Tabout 10
+    ms. And with the concurrent collectors, those young collection pauses have disappeared
+    so that the maximum times are now around 20 ms and the outliers only 5 ms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One caveat: garbage collection pauses traditionally have been the largest contributor
+    to latency outliers like those we’re discussing here. But other causes exist:
+    temporary network congestion between server and client, OS scheduling delays,
+    and so on. So while a lot of the outliers in the previous two cases are because
+    of those short pauses of a few milliseconds that the concurrent collectors still
+    have, we’re now entering the realm where those other things also have a large
+    impact on the total latency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Throughput effects of concurrent compacting collectors
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The throughput effects of these collectors is harder to categorize. Like G1
+    GC, these collectors rely on background threads to scan and process the heap.
+    So if sufficient CPU cycles are not available for these threads, the collectors
+    will experience the same sort of concurrent failure we’ve seen before and end
+    up doing a full GC. The concurrent compacting collectors will typically use even
+    more background processing than the G1 GC background threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, if sufficient CPU is available for those background threads,
+    throughput when using these collectors will be higher than the throughput of G1
+    GC or the throughput collector. This again is in line with what you saw in [Chapter 5](ch05.html#GC).
+    Examples from that chapter showed that G1 GC can have higher throughput than the
+    throughput collector when it offloads GC processing to background threads. The
+    concurrent compacting collectors have that same advantage over the throughput
+    collector, and a similar (but smaller) advantage over G1 GC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'No Collection: Epsilon GC'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'JDK 11 also contains a collector that does nothing: the *epsilon collector*.
+    When you use this collector, objects are never freed from the heap, and when the
+    heap fills up, you will get an out-of-memory error.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Traditional programs will not be able to use this collector, of course. It
+    is really designed for internal JDK testing but can conceivably be useful in two
+    situations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Very short-lived programs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Programs carefully written to reuse memory and never perform new allocations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: That second category is useful in some embedded environments with limited memory.
+    That sort of programming is specialized; we won’t consider it here. But the first
+    case holds interesting possibilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consider the case of a program that allocates an array list of 4,096 elements,
+    each of which is a 0.5 MB byte array. The time to run that program with various
+    collectors is shown in [Table 6-6](#TableEpsilonTime). Default GC tunings are
+    used in this example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 6-6\. Performance metrics of a small allocation-based program
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Collector | Time | Heap required |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Throughput GC | 2.3 s | 3,072 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| G1 GC | 3.24 s | 4,096 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Epsilon | 1.6 s | 2,052 MB |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Disabling garbage collection is a significant advantage in this case, yielding
+    a 30% improvement. And the other collectors require significant memory overhead:
+    like the other experimental collectors we’ve seen, the epsilon collector is not
+    generational (because the objects cannot be freed, there’s no need to set up a
+    separate space to be able to free them quickly). So for this test that produces
+    an object of about 2 GB, the total heap required for the epsilon collector is
+    just over that; we can run that case with `-Xmx2052m`. The throughput collector
+    needs one-third more memory to hold its young generation, while G1 GC needs even
+    more memory to set up all its regions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To use this collector, you again specify the `-XX:+UnlockExperimentalVMOptions`
+    flag with `-XX:+UseEpsilonGC`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running with this collector is risky unless you are certain that the program
+    will never need more memory than you provide it. But in those cases, it can give
+    a nice performance boost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The past two chapters have spent a lot of time delving into the details of how
+    GC (and its various algorithms) work. If GC is taking longer than you’d like,
+    knowing how all of that works should aid you in taking the necessary steps to
+    improve things.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that you understand all the details, let’s take a step back to determine
+    an approach to choosing and tuning a garbage collector. Here’s a quick set of
+    questions to ask yourself to help put everything in context:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Can your application tolerate some full GC pauses?
+  prefs: []
+  type: TYPE_NORMAL
+- en: If not, G1 GC is the algorithm of choice. Even if you can tolerate some full
+    pauses, G1 GC will often be better than parallel GC unless your application is
+    CPU bound.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Are you getting the performance you need with the default settings?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Try the default settings first. As GC technology matures, the ergonomic (automatic)
+    tuning gets better all the time. If you’re not getting the performance you need,
+    make sure that GC is your problem. Look at the GC logs and see how much time you’re
+    spending in GC and how frequently the long pauses occur. For a busy application,
+    if you’re spending 3% or less time in GC, you’re not going to get a lot out of
+    tuning (though you can always try to reduce outliers if that is your goal).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Are the pause times that you have somewhat close to your goal?
+  prefs: []
+  type: TYPE_NORMAL
+- en: If they are, adjusting the maximum pause time may be all you need. If they aren’t,
+    you need to do something else. If the pause times are too large but your throughput
+    is OK, you can reduce the size of the young generation (and for full GC pauses,
+    the old generation); you’ll get more, but shorter, pauses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Is throughput lagging even though GC pause times are short?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You need to increase the size of the heap (or at least the young generation).
+    More isn’t always better: bigger heaps lead to longer pause times. Even with a
+    concurrent collector, a bigger heap means a bigger young generation by default,
+    so you’ll see longer pause times for young collections. But if you can, increase
+    the heap size, or at least the relative sizes of the generations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Are you using a concurrent collector and seeing full GCs due to concurrent-mode
+    failures?
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you have available CPU, try increasing the number of concurrent GC threads
+    or starting the background sweep sooner by adjusting `InitiatingHeapOccupancyPercent`.
+    For G1, the concurrent cycle won’t start if there are pending mixed GCs; try reducing
+    the mixed GC count target.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Are you using a concurrent collector and seeing full GCs due to promotion failures?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In G1 GC, an evacuation failure (to-space overflow) indicates that the heap
+    is fragmented, but that can usually be solved if G1 GC performs its background
+    sweeping sooner and mixed GCs faster. Try increasing the number of concurrent
+    G1 threads, adjusting `InitiatingHeapOccupancyPercent`, or reducing the mixed
+    GC count target.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch06.html#idm45775554356120-marker)) Actually, 227,893 KB is only 222
+    MB. For ease of discussion, I’ll truncate the KBs by 1,000 in this chapter; pretend
+    I am a disk manufacturer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch06.html#idm45775554022120-marker)) Similar work could have been done
+    to make CMS full GCs run with parallel threads, but G1 GC work was prioritized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch06.html#idm45775553858312-marker)) This is a variation of the way thread-local
+    variables can prevent lock contention (see [Chapter 9](ch09.html#ThreadPerformance)).
+  prefs: []
+  type: TYPE_NORMAL

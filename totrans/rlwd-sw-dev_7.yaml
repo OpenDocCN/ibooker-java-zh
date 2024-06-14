@@ -1,0 +1,1343 @@
+- en: Chapter 7\. Extending Twootr
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Challenge
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Previously, on Twootr, Joe had wanted a modern online communication system to
+    be implemented. The previous chapter presented a potential design for Twootr and
+    the implementation of the core business domain was described, including driving
+    out that design through tests. You learned about some of the design and data modeling
+    decisions involved and how to break down the initial problem and structure your
+    solution. That didn’t cover the whole of the Twootr project, so it’s up to this
+    chapter to complete the narrative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Goal
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter extends and completes the progress made in the previous chapter
+    by helping you understand about the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Avoiding coupling with the Dependency Inversion Principle and Dependency Injection
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Persistence with the Repository pattern and the Query Object pattern.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A brief introduction to functional programming that will show you how you can
+    make use of the ideas from this in a Java-specific context and a real application.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Recap
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Since we’re continuing the Twootr project from the previous chapter, it’s probably
+    worth recapping the key concepts in our design at this point. If you’re continuing
+    from the previous chapter in a marathon reading session, then we’re glad you’re
+    enjoying the book, but feel free to skip this section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Twootr` is the parent class that instantiates the business logic and orchestrates
+    the system.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `Twoot` is a single instance of a message broadcast by a user in our system.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `ReceiverEndPoint` is an interface that is implemented by a UI adapter and
+    pushes `Twoot` objects out to the UI.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `SenderEndPoint` has methods that correspond to events being sent into the
+    system from a user.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Password management and hashing are performed by the `KeyGenerator` class.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Persistence and the Repository Pattern
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'So we’ve now got a system that can support much of the core twooting operations.
+    Unfortunately, if we restart the Java process in any way all the twoots and user
+    information is lost. We need a way of persisting the information that we’re storing
+    in order to survive a restart. Earlier in the discussion of software architecture
+    we talked about ports and adapters and how we would like to keep the core of our
+    application agnostic of the storage backend. There’s, in fact, a commonly used
+    pattern that helps us do this: the *Repository* pattern.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Repository pattern defines an interface between the domain logic and storage
+    backend. In addition to allowing us to use a different storage backend over time
+    as our application evolves, this approach offers several advantages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Centralizing logic for mapping data from our storage backend to the domain model.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Enables unit testing of core business logic without having to spin up a database.
+    This can speed up the execution of tests.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improves maintainability and readability by keeping each class single responsibility.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'You can think of a repository as a being like a collection of objects, but
+    instead of just storing the objects in memory, the repository persists them somewhere.
+    When evolving the design of our application we drove the design of the repositories
+    through tests; however, to save time here we will just describe the final implementation.
+    Since a repository is a collection of objects we need two of them in Twootr: one
+    to store `User` objects and one for `Twoot` objects. Most repositories have a
+    series of common operations that are implemented:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`add()`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stores a new instance of the object into the repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`get()`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looks up a single object based on an identifier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`delete()`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deletes an instance from the persistence backend.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`update()`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ensures that the values saved for this object are equal to the instance fields.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some people use the acronym CRUD to describe these kind of operations. This
+    stands for Create, Read, Update, and Delete. We’ve used `add` and `get` instead
+    of `create` and `read` as the naming is more inline with common Java usage, for
+    example, in the collections framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the Repositories
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In our case we’ve designed things top-down and driven the development of the
+    repositories from tests. The implication of this is that not all the operations
+    are defined on both repositories. The `UserRepository`, shown in [Example 7-1](#UserRepository_definition),
+    doesn’t have an operation to delete a `User`. That’s because there’s no requirement
+    that has actually driven an operation to delete a user. We asked our customer,
+    Joe, about this and he said “once you Twoot, you can’t stop!”
+  prefs: []
+  type: TYPE_NORMAL
+- en: When working on your own, you might be tempted to add functionality just to
+    have the “normal” operations in the repository, but we would strongly caution
+    against going down that route. Unused code, or *dead code* as it’s often known,
+    is a liability. In some sense all code is a liability, but if the code is actually
+    doing something useful then it has a benefit to your system, while if it unused
+    it’s merely a liability. As your requirements evolve you need to refactor and
+    improve your codebase and the more unused code that you have lying around, the
+    more difficult this task is.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There’s a guiding principle here that we’ve been alluding to throughout the
+    chapter, but not mentioned until now: *YAGNI*. This stands for *You ain’t gonna
+    need it*. This doesn’t mean don’t introduce abstractions and different concepts
+    like repositories. It just means don’t write code that you think you’re going
+    to need in the future—only write it when you actually need it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-1\. UserRepository
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are also differences between the design of our two repositories due to
+    the nature of the objects that they are storing. Our `Twoot` objects are immutable,
+    so the `TwootRepository` shown in [Example 7-2](#TwootRepository_definition) doesn’t
+    need to implement an `update()` operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-2\. TwootRepository
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Normally the `add()` method in a repository simply takes the object in question
+    and persists it to the database. In the case of the `TwootRepository`, we have
+    taken a different approach. This method takes some specific parameters and actually
+    creates the object in question. The motivation behind this approach was that the
+    data source would be the one to assign the next `Position` object to the `Twoot`.
+    We’re delegating the responsibility of ensuring a unique and ordered object to
+    the data layer that will have the appropriate tool for creating such a sequence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another alternative might have been to take a `Twoot` object that doesn’t have
+    a `position` assigned to it and then have the `position` field set when it is
+    added. Now one of the key goals of an object’s constructor should be to ensure
+    that all the internal state is completely initialized, ideally checked with `final`
+    fields. By not assigning the position at object creation time we would have created
+    an object that wasn’t completely instantiated, breaking one of our principles
+    around creating objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some implementations of the Repository pattern introduce a generic interface—for
+    example, something like [Example 7-3](#AbstractRepository). In our case this wouldn’t
+    be appropriate as the `TwootRepository` doesn’t have an `update()` method and
+    the `UserRepository` doesn’t have a `delete()` method. If you want to write code
+    that abstracts over different repositories, then this might be useful. Trying
+    to avoid forcing different implementations into the same interface for the sake
+    of it is a key part of designing a good abstraction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-3\. AbstractRepository
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Query Objects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Another key distinction between different repositories is how they support querying.
+    In the case of Twootr our `UserRepository` doesn’t need any querying capability,
+    but when it comes to `Twoot` objects we need to be able to look up the twoots
+    to replay when a user logs on. What is the best way to implement this functionality?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Well, there are several different choices that we could make here. The simplest
+    is that we could simply try our repository like a pure `Java` `Collection` and
+    have a way of iterating over the different `Twoot` objects. The logic to query/filter
+    could then be written in normal Java code. This is lovely, but potentially quite
+    slow as it requires us to retrieve all the rows from our data store into our Java
+    application in order to do the querying, when in reality we may only want a few
+    of them. Often data store backends such as SQL databases have highly optimized
+    and efficient implementations of how to query and sort data, and it’s best to
+    leave the querying to them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Having decided that the repository implementation needs to have the responsibility
+    for querying the data store we need to decide how best to expose this through
+    the `TwootRepository` interface. One choice would have been to add a method that
+    is tied to our business logic that performs the querying operation. For example,
+    we could have written something like the `twootsForLogon()` method from [Example 7-4](#twootsForLogon)
+    that takes the user object and looks up twoots associated with it. The downside
+    of this is that we’ve now coupled the specific business logic functionality to
+    our repository implementation—something that the introduction of our repository
+    abstraction was designed to avoid. This will make it harder for us to evolve our
+    implementation in line with requirements as we’ll have to modify the repository
+    as well as the core domain logic and also breaches the Single Responsibility Principle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-4\. twootsForLogon
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: What we want to design is something that enables us to harness the power of
+    a data store’s querying capability without tying the business logic to the data
+    store in question. We could add a specific method to query the repository for
+    a given business criteria, as shown by [Example 7-5](#twootsFromUsersAfterPosition).
+    This approach is much better than the first two, but can still be refined a little
+    bit. The problem with hardcoding each query to a given method is that as your
+    application evolves over time and adds more querying functionality, we add more
+    and more methods to the Repository interface, bloating it and making it harder
+    to understand.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-5\. twootsFromUsersAfterPosition
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: This brings us to the next querying iteration, shown in [Example 7-6](#queryWithList).
+    Here we’ve abstracted out the criteria that we query our `TwootRepository` on
+    into its own object. Now we can add additional properties to this criteria to
+    query on without having the number of query methods be a combinatorial explosion
+    of different properties to query about. The definition of our `TwootQuery` object
+    is shown in [Example 7-7](#TwootQuery_definition).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-6\. query
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 7-7\. TwootQuery
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: This isn’t the final design approach taken for querying the twoots, though.
+    By returning a `List` of objects it means that we need to load into memory all
+    the `Twoot` objects that are going to be returned in one go. This isn’t a terribly
+    good idea when this `List` may grow to be very large. We may not want to query
+    all of the objects in one go either. That’s the case here—we want to push each
+    of the `Twoot` objects out to our UI without needing to have them all in memory
+    at one point in time. Some repository implementations create an object to model
+    the set of results returned. These objects let you page or iterate through the
+    values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this case we’re going to do something simpler: just take a `Consumer<Twoot>`
+    callback. That’s a function that the caller is going to pass in that takes a single
+    argument—a `Twoot`—and returns void. We can implement this interface using either
+    a lambda expression or a method reference. You can see our final approach in [Example 7-8](#finalQuery).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-8\. query
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: See [Example 7-9](#twoot_query_example) to see how you would use this query
+    method. This is how our `onLogon()` method calls the query. It takes the user
+    who has logged on, and uses the set of users that this user is following as the
+    user part of the query. It then uses the last seen position for that part of the
+    query. The callback that receives the results of this query is `user::receiveTwoot`,
+    a method reference to the function that we described earlier that publishes the
+    `Twoot` object to the UI `ReceiverEndPoint`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-9\. An example of using the query method
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: That’s it—that’s our repository interface designed and usable in the core of
+    the application logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is another feature that some repository implementations use that we haven’t
+    described here, and that’s the *Unit of Work* pattern. We don’t use the Unit of
+    Work pattern in Twootr, but it’s often used in conjunction with the Repository
+    pattern so its worth mentioning it here. A common thing for line-of-business applications
+    to do is to have a single operation that performs many interactions with the data
+    store. For example, you might be transferring money between two bank accounts
+    and want to remove money from one back account and add it to the other bank account
+    in the same operation. You don’t want either of these operations to succeed without
+    the other one succeeding—you don’t want to put money into the creditor’s account
+    when there isn’t enough money in the debtor’s account. You also don’t want to
+    reduce the debtor’s balance without ensuring that you can put money into the creditor
+    account.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Databases often implement transactions and ACID compliance in order to enable
+    people to perform these kinds of operations. A transaction is essentially a group
+    of different database operations that are logically performed as a single, atomic
+    operation. A Unit of Work is a design pattern that helps you perform database
+    transactions. Essentially, each operation that you perform on your repository
+    gets registered with a unit of work object. Your unit of work object can then
+    delegate to one of more repositories, wrapping these operations in a transaction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One thing we haven’t talked about so far is how we actually implement the repository
+    interfaces that we’ve designed. As with everything else in software development,
+    there are often different routes we can go down. The Java ecosystem contains many
+    Object-Relational Mappers (ORMs) that try to automate the task of this implementation
+    for you. The most popular ORM is [Hibernate](http://hibernate.org/). ORMs tend
+    to be a simple approach that can automate some of the work for you; however, they
+    often end up producing sub-optimal database querying code and can sometimes introduce
+    more complexity than they help remove.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the example project we provide two implementations of each of the repositories.
+    One of them is a very simple in-memory implementation suitable for testing that
+    won’t persist the data over restarts. The other approach uses plain SQL and the
+    JDBC API. We won’t go into much detail about the implementation as most of it
+    doesn’t illustrate any particularly interesting Java programming ideas; however,
+    in [“Functional Programming”](#ch06_Functional_Programming) we will talk about
+    how we use some ideas from functional programming in the implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Functional Programming
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Functional programming is a style of computer programming that treats methods
+    as operating like mathematical functions. This means that it avoids mutable state
+    and changing data. You can program in this style in any language, but some programming
+    languages offer features to help make it easier and better—we call those *functional
+    programming languages*. Java isn’t a functional programming language, but in version
+    8, 20 years after it was first released, it started to add a number of features
+    that helped make functional programming in Java a reality. Those features include
+    lambda expressions, the Streams and Collectors API, and the `Optional` class.
+    In this section we’ll talk a little bit about how those functional programming
+    features can be used and how we use them in Twootr.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are limits to the level of abstractions that library writers could use
+    in Java before Java 8\. A good example of this was the lack of efficient parallel
+    operations over large collections of data. Java from 8 onward allows you to write
+    complex collection-processing algorithms, and simply by changing a single method
+    call you can efficiently execute this code on multicore CPUs. In order to enable
+    writing of these kinds of bulk data parallel libraries, however, Java needed a
+    new language change: lambda expressions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course there’s a cost, in that you must learn to write and read lambda-enabled
+    code, but it’s a good trade-off. It’s easier for programmers to learn a small
+    amount of new syntax and a few new idioms than to have to handwrite a large quantity
+    of complex thread-safe code. Good libraries and frameworks have significantly
+    reduced the cost and time associated with developing enterprise business applications,
+    and any barrier to developing easy-to-use and efficient libraries should be removed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstraction is a concept that is familiar to anyone who does object-oriented
+    programming. The difference is that object-oriented programming is mostly about
+    abstracting over data, while functional programming is mostly about abstracting
+    over behavior. The real world has both of these things, and so do our programs,
+    so we can and should learn from both influences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are other benefits to this new abstraction as well. For many of us who
+    aren’t writing performance-critical code all the time, these are more important
+    wins. You can write easier-to-read code—code that spends time expressing the intent
+    of its business logic rather than the mechanics of how it’s achieved. Easier-to-read
+    code is also easier to maintain, more reliable, and less error-prone than code
+    that is more difficult to read.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda Expressions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will define a lambda expression as a concise way of describing an anonymous
+    function. We appreciate that’s quite a lot to take in at once, so we’re going
+    to explain what lambda expressions are by working through an example of some existing
+    Java code. Let’s start by taking a interface used to represent a callback in our
+    codebase: `ReceiverEndPoint`, shown in [Example 7-10](#ReceiverEndPoint_definition_2).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-10\. ReceiverEndPoint
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, we’re creating a new object that provides an implementation
+    of the `ReceiverEndPoint` interface. This interface has a single method, `onTwoot`,
+    which is called by the Twootr object when it is sending a `Twoot` object to the
+    UI adapter. The class listed in [Example 7-11](#PrintingEndPoint_definition) provides
+    an implementation of this method. In this case to keep things simple we’re just
+    printing it out on the command line rather than sending a serialized version to
+    an actual UI.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-11\. Implementing ReceiverEndPoint with a class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This is actually an example of behavior parameterization—we’re parameterizing
+    over the different behaviors to send a message to the UI.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are seven lines of boilerplate code required in order to call the single
+    line of actual behavior here. Anonymous inner classes were designed to make it
+    easier for Java programmers to represent and pass around behaviors. You can see
+    an example in [Example 7-12](#PrintingEndPoint_anonymous_definition), which reduces
+    the boilerplate a bit but they still don’t make it easy enough if you want to
+    make passing behavior around really easy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-12\. Implementing ReceiverEndPoint with an anonymous class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Boilerplate isn’t the only issue, though: this code is fairly hard to read
+    because it obscures the programmer’s intent. We don’t want to pass in an object;
+    what we really want to do is pass in some behavior. In Java 8 or later, we would
+    write this code example as a lambda expression, as shown in [Example 7-13](#PrintingEndPoint_lambda_definition).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-13\. Implementing ReceiverEndPoint with a lambda expression
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of passing in an object that implements an interface, we’re passing
+    in a block of code—a function without a name. `twoot` is the name of a parameter,
+    the same parameter as in the anonymous inner class example. `->` separates the
+    parameter from the body of the lambda expression, which is just some code that
+    is run when the twoot gets published.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another difference between this example and the anonymous inner class is how
+    we declare the variable event. Previously, we needed to explicitly provide its
+    type: `Twoot twoot`. In this example, we haven’t provided the type at all, yet
+    this example still compiles. What is happening under the hood is that javac is
+    inferring the type of the variable event from it’s context—here, from the signature
+    of `onTwoot`. What this means is that you don’t need to explicitly write out the
+    type when it’s obvious.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Although lambda method parameters require less boilerplate code than was needed
+    previously, they are still statically typed. For the sake of readability and familiarity,
+    you have the option to include the type declarations, and sometimes the compiler
+    just can’t work it out!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Method References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A common idiom you may have noticed is the creation of a lambda expression that
+    calls a method on its parameter. If we want a lambda expression that gets the
+    content of a `Twoot`, we would write something like [Example 7-14](#method_references_eg_1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-14\. Get the content of a twoot
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is such a common idiom that there’s actually an abbreviated syntax for
+    this that lets you reuse an existing method, called a method reference. If we
+    were to write the previous lambda expression using a method reference, it would
+    look like [Example 7-15](#method_references_eg_2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-15\. A method reference
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The standard form is `Classname::methodName`. Remember that even though it’s
+    a method, you don’t need to use brackets because you’re not actually calling the
+    method. You’re providing the equivalent of a lambda expression that can be called
+    in order to call the method. You can use method references in the same places
+    as lambda expressions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can also call constructors using the same abbreviated syntax. If you were
+    to use a lambda expression to create a `SenderEndPoint`, you might write [Example 7-16](#method_references_eg_3).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-16\. Lambda to create a new SenderEndPoint
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can also write this using method references, as shown in [Example 7-17](#method_references_eg_4).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-17\. Method reference to create a new SenderEndPoint
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code is not only shorter, but also a lot easier to read. `SenderEndPoint::new`
+    immediately tells you that you’re creating a new `SenderEndPoint` without your
+    having to scan the whole line of code. Another thing to notice here is that method
+    references automatically support multiple parameters, as long as you have the
+    right functional interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we were first exploring the Java 8 changes, a friend of ours said that
+    method references “feel like cheating.” What he meant was that, having looked
+    at how we can use lambda expressions to pass code around as if it were data, it
+    felt like cheating to be able to reference a method directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In fact, method references are really making the concept of first-class functions
+    explicit. This is the idea that we can pass behavior around and treat it like
+    another value. For example, we can compose functions together.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Execute Around
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The *Execute Around* pattern is a common functional design pattern. You may
+    encounter a situation where you have common initialization and cleanup code that
+    you always want to do, but parameterize different business logic that runs within
+    the initialization and cleanup code. An example of the general pattern is shown
+    in [Figure 7-1](#ch06_execute_around_img). There are a number of example situations
+    in which you can use execute around, for example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Files
+  prefs: []
+  type: TYPE_NORMAL
+- en: Open a file before you use it, and close it when you’ve finished using the file.
+    You may also want to log an exception when something goes wrong. The parameterized
+    code can read from or write to the file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Locks
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acquire a lock before your critical section, release the lock after your critical
+    section. The parameterized code is the critical section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Database connections
+  prefs: []
+  type: TYPE_NORMAL
+- en: Open a connection to a database upon initialization, close it when finished.
+    This is often even more useful if you pool your database connections as it also
+    allows your open logic to also retrieve the connection from your pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Execute Around pattern](Images/rwsd_0701.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-1\. Execute Around pattern
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Because the initialization and cleanup logic is being used in many places, it
+    is possible to get into a situation where this logic is duplicated. This means
+    that if you want to modify this common initialization or cleanup code, then you
+    will have to modify multiple different parts of your application. It also exposes
+    the risk that these different code snippets could become inconsistent, introducing
+    potential bugs into your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Execute Around pattern solves this problem by extracting a common method
+    that defines both the initialization and cleanup code. This method takes a parameter
+    containing the behavior that differs between use cases of the same overall pattern.
+    The parameter will use an interface to enable it to be implemented by different
+    blocks of code, usually using lambda expressions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Example 7-18](#extract_definition) shows a concrete example of an `extract`
+    method. This is used within Twootr in order to run SQL statements against the
+    database. It creates a prepared statement object for a given SQL statement and
+    and then runs our `extractor` behavior on the statement. The `extractor` is just
+    a callback that extracts a result, i.e., reads some data from the database, using
+    the `PreparedStatement`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-18\. Use of the Execute Around pattern in the extract method
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Streams
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The most important functional programming features in Java are focused around
+    the Collections API and *Streams*. Streams allow us to write collections-processing
+    code at a higher level of abstraction than we would be able to do with loops.
+    The `Stream` interface contains a series of functions that we’ll explore throughout
+    this chapter, each of which corresponds to a common operation that you might perform
+    on a `Collection`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: map()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you’ve got a function that converts a value of one type into another, `map()`
+    lets you apply this function to a stream of values, producing another stream of
+    the new values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may very well have been doing some kind of map operations for years already
+    with for loops. In our `DatabaseTwootRepository` we’ve built up a tuple to be
+    used in a query `String` containing all the `id` values of the different users
+    whom a user is following. Each `id` value is a quoted `String` and the whole tuple
+    is surrounded by brackets. For example, if they followed users with IDs `"richardwarburto"`
+    and `"raoulUK"` we would produce a tuple `String` of `"(*richardwarburto*,*raoulOK*)"`.
+    In order to generate this tuple you would use a mapping pattern, transforming
+    each `id` into `"*id*"` and then adding them into a `List`. The `String.join()`
+    method can then be used to join them with commas between. [Example 7-19](#map_example_1)
+    is code written in this style.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-19\. Building a user tuple with a for loop
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`map()` is one of the most commonly used `Stream` operations. [Example 7-20](#map_example_2)
+    is the same example of building up the user tuple but using `map()`. It also takes
+    advantage of the `joining()` collector, which allows us to join the elements in
+    the `Stream` together into a `String`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-20\. Building a user tuple using map
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The lambda expression passed into `map()` both takes a `String` as its only
+    argument and returns a `String`. It isn’t necessary for both the argument and
+    the result to be the same type, but the lambda expression passed in must be an
+    instance of `Function`. This is a generic functional interface with only one argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: forEach()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `forEach()` operation is useful when you want to perform a side effect for
+    each value in the `Stream`. For example, suppose you want to print out the name
+    of a user or save each transaction in your stream to a database. `forEach()` takes
+    a single argument—a `Consumer` callback executed that gets invoked with every
+    element in the stream as an argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: filter()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Any time you’re looping over some data and checking each element with an if
+    statement, you might want to think about using the `Stream.filter()` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, the `InMemoryTwootRepository` needs to query the different `Twoot`
+    objects in order to find twoots that meet its `TwootQuery`. Specifically, that
+    the position is after the last seen position and that user is being followed.
+    An example of this being written in for loop style is shown in [Example 7-21](#filter_example_1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-21\. Looping over twoots and using an if statement
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You have probably written some code that looks like this: it’s called the `filter`
+    pattern. The central idea of filter is to retain some elements of the `Stream`,
+    while throwing others out. [Example 7-22](#filter_example_2) shows how you would
+    write the same code in a functional style.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-22\. Functional style
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Much like `map()`, `filter()` is a method that takes just a single function
+    as an argument—here we’re using a lambda expression. This function does the same
+    job that the expression in the if statement did earlier. Here, it returns `true`
+    if the `String` starts with a digit. If you’re refactoring legacy code, the presence
+    of an if statement in the middle of a for loop is a pretty strong indicator that
+    you really want to use filter. Because this function is doing the same job as
+    the if statement, it must return either `true` or `false` for a given value. The
+    `Stream` after the `filter` has the elements of the `Stream` beforehand, which
+    evaluated to `true`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: reduce()
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '`reduce` is a pattern that will also be familiar to anyone who has used loops
+    to operate on collections. It’s the kind of code that you write when you want
+    to collapse down an entire list of values into a single value—for example, finding
+    the sum of all the values of different transactions. The general pattern that
+    you would see with reduction when writing a loop is shown in [Example 7-23](#reduce_example_1).
+    Use the `reduce` operation when you’ve got a collection of values and you want
+    to generate a single result.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-23\. The reduce pattern
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: An `accumulator` gets pushed through the body of the loop, with the final value
+    of the `accumulator` being the value that we were trying to compute. The `accumulator`
+    starts with an `initialValue` and then gets combined together with each element
+    of the list by calling the `combine` operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The things that differ between implementations of this pattern are the `initialValue`
+    and the combining function. In the original example, we used the first element
+    in the list as our `initialValue`, but it doesn’t have to be. In order to find
+    the shortest value in a list, our combine would return the shorter track of out
+    of the current element and the `accumulator`. We’ll now take a look at how this
+    general pattern can be codified by an operation in the Streams API itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s demonstrate the reduce operation by adding a feature that combines together
+    different twoots into one large twoot. The operation will have a list of `Twoot`
+    objects, the sender of the `Twoot`, and its `id` provided as arguments. It will
+    need to combine together the different content value and return the highest position
+    of the twoots being combined. The overall code is demonstrated in [Example 7-24](#reduce_example_2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We start with a new `Twoot` object created using the `id`, `senderId` with empty
+    content and the lowest possible position—the `INITIAL_POSITION`. The reduce then
+    folds together each element with an `accumulator`, combining the element to the
+    `accumulator` at every step. When we reach the final `Stream` element, our `accumulator`
+    has the sum of all the elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The lambda expression, known as a reducer, performs the combining and takes
+    two arguments. `acc` is the `accumulator` and holds the previous twoots that have
+    been combined. It is also passed in the current `Twoot` in the `Stream`. The reducer
+    in our example creates a new `Twoot`, with the max of the two positions, the concatenation
+    of their content, and the specified `id` and `senderId`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-24\. Implementing sum using reduce
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Of course these `Stream` operations aren’t that interesting on their own. They
+    become really powerful when you combine them together to form a pipeline. [Example 7-25](#stream_onSendTwoot_definition)
+    shows some code from `Twootr.onSendTwoot()` where we send twoots to the followers
+    of a user. The first step is to call the `followers()` method, which returns a
+    `Stream<User>`. We then use the `filter` operation to find the users who are actually
+    logged in who we want to send the twoot to. Then we use the `forEach` operation
+    to produce the desired side effect: sending a twoot to a user and recording the
+    result.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-25\. Use of Stream within the onSendTwoot method
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Optional
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '`Optional` is a core Java library data type, introduced in Java 8, that is
+    designed to provide a better alternative to `null`. There’s quite a lot of hatred
+    for the old null value. Even the man who invented the concept, Tony Hoare, described
+    it as [“my billion-dollar mistake”](https://oreil.ly/OaXWj). That’s the trouble
+    with being an influential computer scientist—you can make a billion-dollar mistake
+    without even seeing the billion dollars yourself!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`null` is often used to represent the absence of a value, and this is the use
+    case that `Optional` is replacing. The problem with using `null` in order to represent
+    absence is the dreaded `NullPointerException`. If you refer to a variable that
+    is `null`, your code blows up. The goal of `Optional` is twofold. First, it encourages
+    the coder to make ap‐ propriate checks as to whether a variable is absent in order
+    to avoid bugs. Second, it documents values that are expected to be absent in a
+    class’s API. This makes it easier to see where the bodies are buried.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s take a look at the API for `Optional` in order to get a feel for how to
+    use it. If you want to create an `Optional` instance from a value, there is a
+    factory method called `of()`. The `Optional` is now a container for this value,
+    which can be pulled out with `get`, as shown in [Example 7-26](#optional_example_1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-26\. Creating an Optional from a value
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Because an `Optional` may also represent an absent value, there’s also a factory
+    method called `empty()`, and you can convert a nullable value into an `Optional`
+    using the `ofNullable()` method. You can see both of these methods in [Example 7-27](#optional_example_2),
+    along with the use of the `isPresent()` method, which indicates whether the `Optional`
+    is holding a value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-27\. Creating an empty Optional and checking whether it contains a
+    value
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: One approach to using `Optional` is to guard any call to `get()` by checking
+    `isPresent()`—this is needed because a call to `get()` can throw a `NoSuchElementException`.
+    Unfortunately, this approach isn’t a very good coding pattern for using `Optional`.
+    If you use it this way, all you’ve really done is to replicate the existing patterns
+    for using `null`—where you would check if a value isn’t `null` as a guard.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A neater approach is to call the `orElse()` method, which provides an alternative
+    value in case the `Optional` is empty. If creating an alternative value is computationally
+    expensive, the `orElseGet()` method should be used. This allows you to pass in
+    a `Supplier` function that is called only if the `Optional` is genuinely empty.
+    Both of these methods are demonstrated in [Example 7-28](#optional_example_3).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-28\. Using orElse() and orElseGet()
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`Optional` also has a series of methods defined that can be used like the `Stream`
+    API; for example, `filter()`, `map()`, and `ifPresent()`. You can think of these
+    methods applying to the `Optional` API similarly to the `Stream` API, but in this
+    case your `Stream` can only contain 1 or 0 elements. So `Optional.filter()` will
+    retain an element in the `Optional` if it meets the criteria and return an empty
+    `Optional` if the `Optional` was previously empty or if the predicate fails to
+    apply. Similarly, `map()` transforms the value inside the `Optional`, but if it’s
+    empty it doesn’t apply the function at all. That’s what makes these functions
+    safer than using `null`—they only operate on the `Optional` if there’s really
+    something inside of it. `ifPresent` is the `Optional` dual of `forEach`—it applies
+    a `Consumer` callback if there’s a value there, but not otherwise.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can see an extract of the code from the `Twootr.onLogon()` method in [Example 7-29](#optional_onLogon_definition).
+    This is an example of how we can put together these different operations to perform
+    a more complex operation. We start off by looking up the `User` from their ID
+    by calling `UserRepository.get()`, which returns an `Optional`. We then validate
+    the user’s password matchers using `filter`. We use `ifPresent` to notify the
+    `User` of the twoots that they’ve missed. Finally, we `map` the `User` object
+    into a new `SenderEndPoint` that is returned from the method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-29\. Use of Optional within the onLogon method
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this section we’ve really only scratched the surface of functional programming.
+    If you are interested in learning about functional programming in greater depth,
+    we recommend [*Java 8 In Action*](https://oreil.ly/wGImJ) and [*Java 8 Lambdas*](https://oreil.ly/hDrfH).
+  prefs: []
+  type: TYPE_NORMAL
+- en: User Interface
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Throughout this chapter we’ve avoided talking too much about the user interface
+    to this system, because we’re focused on the design of the core problem domain.
+    That said, it’s worth delving a little into what the example project delivers
+    as part of its UI just in order to understand how the event modeling fits together.
+    In our example project we ship a single-page website that uses JavaScript to implement
+    its dynamic functionality. In order to keep things simple and not delve too much
+    into the myriad framework wars, we’ve just used `jquery` to update the raw HTML
+    page, but kept a simple separation of concerns in the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you browse to the Twootr web page it connects back to the host using WebSockets.
+    These were one of the event communication choices discussed back in [“From Events
+    to Design”](ch06.xhtml#events_to_design). All the code for communicating with
+    it lies in the `web_adapter` subpackage of `chapter_06`. The `WebSocketEndPoint`
+    class implements the `ReceiverEndPoint` and also invokes any needed methods on
+    the `SenderEndPoint`. For example, when the `ReceiverEndPoint` receives and parses
+    a message to follow another user it invokes the `SenderEndPoint.onFollow()`, passing
+    the username through. The returned `enum`—`FollowStatus` then gets converted into
+    a wire format response and written down the WebSocket connection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All communication between the JavaScript frontend and the server is done using
+    the [*JavaScript Object Notation* (JSON) standard](http://www.json.org/). JSON
+    was chosen as it’s very easy for a JavaScript UI to deserialize or serialize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Within the `WebSocketEndPoint` we need to map to and from JSON within Java code.
+    There are many libraries that can be used for this purpose, here we’ve chosen
+    the [Jackson library](https://github.com/FasterXML/jackson), which is commonly
+    used and well maintained. JSON is often used in applications that take a request/response
+    approach rather than an event-driven approach as well. In our case we manually
+    extract the fields from the JSON object to keep things simple, but its also possible
+    to use a higher-level JSON API, such as a binding API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dependency Inversion and Dependency Injection
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We’ve talked a lot about decoupling patterns in this chapter. Our overall application
+    uses the Ports and Adapters pattern and the Repository pattern to decouple business
+    logic away from implementation details. There is in fact a large, unifying principle
+    that we can think of when we see these patterns—*Dependency Inversion*. The Dependency
+    Inversion Principle is the final of our five SOLID patterns that we’ve talked
+    about in this book, and like the others was introduced by Robert Martin. It states
+    that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: High-level modules should not depend upon low-level modules. Both should depend
+    upon abstractions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Abstractions should not depend upon details. Details should depend upon abstractions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The principle is called an inversion because in traditional imperative, structured
+    programming it is often the case that high-level modules compose down to produce
+    low-level modules. It’s often a side effect of the top-down design that we talked
+    about in this chapter. You split up a big problem into different subproblems,
+    write a module to solve each of those subproblems, and then the main problem (the
+    high-level module) depends on the subproblems (the low-level modules).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the design of Twootr we’ve avoided this problem through the introduction
+    of abstractions. We have a high-level entry point class, called `Twootr`, and
+    it doesn’t depend upon the low-level modules such as our `DataUserRepository`.
+    It depends upon the abstraction—the `UserRepository` interface. We perform the
+    same inversion at the UI port. `Twootr` doesn’t depend upon the `WebSocketEndPoint`—it
+    depends upon the `ReceiverEndPoint`. We program to the interface, not the implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A related term is the concept of *Dependency Injection*, or *DI*. To understand
+    what DI is and why we need it, let’s undertake a thought experiment on our design.
+    Our architecture has determined that the main `Twootr` class needs to depend upon
+    the `UserRepository` and `TwootRepository` in order to store `User` and `Twoot`
+    objects. We have defined fields inside `Twootr` to store instances of these objects,
+    as shown in [Example 7-30](#Twootr_fields_definition). The question is, how do
+    we instantiate them?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-30\. Dependencies within the Twootr class
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first strategy that we could use for populating the fields is to try and
+    call constructors using the `new` keyword, as shown in [Example 7-31](#hardcoded_fields).
+    Here we’ve hardcoded the use of the database-based repositories into the codebase.
+    Now most of the code in the class still programs to the interface, so we could
+    change the implementation here quite easily without having to replace all our
+    code, but it’s a bit of a hack. We have to always use the database repositories,
+    which means our tests for the `Twootr` class depend upon the database and run
+    more slowly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not only that, but if we want to ship different versions of Twootr to different
+    customers—for example, an in-house Twootr for enterprise customers that uses SQL
+    and a cloud-based version that uses a NoSQL backend—we would have to cut the builds
+    from two different versions of the codebase. It’s not enough to just define interfaces
+    and separate implementation—we also have to have a way of wiring up the right
+    implementation in a way that doesn’t break our abstraction and decoupling approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-31\. Hardcoding the field instantiation
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: A commonly used design pattern for instantiating different dependencies is the
+    Abstract Factory Design pattern. [Example 7-32](#factory_instantiation) demonstrates
+    this pattern, where we have a factory method that we can use to create an instance
+    of our interface using the `getInstance()` method. When we want to set up the
+    right implementations to use, we can call a `setInstance()`. So, for example,
+    we could use `setInstance()` in tests to create an in-memory implementation, in
+    an on-premise installation to use a SQL database, or in our cloud environment
+    to use a NoSQL database. We’ve decoupled the implementation from the interface
+    and can call this wiring code wherever we want.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-32\. Creating the instances with factories
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: Unfortunately this factory method approach has its downsides as well. For a
+    start, we’ve now created a big ball of shared mutable state. Any situation where
+    we want to run a single JVM with different `Twootr` instances with different dependencies
+    isn’t possible. We’ve also coupled together lifetimes—perhaps we sometimes want
+    to instantiate a new `TwootRepository` when we start `Twootr`, or perhaps we sometimes
+    want to reuse an existing one. The factory method approach won’t let us directly
+    do this. It can also become rather complicated to have a factory for every dependency
+    that we want to create in our application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is where Dependency Injection comes in. DI can be thought of as an example
+    of the Hollywood Agent approach—don’t call us, we’ll call you. With DI instead
+    of creating dependencies explicitly or using factories to create them, you simply
+    take a parameter and whatever instantiates your object has the responsibiltiy
+    for passing in the required dependencies. It might be a test class’s setup method
+    passing in a mock. It might be the `main()` method of your application passing
+    in a SQL database implementation. An example of this in use with the `Twootr`
+    class is shown in [Example 7-33](#dependency_injection). Dependency Inversion
+    is a strategy; Dependency Injection and the Repository pattern are tactics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-33\. Creating the instances using Dependency Injection
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Taking objects this way not only makes it easier to write tests for your objects,
+    but it has the advantage of externalizing the creation of the objects themselves.
+    This allows your application code or a framework to control when the `UserRepository`
+    is created and what dependencies are wired into it. Many developers find it convenient
+    to use DI frameworks, such as Spring and Guice, that offer many features on top
+    of basic DI. For example, they define lifecycles for beans that standardize hooks
+    to be called after the objects are instantiated or before they are destroyed if
+    required. They can also offer scopes for objects, such as Singleton objects that
+    are only instantiated once during the lifetime of a process or per-request objects.
+    Furthermore, these DI frameworks often hook nicely into web development frameworks
+    such as Dropwizard or Spring Boot and provide a productive out-of-the-box experience.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Packages and Build Systems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java allows you to split your codebase into different packages. Throughout this
+    book we’ve put the code for each chapter into its own package and Twootr is the
+    first project where we’ve split out multiple subpackages within the project itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here are the packages can you look at for the different components within the
+    project:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`com.iteratrlearning.shu_book.chapter_06` is the top-level package for the
+    project.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`com.iteratrlearning.shu_book.chapter_06.database` contains the adapter for
+    SQL database persistence.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`com.iteratrlearning.shu_book.chapter_06.in_memory` contains the adapter for
+    in-memory persistence.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`com.iteratrlearning.shu_book.chapter_06.web_adapter` contains the adapter
+    for the WebSockets-based UI.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Splitting out large projects into different packages can be helpful to structure
+    code and make it easier for developers to find. Just in the same way that classes
+    group together related methods and state, packages group together related classes.
+    Packages should follow similar coupling and cohesion rules to your classes. Put
+    classes in the same package when they’re likely to change at the same time and
+    are related to the same structure. For example, in the Twootr project if we want
+    to alter the SQL database persistence code we know we go to the `database` subpackage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Packages also enable information hiding. We discussed the idea of having a package-scoped
+    constructor method back in [Example 4-3](ch04.xhtml#document_definition) in order
+    to prevent objects from being instantiated outside of the package. We can also
+    have package scoping for classes and methods. This prevents objects outside of
+    the package from accessing the details of the class and helps us achieve loose
+    coupling. For example, `WebSocketEndPoint` is package-scoped implementation of
+    the `ReceiverEndPoint` interface that lives in the `web_adapter` package. No other
+    code in the project should talk to this class directly—only through the `ReceiverEndPoint`
+    interface that acts as the port.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our approach of having a package per adapter in Twootr fits nicely with the
+    hexagonal architectural pattern that we’ve used throughout this module. Not every
+    application is hexagonal, however, and there are two common package structures
+    that you may well encounter in other projects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One very common approach to structuring packages is to structure them by layer—for
+    example, grouping together all code that generates HTML views in a website into
+    a `views` package, and all the code that relates to handling web requests into
+    a `controller` package. Despite being popular, this can be a poor choice of structure
+    as it results in poor coupling and cohesion. If you want to modify an existing
+    web page to add an additional parameter and display a value based upon that parameter,
+    you would end up touching the `controller` and the `view` packages, and probably
+    several others as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative way of structuring code is to group code by feature. So, for
+    example, if you were writing an ecommerce site you might have a `cart` package
+    for your shopping cart, a `product` package for code related to product listings,
+    a `payment` package code related to taking card payments, etc. This can often
+    be more cohesive. If you want to add support for receiving payment by Mastercard
+    as well as Visa, then you would only need to modify the `payment` package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [“Using Maven”](ch03.xhtml#using_maven) we talked about how to set up a basic
+    build structure using the Maven build tool. In the project structure for this
+    book we have one Maven project and the different chapters of the book are different
+    Java packages within that one project. That’s a nice and simple project structure
+    that will work for a wide range of different software projects, but it’s not the
+    only one. Both Maven and Gradle offer project structures that build and output
+    many build artifacts from a single top-level project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This can make sense if you want to deploy different build artifacts. For example,
+    suppose you’ve got a client/server project where you want to have a single build
+    that builds both the client and the server, but the client and the server are
+    different binaries running on different machines. It’s best not to overthink or
+    over-modularize build scripts, though.
+  prefs: []
+  type: TYPE_NORMAL
+- en: They’re something that you and your team will be running on your machines regularly
+    and the highest priority is for them to be simple, fast, and easy to use. That’s
+    why we went down the route of having one single project for the entire book, rather
+    than submodule per project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limitations and Simplifications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You’ve seen how we implement Twootr and learned about our design decisions along
+    the way, but does that mean that the Twootr codebase that we’ve seen so far is
+    the only or the best way to write it? Of course not! In fact, there are a number
+    of limitations to our approach and simplifications that we’ve deliberately taken
+    in order to make the codebase explainable in a single chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a start we’ve written Twootr as though it will be run on a single thread
+    and completely ignored the issue of concurrency. In practice we may want to have
+    multiple threads responding to and emitting events in our Twootr implementation.
+    That way we can make use of modern multicore CPUs and serve a larger number customers
+    on one box.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a bigger-picture sense, we’ve also ignored any kind of failover that would
+    allow our service to continue to run if the server that it was hosted on fell
+    over. We’ve also ignored scalability. For example, requiring all our twoots have
+    a single defined order is something that is easy and efficient to implement on
+    a single server but would present a serious scalability/contention bottleneck.
+    Similarly, seeing all the twoots when you log on would cause a bottleneck as well.
+    What if you go on holiday for a week and when you log back on you get 20,000 twoots!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Addressing these issues in detail goes beyond the scope of this chapter. However,
+    these are important topics if you wish to go further with Java, and we plan to
+    address them in greater detail in future books in this series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Takeaways
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can now decouple data storage from business logic using the Repository pattern.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You have seen implementations of two different types of repositories within
+    this approach.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You were introduced to the ideas of functional programming, including Java 8
+    Streams.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You’ve seen how to structure a larger project with different packages.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Iterating on You
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If you want to extend and solidify the knowledge from this section you could
+    try one of the following activities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Suppose that we had taken a pull model for Twootr. Instead of having messages
+    continuously pushed out to a browser-based client over WebSockets, we had used
+    HTTP to poll for the latest messages since a position.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Brainstorm how our design would have changed. Try drawing a diagram of the different
+    classes and how data would flow between them.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement, using TDD, this alternative model for Twootr. You don’t need to implement
+    the HTTP parts, just the underlying classes following this model.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Completing the Challenge
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We built the product and it worked. Unfortunately, Joe realized when he launched
+    that someone called Jack had released a similar product, with a similar name,
+    taking billions in VC funding and with hundreds of millions of users. Jack only
+    got there first by 11 years; it was bad luck for Joe, really.
+  prefs: []
+  type: TYPE_NORMAL

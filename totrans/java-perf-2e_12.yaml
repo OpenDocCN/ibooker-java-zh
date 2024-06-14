@@ -1,0 +1,2281 @@
+- en: Chapter 12\. Java SE API Tips
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter covers areas of the Java SE API that have implementation quirks
+    affecting their performance. Many such implementation details exist throughout
+    the JDK; these are the areas where I consistently uncover performance issues (even
+    in my own code). This chapter includes details on the best way to handle strings
+    (and especially duplicate strings); ways to properly buffer I/O; classloading
+    and ways to improve startup of applications that use a lot of classes; proper
+    use of collections; and JDK 8 features like lambdas and streams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Strings
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Strings are (unsurprisingly) the most common Java object. In this section, we’ll
+    look at a variety of ways to handle all the memory consumed by string objects;
+    these techniques can often significantly reduce the amount of heap your program
+    requires. We’ll also cover a new JDK 11 feature of strings involving concatenation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compact Strings
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In Java 8, all strings are encoded as arrays of 16-bit characters, regardless
+    of the encoding of the string. This is wasteful: most Western locales can encode
+    strings into 8-bit byte arrays, and even in a locale that requires 16 bits for
+    all characters, strings like program constants often can be encoded as 8-bit bytes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Java 11, strings are encoded as arrays of 8-bit bytes unless they explicitly
+    need 16-bit characters; these strings are known as *compact strings*. A similar
+    (experimental) feature in Java 6 was known as *compressed strings*; compact strings
+    are conceptually the same but differ greatly in implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Hence, the size of an average Java string in Java 11 is roughly half the size
+    of the same string in Java 8\. This generally is a huge savings: on average, 50%
+    of a typical Java heap may be consumed by string objects. Programs will vary,
+    of course, but on average the heap requirement of such a program running with
+    Java 11 is only 75% of that same program running in Java 8.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s easy enough to construct examples where this has an outsize benefit. One
+    can run a program in Java 8 that spends an enormous time performing garbage collection.
+    Running that same program in Java 11 with the same size heap could require virtually
+    no time in the collector, leading to reported gains of three to ten times in performance.
+    Take claims like that with a grain of salt: you’re typically not going to run
+    any Java program in such a constrained heap. All things being equal, though, you
+    will see a reduction in the amount of time spent in garbage collection.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For a well-tuned application, the real benefit is in memory usage: you can
+    immediately reduce the maximum heap size of the average program by 25% and still
+    get the same performance. Conversely, if you leave the heap size unchanged, you
+    should be able to introduce more load into the application and not experience
+    any GC bottlenecks (though the rest of the application must be able to handle
+    the increased load).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This feature is controlled by the `-XX:+CompactStrings` flag, which is `true`
+    by default. But unlike the compressed strings in Java 6, compact strings are robust
+    and well-performing; you’ll almost always want to keep the default setting. One
+    possible exception is in a program in which all the strings require 16-bit encodings:
+    operations on those strings can be slightly longer in compacted strings than in
+    uncompacted strings.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Duplicate Strings and String Interning
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: It is common to create many string objects that contain the same sequence of
+    characters. These objects unnecessarily take space in the heap; since strings
+    are immutable, it is often better to reuse the existing strings. We discussed
+    a general case of this in [Chapter 7](ch07.html#Memory) for arbitrary objects
+    with a canonical representation; this section expands on that idea in relation
+    to strings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Knowing if you have a large number of duplicate strings requires heap analysis.
+    Here’s one way to do that with the Eclipse Memory Analyzer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Load the heap dump.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: From the Query Browser, select Java Basics → Group By Value.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: For the `objects` argument, type in **`java.lang.String`**.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Click the Finish button.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The result is shown in [Figure 12-1](#FigureStringIntern). We have more than
+    300,000 copies of each of the strings `Name`, `Memnor`, and `Parent Name`. Several
+    other strings have multiple copies as well; in all, this heap has more than 2.3
+    million duplicate strings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Duplicate String and their memory sizes.](assets/jp2e_1201.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-1\. Memory consumed by duplicate strings
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The duplicate strings can be removed in three ways:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performing automatic deduplication via G1 GC
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the `intern()` method of the `String` class to create the canonical version
+    of the string
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using a custom method to create a canonical version of the string
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: String deduplication
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The simplest mechanism is to let the JVM find the duplicate strings and *deduplicate*
+    them: arrange for all references to point to a single copy and then free the remaining
+    copies. This is possible only when using G1 GC and only when specifying the `-XX:+UseStringDeduplication`
+    flag (which by default is `false`). This feature exists in Java 8 only after version
+    20, and all releases of Java 11.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This feature is not enabled by default for three reasons. First, it requires
+    extra processing during the young and mixed phases of G1 GC, making them slightly
+    longer. Second, it requires an extra thread that runs concurrently with the application,
+    potentially taking CPU cycles away from application threads. And third, if there
+    are few deduplicated strings, the memory use of the application will be higher
+    (instead of lower); this extra memory comes from the bookkeeping involved in tracking
+    all the strings to look for duplications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is the sort of option that needs thorough testing before enabling in production:
+    it may help your application, though in some cases it will make things worse.
+    Odds are in your favor, though: Java engineers estimate that the expected benefit
+    of enabling string deduplication is 10%.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you want to see how string deduplication is behaving in your application,
+    run it with the `-XX:+PrintStringDeduplicationStatistics` flag in Java 8, or the
+    `-Xlog:gc+stringdedup*=debug` flag in Java 11\. The resulting log will look something
+    like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: This pass of the string deduplication thread lasted 110 ms, during which it
+    found 15,604 duplicated strings (out of the 62,420 strings that had been identified
+    as candidates for deduplication). The total memory saved from that was 731.4K—around
+    the 10% we would hope for from this optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code that produced this log was set up so that 25% of the strings were duplicates,
+    which is what the JVM engineers say is typical for a Java application. (In my
+    experience—as I mentioned previously—the proportion of strings in a heap is closer
+    to 50%; chacun à son goût.)^([1](ch12.html#idm45775544045928)) The reason that
+    we didn’t save 25% of string memory is that this optimization arranges for only
+    the backing character or byte array of the string to be shared; the rest of the
+    string object is not shared. A string object has a 24- to 32-byte overhead for
+    its other fields (the difference is due to platform implementations). Hence, two
+    identical strings of 16 characters will occupy 44 (or 52) bytes each before they
+    are deduplicated for a total of 80 bytes; after deduplication, they will occupy
+    64 bytes. If the strings were interned (as discussed in the following section),
+    they would occupy only 40 bytes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As I mentioned, this processing of the strings occurred concurrently with the
+    application threads. But it’s actually the last stage in the process. During a
+    young collection, all strings in the young generation are examined. Those that
+    are promoted into the old generation become the candidates that the background
+    thread examines (once the young collection has completed). In addition, recall
+    the discussion from [Chapter 6](ch06.html#Collectors) about the tenuring of objects
+    within the survivor spaces of the young generation: objects can ping-pong between
+    the survivor spaces for a while before being promoted to the old generation. Strings
+    that have a tenuring age of (by default) three—meaning they have been copied into
+    a survivor space three times—also become candidates for deduplication and will
+    be processed by that background thread.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This has the effect that short-lived strings are not deduplicated, which is
+    likely a good thing: you probably don’t want to spend the CPU cycles and memory
+    to deduplicate something that is about to be thrown away. Like tuning the tenuring
+    cycle in general, changing the point at which this happens requires a lot of testing
+    and is done only in unusual circumstances. But for the record, the point at which
+    the tenured string is eligible for collection is controlled via the `-XX:StringDeduplicationAgeThreshold=*N*`
+    flag, which has a default value of 3.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: String interning
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The typical way to handle duplicate strings at a programmatic level is to use
+    the `intern()` method of the `String` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Like most optimizations, interning strings shouldn’t be done arbitrarily, but
+    it can be effective if lots of duplicate strings are occupying a significant portion
+    of the heap. But it does often require special tuning (and in the next section,
+    we’ll explore a custom way that is beneficial in some circumstances).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Interned strings are held in a special hash table that is in native memory
+    (though the strings themselves are in the heap). This hash table differs from
+    the hash table and hash maps you are familiar with in Java because this native
+    hash table has a fixed size: 60,013 in Java 8 and 65,536 in Java 11. (If you’re
+    on a 32-bit Windows JVM, the size is 1,009.) That means you can store only about
+    32,000 interned strings before the hash table starts to have collisions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The size of this table can be set when the JVM starts by using the flag `-XX:StringTableSize=`*`N`*
+    (which defaults to 1,009, 60,013, or 65,536 as previously mentioned). If an application
+    will intern a lot of strings, this number should be increased. The string intern
+    table will operate most efficiently if that value is a prime number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The performance of the `intern()` method is dominated by how well the string
+    table size is tuned. As an example, [Table 12-1](#TableStringIntern) shows the
+    total time to create and intern 1 million randomly created strings with and without
+    that tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-1\. Time to intern 1 million strings
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Tuning | 100% hit rate | 0% hit rate |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| String table size 60013 | 4.992 ± 2.9 seconds | 2.759 ± 0.13 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| String table size 1 million | 2.446 ± 0.6 seconds | 2.737 ± 0.36 seconds
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: Note the severe penalty for the improperly sized string intern table when there
+    is a 100% hit rate. Once the table is sized according to the expected data, performance
+    is drastically improved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The 0% hit rate table may be a little surprising because the performance with
+    and without the tuning is essentially the same. In this test case, the strings
+    are discarded immediately after being interned. The internal string table functions
+    as if the keys are weak references, so when the string is discarded, the string
+    table can clear it. Hence, in this test case the string table never actually fills
+    up; it ends up having just a few entries (since only a few strings are strongly
+    held at any time).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order to see how the string table is performing, run your application with
+    the `-XX:+PrintStringTableStatistics` argument (which is `false` by default).
+    When the JVM exits, it will print out a table like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This output is from the 100% hit rate example. After an iteration of that,
+    there are 2,002,784 interned strings (2 million are from our test with one warm-up
+    and one measurement cycle; the remainder are from `jmh` and the JDK classes).
+    The entries that most concern us are the average and maximum bucket size: we have
+    to traverse on average 33 and at most 60 entries in a linked list to search an
+    entry in the hash table. Ideally, the average length should be less than one and
+    the maximum close to one. That’s what we see in the 0% hit rate case:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Because the strings are quickly freed from the table, we end up with only 2,753
+    entries in the table, which is fine for the default size of 60,013.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The number of interned strings an application has allocated (and their total
+    size) can also be obtained using the `jmap` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The penalty for setting the size of the string table too high is minimal: each
+    bucket takes only 8 bytes, so having a few thousand more entries than optimal
+    is a one-time cost of a few kilobytes of native (not heap) memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Custom string interning
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Tuning a string table is a bit awkward; could we do better by just using a custom
+    interning scheme that keeps the important strings in a hash map? The code for
+    that was also outlined in [Chapter 2](ch02.html#SampleApplications).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 12-2](#TableCustomIntern) points us to the answer to that question.
+    In addition to using a regular `ConcurrentHashMap` to hold the interned strings,
+    that table also shows the use of a `CustomConcurrentHashMap` from the extra classes
+    developed as part of JSR166\. That custom map allows us to have weak references
+    for the keys, so its behavior more closely mimics the string intern table.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-2\. Time to intern 1 million strings via custom code
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Implementation | 100% hit rate | 0% hit rate |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ConcurrentHashMap` | 7.665 ± 6.9 seconds | 5.490 ± 2.462 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `CustomConcurrentHashMap` | 2.743 ± 0.4 seconds | 3.684 ± 0.5 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: 'In the 100% hit rate test, `ConcurrentHashMap` suffers from the same issues
+    we saw with the internal string table: a lot of GC pressure from the entries is
+    building up over each iteration. This is from a test with a 30 GB heap; smaller
+    heaps will give even worse results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As with all microbenchmarks, think deeply about the use case here. The `Concurren⁠t​HashMap`
+    can be explicitly managed rather than the setup we have here, which keeps stuffing
+    newly created strings into it. Depending on the application, that may or may not
+    be easy to do; if it is easy enough, the `ConcurrentHashMap` test will show the
+    same benefits as regular interning or the `CustomConcurrentHashMap` test. And
+    in a real application, the GC pressure is really the point: we’re going to use
+    this method only to remove duplicate strings in an attempt to save GC cycles.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Still, neither case is really better than the test with a properly tuned string
+    table. The advantage of the custom map is that it didn’t need to have a size set
+    in advance: it could resize itself as needed. Hence, it is far more adaptable
+    to a range of applications than using the `intern()` method and tuning the string
+    table size in an application-dependent manner.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: String Concatenation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'String concatenation is another area of potential performance pitfalls. Consider
+    a simple string concatenation like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Special optimizations in Java can handle this construct (though the details
+    differ between releases).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Java 8, the `javac` compiler turns that statement into this code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The JVM has special code to handle this kind of construct (which is controlled
+    by setting the `-XX:+OptimizeStringConcat` flag, which is `true` by default).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Java 11, the `javac` compiler produces quite different bytecode; that code
+    calls a special method within the JVM itself that optimizes the string concatenation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is one of the few times where the bytecode between releases matter. Typically,
+    when you move to a newer release, there’s no need to recompile old code: the bytecode
+    will be the same. (You’ll want to compile new code with the new compiler to use
+    new language features, of course.) But this particular optimization depends on
+    the actual bytecode. If you compile code that performs string concatenation with
+    Java 8 and run it with Java 11, the Java 11 JDK will apply the same optimization
+    it did in Java 8\. The code will still be optimized and run quite fast.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you recompile the code under Java 11, though, the bytecode will use the new
+    optimizations and potentially be even faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s consider the following three cases that concatenate two strings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first method is how we would code this operation by hand. The second method
+    (when compiled with Java 11) will produce the latest optimizations, and the final
+    method (no matter which compiler is used) will be optimized the same way in Java
+    8 and Java 11.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 12-3](#TableSingleConcat) shows the results of these operations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-3\. Performance of single concatenation
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Mode | Time per operation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 11 optimization | 47.7 ± 0.3 ns |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 8 optimization | 42.9 ± 0.3 ns |'
+  prefs: []
+  type: TYPE_TB
+- en: '| String builder | 87.8 ± 0.7 ns |'
+  prefs: []
+  type: TYPE_TB
+- en: 'In this case, there’s little real difference between old (Java 8) and new (Java
+    11) concatenation optimizations; though `jmh` tells us that the difference is
+    statistically significant, they are not particularly important. The key point
+    is that both optimizations are better than handcoding this simple case. This is
+    somewhat surprising, since the handcoded case appears to be simpler: it contains
+    one less call to the `append()` method than the JDK 8 case and so is performing
+    nominally less work. But the string concatenation optimization within the JVM
+    doesn’t pick up that particular pattern, so it ends up being slower.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Java 8 optimization doesn’t carry over for all concatenations, though.
+    We can slightly alter our tests like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now the performance is different, as [Table 12-4](#TableDoubleConcat) shows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-4\. Performance of concatenation with a double value
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Mode | Time per operation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 11 optimization | 49.4 ± 0.6 ns |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 8 optimization | 77.0 ± 1.9 ns |'
+  prefs: []
+  type: TYPE_TB
+- en: The JDK 11 time is similar to the last example, even though we’re appending
+    a new value and doing slightly more work. But the JDK 8 time is much worse—it
+    is about 50% slower. This is not really because of the extra concatenation; it’s
+    because of the *type* of that concatenation. The JDK 8 optimization works well
+    with strings and integers, but it cannot handle doubles (and most other kinds
+    of data). In those cases, the JDK 8 code skips the special optimization and behaves
+    like the previous handcoded test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Neither of these optimizations carries over when we do multiple concatenation
+    operations, particularly those within a loop. Consider these tests:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now the results favor handcoding, which makes sense. The Java 8 implementation,
+    in particular, has to create a new `StringBuilder` operation on each iteration
+    of the loop, and even in Java 11, the overhead of creating a string on each loop
+    (rather than building up in the string builder) takes its toll. These results
+    are in [Table 12-5](#TableStringConcatLoop).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-5\. Performance of multiple string concatenations
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Mode | 10 strings | 1,000 strings |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 11 code | 613 ± 8 ns | 2,463 ± 55 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| JDK 8 code | 584 ± 8 ns | 2,602 ± 209 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| String builder | 412 ± 2 ns | 38 ± 211 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Bottom line: Don’t be afraid to use concatenation when it can be done on a
+    single (logical) line, but never use string concatenation inside a loop unless
+    the concatenated string is not used on the next loop iteration. Otherwise, always
+    explicitly use a `StringBuilder` object for better performance. In [Chapter 1](ch01.html#Introduction),
+    I argued that there are times to “prematurely” optimize, when that phrase is used
+    in a context meaning simply “write good code.” This is a prime example.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: One-line concatenation of strings yields good performance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For multiple concatenation operations, make sure to use `StringBuilder`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: One-line concatenation of strings involving certain types will be significantly
+    faster when recompiled in JDK 11.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Buffered I/O
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When I joined the Java Performance Group in 2000, my boss had just published
+    the first ever book on Java performance, and one of the hottest topics in those
+    days was buffered I/O. Fourteen years later, I was prepared to assume the topic
+    was old hat and leave it out of the first edition of this book. Then, in the week
+    I started the outline for the first edition, I filed bugs against two unrelated
+    projects in which unbuffered I/O was greatly hampering performance. A few months
+    later, as I was working on an example for the first edition, I scratched my head
+    as I wondered why my “optimization” was so slow. Then I realized: stupid, you
+    forgot to buffer the I/O correctly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As for the second edition: in the two weeks before I revisited this section,
+    three colleagues came to me who had made the same mistake in buffering I/O as
+    I had in the example for the first edition.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So let’s talk about buffered I/O performance. The `InputStream.read()` and
+    `OutputStream.write()` methods operate on a single character. Depending on the
+    resource they are accessing, these methods can be very slow. A `FileInputStream`
+    that uses the `read()` method will be excruciatingly slow: each method invocation
+    requires a trip into the kernel to fetch 1 byte of data. On most operating systems,
+    the kernel will have buffered the I/O, so (luckily) this scenario doesn’t trigger
+    a disk read for each invocation of the `read()` method. But that buffer is held
+    in the kernel, not the application, and reading a single byte at a time means
+    making an expensive system call for each method invocation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The same is true of writing data: using the `write()` method to send a single
+    byte to a `FileOutputStream` requires a system call to store the byte in a kernel
+    buffer. Eventually (when the file is closed or flushed), the kernel will write
+    out that buffer to the disk.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For file-based I/O using binary data, always use `BufferedInputStream` or `BufferedOutputStream`
+    to wrap the underlying file stream. For file-based I/O using character (string)
+    data, always wrap the underlying stream with `BufferedReader` or `BufferedWriter`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although this performance issue is most easily understood when discussing file
+    I/O, it is a general issue that applies to almost every sort of I/O. The streams
+    returned from a socket (via the `getInputStream()` or `getOutputStream()` methods)
+    operate in the same manner, and performing I/O one byte at a time over a socket
+    is quite slow. Here, too, always make sure that the streams are appropriately
+    wrapped with a buffering filter stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are more subtle issues when using the `ByteArrayInputStream` and `ByteArrayOutputStream`
+    classes. These classes are essentially just big in-memory buffers to begin with.
+    In many cases, wrapping them with a buffering filter stream means that data is
+    copied twice: once to the buffer in the filter stream and once to the buffer in
+    the `ByteArrayInputStream` (or vice versa for output streams). Absent the involvement
+    of any other streams, buffered I/O should be avoided in that case.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When other filtering streams are involved, the question of whether to buffer
+    becomes more complicated. Later in this chapter, you’ll see an example of object
+    serialization that involves multiple filtering streams using the `ByteArrayOutputStream`,
+    `ObjectOutputStream`, and `GZIPOutputStream` classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Without the compressing output stream, the filters for that example look like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, wrapping the `baos` stream in a `BufferedOutputStream` would suffer
+    a performance penalty from copying the data one extra time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we add compression, though, the best way to write the code is like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now it is necessary to buffer the output stream, because `GZIPOutputStream`
+    operates more efficiently on a block of data than it does on single bytes of data.
+    In either case, `ObjectOutputStream` will send single bytes of data to the next
+    stream. If that next stream is the ultimate destination—the `ByteArrayOutputStream`—no
+    buffering is necessary. If another filtering stream is in the middle (such as
+    `GZIPOutputStream` in this example), buffering is often necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: No general rule exists about when to use a buffered stream interposed between
+    two other streams. Ultimately, it will depend on the type of streams involved,
+    but the likely cases will all operate better if they are fed a block of bytes
+    (from the buffered stream) rather than a series of single bytes (from `ObjectOutputStream`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The same situation applies to input streams. In this specific case, `GZIPInputStream`
+    will operate more efficiently on a block of bytes; in the general case, streams
+    that are interposed between `ObjectInputStream` and the original byte source will
+    also be better off with a block of bytes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that this case applies in particular to stream encoders and decoders. When
+    you convert between bytes and characters, operating on as large a piece of data
+    as possible will provide the best performance. If single bytes or characters are
+    fed to encoders and decoders, they will suffer from bad performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the record, not buffering the gzip streams is exactly the mistake I made
+    when writing that compression example. It was a costly mistake, as the data in
+    [Table 12-6](#TableBufferedIO) shows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-6\. Time to serialize and deserialize `Stock` object with compression
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Mode | Time |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Unbuffered compression/decompression | 21.3 ± 8 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Buffered compression/decompression | 5.7 ± 0.08 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: The failure to properly buffer the I/O resulted in as much as a four times performance
+    penalty.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Issues around buffered I/O are common because of the default implementation
+    of the simple input and output stream classes.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: I/O must be properly buffered for files and sockets, as well as for internal
+    operations like compression and string encoding.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Classloading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The performance of classloading is the bane of anyone attempting to optimize
+    either program startup or deployment of new code in a dynamic system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are many reasons for that. To begin, the class data (i.e., the Java bytecode)
+    is typically not quickly accessible. That data must be loaded from disk or from
+    the network, it must be found in one of several JAR files on the classpath, and
+    it must be found in one of several classloaders. There are some ways to help this
+    along: some frameworks cache classes they read from the network into a hidden
+    directory so that next time it starts the same application, it can read the classes
+    more quickly. Packaging an application into fewer JAR files will also speed up
+    its classloading performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we’ll look at a new feature of Java 11 to speed up classloading.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Class Data Sharing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Class data sharing* (*CDS*) is a mechanism whereby the metadata for classes
+    can be shared between JVMs. This can be useful for saving memory when running
+    multiple JVMs: normally, each JVM would have its own class metadata, and the separate
+    copies would occupy some physical memory. If that metadata is shared, only one
+    copy needs to reside in memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It turns out that CDS is very useful for single JVMs because it can also improve
+    their startup time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Class data sharing is available in Java 8 (and previous releases), but with
+    the restriction that it applies only to the classes in *rt.jar* and only when
+    the serial collector is used with the client JVM. In other words, it helps somewhat
+    on 32-bit, single-CPU, Windows desktop machines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Java 11, CDS is generally available on all platforms, though it doesn’t
+    work out of the box because there is no default shared archive of the class metadata.
+    Java 12 does have a default shared archive of the common JDK classes, so all applications
+    will by default get some startup (and memory) benefits. In either case, we can
+    do better by generating a more complete shared archive for our application, because
+    in Java 11, CDS can work with any set of classes, no matter which classloader
+    loads them and which JAR or module they are loaded from. One restriction applies:
+    CDS works only for classes loaded from modules or JAR files. You cannot share
+    (or quickly load) classes from a filesystem or network URL.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In a sense, this means there are two flavors of CDS: *regular CDS* (which shares
+    the default JDK classes) and *application class data sharing*, which shares any
+    set of classes. Application class data sharing was actually introduced in Java
+    10, and it worked differently than regular CDS: there were different command-line
+    arguments for programs to use it. That distinction is now obsolete, and CDS in
+    Java 11 and beyond works the same way regardless of the classes being shared.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first thing required to use CDS is a shared archive of classes. As I mentioned,
+    Java 12 comes with a default shared archive of classes, which is located in *$JAVA_HOME/lib/server/classes.jsa*
+    (or *%JAVA_HOME%\bin\server\classes.jsa* on Windows). That archive has data for
+    12,000 JDK classes, so its coverage of the core classes is pretty broad. To generate
+    your own archive, you will first need a list of all the classes for which you
+    want to enable sharing (and hence fast loading). That list can include JDK classes
+    and application-level classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many ways to get such a list, but the easiest is to run your application
+    with the `-XX:+DumpLoadedClassList=filename` flag, which will produce (in *filename*)
+    a list of all the classes that your application has loaded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second step is to use that class list to generate the shared archive like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will create a new shared archive file with the given name (here, *myclasses.jsa*)
+    based on the list of files. You must also set up the classpath the same as you
+    would to run the application (i.e., using either the `-cp` or `-jar` argument
+    you would normally use to run the application).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This command will generate a lot of warnings about classes it cannot find.
+    That is expected since this command cannot find dynamically generated classes:
+    proxy classes, reflection-based classes, and so on. If you see a warning for a
+    class you expected to be loaded, try adjusting the classpath for that command.
+    Not finding all the classes isn’t a problem; it just means they will be loaded
+    normally (from the classpath) rather than from the shared archive. Loading that
+    particular class will hence be a little slower, but a few such classes like that
+    isn’t going to be noticeable, so don’t sweat everything at this step.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, you use the shared archive to run the application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A few remarks about this command. First, the `-Xshare` command has three possible
+    values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`off`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Don’t use class data sharing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`on`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Always use class data sharing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`auto`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Attempt to use class data sharing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CDS depends on mapping the shared archive into a memory region, and under certain
+    (mostly rare) circumstances, that can fail. If `-Xshare:on` is specified, the
+    application will not run if that happens. Hence, the default value is `-Xshare:auto`,
+    which means that CDS will normally be used, but if for some reason the archive
+    cannot be mapped, the application will proceed without it. Since the default for
+    this flag is `auto`, we don’t actually have to specify it in the preceding command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, this command gives the location of the shared archive. The default value
+    for the `SharedArchiveFile` flag is the *classes.jsa* path mentioned earlier (within
+    the JDK *server* directory). So in Java 12 (where that file is present), we needn’t
+    give any command-line arguments if we just want to use the (JDK-only) default
+    shared archive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In one common case, loading the shared archive can fail: the classpath used
+    to generate the shared archive must be a subset of the classpath used to run an
+    application, and the JAR files must not have changed since the shared archive
+    was created. So you don’t want to generate a shared archive of classes other than
+    the JDK and put that in the default location, since the classpath for arbitrary
+    commands will not match.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also beware of changing the JAR files. If you use the default setting of `-Xshare:auto`
+    and the JAR file is changed, the application will still run, even though the shared
+    archive is not being used. Worse, there will be no warning about that; the only
+    effect you’ll see is that the application starts more slowly. That’s a reason
+    to consider specifying `-Xshare:on` instead of the default, though there are other
+    reasons the shared archive could fail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To validate that classes are being loaded from the shared archive, include
+    class loading logging (`-Xlog:class+load=info`) in your command line; you’ll see
+    the usual classloading output, and classes that are loaded from the shared archive
+    will show up like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Class data sharing benefits
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The benefit of class data sharing for startup time depends, obviously, on the
+    number of classes to be loaded. [Table 12-7](#TableCDS) shows the time required
+    to start the sample stock server application in the book examples; that requires
+    loading 6,314 classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-7\. Time to start an application with CDS
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| CDS mode | Startup time |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `-Xshare:off` | 8.9 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `-Xshare:on` (default) | 9.1 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `-Xshare:on` (custom) | 7.0 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: In the default case, we’re using only the shared archive for the JDK; the last
+    row is the custom shared archive of all the application classes. In this case,
+    CDS saves us 30% in startup time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CDS will also save us some memory since the class data will be shared among
+    processes. Overall, as you saw in the examples in [Chapter 8](ch08.html#NativeMemory),
+    the class data in native memory is proportionately small, particularly compared
+    to the application heap. In a large program with lots of classes, CDS will save
+    more memory, though a large program is likely to need an even larger heap, making
+    the proportional savings still small. Still, in an environment where you are particularly
+    starved for native memory and running multiple copies of the JVM that are using
+    a significant number of the same classes, CDS will offer some benefit for memory
+    savings as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The best way to speed up classloading is to create a class data sharing archive
+    for the application. Luckily, this requires no programming changes.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Random Numbers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The next set of APIs we’ll look at involve random number generation. Java comes
+    with three standard random number generator classes: `java.util.Random`, `java.util.concurrent.ThreadLocalRandom`,
+    and `java.security.SecureRandom`. These three classes have important performance
+    differences.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The difference between the `Random` and `ThreadLocalRandom` classes is that
+    the main operation (the `nextGaussian()` method) of the `Random` class is synchronized.
+    That method is used by any method that retrieves a random value, so that lock
+    can become contended no matter how the random number generator is used: if two
+    threads use the same random number generator at the same time, one will have to
+    wait for the other to complete its operation. This is why the thread-local version
+    is available: when each thread has its own random number generator, the synchronization
+    of the `Random` class is no longer an issue. (As discussed in [Chapter 7](ch07.html#Memory),
+    the thread-local version also provides significant performance benefits because
+    it is reusing an expensive-to-create object.)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The difference between those classes and the `SecureRandom` class lies in the
+    algorithm used. The `Random` class (and the `ThreadLocalRandom` class, via inheritance)
+    implements a typical pseudorandom algorithm. While those algorithms are quite
+    sophisticated, they are in the end deterministic. If the initial seed is known,
+    it is possible to determine the exact series of numbers the engine will generate.
+    That means hackers are able to look at series of numbers from a particular generator
+    and (eventually) figure out what the next number will be. Although good pseudorandom
+    number generators can emit series of numbers that look really random (and that
+    even fit probabilistic expectations of randomness), they are not truly random.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `SecureRandom` class, on the other hand, uses a system interface to obtain
+    a seed for its random data. The way that data is generated is operating-system-specific,
+    but in general this source provides data based on truly random events (such as
+    when the mouse is moved). This is known as *entropy-based randomness* and is much
+    more secure for operations that rely on random numbers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java distinguishes two sources of random numbers: one to generate seeds and
+    one to generate random numbers themselves. Seeds are used to create public and
+    private keys, such as the keys that you use to access a system via SSH or PuTTY.
+    Those keys are long-lived, so they require the strongest possible cryptographic
+    algorithm. Secure random numbers are also used to seed regular random number streams,
+    including those used by default implementations of Java’s SSL libraries.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On Linux systems, these two sources are */dev/random* (for seeds) and */dev/urandom*
+    (for random numbers). These systems are both based on sources of entropy within
+    the machine: truly random things, such as mouse movement or keyboard strokes.
+    The amount of entropy is limited and is regenerated randomly, so it is undependable
+    as a true source of randomness. The two systems handle that differently: */dev/random*
+    will block until it has enough system events to generate the random data, and
+    */dev/urandom* will fall back to a pseudorandom number generator (PRNG). The PRNG
+    will have been initialized from a truly random source, so it is usually just as
+    strong as the stream from */dev/random*. However, entropy to generate the seed
+    itself may be unavailable, in which case the stream from */dev/urandom* can theoretically
+    be compromised. There are arguments on both sides of this issue as to strength
+    of this stream, but the common consensus—use */dev/random* for seeds and */dev/urandom*
+    for everything else—is the one adopted by Java.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The upshot is that getting a lot of random number seeds can take a long time.
+    Calls to the `generatedSeed()` method of the `SecureRandom` class will take an
+    indeterminate amount of time, based on how much unused entropy the system has.
+    If no entropy is available, the call will appear to hang, possibly as long as
+    seconds at a time, until the required entropy is available. That makes performance
+    timing quite difficult: the performance itself becomes random.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, the `generateSeed()` method is used for only two operations.
+    First, some algorithms use it to get a seed for future calls to the `nextRandom()`
+    method. This usually needs to be done only once, or at most periodically during
+    the lifetime of an application. Second, this method is used when creating a long-lived
+    key, which also is a fairly rare operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since those operations are limited, most applications will not run out of entropy.
+    Still, limited entropy can be a problem for applications that create ciphers at
+    startup time, particularly in cloud environments where the host OS random number
+    device is shared among a number of virtual machines and/or Docker containers.
+    In that case, timings of program activities will have a very large amount of variance,
+    and since the use of secure seeds occurs most often while programs are initializing,
+    the startup of applications in this sphere can be quite slow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We have a few ways to deal with this situation. In a pinch, and where the code
+    can be changed, an alternative to this problem is to run performance tests using
+    the `Random` class, even though the `SecureRandom` class will be used in production.
+    If the performance tests are module-level tests, that can make sense: those tests
+    will need more random seeds than the production system will need during the same
+    period of time. But eventually, the expected load must be tested with the `SecureRandom`
+    class to determine if the load on the production system can obtain a sufficient
+    number of random seeds.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A second option is to configure Java’s secure random number generator to use
+    */dev/urandom* for seeds as well as for random numbers. This can be accomplished
+    in two ways: first, you can set the system property `-Djava.security​.egd=file:/dev/urandom`.^([2](ch12.html#idm45775543079160))'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A third option is to change this setting in *$JAVA_HOME/jre/lib/security/java.security*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: That line defines the interface used for seeding operations and can be set to
+    */dev/urandom* if you want to ensure that the secure random number generator never
+    blocks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, the better solution is to set up the operating system so that it supplies
+    more entropy, which is done by running the `rngd` daemon. Just make sure that
+    the `rngd` daemon is configured to use reliable hardware sources of entropy (e.g.,
+    */dev/hwrng* if it is available) and not something like */dev/urandom*. This solution
+    has the advantage of solving entropy issues for all programs on the machine, not
+    just Java programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java’s default `Random` class is expensive to initialize, but once initialized,
+    it can be reused.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In multithreaded code, the `ThreadLocalRandom` class is preferred.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sometimes, the `SecureRandom` class will show arbitrary, completely random performance.
+    Performance tests on code using that class must be carefully planned.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Issues with the `SecureRandom` class blocking can be avoided with configuration
+    changes, but it is better to solve them at the OS level by adding entropy to the
+    system.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Java Native Interface
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Performance tips about Java SE (particularly in the early days of Java) often
+    say that if you want really fast code, you should use native code. In truth, if
+    you are interested in writing the fastest possible code, avoid the Java Native
+    Interface (JNI).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Well-written Java code will run at least as fast on current versions of the
+    JVM as corresponding C or C++ code (it is not 1996 anymore). Language purists
+    will continue to debate the relative performance merits of Java and other languages,
+    and you can find doubtless examples of an application written in another language
+    that is faster than the same application written in Java (though often those examples
+    contain poorly written Java code). However, that debate misses the point of this
+    section: when an application is already written in Java, calling native code for
+    performance reasons is almost always a bad idea.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Still, at times JNI is quite useful. The Java platform provides many common
+    features of operating systems, but if access to a special, operating-system-specific
+    function is required, so is JNI. And why build your own library to perform an
+    operation, when a commercial (native) version of the code is readily available?
+    In these and other cases, the question becomes how to write the most efficient
+    JNI code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The answer is to avoid making calls from Java to C as much as possible. Crossing
+    the JNI boundary (the term for making the cross-language call) is expensive. Because
+    calling an existing C library requires writing glue code in the first place, take
+    the time to create new, coarse-grained interfaces via that glue code: perform
+    many, multiple calls into the C library in one shot.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Interestingly, the reverse is not necessarily true: C code that calls back
+    into Java does not suffer a large performance penalty (depending on the parameters
+    involved). For example, consider the following code excerpt:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This (completely nonsensical) code has two main loops: one inside the benchmark
+    method and then one inside the `calcJavaJava()` method. That is all Java code,
+    but we can choose instead to use a native interface and write the outer calculation
+    method in C:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Or we could just implement the inner call in C (the code for which should be
+    obvious).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 12-8](#TableJNI) shows the performance from various permutations, given
+    10,000 trials and 10,000 values.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-8\. Time to calculate across the JNI boundary
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| `calculateError` | Calc | Random | JNI transitions | Total time |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Java | Java | Java | 0 | 0.104 ± 0.01 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Java | Java | C | 10,000,000 | 1.96 ± 0.1 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Java | C | C | 10,000 | 0.132 ± 0.01 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| C | C | C | 0 | 0.139 ± 0.01 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: Implementing only the innermost method in C provides the most crossings of the
+    JNI boundary (`numberOfTrials × numberOfLoops`, or 10 million). Reducing the number
+    of crossings to `numberOfTrials` (10,000) reduces that overhead substantially,
+    and reducing it further to 0 provides the best performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: JNI code performs worse if the parameters involved are not simple primitives.
+    Two aspects are involved in this overhead. First, for simple references, an address
+    translation is needed. Second, operations on array-based data are subject to special
+    handling in native code. This includes `String` objects, since the string data
+    is essentially a character array. To access the individual elements of these arrays,
+    a special call must be made to pin the object in memory (and for `String` objects,
+    to convert from Java’s UTF-16 encoding into UTF-8 in JDK 8). When the array is
+    no longer needed, it must be explicitly released in the JNI code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While the array is pinned, the garbage collector cannot run—so one of the most
+    expensive mistakes in JNI code is to pin a string or array in code that is long-running.
+    That prevents the garbage collector from running, effectively blocking all the
+    application threads until the JNI code completes. It is extremely important to
+    make the critical section where the array is pinned as short as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Often, you will see the term `GC Locker Initiated GC` in your GC logs. That’s
+    an indication that the garbage collector needed to run but it couldn’t, because
+    a thread had pinned data in a JNI call. As soon as that data is unpinned, the
+    garbage collector will run. If you see this GC cause frequently, look into making
+    the JNI code faster; your other application threads are experiencing delays waiting
+    for GC to run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sometimes, the goal of pinning objects for a short period of time conflicts
+    with the goal of reducing the calls that cross the JNI boundary. In that case,
+    the latter goal is more important even if it means making multiple crossings of
+    the JNI boundary, so make the sections that pin arrays and strings as short as
+    possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: JNI is not a solution to performance problems. Java code will almost always
+    run faster than calling into native code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When JNI is used, limit the number of calls from Java to C; crossing the JNI
+    boundary is expensive.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: JNI code that uses arrays or strings must pin those objects; limit the length
+    of time they are pinned so that the garbage collector is not impacted.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exceptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Java exception processing has the reputation of being expensive. It is somewhat
+    more expensive than processing regular control flows, though in most cases, the
+    extra cost isn’t worth the effort to attempt to bypass it. On the other hand,
+    because it isn’t free, exception processing shouldn’t be used as a general mechanism
+    either. The guideline is to use exceptions according to the general principles
+    of good program design: mainly, code should throw an exception only to indicate
+    something unexpected has happened. Following good code design means that your
+    Java code will not be slowed down by exception processing.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Two things can affect the general performance of exception processing. First
+    is the code block itself: is it expensive to set up a try-catch block? While that
+    might have been the case a long time ago, it has not been the case for years.
+    Still, because the internet has a long memory, you will sometimes see recommendations
+    to avoid exceptions simply because of the try-catch block. Those recommendations
+    are out-of-date; modern JVMs can generate code that handles exceptions quite efficiently.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second aspect is that exceptions involve obtaining a stack trace at the
+    point of the exception (though you’ll see an exception to that later in this section).
+    This operation can be expensive, particularly if the stack trace is deep.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look at an example. Here are three implementations of a particular method
+    to consider:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each method here creates an array of arbitrary strings from newly created objects.
+    The size of that array will vary, based on the desired number of exceptions to
+    be thrown.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 12-9](#TableExceptions1) shows the time to complete each method for
+    100,000 iterations given the worst case—a `pctError` of 1 (each call generates
+    an exception, and the result is an empty list). The example code here is either
+    shallow (meaning that the method in question is called when only 3 classes are
+    on the stack) or deep (meaning that the method in question is called when 100
+    classes are on the stack).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-9\. Time to process exceptions at 100%
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Shallow time | Deep time |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Checked exception | 24031 ± 127 μs | 30613 ± 329 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Unchecked exception | 21181 ± 278 μs | 21550 ± 323 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Defensive programming | 21088 ± 255 μs | 21262 ± 622 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: This table presents three interesting points. First, in the case of checked
+    exceptions, there is a significant difference of time between the shallow case
+    and the deep case. Constructing that stack trace takes time, which is dependent
+    on the stack depth.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But the second case involves unchecked exceptions, where the JVM creates the
+    exception when the null pointer is dereferenced. What’s happening is that at some
+    point, the compiler has optimized the system-generated exception case; the JVM
+    begins to reuse the same exception object rather than creating a new one each
+    time it is needed. That object is reused each time the code in question is executed,
+    no matter what the calling stack is, and the exception does not actually contain
+    a call stack (i.e., the `printStackTrace()` method returns no output). This optimization
+    doesn’t occur until the full stack exception has been thrown for quite a long
+    time, so if your test case doesn’t include a sufficient warm-up cycle, you will
+    not see its effects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, consider the case where no exception is thrown: notice that it has
+    pretty much the same performance as the unchecked exception case. This case serves
+    as a control in this experiment: the test does a fair amount of work to create
+    the objects. The difference between the defensive case and any other case is the
+    actual time spent creating, throwing, and catching the exception. So the overall
+    time is quite small. Averaged out over 100,000 calls, the individual execution
+    time differences will barely register (and recall that this is the worst-case
+    example).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So performance penalties for using exceptions injudiciously is smaller than
+    might be expected, and the penalty for having lots of the same system exception
+    is almost nonexistent. Still, in some cases you will run into code that is simply
+    creating too many exceptions. Since the performance penalty comes from filling
+    in the stack traces, the `-XX:-StackTraceInThrowable` flag (which is `true` by
+    default) can be set to disable the generation of the stack traces.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is rarely a good idea: the stack traces are present to enable analysis
+    of what unexpectedly went wrong. That capability is lost when this flag is enabled.
+    And there is code that actually examines the stack traces and determines how to
+    recover from the exception based on what it finds there. That’s problematic in
+    itself, but the upshot is that disabling the stack trace can mysteriously break
+    code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are some APIs in the JDK itself where exception handling can lead to performance
+    issues. Many collection classes will throw an exception when nonexistent items
+    are retrieved from them. The `Stack` class, for example, throws an `EmptyStackException`
+    if the stack is empty when the `pop()` method is called. It is usually better
+    to utilize defensive programming in that case by checking the stack length first.
+    (On the other hand, unlike many collection classes, the `Stack` class supports
+    `null` objects, so it’s not as if the `pop()` method could return `null` to indicate
+    an empty stack.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The most notorious example within the JDK of questionable use of exceptions
+    is in classloading: the `loadClass()` method of the `ClassLoader` class throws
+    a `ClassNotFoundException` when asked to load a class that it cannot find. That’s
+    not actually an exceptional condition. An individual classloader is not expected
+    to know how to load every class in an application, which is why there are hierarchies
+    of classloaders.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In an environment with dozens of classloaders, this means a lot of exceptions
+    are created as the classloader hierarchy is searched for the one classloader that
+    knows how to load the given class. In very large application servers I’ve worked
+    with, disabling stack trace generation can speed up start time by as much as 3%.
+    Those servers load more than 30,000 classes from hundreds of JAR files; this is
+    certainly a YMMV kind of thing.^([3](ch12.html#idm45775542437672))
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Exceptions are not necessarily expensive to process, though they should be used
+    only when appropriate.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The deeper the stack, the more expensive to process exceptions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The JVM will optimize away the stack penalty for frequently created system exceptions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Disabling stack traces in exceptions can sometimes help performance, though
+    crucial information is often lost in the process.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Logging
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Logging is one of those things that performance engineers either love or hate—or
+    (usually) both. Whenever I’m asked why a program is running badly, the first thing
+    I ask for are any available logs, with the hope that logs produced by the application
+    will have clues as to what the application was doing. Whenever I’m asked to review
+    the performance of working code, I immediately recommend that all logging statements
+    be turned off.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multiple logs are in question here. The JVM produces its own logging statements,
+    of which the most important is the GC log (see [Chapter 6](ch06.html#Collectors)).
+    That logging can be directed into a distinct file, the size of which can be managed
+    by the JVM. Even in production code, GC logging (even with detailed logging enabled)
+    has such low overhead and such an expected large benefit if something goes wrong
+    that it should always be turned on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'HTTP servers generate an access log that is updated on every request. This
+    log generally has a noticeable impact: turning off that logging will definitely
+    improve the performance of whatever test is run against the application server.
+    From a diagnosability standpoint, those logs are (in my experience) not terribly
+    helpful when something goes wrong. However, in terms of business requirements,
+    that log is often crucial, in which case it must be left enabled.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although it is not a Java standard, many HTTP servers support the Apache `mod_log_config`
+    convention, which allows you to specify exactly what information is logged for
+    each request (and servers that don’t follow the `mod_log_config` syntax will typically
+    support another log customization). The key is to log as little information as
+    possible and still meet the business requirements. The performance of the log
+    is subject to the amount of data written.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In HTTP access logs in particular (and in general, in any kind of log), it
+    is a good idea to log all information numerically: IP addresses rather than hostnames,
+    timestamps (e.g., seconds since the epoch) rather than string data (e.g., “Monday,
+    June 3, 2019 17:23:00 -0600”), and so on. Minimize any data conversion that will
+    take time and memory to compute so that the effect on the system is also minimized.
+    Logs can always be postprocessed to provide converted data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We should keep three basic principles in mind for application logs. First is
+    to keep a balance between the data to be logged and level at which it is logged.
+    The JDK has seven standard logging levels in the JDK, and loggers by default are
+    configured to output three of those levels (`INFO` and greater). This often leads
+    to confusion within projects: `INFO`-level messages sound like they should be
+    fairly common and should provide a description of the flow of an application (“now
+    I’m processing task A,” “now I’m doing task B,” and so on). Particularly for applications
+    that are heavily threaded and scalable, that much logging will have a detrimental
+    effect on performance (not to mention running the risk of being too chatty to
+    be useful). Don’t be afraid to use the lower-level logging statements.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, when code is checked into a group repository, consider the needs
+    of the user of the project rather than your needs as a developer. We’d all like
+    to have a lot of good feedback about how our code works after it is integrated
+    into a larger system and run through a battery of tests, but if a message isn’t
+    going to make sense to an end user or system administrator, it’s not helpful to
+    enable it by default. It is merely going to slow down the system (and confuse
+    the end user).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second principle is to use fine-grained loggers. Having a logger per class
+    can be tedious to configure, but having greater control over the logging output
+    often makes this worthwhile. Sharing a logger for a set of classes in a small
+    module is a good compromise. Keep in mind that production problems—and particularly
+    production problems that occur under load or are otherwise performance related—are
+    tricky to reproduce if the environment changes significantly. Turning on too much
+    logging often changes the environment such that the original issue no longer manifests
+    itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, you must be able to turn on logging only for a small set of code (and,
+    at least initially, a small set of logging statements at the `FINE` level, followed
+    by more at the `FINER` and `FINEST` levels) so that the performance of the code
+    is not affected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Between these two principles, it should be possible to enable small subsets
+    of messages in a production environment without affecting the performance of the
+    system. That is usually a requirement anyway: the production system administrators
+    probably aren’t going to enable logging if it slows the system, and if the system
+    does slow down, then the likelihood of reproducing the issue is reduced.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The third principle to keep in mind when introducing logging to code is to
+    remember that it is easy to write logging code that has unintended side effects,
+    even if the logging is not enabled. This is another case where “prematurely” optimizing
+    code is a good thing: as the example from [Chapter 1](ch01.html#Introduction)
+    shows, remember to use the `isLoggable()` method anytime the information to be
+    logged contains a method call, a string concatenation, or any other sort of allocation
+    (for example, allocation of an `Object` array for a `MessageFormat` argument).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Code should contain lots of logging to enable users to figure out what it does,
+    but none of that should be enabled by default.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Don’t forget to test for the logging level before calling the logger if the
+    arguments to the logger require method calls or object allocation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Java Collections API
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java’s collections API is extensive; it has at least 58 collection classes.
+    Using an appropriate collection class—as well as using collection classes appropriately—is
+    an important performance consideration in writing an application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first rule in using a collection class is to use one suitable for the algorithmic
+    needs of an application. This advice is not specific to Java; it is essentially
+    Data Structures 101\. A `LinkedList` is not suitable for searching; if access
+    to a random piece of data is required, store the collection in a `HashMap`. If
+    the data needs to remain sorted, use a `TreeMap` rather than attempting to sort
+    the data in the application. Use an `ArrayList` if the data will be accessed by
+    index, but not if data frequently needs to be inserted into the middle of the
+    array. And so on…the algorithmic choice of which collection class is crucial,
+    but the choice in Java isn’t different from the choice in any other programming
+    language.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are, however, some idiosyncrasies to consider when using Java collections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronized Versus Unsynchronized
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: By default, virtually all Java collections are unsynchronized (the major exceptions
+    are `Hashtable`, `Vector`, and their related classes).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Chapter 9](ch09.html#ThreadPerformance) posited a microbenchmark to compare
+    CAS-based protection to traditional synchronization. That proved to be impractical
+    in the threaded case, but what if the data in question will always be accessed
+    by a single thread—what would be the effect of not using any synchronization at
+    all? [Table 12-10](#TableUnsync) shows that comparison. Because there is no attempt
+    to model the contention, the microbenchmark in this case is valid in this one
+    circumstance: when there can be no contention, and the question at hand is what
+    the penalty is for “oversynchronizing” access to the resource.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-10\. Performance of synchronized and unsynchronized access
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Mode | Single access | 10,000 accesses |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CAS operation | 22.1 ± 11 ns | 209 ± 90 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Synchronized method | 20.8 ± 9 ns | 179 ± 95 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Unsynchronized method | 15.8 ± 5 ns | 104 ± 55 μs |'
+  prefs: []
+  type: TYPE_TB
+- en: 'There is a small penalty when using any data protection technique as opposed
+    to simple unsynchronized access. As usual with a microbenchmark, the difference
+    is tiny: on the order of 5–8 nanoseconds. If the operation in question is executed
+    frequently enough in the target application, the performance penalty will be somewhat
+    noticeable. In most cases, the difference will be outweighed by far larger inefficiencies
+    in other areas of the application. Remember also that the absolute number here
+    is completely determined by the target machine the test was run on (my home machine
+    with an AMD processor); to get a more realistic measurement, the test would need
+    to be run on hardware that is the same as the target environment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, given a choice between a synchronized list (e.g., returned from the `synchronizedList()`
+    method of the `Collections` class) and an unsynchronized `ArrayList`, which should
+    be used? Access to the `ArrayList` will be slightly faster, and depending on how
+    often the list is accessed, a measurable performance difference can result. (As
+    noted in [Chapter 9](ch09.html#ThreadPerformance), excessive calls to the synchronized
+    method can be painful for performance on certain hardware platforms as well.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, this assumes that the code will never be accessed by more
+    than one thread. That may be true today, but what about tomorrow? If that might
+    change, it is better to use the synchronized collection now and mitigate any performance
+    impact that results. This is a design choice, and whether future-proofing code
+    to be thread-safe is worth the time and effort will depend on the circumstances
+    of the application being developed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collection Sizing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Collection classes are designed to hold an arbitrary number of data elements
+    and to expand as necessary, as new items are added to the collection. Sizing the
+    collection appropriately can be important for their overall performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although the data types provided by collection classes in Java are quite rich,
+    at a basic level those classes must hold their data using only Java primitive
+    data types: numbers (`integer`s, `double`s, and so on), object references, and
+    arrays of those types. Hence, an `ArrayList` contains an actual array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: As items are added and removed from the `ArrayList`, they are stored at the
+    desired location within the `elementData` array (possibly causing other items
+    in the array to shift). Similarly, a `HashMap` contains an array of an internal
+    data type called `HashMap$Entry`, which maps each key-value pair to a location
+    in the array specified by the hash code of the key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Not all collections use an array to hold their elements; a `LinkedList`, for
+    example, holds each data element in an internally defined `Node` class. But collection
+    classes that do use an array to hold their elements are subject to special sizing
+    considerations. You can tell if a particular class falls into this category by
+    looking at its constructors: if it has a constructor that allows the initial size
+    of the collection to be specified, it is internally using an array to store the
+    items.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For those collection classes, it is important to accurately specify the initial
+    size. Take the simple example of an `ArrayList`: the `elementData` array will
+    (by default) start out with an initial size of 10\. When the 11th item is inserted
+    into an `ArrayList`, the list must expand the `elementData` array. This means
+    allocating a new array, copying the original contents into that array, and then
+    adding in the new item. The data structure and algorithm used by, say, the `HashMap`
+    class is much more complicated, but the principle is the same: at some point,
+    those internal structures must be resized.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ArrayList` class chooses to resize the array by adding roughly half of
+    the existing size, so the size of the `elementData` array will first be 10, then
+    15, then 22, then 33, and so on. Whatever algorithm is used to resize the array
+    (see sidebar), this results in wasted memory (which in turn will affect the time
+    the application spends performing GC). Additionally, each time the array must
+    be resized, an expensive array copy operation must occur to transfer the contents
+    from the old array to the new array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To minimize those performance penalties, make sure to construct the collection
+    with as accurate an estimate of its ultimate size as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collections and Memory Efficiency
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'You’ve just seen one example where the memory efficiency of collections can
+    be suboptimal: there is often some wasted memory in the backing store used to
+    hold the elements in the collection.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This can be particularly problematic for sparsely used collections: those with
+    one or two elements. These sparsely used collections can waste a lot of memory
+    if they are used extensively. One way to deal with that is to size the collection
+    when it is created. Another way is to consider whether a collection is really
+    needed in that case at all.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When most developers are asked how to quickly sort any array, they will offer
+    up quicksort as the answer. Good performance engineers will want to know the size
+    of the array: if the array is small enough, the fastest way to sort it will be
+    to use insertion sort.^([4](ch12.html#idm45775542298712)) Size matters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, `HashMap` is the fastest way to look up items based on a key value,
+    but if there is only one key, `HashMap` is overkill compared to using a simple
+    object reference. Even if there are a few keys, maintaining a few object references
+    will consume much less memory than a full `HashMap` object, with the resulting
+    (positive) effect on GC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Carefully consider how collections will be accessed and choose the right type
+    of synchronization for them. However, the penalty for uncontended access to a
+    memory-protected collection (particularly one using CAS-based protections) is
+    minimal; sometimes it is better to be safe than sorry.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sizing of collections can have a large impact on performance: either slowing
+    down the garbage collector if the collection is too large or causing lots of copying
+    and resizing if it is too small.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lambdas and Anonymous Classes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For many developers, the most exciting feature of Java 8 was the addition of
+    lambdas. There is no denying that lambdas have a hugely positive impact on the
+    productivity of Java developers, though of course that benefit is difficult to
+    quantify. But we can examine the performance of code using lambda constructs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The most basic question about the performance of lambdas is how they compare
+    to their replacement, anonymous classes. There turns out to be little difference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The usual example of how to use a lambda class begins with code that creates
+    anonymous inner classes (the usual example often uses a `Stream` rather than the
+    iterator shown here; information about the `Stream` class comes later in this
+    section):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That is compared to the following code using lambdas:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The body of the lambda or anonymous class is crucial: if that body performs
+    any significant operations, the time spent in the operation is going to overwhelm
+    any small difference in the implementations of the lambda or the anonymous class.
+    However, even in this minimal case, the time to perform this operation is essentially
+    the same, as [Table 12-11](#TableLambda1) shows, though as the number of expressions
+    (i.e., classes/lambdas) increases, small differences do emerge.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-11\. Time to execute the `calc()` method using lambdas and anonymous
+    classes
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Implementation | 1,024 expressions | 3 expressions |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Anonymous classes | 781 ± 50 μs | 10 ± 1 ns |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Lambda | 587 ± 27 μs | 10 ± 2 ns |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Static classes | 734 ± 21 μs | 10 ± 1 ns |'
+  prefs: []
+  type: TYPE_TB
+- en: One interesting thing about the typical usage in this example is that the code
+    that uses the anonymous class creates a new object every time the method is called.
+    If the method is called a lot (as it must be in a benchmark to measure its performance),
+    many instances of that anonymous class are quickly created and discarded. As you
+    saw in [Chapter 5](ch05.html#GC), that kind of usage often has little impact on
+    performance. There is a very small cost to allocate (and, more important, to initialize)
+    the objects, and because they are discarded quickly, they do not really slow down
+    the garbage collector. Yet when we’re measuring in the nanosecond range, those
+    small times do add up.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last row in the table uses preconstructed objects rather than anonymous
+    classes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The typical usage of the lambda does not create a new object on each iteration
+    of the loop—making this an area where some corner cases can favor the performance
+    of the lambda usage. Even in this example, though, the differences are minimal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The choice between using a lambda or an anonymous class should be dictated by
+    ease of programming, since there is no difference between their performance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lambdas are not implemented as anonymous classes, so one exception to that rule
+    is in environments where classloading behavior is important; lambdas will be slightly
+    faster in that case.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Stream and Filter Performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: One other key feature of Java 8, and one that is frequently used in conjunction
+    with lambdas, is the new `Stream` facility. One important performance feature
+    of streams is that they can automatically parallelize code. Information about
+    parallel streams can be found in [Chapter 9](ch09.html#ThreadPerformance); this
+    section discusses general performance features of streams and filters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lazy Traversal
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The first performance benefit from streams is that they are implemented as
+    lazy data structures. Say we have a list of stock symbols, and the goal is to
+    find the first symbol in the list that does not contain the letter `A`. The code
+    to do that through a stream looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: There’s obviously a better way to implement this using a single filter, but
+    we’ll save that discussion for later in this section. For now, consider what it
+    means for the stream to be implemented lazily in this example. Each `filter()`
+    method returns a new stream, so there are, in effect, four logical streams here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `filter()` method, it turns out, doesn’t really do anything except set up
+    a series of pointers. The effect of that is when the `findFirst()` method is invoked
+    on the stream, no data processing has been performed—no comparisons of data to
+    the character `A` have yet been made.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead, `findFirst()` asks the previous stream (returned from filter 4) for
+    an element. That stream has no elements yet, so it calls back to the stream produced
+    by filter 3, and so on. Filter 1 will grab the first element from the array list
+    (from the stream, technically) and test whether its first character is `A`. If
+    so, it completes the callback and returns that element downstream; otherwise,
+    it continues to iterate through the array until it finds a matching element (or
+    exhausts the array). Filter 2 behaves similarly—when the callback to filter 1
+    returns, it tests whether the second character is not `A`. If so, it completes
+    its callback and passes the symbol downstream; if not, it makes another callback
+    to filter 1 to get the next symbol.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All those callbacks may sound inefficient, but consider the alternative. An
+    algorithm to process the streams eagerly would look something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are two reasons this alternative is less efficient than the lazy implementation
+    that Java actually adopted. First, it requires the creation of a lot of temporary
+    instances of the `ArrayList` class. Second, in the lazy implementation, processing
+    can stop as soon as the `findFirst()` method gets an element. That means only
+    a subset of the items must actually pass through the filters. The eager implementation,
+    on the other hand, must process the entire list several times until the last list
+    is created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence, it should come as no surprise that the lazy implementation is far more
+    performant than the alternative in this example. In this case, the test is processing
+    a list of 456,976 four-letter symbols, which are sorted in alphabetical order.
+    The eager implementation processes only 18,278 of those before it encounters the
+    symbol `BBBB`, at which point it can stop. It takes the iterator two orders of
+    magnitude longer to find that answer, as shown in [Table 12-12](#TableFilter).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-12\. Time to process lazy versus eager filters
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Implementation | Seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Filter/`findFirst` | 0.76 ± 0.047 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Iterator/`findFirst` | 108.4 ± 4 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: 'One reason, then, that filters can be so much faster than iterators is simply
+    that they can take advantage of algorithmic opportunities for optimizations: the
+    lazy filter implementation can end processing whenever it has done what it needs
+    to do, processing less data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What if the entire set of data must be processed? What is the basic performance
+    of filters versus iterators in that case? For this example, we’ll change the test
+    slightly. The previous example made a good teaching point about how multiple filters
+    worked, but ideally it was obvious that the code would perform better with a single
+    filter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This example also changes the final code to count the symbols, so that the
+    entire list will be processed. On the flip side, the eager implementation can
+    now use an iterator directly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Even in this case, the lazy filter implementation is faster than the iterator
+    (see [Table 12-13](#TableFilterOpt)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-13\. Time to process single filter versus an iterator
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Implementation | Time required |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Filters | 7 ± 0.6 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Iterator | 7.4 ± 3 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Filters offer a significant performance advantage by allowing processing to
+    end in the middle of iterating through the data.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Even when the entire data set is processed, a single filter will slightly outperform
+    an iterator.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Multiple filters have overhead; make sure to write good filters.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Object Serialization
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '*Object serialization* is a way to write out the binary state of an object
+    such that it can be re-created later. The JDK provides a default mechanism to
+    serialize objects that implement either the `Serializable` or `Externalizable`
+    interface. The serialization performance of practically every object imaginable
+    can be improved from the default serialization code, but this is definitely one
+    of those times when it would be unwise to perform that optimization prematurely.
+    The special code to serialize and deserialize the object will take a fair amount
+    of time to write, and the code will be harder to maintain than code that uses
+    default serialization. Serialization code can also be a little tricky to write
+    correctly, so attempting to optimize it increases the risk of producing incorrect
+    code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transient Fields
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In general, the way to improve object serialization cost is to serialize less
+    data. This is done by marking fields as `transient`, in which case they are not
+    serialized by default. Then the class can supply special `writeObject()` and `readObject()`
+    methods to handle that data. If the data isn’t needed, marking it as `transient`
+    is sufficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overriding Default Serialization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `writeObject()` and `readObject()` methods allow complete control over
+    how data is serialized. With great control comes great responsibility: it’s easy
+    to get this wrong.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To get an idea of why serialization optimizations are tricky, take the case
+    of a simple `Point` object that represents a location:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That code could be written to perform special serialization like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In a simple example like this, the more complex code isn’t going to be any
+    faster, but it is still functionally correct. But beware of using this technique
+    in the general case:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, the `airportsVisited` field is an array of all the airports I’ve ever
+    flown to or from, in the order in which I visited them. So certain airports, like
+    JFK, appear frequently in the array; SYD appears only once (so far).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because it is expensive to write object references, this code would certainly
+    perform faster than the default serialization mechanism for that array: an array
+    of 100,000 `Point` objects takes 15.5 ± 0.3 ms seconds to serialize on my machine
+    and 10.9 ± 0.5 ms to deserialize. Using this “optimization,” it takes only 1 ±
+    .600 ms seconds to serialize and 0.85 ± 0.2 μs to deserialize.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This code, however, is incorrect. Before serialization, a single object represents
+    JFK, and the reference to that object appears multiple times in the array. After
+    the array is serialized and then deserialized, multiple objects represent JFK.
+    This changes the behavior of the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the array is deserialized in this example, those JFK references end up
+    as separate, different objects. Now when one of those objects is changed, only
+    that object is changed, and it ends up with different data than the remaining
+    objects that refer to JFK.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is an important principle to keep in mind, because optimizing serialization
+    is often about performing special handling for object references. Done correctly,
+    that can greatly increase the performance of serialization code. Done incorrectly,
+    it can introduce subtle bugs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With that in mind, let’s explore the serialization of the `StockPriceHistory`
+    class to see how serialization optimizations can be made. The fields in that class
+    include the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: When the history for a stock is constructed for a given symbol `s`, the object
+    creates and stores a sorted map of `prices` keyed by date of all the prices between
+    `start` and `end`. The code also saves the `firstDate` and the `lastDate`. The
+    constructor doesn’t fill in any other fields; they are initialized lazily. When
+    a getter on any of those fields is called, the getter checks if `needsCalc` is
+    `true`. If it is, it calculates the appropriate values for the remaining fields
+    if necessary (all at once).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This calculation includes creating the `histogram`, which records how many days
+    the stock closed at a particular price. The histogram contains the same data (in
+    terms of `BigDecimal` and `Date` objects) as is found in the `prices` map; it
+    is just a different way of looking at the data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because all of the lazily initialized fields can be calculated from the `prices`
+    array, they can all be marked `transient`, and no special work is required to
+    serialize or deserialize them. The example is easy in this case because the code
+    was already doing lazy initialization of the fields; it can repeat that lazy initialization
+    when receiving the data. Even if the code eagerly initialized these fields, it
+    could still mark any calculated fields `transient` and recalculate their values
+    in the `readObject()` method of the class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note too that this preserves the object relationship between the `prices` and
+    `histogram` objects: when the histogram is recalculated, it will just insert existing
+    objects into the new map.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This kind of optimization is almost always a good thing, but in some cases it
+    can hurt performance. [Table 12-14](#TableTransientHist) shows the time it takes
+    to serialize and deserialize this case where the `histogram` object is transient
+    versus nontransient, as well as the size of the serialized data for each case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-14\. Time to serialize and deserialize objects with transient fields
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Object | Serialization time | Deserialization time | Size of data |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No transient fields | 19.1 ± 0.1 ms | 16.8 ± 0.4 ms | 785,395 bytes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Transient histogram | 16.7 ± 0.2 ms | 14.4 ± 0.2 ms | 754,227 bytes |'
+  prefs: []
+  type: TYPE_TB
+- en: So far, the example saves about 15% of the total time to serialize and deserialize
+    the object. But this test has not actually re-created the `histogram` object on
+    the receiving side. That object will be created when the receiving code first
+    accesses it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sometimes the `histogram` object will not be needed; the receiver may be interested
+    in only the prices on particular days, and not the histogram. That is where the
+    more unusual case comes in: if the `histogram` will always be needed and if it
+    takes more than 2.4 milliseconds to calculate the histogram, then the case with
+    the lazily initialized fields will actually have a net performance decrease.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this case, calculating the histogram does not fall into that category—it
+    is a very fast operation. In general, it may be hard to find a case where recalculating
+    a piece of data is more expensive than serializing and deserializing that data.
+    But it is something to consider as code is optimized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This test is not actually transmitting data; the data is written to and read
+    from preallocated byte arrays so that it measures only the time for serialization
+    and deserialization. Still, notice that making the `histogram` field transient
+    has also saved about 13% in the size of the data. That will be quite important
+    if the data is to be transmitted via a network.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compressing Serialized Data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Serialization performance of code can be improved in a third way: compress
+    the serialized data so it is faster to transmit. In the stock history class, that
+    is done by compressing the `prices` map during serialization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `zipPrices()` method serializes the map of prices to a byte array and saves
+    the resulting bytes, which are then serialized normally in the `writeObject()`
+    method when it calls the `defaultWriteObject()` method. (In fact, as long as the
+    serialization is being customized, it will be ever-so-slightly better to make
+    the `zippedPrices` array transient and write out its length and bytes directly.
+    But this example code is a little clearer, and simpler is better.) On deserialization,
+    the reverse operation is performed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the goal is to serialize to a byte stream (as in the original sample code),
+    this is a losing proposition. That isn’t surprising; the time required to compress
+    the bytes is much longer than the time to write them to a local byte array. Those
+    times are shown in [Table 12-15](#TableSerializeCompress).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 12-15\. Time to serialize and deserialize 10,000 objects with compression
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Use case | Serialization time | Deserialization time | Size of data |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No compression | 16.7 ± 0.2 ms | 14.4 ± 0.2 ms | 754,227 bytes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Compression/decompression | 43.6 ± 0.2 ms | 18.7 ± 0.5 ms | 231,844 bytes
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Compression only | 43.6 ± 0.2 ms | .720 ± 0.3 ms | 231,844 bytes |'
+  prefs: []
+  type: TYPE_TB
+- en: The most interesting point about this table is the last row. In that test, the
+    data is compressed before sending, but the `unzipPrices()` method isn’t called
+    in the `readObject()` method. Instead, it is called when needed, which will be
+    the first time the receiver calls the `getPrice()` method. Absent that call, there
+    are only a few `BigDecimal` objects to deserialize, which is quite fast.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this example, the receiver might never need the actual prices: the receiver
+    may need only to call the `getHighPrice()` and similar methods to retrieve aggregate
+    information about the data. As long as those methods are all that is needed, a
+    lot of time can be saved by lazily decompressing the `prices` information. This
+    lazy decompression is also useful if the object in question is being persisted
+    (e.g., if it is HTTP session state that is being stored as a backup copy in case
+    the application server fails). Lazily decompressing the data saves both CPU time
+    (from skipping the decompression) and memory (since the compressed data takes
+    up less space).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence—particularly if the goal is to save memory rather than time—compressing
+    data for serialization and then lazily decompressing it can be useful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the point of the serialization is to transfer data over the network, we have
+    the usual trade-offs based on the network speed. On a fast network, the time for
+    compression can easily be longer than the time saved while transmitting less data;
+    on slower networks, the opposite might be true. In this case, we are transferring
+    roughly 500,000 fewer bytes, so we can calculate the penalty or savings based
+    on the average time to transfer that much data. In this example, we will spend
+    about 40 milliseconds to compress the data, which will mean we have to transmit
+    about 500,000 fewer bytes. A network with 100 Mbit/second would break even in
+    that case, meaning that slow public WiFi would benefit with the compression enabled,
+    but faster networks would not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keeping Track of Duplicate Objects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[“Object Serialization”](#Object_Serialization) began with an example of how
+    not to serialize data that contains object references, lest the object references
+    be compromised when the data is deserialized. However, one of the more powerful
+    optimizations possible in the `writeObject()` method is to not write out duplicate
+    object references. In the case of the `StockPriceHistoryImpl` class, that means
+    not writing out the duplicate references of the `prices` map. Because the example
+    uses a standard JDK class for that map, we don’t have to worry about that: the
+    JDK classes are already written to optimally serialize their data. Still, it is
+    instructive to look at how those classes perform their optimizations in order
+    to understand what is possible.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the `StockPriceHistoryImpl` class, the key structure is a `TreeMap`. A simplified
+    version of that map appears in [Figure 12-2](#FigureTreeMap). With default serialization,
+    the JVM would write out the primitive data fields for node A; then it would recursively
+    call the `writeObject()` method for node B (and then for node C). The code for
+    node B would write out its primitive data fields and then recursively write out
+    the data for its `parent` field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Tree Map Structure](assets/jp2e_1202.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12-2\. Simple `TreeMap` structure
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'But wait a minute—that `parent` field is node A, which has already been written.
+    The object serialization code is smart enough to realize that: it doesn’t rewrite
+    the data for node A. Instead, it simply adds an object reference to the previously
+    written data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Keeping track of that set of previously written objects, as well as all that
+    recursion, adds a small performance hit to object serialization. However, as demonstrated
+    in the example with an array of `Point` objects, it can’t be avoided: code must
+    keep track of the previously written objects and reconstitute the correct object
+    references. However, it is possible to perform smart optimizations by suppressing
+    object references that can be easily re-created when the object is deserialized.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Different collection classes handle this differently. The `TreeMap` class,
+    for example, simply iterates through the tree and writes only the keys and values;
+    serialization discards all information about the relationship between the keys
+    (i.e., their sort order). When the data has been deserialized, the `readObject()`
+    method then re-sorts the data to produce a tree. Although sorting the objects
+    again sounds like it would be expensive, it is not: that process is about 20%
+    faster on a set of 10,000 stock objects than using the default object serialization,
+    which chases all the object references.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `TreeMap` class also benefits from this optimization because it can write
+    out fewer objects. A node (or in JDK language, an `Entry`) within a map contains
+    two objects: the key and the value. Because the map cannot contain two identical
+    nodes, the serialization code doesn’t need to worry about preserving object references
+    to nodes. In this case, it can skip writing the node object itself and simply
+    write the key and value objects directly. So the `writeObject()` method ends up
+    looking something like this (syntax adapted for ease of reading):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: This looks very much like the code that didn’t work for the `Point` example.
+    The difference in this case is that the code still writes out object when those
+    objects can be the same. A `TreeMap` cannot have two nodes that are the same,
+    so there is no need to write out node references. The `TreeMap` *can* have two
+    values that are the same, so the values must be written out as object references.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This brings us full circle: as I stated at the beginning of this section, getting
+    object serialization optimizations correct can be tricky. But when object serialization
+    is a significant bottleneck in an application, optimizing it correctly can offer
+    important benefits.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Serialization of data can be a big performance bottleneck.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Marking instance variables `transient` will make serialization faster and reduce
+    the amount of data to be transmitted. Both are usually big performance wins, unless
+    re-creating the data on the receiver takes a long time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Other optimizations via the `writeObject()` and `readObject()` methods can significantly
+    speed up serialization. Approach them with caution, since it is easy to make a
+    mistake and introduce a subtle bug.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compressing serialized data is often beneficial, even if the data will not travel
+    across a slow network.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This look into key areas of the Java SE JDK concludes our examination of Java
+    performance. One interesting theme of most of the topics of this chapter is that
+    they show the evolution of the performance of the JDK itself. As Java developed
+    and matured as a platform, its developers discovered that repeatedly generated
+    exceptions didn’t need to spend time providing thread stacks; that using a thread-local
+    variable to avoid synchronization of the random number generator was a good thing;
+    that the default size of a `ConcurrentHashMap` was too large; and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This continual process of successive improvement is what Java performance tuning
+    is all about. From tuning the compiler and garbage collector, to using memory
+    effectively, to understanding key performance differences in the APIs, and more,
+    the tools and processes in this book will allow you to provide similar ongoing
+    improvements in your own code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch12.html#idm45775544045928-marker)) *Chacun à son goût* is (with apologies
+    to Johann Strauss Jr.) the opera-lover’s way of saying *YMMV* (your mileage may
+    vary).
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch12.html#idm45775543079160-marker)) Because of a bug in earlier versions
+    of Java, it is sometimes recommended to set this flag to */dev/./urandom* or other
+    variations. In Java 8 and later JVMs, you can simply use */dev/urandom*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^([3](ch12.html#idm45775542437672-marker)) Or should I say: *Chacun à son goût*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([4](ch12.html#idm45775542298712-marker)) Implementations of quicksort will
+    usually use insertion sort for small arrays anyway; in the case of Java, the implementation
+    of the `Arrays.sort()` method assumes that any array with fewer than 47 elements
+    will be sorted faster with insertion sort than with quicksort.
+  prefs: []
+  type: TYPE_NORMAL

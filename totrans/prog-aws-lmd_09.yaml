@@ -1,0 +1,873 @@
+- en: Chapter 9\. Advanced Serverless Architecture
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 8](ch08.html#ch08) we looked at some more advanced aspects of Lambda
+    that are important once you start thinking about productionizing your applications.
+    In this chapter, we continue that theme, looking more broadly at the impact of
+    Lambda on architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Serverless Architecture “Gotchas”
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: First we look at areas of serverless architecture that might cause you problems
+    if you don’t consider them, and we offer different solutions for addressing these
+    problems depending on your situation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At-Least-Once Delivery
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The Lambda platform guarantees that when an upstream event source triggers
+    a Lambda function, or if another application explicitly calls the Lambda [*invoke*
+    API call](https://oreil.ly/p1OWt), then the corresponding Lambda function will
+    be called. But one thing the platform doesn’t guarantee is *how many times the
+    function will be called*: “Occasionally, your function may receive the same event
+    multiple times, even if no error occurs.” This is known as “at-least-once delivery,”
+    and it exists due to the fact that the Lambda platform is a distributed system.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The vast majority of the time a Lambda function will be called only once per
+    event. But sometimes, very occasionally (far less than 1% of the time), a Lambda
+    function will be called multiple times. Why is this a problem? And how do you
+    deal with this behavior? Let’s take a look.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example: Lambda “cron jobs”'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you’ve been developing software in industry long enough, you’ve probably
+    come across a server host that runs multiple “cron jobs”—scheduled tasks that
+    run perhaps every hour or every day. Because these tasks typically don’t run all
+    the time it would be inefficient to run only one on each host, so it’s very typical
+    to run multiple types of job on just one host. This is more efficient, but can
+    cause operational headaches—dependency clashes, ownership uncertainties, security
+    concerns, etc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can implement many kinds of activity that would otherwise be performed in
+    a cron job as a Lambda function. To get the schedule behavior of cron, you can
+    use a *CloudWatch Scheduled Event* as a trigger. SAM gives you a [concise syntax](https://oreil.ly/vFPnk)
+    to specify this as a trigger for a function, and you can even use cron syntax
+    to specify a [schedule expression](https://oreil.ly/488um). There are various
+    benefits to using Lambda as a cron platform—including improving all the operational
+    headaches from the previous paragraph.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The chief drawbacks to using Lambda to implement a cron task are if the function
+    takes longer than 15 minutes to run (Lambda’s maximum timeout) or if it needs
+    more than 3GB memory. In either of these situations, if you can’t break up your
+    task into smaller chunks, then you may want to look at [Step Functions](https://oreil.ly/YDDyY)
+    and/or [Fargate](https://oreil.ly/NP0Sq) instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But there is one other drawback to using Lambda: *very, very,* occasionally
+    your cron job may run more than once at or near its scheduled time. Often this
+    won’t be a problem worth considering—maybe your task is a cleanup job where performing
+    the same cleanup twice is slightly inefficient but functionally correct. Other
+    times, though, this might be a big problem—what if your task is calculating mortgage
+    interest for the month—you wouldn’t want to charge that twice to a customer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This *at-least-once delivery* characteristic of Lambda applies to all event
+    sources and invocations, not just scheduled events. Fortunately, there are a number
+    of ways to tackle this problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Solution: Build an idempotent system'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first, and typically the best, solution to this concern is to build an [*idempotent*](https://oreil.ly/rmaFI)
+    system. We say that this is “typically the best” solution because it embraces
+    the idea that we are building distributed systems when we use Lambda. Instead
+    of working around, or ignoring, the attributes of distributed systems, we actively
+    design to work with them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A system is idempotent when a specific operation can be applied one or more
+    times, and have the same effect no matter how many times it was applied. Idempotence
+    is a very common requirement when considering any distributed architecture, let
+    alone a serverless one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An example of an idempotent operation is uploading a file to S3 (ignoring any
+    possible triggers!). Whether you upload the same file to the same location once
+    or ten times, the net result is that the correct bytes will be stored in S3 at
+    the expected key.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can build an idempotent system with Lambda when any significant *side effects*
+    of a function are, themselves, idempotent. For example, if our Lambda function
+    uploads a file to S3, then the complete system of Lambda + S3 is idempotent. Similarly
+    if you are writing to a database you can use an *upsert* operation (“update or
+    insert”), like DynamoDB’s [`UpdateItem`](https://oreil.ly/OTfZP) method, to create
+    idempotence. Finally, if you are calling any external APIs, you will likely want
+    to look to see if they offer idempotent operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Solution: Accept duplicates, and perhaps deal with problems if/when they come
+    up'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Sometimes a perfectly reasonable way to deal with possible multiple invocations
+    is to be aware that it can happen, and accept it, especially since it happens
+    so rarely. For example, say you have a scheduled task that generates a report
+    and then emails it to a company-internal mailing list. Do you care if that email
+    occasionally goes out twice? Perhaps not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, maybe the work to build an idempotent system would be significant,
+    but dealing with the impact of very occasional task repetition is actually simple
+    and cheap. In this case, rather than building in idempotence, it might be better
+    to monitor for a job being run multiple times for one event and then have a manual
+    or automated task that performs cleanup if it ever occurs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Solution: Check for previous processing'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If repeated side effects aren’t ever acceptable, but your Lambda function is
+    also using downstream systems that don’t have idempotent operations, then you
+    have another way to solve this problem. The idea is to make your Lambda function
+    itself idempotent, rather than relying on downstream components to provide idempotence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But how do you do this, knowing that Lambda may call a function multiple times
+    for the same event? The key here is to also know that even if Lambda calls a function
+    more than once for the same event, then the *AWS request ID* that Lambda attaches
+    to an event will be the same for each call. We can read the AWS request ID by
+    calling `.getAwsRequestId()` on the [`Context`](https://oreil.ly/gh-Bw) object
+    that we can choose to accept in our handler method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Assuming we can keep track of these request IDs, we’ll know if we’ve seen one
+    before, and if we have we can choose to discard the second call, guaranteeing
+    “exactly-once” overall semantics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All we need now is a way of checking, for each invocation of our function, to
+    see if the function has already seen the request ID before. Because multiple function
+    invocations for an event could in theory overlap, we need a source of *atomicity*
+    to provide this capability, and this suggests that using a database would help.
+  prefs: []
+  type: TYPE_NORMAL
+- en: DynamoDB can provide this for us by way of its [*conditional writes*](https://oreil.ly/DBne-)
+    feature. In a simple scenario, we could have a table with just a primary key of
+    `request_id`; we could attempt to write to that table at the beginning of our
+    handler with the event’s request ID; immediately stop execution if the DynamoDB
+    operation failed; and otherwise continue our Lambda’s functionality as normal,
+    knowing that this is the first time an event has been processed (see [Figure 9-1](#checking-for-previous-event-with-dynamodb)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch09_image01.png](assets/awsl_0901.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-1\. Checking for a previous event with DynamoDB
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: If you choose to go down this path, your actual solution will likely have some
+    nuance. For example, you may choose to delete the row in DynamoDB if an error
+    occurred (so as to continue to be able to use Lambda’s retry semantics—the retried
+    event will also have the same AWS request ID!). And/or you may choose to have
+    a more complicated “lock with timeout” style of behavior to allow for overlapping
+    calls where the first could fail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are also a few DynamoDB concerns to think about with this solution. For
+    example, you probably want to set up a [Time to Live (TTL) property](https://oreil.ly/JFDQg)
+    on the table to automatically delete rows after a certain period of time to keep
+    things clean, typically set to a day or to a week. Also, you may want to consider
+    the expected throughput of your Lambda function and use that to analyze costs
+    of the DynamoDB table—if the costs are too high, you may want to choose an alternative
+    solution. Such alternatives include using a SQL database; building your own (non-Lambda)
+    service to manage this repetition; or, in extreme cases, replacing Lambda entirely
+    for this particular function with a more traditional compute platform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Impacts of Lambda Scaling on Downstream Systems
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In [Chapter 8](ch08.html#ch08) we looked at Lambda’s “magical” auto-scaling
+    ([“Scaling”](ch08.html#lambda-scaling)). To quickly summarize, Lambda will automatically
+    create just as many instances as necessary of your function, and its environment,
+    to handle all events to be processed. It will do this, by default, up to one thousand
+    Lambda instances per account, and more than that if you ask AWS to increase your
+    limit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is, in general, a very useful feature, and one of the key reasons people
+    find Lambda valuable. However, if your Lambda function interacts with downstream
+    systems (and most do!), then you need to consider how such scaling could impact
+    those systems. As an exercise, let’s consider the examples in [Chapter 5](ch05.html#ch05).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [“Example: Building a Serverless API”](ch05.html#serverless-api-example),
+    we had two functions—`WeatherEventLambda` and `WeatherQueryLambda`—that both called
+    DynamoDB. We would need to know that DynamoDB could handle the load of however
+    many upstream Lambda instances existed. Since we used DynamoDB’s [“on-demand”
+    capacity mode](https://oreil.ly/SHRmW), we know that this is, in fact, the case.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [“Example: Building a Serverless Data Pipeline”](ch05.html#serverless-data-pipeline-example),
+    we also had two functions—`BulkEventsLambda` and `SingleEventLambda`. `BulkEventsLambda`
+    calls SNS, specifically to publish messages, so we can look at the [AWS service
+    limits documentation](https://oreil.ly/rv4GW) to see how many publish calls we
+    can make to the SNS API. That page says that the limit is between 300 and 30,000
+    “transactions per second,” depending on the region we’re in.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can use that data to make a judgment call as to whether we think SNS can
+    handle the load we may put on it from our Lambda function. Also, the documentation
+    says that this is a *soft limit*—in other words, we can ask AWS to increase it
+    for us. It’s worth knowing that should we exceed the limit, then our use of SNS
+    will be throttled—we could pass this error back up through our Lambda function
+    as an *unhandled error* and therefore use Lambda’s retry mechanism. It’s also
+    useful to know that this is an account-wide limit, so any other components using
+    SNS in the same account would also be throttled if our Lambda function caused
+    us to hit the SNS API limit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`SingleEventLambda` only calls CloudWatch Logs indirectly via the Lambda runtime.
+    CloudWatch Logs has limits, but they’re very high, so for now we’ll assume it
+    has sufficient capacity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In summary, the services that we’ve used in these examples scale up to high
+    throughputs. That shouldn’t be surprising—these examples were designed to be good
+    examples of serverless architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, what happens if you’re using downstream systems that either (a) don’t
+    scale as *much* as your Lambda function may scale or (b) don’t scale as *quickly*
+    as your Lambda function may scale? An example of (a) might be a downstream relational
+    database—it may only be designed for one hundred concurrent connections, and five
+    hundred connections might cause it serious problems. An example of (b) might be
+    a downstream microservice using EC2-based auto-scaling—here the service may eventually
+    scale wide enough to handle unexpected load, but Lambda can scale in *seconds*,
+    as opposed to EC2, which will scale in *minutes*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In either of these cases, unplanned scaling of your Lambda functions can cause
+    performance impacts on downstream systems. Often times if such problems occur
+    then the effects will also be felt by other clients of those systems, not just
+    the Lambda function inflicting the load. Because of this concern, you should always
+    consider Lambda’s impact on downstream systems with regards to scaling. There
+    are multiple possible solutions to dealing with this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Solution: Use like-scaling infrastructure'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: One solution is, where possible, to use downstream systems that have similar
+    scaling behaviors and capacities to Lambda itself. We chose DynamoDB and SNS in
+    the [Chapter 5](ch05.html#ch05) examples partly due to this design motivation.
+    Similarly, sometimes we may choose to actively migrate away from certain solutions
+    precisely because of scaling concerns. For example, if we can easily switch to
+    using DynamoDB from an RDS database, it may make sense to do so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Solution: Manage scaling upstream'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Another way to solve the problem of Lambda scaling too wide for downstream systems
+    is to make sure it never needs to scale in the first place, or in other words
+    to restrict the number of events that trigger execution. If you’re implementing
+    a company-internal serverless API, then this might mean making sure the API’s
+    clients do not make too many requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some Lambda event sources also offer functionality to help manage scale. API
+    Gateway has rate limiting (with [*usage plans*](https://oreil.ly/FR4eX) and *throttling
+    limits*), and Lambda’s SQS integration allows you to [configure a batch size](https://oreil.ly/LxNTp).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Solution: Manage scaling with reserved concurrency'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you can’t manage scale upstream, but still want to restrict how wide your
+    function will scale, you can use Lambda’s reserved concurrency feature that we
+    looked at in [“Reserved concurrency”](ch08.html#reserved-concurrency).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When using reserved concurrency, the Lambda platform will only scale out your
+    function at most as wide as the configured amount you have given. For example,
+    if you set reserved concurrency to 10, then you’ll have at most 10 instances of
+    your Lambda function running at any one time. In this case, if 10 instances of
+    your Lambda are already processing events when another event arrives, then your
+    function is throttled, just as we looked at in [Chapter 8](ch08.html#ch08).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This kind of scale limitation is great when you have event sources like SNS
+    or S3 where you may easily have a “burst” of events—using reserved concurrency
+    means that these events are processed over a period of time, rather than all immediately.
+    And because of Lambda’s retrying capability for throttling errors and asynchronous
+    sources, you’re guaranteed that all of the events will eventually get processed,
+    as long as processing can occur within six hours.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One behavior you should know about reserved concurrency is that it doesn’t just
+    limit concurrency—it *guarantees* concurrency by removing the configured amount
+    from the account-global Lambda concurrency pool. If you have 20 functions all
+    with a reserved concurrency of 50, then you won’t have any more capacity for other
+    Lambda functions, assuming an account-wide concurrency limit of 1,000. This account-wide
+    limit can be increased, but that’s a manual task that you’ll need to remember
+    to perform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Solution: Architect deliberately hybrid solutions'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A final idea is to build *deliberately* “hybrid” solutions (as opposed to *accidentally*
+    hybrid solutions) consisting of serverless and traditional components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, if you used Lambda and Amazon’s (nonserverless) RDS SQL database
+    service, without considering the scaling concerns, we’d call this an “accidentally”
+    hybrid solution. However, if you put thought into how your RDS database could
+    be used more effectively with Lambda, then we’d call this “deliberately” hybrid.
+    And to be clear—we think that some architectural solutions are going to be better
+    with a mixture of serverless and nonserverless components, due to the nature of
+    services like DynamoDB, and Lambda itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s consider an example where you are ingesting data into a relational database
+    via a Lambda function, perhaps behind an API Gateway ([Figure 9-2](#lambda-relational-direct)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch09_image02.png](assets/awsl_0902.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-2\. Direct writes to a relational database from a Lambda function
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: A concern with this design is that if you have too many inbound requests, then
+    you may end up overloading your downstream database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first solution you may consider is to add reserved concurrency to the Lambda
+    function backing the API, but the problem here is now your upstream clients will
+    have to deal with throttling caused by your concurrency restrictions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A better solution, therefore, might be to introduce a messaging topic, a new
+    Lambda function, and use reserved concurrency on the second Lambda function ([Figure 9-3](#lambda-relational-indirect)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch09_image03.png](assets/awsl_0903.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-3\. Indirect writes to a relational database from a Lambda function
+    via a topic
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: With this design, your API Lambda function can still, for example, perform input
+    validation, returning an error message to the client if necessary. However, instead
+    of writing directly to the database, it would instead publish a message to a topic,
+    for example, with SNS, under the assumption that your messaging system can handle
+    sudden load more effectively than your database. The listener of that message
+    would then be another Lambda function, whose job is purely to perform the database
+    write (or “upsert” to handle duplicate invocations!). But this time the Lambda
+    function can have reserved concurrency applied to protect the database, while
+    at the same time making use of the retry semantics within AWS itself, rather than
+    requiring the original external client to perform a retry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While this resulting design has more moving parts, it successfully solves the
+    scaling concerns while still mixing serverless and nonserverless components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In late 2019 Amazon announced the [RDS Proxy](https://oreil.ly/alAqq) service.
+    At the time of writing, it is still in “Preview” and so many of the details and
+    capabilities it will have when it is released to general availability (GA) aren’t
+    yet known. However, it certainly should help with some of the concerns discussed
+    in this chapter in connecting Lambda to RDS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The “Fine Print” of Lambda Event Sources
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The first couple of sections in this chapter have been about architectural concerns
+    that come about because of nuances of Lambda itself. There are other areas that
+    can impact a serverless design because of the services that exist upstream of
+    Lambda. Just like the fact that “at-least-once” delivery isn’t front and center
+    of the first document you read about Lambda, you’ll only find some of these nuances
+    with upstream services through deep exploration of documentation, or hard-earned
+    experience.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you start to get beyond the “tinkering” stage with any Lambda event source,
+    read as much AWS documentation as you can on the services you’re using. Seek out
+    non-AWS articles too—while they’re not authoritative, and sometimes wrong, occasionally
+    they can nudge you in a direction, architecturally, that you may not have considered
+    otherwise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: New Patterns of Architecture Enabled by Serverless Thinking
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Sometimes when we’re building serverless systems, our architecture, viewed from
+    a certain distance, might not look that different than how we could have designed
+    it using containers or virtual machines (VMs). “Cloud-native” architecture is
+    not the sole domain of Kubernetes, no matter what you may have otherwise heard!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, our serverless API that we built back in [“Example: Building a
+    Serverless API”](ch05.html#serverless-api-example), from a “black-box” point of
+    view, looked just like any other microservice-style API. In fact, we could replace
+    the Lambda functions with an application running in a container and, architecturally,
+    the system would have been very similar.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As serverless starts to mature, however, we’re seeing new architectural patterns
+    that either wouldn’t make sense with traditional services, or wouldn’t even be
+    possible. We alluded to one of these earlier in [Chapter 5](ch05.html#ch05) when
+    we talked about [“Serverless Without Lambda”](ch05.html#serverless-without-lambda).
+    To close out this chapter, we’ll look at a couple of other patterns, using Lambda,
+    that break into new territory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Published Components with the Serverless Application Repository
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We’ve talked a few times through the book about “serverless applications”—groups
+    of components that we collectively deploy as one unit. We had our serverless API,
+    using API Gateway, two Lambda functions, and a DynamoDB table, all grouped as
+    a unit. We defined this collection of resources using a Serverless Application
+    Model (SAM) template.
+  prefs: []
+  type: TYPE_NORMAL
+- en: AWS provides a way to reuse and share these SAM applications, via the [Serverless
+    Application Repository (SAR)](https://oreil.ly/Oa8HO). With SAR you *publish*
+    your application, and you can then *deploy* it later, multiple times, to different
+    regions, accounts, or even different organizations if you choose to make the SAR
+    application publicly available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Traditionally you likely have either distributed code or a shipped environment–agnostic
+    deployment configuration. With SAR the code (by way of packaged Lambda functions),
+    the infrastructure definitions, and the (parameterizable) deployment configuration
+    are all wrapped up in one shareable, *versioned*, component.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are a couple of different ways that SAR apps can be deployed that make
+    them useful in different situations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, they can be deployed as *standalone applications*, just as if you had
+    called `sam deploy` directly on them, rather than using SAR. This is useful when
+    you want to deploy the same application in multiple locations or across multiple
+    accounts or organizations. In this case, SAR acts somewhat like a repository of
+    application deployment templates, but by bundling the code, it also includes the
+    actual application code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Examples of SAR application suited to this type of usage abound in the [public
+    SAR repository](https://oreil.ly/QyOkD)—it’s especially useful for third-party
+    software providers who want to make it easier for customers to deploy integration
+    components to their AWS account. A good example is this [log forwarder from DataDog](https://oreil.ly/z-s8e).
+  prefs: []
+  type: TYPE_NORMAL
+- en: SAR applications can also be used as *embedded* components within other, *parent*,
+    serverless applications via [CloudFormation nested stacks](https://oreil.ly/1sJjI).
+    SAM enables nesting SAR components via the [`AWS::Serverless::Application` resource
+    type](https://oreil.ly/aY0-G). When using SAR in this way, you are abstracting
+    higher-level components as SAR apps, and instantiating those components within
+    multiple applications. Using SAR in this way is a little like using a [“sidecar”](https://oreil.ly/9k3Xl)
+    in container-oriented applications, but without the low-level network-oriented
+    communication patterns that sidecars require.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These nested components may include Lambda functions that may be invoked directly,
+    or indirectly (e.g., via SNS topic, perhaps also included in the SAR), by the
+    parent application. Alternatively, these nested components may not contain any
+    functions at all, and instead solely define infrastructural resources. A good
+    example here are SAR applications that standardize monitoring resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We prefer the embedded deployment scheme in general, even if there are no other
+    components in the parent application. This is because deploying SAR apps, along
+    with their parameter values that can be defined as part of the `AWS::Serverless::Application`
+    resource in your template file, is no different than deploying any other SAM-defined
+    serverless application. Further, if you choose to update the *version* of a deployed
+    SAR app, then that too can be tracked in version control just like any other template
+    update.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SAR apps can be secured so that they are accessible only to accounts within
+    a particular AWS organization, and therefore they are a great way of defining
+    standard components that can be used across a whole company. Examples of using
+    this with the embedded component deployment scheme are custom authorizers for
+    API Gateway, standard operational components (e.g., alarms, log filters, and dashboards),
+    and common patterns of message-based inter-service communication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SAR does have some limitations. For example, you can’t use all CloudFormation
+    resource types within it (for example, EC2 instances). However, this is an interesting
+    way of building, deploying, and composing Lambda-based applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For details on how to publish SAM applications to SAR, see the [documentation](https://oreil.ly/nhOUb),
+    and for details of deploying SAR apps see the previous link for the `AWS::Serverless::Application`
+    resource type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Globally Distributed Applications
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In days of yore (i.e., about 15 years ago), most of us building server-based
+    applications often had a fairly good idea where our software was physically running,
+    at least to within one hundred meters or so, and often closer than that. We could
+    pinpoint the data centers, server rooms, and perhaps even the racks or individual
+    machines where our code was humming along.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Along came the “cloud,” and our understanding of the geographic deployment of
+    our apps got a little, well, cloudy. With EC2, for example, we know, roughly,
+    that our code is running in the region of “Northern Virginia” or “Ireland” and
+    we also know when two servers are running in the same data center, via their Availability
+    Zone (AZ) location. But it’s extremely unlikely that we’d be able to point on
+    a map to the building where our software is running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Serverless computing immediately expands our radius of consideration a little
+    further. Now we’re *only* thinking of the region—the AZ concept is hidden in abstraction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the reasons to know where your applications are running is when you consider
+    availability. When we run applications in a data center, we would need to know
+    that if the data center lost internet connectivity, then our applications would
+    be unavailable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For many companies, certainly those who are used to deploying to one data center,
+    this regional level of availability we get with the cloud is sufficient, especially
+    since serverless services guarantee high availability across a region.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But what if you want to think bigger? For example, what if you want to guarantee
+    resilience of your application even if an entire region of AWS becomes unstable?
+    This happens—just talk to anyone that’s used us-east-1 for at least a couple of
+    years. The good news is that it’s very rare that AWS has any kind of *cross-region*
+    outage. The vast majority of AWS downtime is constrained to one region.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternatively, looking beyond just availability, what if your users are spread
+    around the world, from Sao Paulo to Seoul, and you want all of them to have low-latency
+    access to your applications?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solving these problems has been *possible* in the cloud ever since multiple
+    regions became available. However, running applications in multiple regions is
+    complicated, and can get expensive, especially as you add more regions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Serverless, however, makes this problem significantly easier and cheaper. It’s
+    now possible to deploy your application to multiple regions around the world,
+    without much added complexity, and without breaking your budget.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Global deployment
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: When you define your application in a SAM template, you don’t typically hardcode
+    any region-specific resources. If you need to refer to the region in which a stack
+    is deployed in a CloudFormation string (as we did in the data pipeline example
+    in [Chapter 5](ch05.html#ch05)), we recommend using the `AWS::Region` [*pseudo
+    parameter*](https://oreil.ly/7Xe9-). For any region-specific resources that you
+    need to access, we recommend passing those by reference as a CloudFormation parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With these techniques you can define your application template in a *region-neutral*
+    way, and you can deploy it to as many AWS regions as you like.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Actually deploying your application to multiple regions isn’t quite as easy
+    as we’d like it to be. For example, when you deploy an application with CloudFormation
+    (e.g., using `sam deploy`) any packages that you refer to in the `CodeUri` properties
+    in the template file must be available in a S3 bucket that is located *within
+    the same region you are deploying to*. Therefore, if you want to deploy an application
+    to multiple regions, then its packaged artifacts need to be available in multiple
+    S3 buckets, one per region. This is nothing a little scripting can’t solve, but
+    it’s something that you have to think about.
+  prefs: []
+  type: TYPE_NORMAL
+- en: AWS has improved the experience of multiregion deployment by enabling “cross-region
+    actions” in [CodePipeline](https://oreil.ly/E_DJr). CodePipeline is Amazon’s “continuous
+    delivery” orchestration tool and allows us to define the source control repository
+    for a project; build and package an application by calling out to [CodeBuild](https://oreil.ly/fSD1_);
+    and finally deploy it using SAM/CloudFormation. CodePipeline is effectively an
+    automation system on top of the commands we’ve been running manually in this book.
+    It will do a lot more than this too—the flow here is just an example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[“Cross-region actions”](https://oreil.ly/6X5vB) within CodePipeline allow
+    you to deploy to multiple regions, in parallel, to as many regions as currently
+    support CodePipeline at the current time. This means that one CD pipeline can
+    deploy an application to the US, Europe, Japan, and South America.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There’s still some trickiness to setting all of this up. For more, please see
+    our [example project on Github](https://oreil.ly/xzWiI).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another tool that helps multiregion deployment is the Serverless Application
+    Repository, which we described in the previous section. When you publish an application
+    to SAR via one region, it is made available globally to all regions. At the time
+    of writing, this is only the case for publicly shared applications, but we hope
+    that this feature will be enabled for private apps before too long.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Localized connectivity, with failover
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Once you’ve deployed your application around the world, how do your users connect
+    to a version that’s near to them? One of the points of global deployment, after
+    all, is to accept that the speed of light is limited, and therefore to route user
+    requests to the closest geographic version of your application to their client,
+    giving users the lowest latency experience you can.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One way is to hardcode the region-specific location, typically a DNS hostname,
+    within the client itself. It’s crude, but sometimes effective, especially for
+    organization-internal apps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative that’s usually better, because it adapts *dynamically* to the
+    user’s location, is to embrace Amazon’s Route53 DNS Service, and specifically
+    its [*Geolocation*](https://oreil.ly/4RCb2) feature. For example, if users connect
+    to your application via an API Gateway deployed in parallel to three different
+    regions, then you can set up your DNS in Route53 such that the user is connected
+    to the API Gateway in the region closest to them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since you’re already using some advanced features of Route53 by this point,
+    you may as well go one step further and use [*Health Checks and DNS Failover*](https://oreil.ly/XlUX9).
+    With this feature of Route53, if the version of your application nearest to a
+    user becomes unavailable, then Route53 will instead reroute that user to the *next*
+    nearest, available, version of the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we have active-active versions of our applications *and* localized routing.
+    We have built an application that is resilient *and* has better performance. And
+    so far there have been no updates to our application architecture, only operational
+    updates. However, we should really address the elephant in the room.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Global state
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We said earlier that serverless makes it possible to deploy your application
+    to multiple regions around the world, without much added complexity. We just described
+    the deployment process itself, and we talked about how users can access your application
+    over the internet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A big concern, however, with global applications is how to treat state. The
+    simplest solution is to have your state in only one region and have your service
+    using that state deployed to multiple regions ([Figure 9-4](#multiple-compute-regions-one-database-region)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch09_image04.png](assets/awsl_0904.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-4\. Multiple compute regions and one database region
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This is the same model that [content delivery networks (CDNs)](https://oreil.ly/UaAj5)
+    use—there is one “origin” somewhere in the world, and then CDNs cache state in
+    tens, or hundreds, of “points of presence” around the globe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is fine for cacheable state, but what about noncacheable situations?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this case, the single-region-for-state model breaks down since all of your
+    regions will be calling the centralized database region for *every request*. You’ve
+    lost the benefit of localized latency, and you run the risk of a regional outage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fortunately, AWS and the other major cloud providers now provide globally replicated
+    databases. A good example of this on AWS is [DynamoDB global tables](https://oreil.ly/fEZAG).
+    Say you’re using the serverless API pattern from [Chapter 5](ch05.html#ch05)—you
+    can replace the DynamoDB table in your design from that example with a *global*
+    table. You can then happily deploy your API to multiple regions around the world,
+    and AWS will do the hard work of moving your data safely around the planet. This
+    gives you resilience, and improved user latency, since the table replication is
+    performed by DynamoDB asynchronously ([Figure 9-5](#multiple-regions-with-replicated-database)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![images/ch09_image05.png](assets/awsl_0905.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-5\. Multiple regions with a replicated database
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: AWS does charge a premium for global tables, but they’re not too much more expensive
+    than having a table per region, especially when compared with building a state
+    replication system yourself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pay-per-use
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: On the subject of costs, this is where serverless computing really clinches
+    the deal when it comes to multiregion deployment. Back in [Chapter 1](ch01.html#ch01)
+    we said that a specific differentiator of a serverless service is that it “has
+    costs that are based on precise usage, up from and down to zero usage.” This applies
+    not just to one region but across regions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Say, for example, you have deployed a Lambda application to three regions because
+    you want to have two backup regions for disaster recovery. If you are using only
+    one of those regions, then you are *paying* only for the Lambda usage in that
+    one region—the backup versions you have in the other two regions are free! This
+    is a huge difference from any other computing paradigm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, say you start off with an application deployed to one region,
+    but then you deploy your API Gateway + Lambda application to ten regions, using
+    the Geolocation DNS routing we discussed earlier. If you do this, your Lambda
+    bill won’t change—whether you run in one region or ten—because Lambda still only
+    charges you by the amount of activity that occurs in your functions. Your previous
+    usage hasn’t increased; it’s now just distributed across ten regions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We think that this vastly different cost model, in comparison to traditional
+    platforms, will make globally distributed applications much more common than they’ve
+    been in the past.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: There’s a slight caveat here to the “no change in costs” point for Lambda. AWS
+    may charge slightly differently for Lambda for different regions. That’s an element
+    of region-specific pricing, however, not because of running your application across
+    multiple regions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Edge computing/"regionless”
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The examples we’ve talked about in this section so far are all about deploying
+    to multiple regions around the world, but they do still require us to understand
+    that Amazon’s entire cloud is broken up into those different regions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What if you didn’t need to think about regions at all? What if you were able
+    to deploy your code to a global service, and then AWS just did whatever it needed
+    to run your code, giving users the best latency possible, and guaranteeing availability
+    even if one location went offline?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It turns out that this wild idea of the future is already here. Sort of. First,
+    AWS already has some services that are “global services”—IAM and Route53 are two
+    of them. But so is [CloudFront: AWS’s CDN](https://oreil.ly/_0EUS). While CloudFront
+    does the thing you’d expect of any other CDN—caching HTTP traffic to enable faster
+    websites—it also has the capability of being able to invoke a special class of
+    Lambda functions via a service named [Lambda@Edge](https://oreil.ly/6D4yw).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda@Edge functions are mostly similar to Lambda functions—they have the same
+    runtime model and mostly the same deployment tooling. When you deploy a Lambda@Edge
+    function, AWS replicates your code around the world, so your application truly
+    becomes “regionless.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are, however, a number of significant limitations to Lambda@Edge, including:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The only event source available is CloudFront itself—so you can only run Lambda@Edge
+    as part of processing an HTTP request within a CloudFront distribution.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lambda@Edge functions, at the time of writing, can be written only in Node or
+    Python.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Lambda@Edge environment has more restrictions with regard to memory, CPU,
+    and timeout than regular Lambda functions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lambda@Edge functions are fascinating, and even at the time of writing are great
+    for solving certain problems. But more than that, they point to a future of *truly*
+    global cloud computing, where locality is completely abstracted. If AWS can bring
+    Lambda@Edge closer in capability to regular Lambda, then as architects and developers
+    we are well on the road to leaving region-thinking behind us. We might still need
+    to think about locality when people are running applications on Mars, but we’re
+    a few years away from that yet. Lambda promises to be serverless, not planetless!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When we’re building serverless systems, the amount of effort that we spend on
+    code and operations decreases, but some of that effort needs to be exchanged for
+    more architectural thinking than we have done in the past, especially about the
+    capabilities and limitations of the managed services we’re using. In this chapter,
+    you learned more detail of some of these concerns, and examined a number of mitigation
+    approaches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Serverless computing also presents entirely new ways of architecting software.
+    You learned about two such ideas—the Serverless Application Repository, and globally
+    distributed applications. As Lambda, and serverless more generally, evolves over
+    the coming years, we expect to see many more new models of architecting applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Update the data pipeline example from [“Example: Building a Serverless Data
+    Pipeline”](ch05.html#serverless-data-pipeline-example)—set `SingleEventLambda`
+    to have a reserved concurrency of 1. Now upload the sample data—you should see
+    throttling occur (if necessary, add a few more elements to the *sampledata.json*
+    file). Use the “Throttle” behavior from the Lambda web console to set reserved
+    concurrency to zero.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Update [“Example: Building a Serverless API”](ch05.html#serverless-api-example)
+    to use a DynamoDB global table—make sure to separate the table itself into its
+    own CloudFormation stack! Then deploy just the API component (with its Lambda
+    functions) to multiple regions. Are you able to write data to one region and then
+    read it from another?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

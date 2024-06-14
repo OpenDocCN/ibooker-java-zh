@@ -1,0 +1,708 @@
+- en: 'Chapter 7\. Mutiny: An Event-Driven Reactive Programming API'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 5](ch05.html#reactive-programming), we introduced reactive programming
+    and how it helps implement reactive applications. Then, in [Chapter 6](ch06.html#quarkus-reactive),
+    we discussed how Quarkus uses Mutiny to allow implementing reactive applications.
+    This chapter focuses on Mutiny itself.^([1](ch07.html#idm45358827414448))
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter presents Mutiny’s concepts and common patterns, which will help
+    you understand the next few chapters. Mutiny is the API used for every reactive-related
+    feature from Quarkus. You will see a lot more of it when delving into the construction
+    of reactive applications and systems with Quarkus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why Another Reactive Programming Library?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: That’s a great question! As you have seen in [Chapter 5](ch05.html#reactive-programming),
+    other popular reactive programming libraries exist. So why another one?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the past few years, we’ve observed how developers developed reactive systems
+    and used reactive programming libraries. Through this experience, we observed
+    the challenges faced by the developers. In a nutshell, reactive programming is
+    hard to learn and hard to read. Writing and maintaining reactive code creates
+    a significant burden, slowing the adoption of reactive approaches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we look at reactive programming usage, we immediately see a steep learning
+    curve, which makes reactive programming limited to top-notch developers. Indeed,
+    the functional programming roots of reactive programming are both elegant and
+    limiting at the same time. Not every developer has a functional background. We
+    have seen developers lost in a `map` and `flatMap` jungle, trying to find their
+    way out of a maze made of monads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even for seasoned developers, some concepts are abstract and confusing. For
+    example, the difference between `flatMap` and `concatMap`, two prominent operators
+    in traditional reactive programming libraries, leads to many mistakes, including
+    production failures. These reactive programming libraries require a functional
+    background and a good understanding of the available operators. Mastering hundreds
+    of operators requires time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another aspect is the API modeling. Existing libraries often implement [Reactive
+    Extensions (ReactX)](http://reactivex.io/) and provide Java classes with hundreds
+    of methods. Even with modern IDEs, finding the right method is like looking for
+    a needle in a haystack. It’s common to scroll through the list of methods to find
+    the right one, not even looking at the method names but at the signature, hoping
+    for the best.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, and this is a more philosophical aspect, existing reactive programming
+    libraries do not reflect the event-driven nature of the reactive principles. While
+    it uses data streams, which are asynchronous constructs, the API does not convey
+    the idea of events. Reactive architectures should help to implement event-based
+    processes, and these approaches fall short and require an additional mental-mapping
+    between the business process and its implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To address these issues, we decided to create Mutiny, a new reactive programming
+    API focusing on readability, maintenance, and putting the notion of *event* at
+    the center.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What Makes Mutiny Unique?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Mutiny is an intuitive, event-driven reactive programming library for Java.
+    Mutiny uses the notion of an *event* to communicate that something happened. This
+    event-driven nature fits perfectly the asynchronous nature of distributed systems,
+    as described in [Chapter 3](ch03.html#distributed-system). With Mutiny, you get
+    notified when an event occurs, and you react to it. As a result, Mutiny structures
+    itself around *on* methods such as `onItem` and `onFailure`. Each method lets
+    you express what you want to do when you receive an event. For example, `onItem.transform`
+    receives an item event and transforms it, or `onFailure.recoverWithItem` recovers
+    with a fallback item after a failure event.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We wanted to address the API navigation and avoid the *one class with hundreds
+    of methods* pattern. We introduced the notion of method *groups*. Each group handles
+    a specific type of event. In the `onItem` group, you find all the methods to handle
+    an individual item event, such as to transform it (`onItem.transform`), or invoke
+    a method (`onItem.invoke`). In the `onFailure` group, you find the methods to
+    handle failures and recover, such as `onFailure.recoverWithItem` or `onFailure.retry`.
+    The resulting API is more readable, understandable, and navigable. As a user,
+    you select the group and navigate across a limited number of methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mutiny’s API is not concise. We favor readability and understandability over
+    conciseness. Over the years, we heard many times that reactive programming was
+    hard and usable only by senior developers or architects. It was a key obstacle
+    to the reactive adoption. When we designed Mutiny, we wanted to avoid creating
+    an elitist library. This is not to “dumb down” the ideas behind reactive programming,
+    but instead the goal is to strip away mathematical jargon.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mutiny Usage in Quarkus
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To illustrate the common patterns you will see when using Mutiny, we need an
+    example. The application is a simple shop, handling users, products, and orders
+    ([Figure 7-1](#image:shop-arch)). A user creates orders that contain a list of
+    products. How the application is implemented is not relevant for this chapter.
+    Chapters [8](ch08.html#http) and [9](ch09.html#data) will cover how Mutiny integrates
+    on the HTTP and data parts of Quarkus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Shop Application Architecture](assets/rsij_0701.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7-1\. Shop application architecture
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The application uses nonblocking database clients to avoid blocking when integrating
+    with the database. Thus, the APIs of `OrderService`, `UserService`, and `ProductService`
+    are asynchronous and use Mutiny types. `ShopResource`, implementing the HTTP API,
+    also uses Mutiny to query the services and compose the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code is available in the *chapter-7/order-example* directory, and can be
+    started with `mvn quarkus:dev`. The code uses port 8080 to expose the HTTP API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Uni and Multi
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Mutiny provides two main classes: `Uni` and `Multi`.^([2](ch07.html#idm45358827368080))
+    `Uni` represents an asynchronous action or operation. It can emit a single item
+    or failure, if the represented action fails. `Multi` represents a stream of items.
+    It can convey multiple items, as well as a terminal failure or completion event.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at two use cases to better understand the differences. Imagine you
+    want to retrieve a single user (represented by the `UserProfile` class) from the
+    database. You will use `Uni<UserProfile>`, as shown in [Example 7-1](#mutiny::uni).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-1\. Example of `Uni` (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can attach logic to `Uni`, so you can react when it emits events. In the
+    previous snippet, when `UserProfile` becomes available, we extract the name of
+    the user. If a failure happened, we recover with a fallback value. The `onItem`
+    and `onFailure` groups form the center of the `Uni` API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Multi` can emit 0, 1, *n*, or an infinite number of items. It can also emit
+    a failure, which is a terminal event. Finally, when there are no more items to
+    emit, `Multi` emits the completion event. As a result, the API is slightly different.
+    Let’s now imagine we need all the users. For this case, you use `Multi`, as shown
+    in [Example 7-2](#mutiny::multi).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-2\. Example of `Multi` (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: As for `Uni`, you can handle events. In the snippet, you extract the name of
+    each user. So, unlike [Example 7-1](#mutiny::uni), the code can call the transformation
+    multiple times. While the API is somewhat similar, `Multi` proposes specific groups
+    to select, drop, and collect items; see [Example 7-3](#mutiny::multi-api).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-3\. Example of code using `Multi` (*chapter-7/mutiny-examples/src/main/java/org/acme/MultiApi.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, these two types are inherently event driven. However, the set
+    of events each handles differ. The API reflects these differences. `Uni` and `Multi`
+    do not offer the same set of groups, as some are specific to each case ([Table 7-1](#table:uni-multi)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7-1\. `Uni` and `Multi` use cases
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Events | Use cases | Implement Reactive Streams |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Uni` | Item and failure | Remote invocation, asynchronous computation returning
+    a single result | No |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Multi` | Item, failure, completion | Data streams, potentially unbounded
+    (emitting an infinite number of items) | Yes |'
+  prefs: []
+  type: TYPE_TB
+- en: An essential aspect of `Uni` and `Multi` is their laziness. Holding a reference
+    on `Uni` and `Multi` instances does nothing. In [Example 7-3](#mutiny::multi-api),
+    nothing will happen until someone explicitly subscribes (and so expresses an interest),
+    as shown in [Example 7-4](#mutiny::creation-subscription).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-4\. Subscription to `Uni` and `Multi` (*chapter-7/order-example/src/main/java/org/acme/UniMultiExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: To subscribe (and thereby trigger the operation) you use the `subscribe` group.
+    In Quarkus, you may not need to subscribe, because if you return `Uni` or `Multi`
+    to Quarkus, it subscribes for you. For instance, you can have the HTTP method
+    shown in [Example 7-5](#mutiny::no-subscription).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-5\. Quarkus handles the subscription for HTTP methods (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: When a matching HTTP request arrives, Quarkus calls this method and subscribes
+    on the produced `Uni`. Quarkus will write the HTTP response only when `Uni` emits
+    an item or failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mutiny and Flow Control
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As indicated in [Table 7-1](#table:uni-multi), `Multi` implements the Reactive
+    Streams backpressure protocol. In other words, it implements the Reactive Streams
+    `Publisher` interface, and `Multi`’s consumers are the Reactive Streams `Subscriber`.
+    That’s not the case for `Uni`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When dealing with a stream sending multiple items, so a `Multi`, having backpressure
+    support makes sense. Under the hood, the subscriber can control the flow and the
+    pace by requesting items when it can handle them. It avoids flooding the subscribers
+    with too many items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When dealing with `Uni`, subscribing to it is enough to express your interest
+    and capacity to handle the emitted item. There’s no need to send another request
+    signal to express your interest.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But, as you have seen in [Chapter 5](ch05.html#reactive-programming), not every
+    stream can support flow control. Streams representing events from the physical
+    world, such as user clicks or time, can’t be slowed. In this case, there is a
+    risk of sending too many events to the subscriber. That’s why `Multi` provides
+    the `onOverflow` group. This group monitors the number of items emitted by the
+    upstream source as well as the number of items requested by the downstream subscriber.
+    When there are more incoming items than requests, `Multi` emits an *overflow*
+    event. The `onOverflow` group allows configuring the desired behavior when this
+    happens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To illustrate this, let’s imagine a stream producing product recommendations.
+    Every second, it sends a new recommended product. But time cannot be slowed, so
+    we cannot apply backpressure. If the downstream can’t keep up, we would have an
+    overflow. To avoid that, if we can’t emit the tick item because of the lack of
+    request, we just drop it, as shown in [Example 7-6](#mutiny::multi-overflow).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-6\. Handle overflow with `Multi` (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `onOverflow` group provides other possibilities, such as buffering the items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Observing Events
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Once you have a `Uni` or `Multi` instance, it’s natural to observe the events
+    emitted by these instances. For each type of event, an `invoke` method is called
+    when it sees a matching event; see [Example 7-7](#mutiny::multi-observe).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-7\. Observe events (*chapter-7/mutiny-examples/src/main/java/org/acme/MultiObserve.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `invoke` method does not modify the event; you observe it without changing
+    it. The downstream receives the same event you did. This method is handy when
+    needed to implement side effects or trace your code. For example, we can use it
+    to log when a new user is created or if the creation failed (see [Example 7-8](#mutiny::uni-observe)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-8\. Observe `Uni` events (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you have the application running, you can run this code by using [Example 7-9](#invoke-7-9).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-9\. Invoke the `users` endpoint
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Transforming Events
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Most of the time, we need to transform the event. Let’s first see how we can
+    transform events synchronously. You receive the event, transform it, and produce
+    the result as a new event. For each type of event, a `transform` method is called
+    when it sees a matching event, as shown in [Example 7-10](#mutiny::multi-transform).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-10\. Transform events (*chapter-7/mutiny-examples/src/main/java/org/acme/MultiTransform.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Unlike `invoke`, `transform` produces a new event. It invokes the passed function
+    and sends the result to the downstream subscriber.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The synchronous nature of `transform` is important. After receiving the event,
+    `transform` calls the transformation logic and emits the result downstream. If
+    the transformation logic takes a long time to complete, `transform` waits until
+    the logic terminates. So, use `transform` when the transformation is fast enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, the following method retrieves the list of products, capitalizes
+    their names consistently, and builds the representation (`ProductModel`). For
+    each product, `transform` extracts the name and applies the transformation. This
+    synchronous process is fast. It emits the result downstream immediately, as shown
+    in [Example 7-11](#mutiny::multi-transform-product).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-11\. Transform products (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Chaining Asynchronous Actions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `transform` method can process events synchronously, but what if we need
+    to invoke an asynchronous process? Imagine that you receive an event, and need
+    to invoke a remote service or interact with a database. You can’t use `transform`,
+    as these methods should be asynchronous (otherwise, they would block, which would
+    be against the reactive principles). You need to *wait* until the asynchronous
+    computation completes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'How can we express this using the Mutiny lingo? It would mean transforming
+    an event, but unlike `transform` returning a *plain* result, it returns an asynchronous
+    structure: another `Uni` or `Multi`. What does that look like? Take a look at
+    [Example 7-12](#mutiny:uni-transform-async).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-12\. Chain asynchronous actions (*chapter-7/mutiny-examples/src/main/java/org/acme/UniTransformAsync.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`transformToUni` and `transformToMulti` provide the ability to produce a `Uni`
+    or a `Multi` instance.^([3](ch07.html#idm45358826255536)) When you receive an
+    item, Mutiny invokes the function returning `Uni` or `Multi`. Then, it emits the
+    events downstream from this `Uni` or `Multi`. In [Example 7-13](#mutiny::uni-transform-async-order),
+    we retrieve the list of orders for a specific user (identified by its name).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-13\. Retrieve order for a specific user (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code retrieves the user, and when it receives the user, the code then retrieves
+    the orders. The `getOrderForUser` method returns `Multi<Order>`, so the result
+    is `Multi<Order>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you look carefully at the preceding code, you will say, “Hey! You’re forgetting
+    something! How does that work when we chain from a `Multi` and not a `Uni`?” You
+    are right; we need to discuss the `Multi` case. How would you transform each item
+    of a `Multi` into another `Uni` or `Multi`?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s illustrate the problem with an example. Imagine you need to retrieve the
+    orders for all the users. So, instead of having the username as in [Example 7-13](#mutiny::uni-transform-async-order),
+    we need to retrieve all the users, and for each retrieve the orders. [Example 7-14](#mutiny::orders-per-user)
+    shows the resulting code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-14\. Retrieve the orders for each user using `concatenate` (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can immediately spot a difference. Instead of `transformToMulti`, we have
+    `transformToMultiAndConcatenate`. But why *AndConcatenate*? It relates to the
+    order of the item sent downstream. It gets the `Multi` for the first user, emits
+    the items downstream, and then handles the one for the next user, and so on. In
+    other words, it takes the `Multi` instances one by one and concatenates them.
+    This approach preserves the order, but also limits the concurrency as we retrieve
+    the orders, one user at a time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you don’t need to preserve the order, you can use the `transformToMultiAndMerge`
+    method.^([4](ch07.html#idm45358826140656)) In this case, it invokes `getOrderForUser`
+    concurrently. It merges the items from the resulting `Multi` as they come, and
+    so may interleave the orders from different users ([Example 7-15](#mutiny::orders-per-user-merge)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-15\. Retrieve the orders for each user by using merge
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '*chapter-7/mutiny-examples/src/main/java/org/acme/MultiTransformAsync.java*
+    lets you execute these examples. They highlight the ordering difference.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recovering from Failure
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As we said, failures are inevitable. We must handle them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What can be done in such an unfortunate case? In the Mutiny world, failures
+    are events. So, you can observe and process them. You can use `invoke` or `transform`
+    as for any other events. But you can also handle the failure and recover gracefully.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the most common approaches consists of recovering with a specific fallback
+    item. Let’s imagine we want to create a new user, but the insertion fails because
+    the name needs to be unique. We can return a message indicating the failure, as
+    shown in Example 7-16.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-16\. Recover from failure with a fallback item (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: While a failure is an event, it’s a terminal one. That’s not a problem if you
+    are dealing with `Uni`; you won’t get the item, just the failure. So, the `Uni`
+    would replace the failure with the fallback item. With `Multi`, you won’t get
+    any more items after the failure. The recovery emits the fallback item followed
+    by the completion event.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another common possibility is to retry. Remember, retry only if your system
+    can endure it. In this case (and only in this case), you can retry. Retry resubscribing
+    to the upstream source, as shown in [Example 7-17](#mutiny::retry).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-17\. Retry on failure
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can limit the number of retries or introduce a delay between them by using
+    `atMost` and configuring the backoff; see [Example 7-18](#mutiny::retry-at-most).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-18\. Retry on failure at most n times with delay between attempts
+    (*chapter-7/mutiny-examples/src/main/java/org/acme/UniFailure.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '*chapter-7/mutiny-examples/src/main/java/org/acme/UniFailure.java* lets you
+    execute these examples to help you understand the various possibilities.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `onFailure` group contains a lot more possibilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Combining and Joining Items
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The next common pattern consists of combining the items from multiple upstream
+    sources. For example, imagine we want to generate recommendations. We would pick
+    a random user and a recommended product. We could sequentially execute both, but
+    they are independent, so we can execute them concurrently, and when we have both
+    results, generate the recommendation ([Example 7-19](#mutiny::recommended-product)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-19\. Combine `Uni` instances (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: This snippet gets two `Uni`s. The first one retrieves a random user, and the
+    second one gets a recommended product. Then we combine both and aggregate their
+    results into a tuple. When both operations complete, Mutiny collects the items
+    into a tuple and emits this tuple downstream. We can transform it and generate
+    the recommendation. If the `Uni` fails, it propagates the failure downstream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Combining `Uni` operations is common when we want to execute operations concurrently
+    and join their results. But we can do the same with `Multi` too. In this case,
+    we associate the items from several `Multi` operations. For example, we can generate
+    a stream of recommendations, associating random users and recommended products,
+    as shown in [Example 7-20](#mutiny::recommented-products).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-20\. Join `Multi`s (*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: When joining `Multi`s, the resulting stream completes as soon as one of the
+    joined `Multi` sends the completion event. Indeed, it won’t be possible to combine
+    the items anymore.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Selecting Items
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When dealing with `Multi`, you may want to select the items to propagate downstream
+    and discard the others. For example, we can retrieve all the orders and then select
+    only the orders containing more than three products (see [Example 7-21](#mutiny:select-where)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-21\. Select items (*chapter-7/order-example/src/main/java/org/acme/OrderService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `select.where` operation lets you select the item. For each item, the operation
+    calls the predicates and decides whether the item should be propagated downstream.
+    It drops the items not passing the predicate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An asynchronous variant of the `select.when` operator is also available. It
+    lets you select the items to keep, using an asynchronous predicate. [Example 7-22](#mutiny::select-when)
+    shows how to select the orders for a specific username. For each order, the code
+    retrieves the associated user and selects only when the username matches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-22\. Select items with an asynchronous predicate (*chapter-7/order-example/src/main/java/org/acme/OrderService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Selection can also drop any duplicate items. In [Example 7-23](#mutiny::select-distinct),
+    we list the ordered products.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-23\. Select distinct items (*chapter-7/order-example/src/main/java/org/acme/ProductService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: For each order, we retrieve the products and generate `Multi<Product>`. Then,
+    we select only distinct items, dropping duplicates. Note that we can’t use `distinct`
+    on unbounded streams, as it needs to keep in memory all the already seen items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to selection, Mutiny provides a `skip` group. It provides the opposite
+    functionality, and so allows skipping items matching predicates and repetitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collecting Items
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Finally, when dealing with bounded `Multi`, you may want to accumulate the items
+    into a list or a collection. The resulting structure is emitted when the `Multi`
+    completes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s reuse the previous example. We know that the set of ordered products is
+    bounded, so, we can collect the product into a list, as shown in [Example 7-24](#mutiny::collect).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-24\. Collect items into a list (*chapter-7/order-example/src/main/java/org/acme/ProductService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the method returns `Uni<List<Product>>`. The method emits the list
+    (containing the products) when the `Multi` returned by `getAllOrderedProducts`
+    completes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `collect` group provides other methods to aggregate items into maps, collections,
+    or events, using your own collector ([Example 7-25](#mutiny::collect-2)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 7-25\. Other collection methods
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter was a brief introduction to the Mutiny API. It did not provide
+    a complete overview of the possibilities but presented key patterns we will use
+    later in this book. Remember:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mutiny is an event-driven reactive programming API.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You observe and transform events.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Mutiny provides two main classes: `Uni` and `Multi`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Mutiny API is navigable and offers you guidance to pick the right operator.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: With this in mind, we can now start using the reactive services and facilities
+    offered by Quarkus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch07.html#idm45358827414448-marker)) Quarkus integrates Mutiny, which
+    is a separate project that can be embedded anywhere.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch07.html#idm45358827368080-marker)) The Mutiny name comes from the contraction
+    of `Multi` and `Uni`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch07.html#idm45358826255536-marker)) The `transformToUni` and `transformToMulti`
+    operations are generally called `flatMap` in traditional reactive programming
+    libraries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([4](ch07.html#idm45358826140656-marker)) `transformToMultiAndConcatenate`
+    is called `concatMap` in traditional reactive programming libraries. `transformToMultiAndMerge`
+    is generally named `flatMap`.
+  prefs: []
+  type: TYPE_NORMAL

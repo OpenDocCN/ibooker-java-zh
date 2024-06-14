@@ -1,0 +1,1069 @@
+- en: 'Chapter 5\. Reactive Programming: Taming the Asynchronicity'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we introduced reactive systems and how they elegantly
+    handle the challenges of distributed systems. Although never forget that nothing
+    comes for free in the IT world. One of the characteristics of reactive systems
+    is the use of nonblocking I/O. Nonblocking I/O improves the concurrency, responsiveness,
+    and resource utilization of reactive applications. To fully benefit from nonblocking
+    I/O, you must design and develop the code in a nonblocking manner, and that is
+    a not-so-easy challenge.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter explores approaches to writing nonblocking and asynchronous Java
+    code such as callbacks and reactive programming. We also cover flow control and
+    Reactive Streams, which is an essential part of modern reactive applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asynchronous Code and Patterns
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: How does nonblocking lead to asynchronous code? Remember the design of nonblocking
+    I/O from the preceding chapter. It allows using a few threads to handle concurrent
+    network interactions. That particular architecture reduces memory consumption
+    but also CPU usage. As a consequence, the application code gets executed by one
+    of these I/O threads, and there are scarce resources. If your code unconsciously
+    blocks one of these threads, it would reduce your application’s concurrency and
+    increase the response time, as fewer threads are available to handle the requests.
+    In the worst-case scenario, all the I/O threads get blocked, and the application
+    cannot handle requests anymore. In other words, the benefits from nonblocking
+    I/O would vanish.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s illustrate this with an example. Imagine a `greeting` service, which takes
+    a name as a parameter and produces a greeting message. With a synchronous model,
+    you would invoke that service as shown in [Example 5-1](#reactive-programming::synchronous-code).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-1\. Example of synchronous code
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: You call the service, synchronously get the result, and use it on the next line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let’s imagine that the `greeting` service is a remote service. You could
+    still call it synchronously, but, in this case, you are going to block the thread
+    until the response is received, as depicted in [Figure 5-1](#image:synchronous-sequence-diagram).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Synchronous invocation](assets/rsij_0501.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-1\. Synchronous invocation
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: If your code runs on the I/O thread, you block that thread. As a consequence,
+    the service cannot handle any other requests while waiting for the response. Blocking
+    the I/O thread discards all the advantages of nonblocking I/O.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What can we do? That’s simple: we must not block the thread. We call the method,
+    and it returns immediately, not *waiting* for the response. But, there is a small
+    problem with this approach: how would you get this response? You need to pass
+    some continuation, invoked when the response is received, as shown in [Example 5-2](#reactive-programming::asynchronous-code).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-2\. Example of asynchronous code
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code snippet, we pass a continuation implemented using a *callback*,
+    a function invoked with the received result. It embraces well the event-driven
+    nature of this code: `on result, call that function`. With this asynchronous model,
+    we release the I/O thread. When the response is received, it calls the function
+    with that response and continues the execution. During that time, this I/O thread
+    can be used to handle more requests ([Figure 5-2](#image:asynchronous-sequence-diagram)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Asynchronous invocation](assets/rsij_0502.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-2\. Asynchronous invocation
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Let’s have a deeper look at the preceding code snippet and add some traces by
+    using the good old `System.out` statements ([Example 5-3](#reactive-programming::asynchronous-code-trace)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-3\. Asynchronous code and ordering
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: What would be the output of this program? For sure, `Before` is printed first,
+    but what about the greeting message and `After`? Which one would be first? There
+    is a good chance that `After` is printed first because invoking the `greeting`
+    service takes at least a few milliseconds (remember, it’s a remote service). This
+    means that with asynchronous code, the next line often is executed before the
+    *continuation*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What does that mean in practice? Let’s imagine you want to call the `greeting`
+    service twice, once for Luke and once for Leia; see [Example 5-4](#reactive-programming::asynchronous-code-calls).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-4\. Calling asynchronous methods twice
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this code, we can’t anticipate which message is going to appear first. It
+    depends on many factors such as latency, speed, and number of instances of the
+    `greeting` service. However, both calls run concurrently, which is an attractive
+    benefit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you want or need a strict order (for example, to call the service for Leia
+    first and then Luke), we need to compose the asynchronous calls ([Example 5-5](#reactive-programming::sequential-composition)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-5\. Sequential composition pattern
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: With this code, we first call the service with `Leia`, and when we get the response,
+    call it with `Luke`. The calls don’t run concurrently anymore, but at least we
+    know the order. We call this pattern *sequential composition*. It’s quite common,
+    as you can imagine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s continue our investigation with another type of useful composition: *parallel
+    composition*. We want to execute the calls concurrently this time, but we need
+    to pass a continuation invoked when both calls are complete ([Example 5-6](#reactive-programming::parallel-composition)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-6\. Simplified parallel composition pattern
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: It starts to be a bit more convoluted, and this code is not totally correct,
+    as you can have race conditions if both callbacks are invoked concurrently. We
+    need to store the results, check if they are non-null, and invoke the continuation
+    function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We have slightly forgotten another aspect: failures. It’s not because it’s
+    an asynchronous API that failures don’t happen. You cannot use `try/catch` blocks
+    anymore, as the failure can also happen asynchronously; see [Example 5-7](#reactive-programming::asynchronous-code-try-catch).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-7\. Would this `try`/`catch` work as intended?
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `catch` block would catch only synchronous exceptions. If the service produces
+    a failure asynchronously, like the inability to produce the greeting message,
+    this `try/catch` is useless. To handle failures, we need to have a proper construct
+    for it. We can imagine two *simple* ways:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use an asynchronous result construct encapsulating both the result and the failure.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Have a second callback for failures.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: With the first approach, you would need something like [Example 5-8](#reactive-programming::asynchronous-result).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-8\. Use asynchronous result encapsulating both result and failure
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`greeting` is not a `String` anymore but a type encapsulating the operation’s
+    outcome.^([1](ch05.html#idm45358829664160)) You need to check whether the operation
+    failed or succeeded and act accordingly. You can quickly imagine how this would
+    impact our previous composition examples. At that level, it’s not challenging;
+    it’s a nightmare!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second approach uses two callbacks: the first one when the operation succeeded,
+    and the second one when it failed ([Example 5-9](#reactive-programming::onSuccess_onError)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-9\. Use different continuations for each outcome
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This approach clearly distinguishes the two cases, but again, it makes composition
+    harder ([Example 5-10](#reactive-programming::onSuccess_onError_composition)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-10\. Use multiple continuations and compositing actions
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: It’s not simple, right? However, this second approach has an advantage. If we
+    imagine having a `greeting` service accepting multiple names, it is well suited
+    to handle sequential responses ([Example 5-11](#reactive-programming::first_stream)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-11\. Multiple results for a single operation
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This example starts exhibiting a new construct: streams of data. You will see
+    a lot more of these in this book. These streams can be internal to the application
+    or convey messages coming from a message broker. In this chapter, we consider
+    only streams internal to the reactive applications. We will cover how these streams
+    can be connected to various message brokers in [Chapter 11](ch11.html#event-bus).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Java, to express your continuation using callbacks, we often use Java 8 Lambdas.
+    They are well integrated in the language, but we have also seen the limit of that
+    approach. Callbacks do not compose well. So we need a higher-level construct.
+    Any seasoned developers would say future!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Futures
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A *future* is a placeholder for a value resolved later. By nature, it’s asynchronous;
+    you don’t know when the future will get the value. It’s just *later*. When the
+    value gets set, the future allows *reacting* on it—for example, transforming the
+    value, implementing side effects, and so forth.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How does it help our asynchronous code concern? In Java, `CompletableFuture`,
+    or `CompletionStage`, the associated interface, can represent the result of an
+    asynchronous action. Your API returns a `CompletionStage` object, which gets the
+    result when the operation completes. The method returning the `CompletionStage`
+    object returns immediately, and so does not block the caller thread, and the continuation
+    can be attached to the returned `CompletionStage`; see [Example 5-12](#reactive-programming::future).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-12\. Example of `CompletionStage` (*chapter-5/reactive-programming-examples/src/main/java/org/acme/future/Futures.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The full examples from this section are located in *chapter-5/reactive-programming-examples/src/main/java/org/acme/future/Futures.java*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The continuation can be divided into a set of *stages* to process, consume,
+    and transform the results, as shown in [Example 5-13](#reactive-programming::future-chain).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-13\. Chaining operation with `CompletionStage` (*chapter-5/reactive-programming-examples/src/main/java/org/acme/future/Futures.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Futures also ease the implementation of sequential composition. With the `CompletionStage`
+    API, you can use `thenCompose` to invoke a second operation (as seen in [Example 5-14](#reactive-programming::future-sequential-composition)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-14\. Sequential composition with `CompletionStage` (*chapter-5/reactive-programming-examples/src/main/java/org/acme/future/Futures.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `allOf` method allows implementing parallel composition; see [Example 5-15](#reactive-programming::future-parallel-composition).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-15\. Parallel composition with `CompletableFuture` (*chapter-5/reactive-programming-examples/src/main/java/org/acme/future/Futures.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Futures make composing asynchronous actions much more straightforward than callbacks.
+    Besides, futures encapsulate both the result and failure. In `CompletionStage`,
+    specific methods handle failure and recover, as you can see in [Example 5-16](#reactive-programming::future-failure-management).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-16\. Recover from failure with the `CompletionStage` API (*chapter-5/reactive-programming-examples/src/main/java/org/acme/future/Futures.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When using `CompletionStage`, we start seeing the creation of *pipelines*:
+    a sequence of operations handling events and asynchronous results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You may be wondering, what’s missing? Futures seem to tick all the boxes. But
+    one tick is missing: streams. Futures do not handle streams of data well. They
+    can be used for operations returning single values, but they won’t work for functions
+    returning sequences as in [Example 5-11](#reactive-programming::first_stream).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Project Loom: Virtual Threads and Carrier Threads'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If you follow the news around Java, you may have heard about [Project Loom](https://oreil.ly/vuLzu).
+    Loom adds the concept of *virtual threads* into Java. Unlike regular threads,
+    virtual threads are lightweight. A single carrier thread, a regular OS thread,
+    can execute many virtual threads, potentially millions. Loom (the JVM) manages
+    the scheduling of these virtual threads, while the operating system manages the
+    carrier thread’s scheduling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One benefit is that you can execute blocking code in a virtual thread; it does
+    not block the carrier thread. When a virtual thread executes a blocking call,
+    such as an I/O call, the Loom scheduler, managing the virtual threads, parks that
+    virtual thread and runs another virtual thread. So the carrier thread is not blocked
+    and is used to execute this other virtual thread. That does smell good, right?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In other words, you can write blocking code using a synchronous syntax without
+    having to take care of the continuation. Loom handles that for you! Even better:
+    because virtual threads are lightweight, you don’t need thread pools anymore;
+    you can create new ones on the fly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, at the time of writing, the Loom project is still incubating.^([2](ch05.html#idm45358829062432))
+    The following code snippets may slightly change as the API is still evolving.
+    Besides, some concurrency or blocking constructs are not yet supported, and you
+    may unintentionally block the carrier threads, which, as you can imagine, can
+    be catastrophic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But, to give some ideas, let’s see how we could use our `greeting` service in
+    a Loom world. First, the `greeting` service implementation can be blocking and
+    use blocking I/O to interact with a remote service. If the call is executed on
+    a virtual thread, it does not block the carrier thread, which can execute another
+    virtual thread. Loom replaces the blocking I/O calls with a nonblocking I/O and
+    parks the virtual thread until the response is received. When the response is
+    available, the parked virtual thread can continue its execution with the result.
+    From the developer point of view, it’s all synchronous, but under the hood it’s
+    not; see [Example 5-17](#reactive-programming::loom-simple).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-17\. Create a virtual thread
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, it’s pure synchronous code. As a consequence, the sequential
+    composition is remarkably simple ([Example 5-18](#reactive-programming::loom-sequential-composition)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-18\. Sequential composition with Loom
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: It’s not different from what you would use in a traditional application. Don’t
+    forget that the virtual thread is suspended and resumes multiple times. But, again,
+    the carrier thread is not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Failure management can use `try/catch` as, again, you use synchronous code.
+    If the call to the service fails, the failure is thrown as a regular exception
+    ([Example 5-19](#reactive-programming::loom-failure)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-19\. Exception handling with Loom
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Unfortunately, Loom does not offer any specific construct for parallel composition.
+    You need to use the same approach as for `CompletableFuture`, as shown in [Example 5-20](#reactive-programming::loom-parallel-composition).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-20\. Parallel composition with Loom
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Sounds magic, right? But, you see it coming; there is a catch…
+  prefs: []
+  type: TYPE_NORMAL
+- en: While you write synchronous code and do not block the carrier thread, I/Os are
+    still happening on I/O threads. The carrier threads are not I/O threads ([Figure 5-3](#image:loom-thread-switch)).
+    So, there are multiple thread switches that are not free, even if optimized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Thread switches hapenning under the hood](assets/rsij_0503.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-3\. Thread switches happening under the hood
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Also, the temptation to create a massive number of virtual threads can lead
+    to complicated execution. Even if virtual threads are lightweight, storing their
+    stacks in memory may lead to unexpected memory consumption. It’s like any software
+    using many threads; they can be hard to understand and tune. That’s being said,
+    Loom is promising. Does that make Reactive pointless? It’s the opposite. Loom
+    addresses only the development model, not the architecture concepts behind reactive
+    systems. Also, a synchronous model looks attractive but does not accommodate every
+    situation, especially when you need to group events or implement stream-based
+    logic. That’s what we cover in the next section: reactive programming.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive Programming
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'First, what is *reactive programming*? A common definition is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive programming combines functional programming, the observer pattern,
+    and the iterable pattern.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: The [ReactiveX website](http://reactivex.io)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'We never found that definition helpful—too many patterns, and it’s hard to
+    clearly convey what reactive programming is about. Let’s make another definition,
+    much more straightforward: “Reactive programming is about programming with asynchronous
+    streams.”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That’s it. Reactive programming is about streams and, especially, observing
+    them. It pushes that idea to its limit: everything is a stream. These streams
+    can be seen as a pipe in which *events* flow. We observe the events flowing—such
+    as items, failures, completion, cancellations—and implement side effects (see
+    [Figure 5-4](#image:rp-stream)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Reactive Programming is about observing streams](assets/rsij_0504.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-4\. Reactive programming is about observing streams
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Reactive programming is a specialization of the observer pattern in the sense
+    that you observe an object (the stream) and react. It’s asynchronous by nature,
+    as you don’t know when the event is going to be seen. Yet, reactive programming
+    goes beyond this. It provides a toolbox to compose streams and process events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Streams
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'When using reactive programming, everything—yes, *everything*—is a stream of
+    items. The stock market, user clicks, keystrokes, steps, ticks… All these are
+    streams, and it’s easy to see why: they are sequences of individual events. So
+    the stream carries every occurrence of this event, and the observer can react.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: But reactive programming also considers asynchronous actions, HTTP requests,
+    RPC method invocations, and database insertions or queries as streams. So, a stream
+    does not need to carry multiple items; it can contain a single one or even none!
+    That is a bit harder to imagine, but it can be powerful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With reactive programming, you structure your code around streams and build
+    chains of transformation, also called *pipelines*. The events flow from the *upstream*
+    source to the *downstream* subscriber, traversing each operator and getting transformed,
+    processed, filtered, and so on. Each operator observes the upstream and produces
+    a new stream. But, there is an important point to not miss in this chain. You
+    need a final *subscriber* that subscribes to the last stream and triggers the
+    whole computation. When this subscription happens, the direct upstream of the
+    final observer subscribes to its own upstream, which subscribes to its upstream,
+    until it reaches the root.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s go back to the idea of a stream. As we’ve mentioned, we consider a stream
+    as only internal to the reactive applications. These streams are sequences of
+    events ordered in time. The order matters. You observe them in the emission order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A stream can emit three types of events ([Figure 5-5](#image:rp-stream-failure-completion)):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Items
+  prefs: []
+  type: TYPE_NORMAL
+- en: The type depends on the stream; it can be a step, a click, or a response from
+    a remote service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Failures
+  prefs: []
+  type: TYPE_NORMAL
+- en: Indicate that something bad happened, and no more items will be emitted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Completions
+  prefs: []
+  type: TYPE_NORMAL
+- en: Indicate that there are no more items to emit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Streams can emit three types of events: item, failure and completion](assets/rsij_0505.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5-5\. Streams can emit three types of events: items, failures, and completions'
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Item is the most frequent type of event. As an observer, you get notified every
+    time a new item is transiting in the stream. You can react to it, transform it,
+    implement side effects, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Failure is an error signal. It indicates that something *terrible* happened,
+    and the observed stream cannot recover from it. If not handled properly, failures
+    are a terminal event, and no more items will be emitted after a failure. You may
+    wonder, why do we need to handle failure? Because streams are asynchronous, and
+    if something breaks the source of items, you should be aware of it, and not wait
+    for additional items, as they won’t come. As for the other asynchronous development
+    models, you cannot use a `try/catch` block, so you need to observe failures and
+    react to them. For example, you can log an error or use a fallback item.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the completion event is emitted only when observing a bounded stream,
+    as unbounded streams never terminate. The event indicates the end of the stream;
+    the source (upstream) is not going to send any more items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every time one of these events transit in the observed stream, you, as the observer,
+    get notified. You attach functions handling each of them, as shown in [Example 5-21](#reactive-programming::subscription).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-21\. Subscribe to a stream to receive the events (*chapter-5/reactive-programming-examples/src/main/java/org/acme/reactive/StreamsExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To observe a stream, you *subscribe* to it. It’s a key concept in reactive
+    programming, as streams are lazy by default. Subscribing indicates your interest
+    in the events. Without a subscription:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You won’t receive the items
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You won’t tell the stream that it needs to operate
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The second point is important. It means that, in general, if no one subscribes
+    to a stream, the stream won’t do anything. That may look odd but allows you to
+    save resources and to start the computation only when everything is ready and
+    you actually need the events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Operators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Although reactive programming is about streams, it would be useless without
+    a toolbox to manipulate these streams. Reactive programming libraries offer countless
+    operators that let you create, combine, filter, and transform the object emitted
+    by streams. As depicted in [Figure 5-6](#image:rp-stream-transform), a stream
+    can be used as input to another one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Example of transform operator](assets/rsij_0506.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-6\. Example of transform operator
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: It’s important to understand that operators return new streams. The operator
+    observes the previous stream (named `upstream`) and creates a new stream by combining
+    their logic and the received events. For example, the `transform` operator from
+    [Figure 5-6](#image:rp-stream-transform) applies a function for each received
+    item^([3](ch05.html#idm45358828566736)) and emits the result to its *downstream*
+    subscriber ([Example 5-22](#reactive-programming::transform)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-22\. Transform items (*chapter-5/reactive-programming-examples/src/main/java/org/acme/reactive/StreamsExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: As depicted in [Figure 5-7](#image-rp-stream-recover) and [Example 5-23](#reactive-programming::recover),
+    operators can also handle failures; for example, to recover or retry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Recovering from failures](assets/rsij_0507.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-7\. Recovering from failures
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Example 5-23\. Recover from failures (*chapter-5/reactive-programming-examples/src/main/java/org/acme/reactive/StreamsExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: You may wonder why the `recover` operator emits a completion event after the
+    recovery, as shown in [Figure 5-7](#image-rp-stream-recover). When the operator
+    receives the failure event, it knows that the source is not going to emit any
+    more items, as failures are terminal. So, after emitting the *fallback* item,
+    the operator emits the completion event. For the downstream subscriber, it’s like
+    the failure did not happen and the stream completed successfully.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Operators are not limited to synchronous or single-in, single-out types of transformations.
+    Operators can transform a single item into a stream, or on the flip side, discard
+    items, as shown in [Figure 5-8](#image-rp-stream-operators).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Example of operators emitting multiple items or discarding some items](assets/rsij_0508.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-8\. Example of operators emitting multiple items or discarding some
+    items
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Finally, operators can observe multiple upstreams, to merge them, for example,
+    as shown in [Figure 5-9](#image-rp-stream-merge) and demonstrated in [Example 5-24](#reactive-programming::merge).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Merging multiple streams](assets/rsij_0509.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-9\. Merging multiple streams
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Example 5-24\. Merge multiple streams (*chapter-5/reactive-programming-examples/src/main/java/org/acme/reactive/StreamsExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In the preceding example, note when the observer received the completion event.
+    The merging operator waits for all the merged streams to complete before sending
+    the completion event, as at that point, no more items will be emitted. That illustrates
+    the coordination role of operators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive Programming Libraries
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Java has many reactive programming libraries. In this book, we are using SmallRye
+    Mutiny, the reactive programming library integrated in Quarkus. We will have a
+    deeper look at Mutiny in [Chapter 7](ch07.html#mutiny). Project Reactor and RxJava,
+    two popular alternatives, propose similar concepts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive programming is not limited to Java. [RX-JS](https://oreil.ly/pF21o)
+    is a reactive programming library in JavaScript, often used in combination with
+    Angular. [RxPY](https://oreil.ly/tlGl1) and [RxGo](https://oreil.ly/Mg4Rj) offer
+    the same type of constructs for Python and Go applications, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive Streams and the Need for Flow Control
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Using data streams as primary constructs does not come without issues. One
+    of the main problems is the need for flow control. Let’s imagine a fast producer
+    and a slow consumer. The producer sends events too quickly for the consumer, which
+    can’t keep up. Imagine that this producer emits an item every 10 milliseconds,
+    while a downstream consumer can consume only one per second. Run the code in [Example 5-25](#reactive-programming::streams-back-pressure-failure),
+    and you’ll see how it ends: badly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-25\. Example of backpressure failure (*chapter-5/reactive-programming-examples/src/main/java/org/acme/streams/BackPressureExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you run that code, you will see that the subscriber gets `MissingBackPressureFailure`,
+    indicating that the downstream could not keep up ([Example 5-26](#reactive-programming::stream-back-pressure-failure-output)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-26\. Subscriber getting a `BackPressureFailure`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In [Example 5-25](#reactive-programming::streams-back-pressure-failure), you
+    may wonder about `emitOn`. This operator controls when a thread is used to emit
+    the events.^([4](ch05.html#idm45358828159456)) Backpressure is required when multiple
+    threads are involved because in a single thread, blocking the thread would block
+    the source.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, what can we do to handle this case?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Buffering Items
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The first natural solution uses buffers. The consumer can buffer the events,
+    so it does not fail ([Figure 5-10](#image:rp-buffer)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Buffering to avoid overwhelming downstream consumers](assets/rsij_0510.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-10\. Buffering to avoid overwhelming downstream consumers
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Buffers allow handling small bumps, but they’re not a long-term solution. If
+    you update your code to use a buffer, as in [Example 5-27](#reactive-programming::streams-back-pressure-buffer),
+    the consumer can handle more events but eventually fails.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-27\. Handle overflow with buffers (*chapter-5/reactive-programming-examples/src/main/java/org/acme/streams/BufferingExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here’s the output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can imagine increasing the buffer’s size, but it’s hard to anticipate the
+    optimal value. These buffers are local to the application, so, using large buffers
+    also increases your memory consumption and reduces your resource utilization efficiency.
+    Not to mention that unbounded buffers are a terrible idea, as you may run out
+    of memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dropping Items
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Another solution consists of dropping items. We can drop the newest received
+    items or oldest ones; see [Example 5-28](#reactive-programming::streams-back-pressure-drop).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 5-28\. Handle overflow by dropping items (*chapter-5/reactive-programming-examples/src/main/java/org/acme/streams/DropExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here’s the output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Dropping items provides a sustainable solution to our problem, but we are losing
+    items! As we can see in the preceding output, we may drop the majority of items.
+    In many cases, this is not acceptable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We need another solution, one that adjusts the overall pace to satisfy the pipeline’s
+    slowest element. We need a backpressure protocol.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What Is Backpressure?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In mechanics, backpressure is a way to control the flow of fluid through pipes,
+    leading to a pressure drop. That control can use reducers or bends. While this
+    is great if you are a plumber, it’s not clear how it can help us here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can see our streams as a flow of fluid, and the set of stages (operator or
+    subscriber) forms a pipe. We want to make the fluid flow as frictionless as possible,
+    without swirls and waves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An interesting characteristic of fluid mechanics is the way a downstream reduction
+    of the throughput affects the upstream. Essentially, that’s what we need: a way
+    for the downstream operators and subscribers to reduce the throughput, not only
+    locally but also upstream.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Don’t be mistaken; backpressure is not something new in the IT world and is
+    not limited to Reactive. One of the most brilliant uses of backpressure is in
+    TCP.^([5](ch05.html#idm45358827846624)) A reader receiving data can block the
+    writer on the other side of the wire if it does not read the sent data. That way,
+    the reader is never overwhelmed. But the consequences need to be understood: blocking
+    the writer may not be without side effects.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing Reactive Streams
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let’s now focus on another backpressure protocol: Reactive Streams. This asynchronous
+    and backpressure protocol is suited to our fast producer/slow consumer problem.
+    With Reactive Streams, the consumer, named `Subscriber`, requests items from the
+    producer, named `Publisher`. As depicted in [Figure 5-11](#image:rp-control-flow),
+    `Publisher` cannot send more than the requested number of items.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using flow control to avoid overwhelming consumers](assets/rsij_0511.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-11\. Using flow control to avoid overwhelming consumers
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: When the items are received and processed, the consumer can request more items,
+    and so on. Thus, the consumer controls the flow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that Reactive Streams introduces a strong coupling between a consumer and
+    a producer. The producer must listen to the requests from the consumer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To implement that protocol, Reactive Streams defines a set of entities. First,
+    `Subscriber` is a consumer. It subscribes to a stream, called `Publisher`, which
+    produces items ([Figure 5-12](#image:rp-back-pressure-sequence)). Then `Publisher`
+    sends, asynchronously, a `Subscription` object to `Subscriber`. This `Subscription`
+    object is a contract. With `Subscription`, `Subscriber` can request items and
+    then cancel the subscription when it does not want any more items. Each subscriber
+    subscribing to a publisher gets a different `Subscription`, and so emits independent
+    requests. The publisher implementation is in charge of the orchestration of the
+    various requests and the emission of the items to the multiple subscribers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Example of interactions between a `Subscriber` and a `Publisher`](assets/rsij_0512.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-12\. Example of interactions between `Subscriber` and `Publisher`
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '`Publisher` cannot send more items than requested to `Subscriber`, and `Subscriber`
+    can request more items at any time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is essential to understand that the requests and emissions are not necessarily
+    happening synchronously. `Subscriber` can request three items, and `Publisher`
+    will send them one by one when they are available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive Streams introduces another entity named `Processor`. `Processor` is
+    a subscriber and a publisher simultaneously. In other words, it’s a link in our
+    pipeline, as shown in [Figure 5-13](#image:rp-back-processor).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Example of interactions between a `Subscriber`, a `Processor` and a `Publisher`](assets/rsij_0513.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5-13\. Example of interactions between `Subscriber`, `Processor`, and
+    `Publisher`
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '`Subscriber` calls `subscribe` on `Processor`. Before receiving a `Subscription`,
+    `Processor` subscribes to its own upstream source (`Publisher` in [Figure 5-13](#image:rp-back-processor)).
+    When that upstream provides `Subscription` to our `Processor`, it can give `Subscription`
+    to `Subscriber`. All these interactions are asynchronous. When this handshake
+    completes, `Subscriber` can start requesting items. `Processor` is responsible
+    for mediating the `Subscriber` requests with its upstream. For example, as illustrated
+    in [Figure 5-13](#image:rp-back-processor), if `Subscriber` requires two items,
+    `Processor` also requests two items to its own upstream. Of course, depending
+    on the `Processor` code, it may not be that simple. What’s fundamental is that
+    each `Publisher` and `Processor` enforces the flowing requests to never overload
+    downstream subscribers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Be Warned: It’s a Trap!'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If you look at the Reactive Streams API,^([6](ch05.html#idm45358827782352))
+    you will find it *simple*: a few classes, a couple of methods. It’s a trap! Behind
+    this apparent simplicity, implementing Reactive Streams entities yourself is a
+    nightmare. The problem is not the interfaces; it’s the protocol. Reactive Streams
+    comes with a broad set of rules, and a strict Technology Compatibility Kit (TCK)
+    to verify that your implementation enforces the protocol.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fortunately, you don’t need to implement publishers, subscribers, or processors
+    yourself. Recent reactive programming libraries already implement the protocol
+    for you. Project Reactor, RxJava (versions 2 and 3), and Mutiny implement the
+    specification. For example, Mutiny’s `Multi` is a publisher following the Reactive
+    Streams protocol. All the subscription handshakes and request negotiations are
+    done for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Also, because all these libraries are using the same core concepts and API,
+    it allows smooth integration: you can consume a Reactor `Flux` by using a Mutiny
+    `Subscriber` and vice versa! Reactive Streams is the integration layer between
+    the various reactive programming libraries, in addition to being a backpressure
+    protocol.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Backpressure in Distributed Systems
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Reactive Streams works perfectly within a local node, but what about distributed
+    systems? In such a system, it’s important that event producers do not overflow
+    the consumers. We need flow control. Fortunately, we have many alternatives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, RSocket is proposing a distributed variant of Reactive Streams. However,
+    because of distributed systems’ challenges and potential communication disruptions,
+    the protocol requires a few adaptations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: AMQP 1.0 uses a [flow control protocol based on credit](https://oreil.ly/ZKURr).
+    As a producer, you get a certain amount of credit. When you run out of credit,
+    you can’t send messages anymore. The broker refills your credit according to the
+    consumer pace.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Apache Kafka consumers can also implement backpressure by using pause/resume
+    cycles and explicit polling. In this case, Kafka does not prevent the production
+    of messages. It stores the messages in the broker, and uses it as a large buffer.
+    The consumer polls the messages according to its capacity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The mechanism presented for AMQP 1.0 and Apache Kafka are not the same as Reactive
+    Streams. Frameworks, such as Quarkus, create bridges between these mechanisms
+    with the Reactive Streams protocol.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, you have learned the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asynchronous code is hard but is required to avoid discarding the benefits of
+    nonblocking I/O.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reactive programming is one possibility for writing asynchronous code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reactive programming uses data streams as primary constructs. You write a processing
+    pipeline reacting to events flowing from upstream.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reactive Streams is an essential aspect of Reactive. It avoids overwhelming
+    fragile parts of your system.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Small cracks that ripple in your system can lead to dreadful consequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, you have enough knowledge about Reactive to build your own reactive systems
+    and appreciate the benefits. Wait! You may need some more concrete details, no?
+    That’s what we are going to cover in [Part III](part03.html#quarkus-part), where
+    we explore how easy it is to build reactive systems with Quarkus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch05.html#idm45358829664160-marker)) The Vert.x 3 main development model
+    uses callbacks. Many operations pass a callback receiving `AsyncResult`. In Vert.x
+    4, an alternative model using futures has been introduced.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch05.html#idm45358829062432-marker)) Check the [Project Loom site](https://oreil.ly/arP4E)
+    for updates on the general availability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch05.html#idm45358828566736-marker)) In functional programming, `transform`
+    is often called `map`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([4](ch05.html#idm45358828159456-marker)) More details about `emitOn` can be
+    found in the [Mutiny online guides](https://oreil.ly/qrVdD).
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([5](ch05.html#idm45358827846624-marker)) We recommend reading [“Using Backpressure
+    to Improve TCP Performance with Many Flows”](https://oreil.ly/JEbNh) by Carlos
+    M. Pazos et al., which explains how TCP backpressure can be used to improve performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([6](ch05.html#idm45358827782352-marker)) For more information, see the [Reactive
+    Streams Javadoc](https://oreil.ly/mcYRu).
+  prefs: []
+  type: TYPE_NORMAL

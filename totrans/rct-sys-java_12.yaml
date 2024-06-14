@@ -1,0 +1,728 @@
+- en: Chapter 9\. Accessing Data Reactively
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 5](ch05.html#reactive-programming), we explained the scalability
+    and robustness problems in the use of blocking I/O for applications. This chapter
+    focuses on interacting with databases and how Quarkus ensures that the data layers
+    of an application stack can be asynchronous and utilize nonblocking I/O too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Problem with Data Access
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Accessing relational data previously involved blocking I/O while communicating
+    with a database. As already discussed in [Chapter 5](ch05.html#reactive-programming),
+    we want to avoid blocking I/O in our applications, at any level of the stack.
+    Interacting with a database often takes a non-trivial amount of time to complete,
+    depending on the number of records involved, creating an even larger impact on
+    our application with blocking I/O to access a database! What do we mean by this?
+    Let’s say we’ve developed a small database application; we’ve all developed many
+    of those over the years. We often refer to them as *CRUD* applications because
+    they provide create, read, update, and delete operations for records in a database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every exposed endpoint in our API needs to interact with the database. We will
+    ignore caches and how they reduce the number of requests made to a database in
+    certain situations. With each endpoint method calling the database, every execution
+    performs blocking I/O, reducing concurrency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why are we forced to use blocking I/O when interacting with databases? APIs
+    for interacting with databases, such as Open Database Connectivity (ODBC) and
+    Java Database Connectivity (JDBC), were designed with a synchronous and blocking
+    approach. The Java Persistence API (JPA), which came many years later, though
+    coalescing the object-relational mapping (ORM) landscape around a common API,
+    was still designed on the existing synchronous and blocking behavior of JDBC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Without a reactive programming approach to data access, the entirety of an application
+    stack can never be truly reactive. An application could be reactive only up to
+    a point. Though still beneficial, concurrency and throughput are still prevented
+    from reaching their full potential concurrency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That’s a lot of words explaining how database access with JDBC and JPA is not
+    reactive, and therefore blocking, but what does that access look like? As you
+    saw in [“The Imperative Model”](ch06.html#quarkus-reactive::imperative-model)
+    with application logic, it’s a similar problem for the database interaction, as
+    illustrated in [Figure 9-1](#image:database-blocking-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Blocking database client](assets/rsij_0901.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-1\. Blocking database client
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: When we’re communicating with a database over JDBC, or the higher abstraction
+    JPA, the JDBC driver uses a request-and-response interaction. However, as shown
+    in [Figure 9-1](#image:database-blocking-client), the JDBC driver blocks the thread
+    until any response is received. This blocking approach occupies an entire thread
+    for each database interaction. Depending on how you’ve configured database connection
+    pooling, it’s possible to run out of threads for an application before reaching
+    the maximum number of database connections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When dealing with a large number of database records to search or retrieve,
+    and network latency between our application and the database, a problem with thread
+    starvation or resource utilization will likely occur.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nonblocking Interactions with Relational Databases
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: With recent work by various projects, such as [Vert.x client APIs](https://oreil.ly/GSE6G)
+    for PostgreSQL, MySQL, IBM Db2, Oracle, and Microsoft SQL Server, Java applications
+    are now able to interact with databases in an asynchronous manner with nonblocking
+    I/O.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How are things different with these new clients compared to JDBC? When using
+    nonblocking database clients, we’re able to avoid a blocked thread, as shown in
+    [Figure 9-2](#image:database-non-blocking-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Nonblocking database client](assets/rsij_0902.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-2\. Nonblocking database client
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'In addition, it’s now possible for the database client, instead of a worker,
+    to execute on the I/O thread. Now we have a compounded benefit of using these
+    new nonblocking clients: reducing the number of worker threads an application
+    might need, as database communication with these new clients can occur on the
+    same thread as any reactive application code!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Figure 9-2](#image:database-non-blocking-client), we see a single database
+    connection being used for the database client to communicate. However, when a
+    client API and database supports it, we can utilize pipelining to share a single
+    database connection for several requests. [Figure 9-3](#image:database-non-blocking-client-pipelining)
+    shows how pipelining in the database client works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Nonblocking database client with pipelining](assets/rsij_0903.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-3\. Nonblocking database client with pipelining
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Each color in [Figure 9-3](#image:database-non-blocking-client-pipelining) is
+    a separate database request. Though we have different reactive handlers calling
+    the database, the database client is able to utilize a single connection to the
+    database instead of, in this case, three. We want to take advantage of nonblocking
+    advancements such as this whenever we can, to squeeze more and more out of the
+    same amount of resources for an application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using a Reactive ORM: Hibernate Reactive'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '*Hibernate ORM* enables developers to more easily write applications whose
+    data outlives the application process. As an ORM framework, Hibernate is concerned
+    with data persistence as it applies to relational databases. Hibernate provides
+    both imperative and reactive APIs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These APIs support two facets: nonblocking database clients, covered in the
+    previous section, and reactive programming as a means of interacting with relational
+    databases. Most of the existing Hibernate internals are still utilized, but Hibernate
+    Reactive introduces a new layer for utilizing reactive and nonblocking APIs to
+    communicate with database clients. The reactive APIs work in concert with JPA
+    annotations, Hibernate annotations, and Bean Validation as well.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s time to dive in and use Hibernate with reactive APIs! With Quarkus, Hibernate
+    Reactive is even better, because we have the option to use Hibernate Reactive
+    with *Panache*. This thin layer simplifies the use of the Hibernate ORM. It provides
+    two models. Your entities can be managed as active records, as the entity class
+    provides methods to retrieve, update, and query instances of that entity class.
+    You can also use a repository model, in which a repository class provides these
+    functions, keeping the entity structure *pure*. See the *chapter-9/hibernate-reactive*
+    directory for all Hibernate Reactive project code. First we need the dependency
+    for Hibernate Reactive ([Example 9-1](#data::dep)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-1\. Hibernate Reactive dependency (*chapter-9/hibernate-reactive/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice we used the Panache version of Hibernate Reactive. If we didn’t want
+    to use Panache, we could have used the `quarkus-hibernate-reactive` dependency
+    instead. As mentioned previously, we need a reactive database client too. For
+    this example, we will use the PostgreSQL client ([Example 9-2](#data::dep-pg)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-2\. PostgreSQL database client dependency (*chapter-9/hibernate-reactive/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: With [Dev Services](https://oreil.ly/eKY8W), a Quarkus feature starting the
+    required pieces of infrastructure automatically, we don’t need the Docker Maven
+    plug-in to start a database for running tests. Quarkus will automatically start
+    the database for us! To take advantage of Dev Services, we need a database driver,
+    which we just added in [Example 9-2](#data::dep-pg), and to set `db.kind` for
+    informing Quarkus of the database type being used. Let’s set that up now in `application.properties`
+    ([Example 9-3](#data::config-pg)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-3\. PostgreSQL database client config (*chapter-9/hibernate-reactive/src/main/resources/application.properties*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: With Dev Services, all the properties except `db.kind` are specified with the
+    `prod` configuration profile. We could also remove the properties from the `prod`
+    profile completely, preferring to set them with environment variables, or a ConfigMap
+    in Kubernetes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have a `Customer` entity that extends `PanacheEntity`. We won’t cover `Customer`
+    in detail here, as it utilizes the usual annotations from JPA, Bean Validation,
+    and Hibernate Validator. The full source can be viewed at *chapter-9/hibernate-reactive/src/main/java/org/acme/data/Customer*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s take a look at the implementation of a CRUD application using Hibernate
+    Reactive and RESTEasy Reactive to expose a REST API. First up is a method to retrieve
+    all customers from the database ([Example 9-4](#data::retrieve-cust)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-4\. Retrieve all customers (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: We use `streamAll` on `Customer`, from Panache, to retrieve all instances into
+    `Multi`. Each customer can have orders associated with them, and when we retrieve
+    a single customer, we also want to retrieve their orders. Though we have a single
+    application, we will consider the orders to be coming from an external service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First we define `Uni` to retrieve `Customer` and throw an exception if one was
+    not found, as shown in [Example 9-5](#data::find-customer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-5\. Find a customer (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next the orders of a customer are retrieved as a `List` into a separate `Uni`
+    (see [Example 9-6](#data::retrieve-orders)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-6\. Retrieve customer orders (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Lastly, the two are combined by a mapper, taking the results of each `Uni` to
+    set the orders on the customer. The resulting `Uni` is transformed into a JAX-RS
+    `Response` to complete the endpoint execution ([Example 9-7](#data::combine-customer-orders)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-7\. Combine `customer` and `orders` (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: So far, everything we’ve done hasn’t required a transaction, as we’ve only been
+    reading database records. [Example 9-8](#data::create-customer) shows how we can
+    use transactions to store a new customer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-8\. Create a customer (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: We use `Panache.withTransaction` to inform Panache that we want a transaction
+    to wrap the `Uni` `Supplier` we pass into it. In this instance, we use `customer.persist`
+    as the code to be wrapped with a transaction. Though `Uni<Void>` is returned on
+    success, we can use `replaceWith` to create the necessary `Uni<Response>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next we use `withTransaction` to update the customer name. First we retrieve
+    a customer by ID. Then, when we receive an item that is not `null`, we `invoke`
+    a runnable to update the name on the retrieved entity ([Example 9-9](#data::update-customer)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-9\. Update a customer (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: We then utilize `onItem` to generate an outcome of a successful response or
+    return a `not found` response if the item is `null`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last method we need for a CRUD application with Hibernate Reactive provides
+    the ability to delete a customer. Again we use `withTransaction`, passing it the
+    Panache method to delete a customer by its ID. Deleting an entity returns `Uni<Boolean>`.
+    We need to use `map` to convert it to a JAX-RS response based on its success ([Example 9-10](#data::delete-customer)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-10\. Delete a customer (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: You’ve now seen how to create, retrieve, update, and delete entities with Panache
+    and Hibernate Reactive! To see how the endpoints can be tested, take a look at
+    */chapter-9/hibernate-reactive/src/test/java/org/acme/data/CustomerEndpointTest*
+    in the book’s code examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What About NoSQL?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We’ve shown how we can have reactive APIs with a traditional ORM such as Hibernate,
+    but what about NoSQL? Are we able to take advantage of reactive APIs when an application
+    needs a NoSQL database instead of a relational one? Yes, we can!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quarkus has several extensions for communicating with NoSQL databases, including
+    MongoDB, Redis, and Apache Cassandra. Do all these extensions support reactive
+    APIs? Currently, the MongoDB, Redis, and Cassandra clients have support for reactive
+    APIs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we will develop a CRUD application with the same functionality
+    as the Hibernate Reactive example in the previous section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interacting with Redis
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let’s develop a customer CRUD application with Redis! For this example, we will
+    extract interactions into a separate service we can inject into a REST resource.
+    Check out */chapter-9/redis/src/main/java/org/acme/data/CustomerResource* in the
+    code examples to see how the service is used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First we need the Redis client dependency for the project; see [Example 9-11](#data::redis-client-dep).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-11\. Redis client dependency (*chapter-9/redis/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we did with the Hibernate Reactive example, we will utilize `docker-maven-plugin`
+    to run a Redis container for test execution. Check out *chapter-9/redis/pom.xml*
+    in the book source for the details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next we configure the Redis client as to where the host of the server is located.
+    Include the config in [Example 9-12](#data::redis-client-config) in `application.properties`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-12\. Redis client config (*chapter-9/redis/src/main/resources/application.properties*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: To be able to use the Redis client, we need to `@Inject` it, as shown in [Example 9-13](#data::inject-redis-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-13\. Inject Redis client (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: So we don’t create an unintentional key clash in Redis, we will prefix a customer
+    ID, as shown in [Example 9-14](#data::key-prefix).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-14\. Key prefix (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let’s start out with retrieving a list of all the customers from Redis ([Example 9-15](#data::retrieve-all-customers)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-15\. Retrieve all customers (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`ReactiveRedisClient` provides an API aligned with the commands available with
+    Redis, making it easier to use in Java if you are already familiar with using
+    Redis commands. In [Example 9-15](#data::retrieve-all-customers), we use `keys`
+    with a wildcard to retrieve all keys, which returns `Uni<Response>`. This particular
+    `Response` class represents the response from Redis.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On receiving the response (the item) from Redis, we use `transformToMulti` to
+    separate the single response into individual keys. In the lambda, we create a
+    `Multi` of string keys from the response directly, as it’s an `Iterable`, and
+    map the value to the string of the key. The result of the execution is `Multi<String>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’re not done just yet; we need to convert the stream of keys into a stream
+    of customers. Reading the code provides a good idea of what happens. Starting
+    with `Multi<String>`, on each item produced we call `transformToUniAndMerge`.
+    We use their key, or item, with the Redis client to retrieve all the fields and
+    values matching the key, or hash. The response from `hgetall` is mapped to a `Customer`
+    instance using `constructCustomer`. Finally, the customer `Uni`s instances are
+    merged into a `Multi` for returning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To retrieve a single customer, we call `hgetall` and, depending on the size
+    of the response, either return `null` or use `constructCustomer` to create a customer
+    ([Example 9-16](#data::retrieve-customer)). We need to check the size of the response
+    to find out whether any fields and values were returned. If the size is zero,
+    the response was empty because the key could not be found.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-16\. Retrieve customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: To store a customer record into Redis, we use `hmset` to store multiple fields
+    and values for a single key. From a Redis perspective, it doesn’t matter whether
+    we’re storing a new customer or updating an existing one; we use `hmset` for both.
+    We should split the behavior into a separate method to reuse it in both places,
+    as shown in [Example 9-17](#data::store-customer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-17\. Store customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using `hmset`, we need to ensure that an odd number of arguments are passed
+    to it. The first argument is the hash for the record, followed by matching pairs
+    of field and value for as many fields to be set. We get a simple reply of `OK`
+    if it succeeds, using `transform` to return the customer on success or throw an
+    exception.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With `storeCustomer` in place, let’s look at `createCustomer`; see [Example 9-18](#data::create-customer-2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-18\. Create customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have a nice clean method for `createCustomer` for responding with `Uni<Customer>`!
+    There wasn’t much to that one, so let’s look at `updateCustomer` in [Example 9-19](#data::update-customer-2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-19\. Update customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: First we reuse `getCustomer` from the service to retrieve the existing customer
+    from Redis. When an item is returned from `getCustomer`, we transform it into
+    another `Uni` with a mapper. The mapper first checks whether the item we received,
+    the customer, is null, returning a `Uni` failure containing an exception if it
+    is. Then we set the new name onto the customer before calling `storeCustomer`,
+    creating the `Uni` the mapper returns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lastly, we need a way to delete a customer. For this, we use `hdel` on the Redis
+    client, which returns the number of removed fields or `0` if the key could not
+    be found ([Example 9-20](#data::delete-customer-2)). We map `Uni<Response>` to
+    `Uni<Boolean>`, checking whether one field was removed (in this case, the customer
+    name) to return `true`, or `null` if there were no responses. On the produced
+    item, we fail with `NotFoundException` if the item is `null`, or succeed and transform
+    the item into a null item.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-20\. Delete a customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: This section gave a brief look into utilizing some methods of the reactive client
+    for Redis. There are many more methods we didn’t cover, but this section provided
+    guidance on how they can be generally used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data-Related Events and Change Data Capture
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '*Change data capture*, or *CDC*, is an integration pattern for extracting events
+    from sources that don’t typically operate with events and messaging, such as databases.
+    CDC has many benefits, including being able to produce change events from a legacy
+    application without modifying the application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another benefit is that CDC doesn’t care about the languages an application
+    is developed in, as it interacts with the database. This approach can greatly
+    simplify the effort to produce a consistent-looking change event from a database
+    that has polyglot applications writing to it. Having to update possibly dozens
+    of applications written in different languages to produce a consistent-looking
+    change event from them all can be challenging and time-consuming.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing to a database involves transactions, or usually should, and poses an
+    additional complexity when also writing an event to a messaging system. In [Figure 9-4](#image:database-message-transaction),
+    we need to make sure that if either the database update fails or producing a message
+    fails, everything rolls back and undoes any changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Writing to a database and message broker](assets/rsij_0904.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-4\. Writing to a database and message broker
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Such a situation can be particularly complex when transaction rollback can occur
+    outside our application code because of a failure to return an HTTP response,
+    for instance. With CDC, this concern goes away because we worry only about writing
+    to the database itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Any change events can flow from the updated database with CDC, ensuring that
+    we’re never sending an event we shouldn’t because the transaction has been committed
+    before CDC sees the change, as shown in [Figure 9-5](#image:database-message-cdc).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Writing to a database, with CDC triggering message creation](assets/rsij_0905.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-5\. Writing to a database, with CDC triggering message creation
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: One impact for developers to be aware of is that CDC does not provide strong
+    consistency. *Strong consistency* means that any data viewed immediately after
+    an update is consistent for all observers of the data, regardless of whether the
+    viewers are in parallel or distributed processes. For relational databases, this
+    is guaranteed as it’s part of the design of the database. With CDC, there is a
+    period of time between the update happening in the database, and when the message
+    of the update is received and processed by the furthest downstream system consuming
+    the messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The lack of strong consistency, or *eventual consistency*, is not a deterrent
+    for the use of CDC. We want developers to be aware of the consistency guarantees
+    of the CDC pattern, to bear it in mind during application design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Debezium to Capture Change
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '[Debezium](https://debezium.io/) is a distributed platform for CDC. Debezium
+    is durable and fast, enabling applications to respond promptly and never miss
+    an event!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 9-6](#image:debezium-cdc) shows where Debezium fits in an application
+    architecture using CDC. Debezium provides Kafka Connect source connectors for
+    several databases, including MySQL, MongoDB, PostgreSQL, Oracle, Db2, and SQL
+    Server.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![CDC with Debezium](assets/rsij_0906.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-6\. CDC with Debezium
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We will briefly show how we can enhance the Hibernate Reactive example from
+    the previous section with Debezium. Full details can be found in the [source code](https://oreil.ly/XTQQp)
+    for the book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though this example includes a copy of the code from Hibernate Reactive, it
+    would also work by using the example directly, as the application code is not
+    impacted by the introduction of Debezium. The main piece to understand is the
+    *docker-compose.yml* file. This file starts the Kafka containers, ZooKeeper as
+    a dependency of Kafka, a PostgreSQL database, and Kafka Connect. We will use the
+    container images from the Debezium project to simplify the deployment process.
+    For example, the PostgreSQL container image already includes the logical decoding
+    plug-ins necessary to communicate the change events to Kafka Connect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Start all the containers with `docker compose up`, and then build and start
+    the application with `java -jar target/quarkus-app/quarkus-run.jar`. Once all
+    containers have started, we install the Debezium source connector for PostgreSQL
+    into Kafka Connect ([Example 9-21](#data::install-source-connector)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-21\. Install the Debezium source connector
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, *register.json* is the data we’re passing to the Kafka Connect endpoint.
+    The file provides the details of the database to connect to and the Debezium connector
+    to use, as shown in [Example 9-22](#data::deb-source-connector-def).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-22\. Debezium source connector definition
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The installation of the source connector will trigger the creation of Kafka
+    topics for the tables discovered by the connector. We can verify what topics were
+    created by running `docker exec -ti kafka bin/kafka-topics.sh --list --zookeeper
+    zookeeper:2181`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next we run an *exec* shell in the Kafka container to consume messages from
+    the topic for the customer database, `quarkus-db-server.public.customer` ([Example 9-23](#data::kafka-customer-topic)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-23\. Consume messages from Kafka
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_accessing_data_reactively_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remove this setting to skip the initial four messages created when the application
+    started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When [Example 9-23](#data::kafka-customer-topic) is done, create a new customer
+    in a separate terminal window, as shown in [Example 9-24](#data::create-new-customer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-24\. Create a customer
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the terminal running [Example 9-23](#data::kafka-customer-topic), we see
+    the JSON message created by the connector ([Example 9-25](#data::json-message)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 9-25\. CDC message from creating a customer
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_accessing_data_reactively_CO2-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ID of the record created with the `POST`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_accessing_data_reactively_CO2-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Name of the created customer
+  prefs: []
+  type: TYPE_NORMAL
+- en: Experiment with other HTTP commands, such as updating a customer name, to compare
+    the JSON received in the Kafka topic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Data with reactive applications has been limited until recently, as there weren’t
+    reactive database clients available. With the introduction of Vert.x client APIs
+    for databases such as PostgreSQL, we can now create a reactive application that
+    is reactive for the entirety of the stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We don’t always want to utilize database client APIs directly. We like simplified
+    APIs such as that provided by Hibernate ORM. Hibernate Reactive gives us such
+    an ability, building on the maturity of Hibernate ORM to add reactive-specific
+    APIs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Relational databases aren’t the only option either. We also have reactive clients
+    for Redis and MongoDB. With event-driven architecture, we want to have the ability
+    to create events from database interactions. This is where CDC shines, with its
+    ability to extract changes from database tables and create change events to feed
+    into Kafka.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve now reached the end of [Part III](part03.html#quarkus-part)! We dove deeper
+    into Quarkus and saw that it unifies the imperative and reactive programming models,
+    offering greater flexibility for developers in choosing their application stack.
+    We then journeyed through `Uni` and `Multi` to learn about the preferred reactive
+    programming library in Quarkus, Mutiny. Continuing with newer innovations in Quarkus,
+    we explored RESTEasy Reactive to develop JAX-RS resources in a completely nonblocking
+    manner while still providing the ability to block when needed, before finishing
+    up with reactive database clients with Hibernate Reactive and Redis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Part IV](part04.html#patterns-part), we focus on typical patterns we need
+    when developing reactive applications, such as messaging with Kafka and AMQP.
+    Then we delve into aspects of the system’s underlying messaging to better appreciate
+    the trade-offs and their abilities. We take a look at communicating with external
+    services with HTTP clients, while still utilizing nonblocking I/O. Lastly, though
+    not necessarily an application pattern per se, we will look at observability,
+    as it is critical to understand and implement it for distributed systems.
+  prefs: []
+  type: TYPE_NORMAL

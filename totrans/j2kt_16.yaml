@@ -1,0 +1,973 @@
+- en: Chapter 16\. Interfaces to Functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In Java, we use interfaces to specify a contract between code that defines some
+    functionality and code that needs it. Those interfaces couple the two parties
+    together, which can make our software harder to maintain. How do function types
+    help solve this problem?
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Imagine, if you can, that you need to send email from some code that you are
+    writing. Just that for now—not receive mail, or list sent messages—just fire and
+    forget.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code that describes the email is simple enough:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Given an `Email`, client code would *like* to call the simplest possible function
+    to send it, which is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Of course when we come to implement this function, we discover that to actually
+    send email, we require all sorts of other information. Not information about the
+    email itself but, rather, configuration about how to send it. Things like the
+    sending server’s hostname and security credentials—all the things that your nontechnical
+    relative doesn’t know, but you need to set up their new computer. We’ll add three
+    extra parameters to `sendEmail` to stand in for all this configuration:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: As a client, things have just become a lot less convenient. Everywhere we want
+    to send email has to know this configuration; we’ll be passing it around from
+    the top to the bottom of the codebase. Solving that problem by hiding the details
+    in global variables works fine until we discover that every run of the unit test
+    suite now sends 50 emails! There must be a better way of hiding these petty details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Object-Oriented Encapsulation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Object-oriented languages have a ready-made solution to this problem—objects
+    can encapsulate the data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now when we want to send email, we need access to an `EmailSender` (rather
+    than the static function). Once we have an `EmailSender`, instead of calling a
+    function, we invoke a method, and we don’t need to tell the method all the petty
+    details because it already knows them; they are the fields of its class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In general, the place where we know the configuration and the place where we
+    want to send an email will be separated in our code, often by many layers. Usually
+    in OO, the `sender` will be captured as a property of a class and used by its
+    methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Often we will extract an interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: If our client code depends on the `ISendEmail` interface rather than the `EmailSender`
+    class, we can configure our tests to use a fake implementation of `ISendEmail`,
+    which doesn’t actually send emails but instead allows us to check what would be
+    sent if it did. Not only can we provide fakes that don’t send emails at all, but
+    also different genuine implementations like `SmtpEmailSender` and `X400EmailSender`,
+    each of which hides both its configuration and implementation from its clients.
+    We came for the information hiding but stayed for the implementation hiding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we say *hiding*, it sounds a bit pejorative, but the concealment is useful
+    to both client and implementor. The former doesn’t have the problem of having
+    to supply the configuration details at the point of use; the latter is able to
+    evolve separately from its users (provided it doesn’t change API, expressed in
+    the interface).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we leave the object-oriented realm, note that we don’t have to create
+    a named class to implement `ISendEmail`; we can do it anonymously:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Why might we want to do this? Well, when we don’t control all the clients of
+    our code (we are publishing a library external to our organization, for example),
+    this gives us flexibility to change our implementation, safe in the knowledge
+    that clients cannot depend on a specific implementation class by downcasting to
+    it and calling other methods. We call the object that we return here a *closure*,
+    because it closes over values that it requires from its enclosing context (the
+    function call), capturing them for later reference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Kotlin 1.4, we can declare our `ISendEmail` interface as a `fun interface`
+    (one with only one abstract method). This way, we can define the implementation
+    of the single operation with a lambda rather than with an object with a single
+    method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Again, the lambda here is a closure, capturing the values of the parameters
+    of its enclosing function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Functional Encapsulation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Having seen how an OO programmer solves the problem of encapsulating pesky details
+    so clients don’t have to supply them at the point of use, how would a functional
+    programmer approach the same problem?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Remember that we’re trying to get to a function with this signature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But we actually need all this information to send the message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In functional terms, this is an example of [*partial application*](https://oreil.ly/V1KOm):
+    fixing some of the arguments to a function to yield a function with fewer arguments.
+    Although some languages provide built-in support for this, in Kotlin the easiest
+    approach is to write a function to partially apply our configuration.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What we want is a function that takes the configuration and returns a function
+    that knows how to send an email:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_CO29-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The return type of our function is itself a function that takes an `Email` and
+    returns `Unit`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thus, `createEmailSender` is a constructor. Not a class constructor, but a function
+    taking the same role. Both `createEmailSender` and `::EmailSender` are functions
+    that return an object that knows how to send a message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To see how this works in functions, we can write this in longhand first by
+    defining an inner function that captures the arguments it requires from the parent:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then make the result a lambda expression:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we inline `result` and convert the whole function to a single expression,
+    we are left with this functional definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: So `createEmailSender` is a function that returns a lambda that calls `sendEmail`,
+    combining the lambda’s single `Email` argument with the configuration from its
+    own parameters. This is a closure in functional land, and it’s not a coincidence
+    that it is very similar to the OO versions with a `fun interface` or `object`
+    definition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To use this function, we can create it in one place and invoke it in another,
+    very much as we did with the object solution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_CO30-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: An implicit `invoke` call is hidden here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is the same shape as the OO case (if we replace the hidden `invoke` with
+    `send`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the unlikely event that you’re joining us from JavaScript or Clojure, the
+    functional form will be familiar, but if you came to Kotlin from Java, this solution
+    probably feels quite alien.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Function Types in Java
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Both the object and functional forms have allowed us to encapsulate things (in
+    this case configuration, but it could equally well have been collaborators) to
+    transport them from the place where they are known to the place where they are
+    used. Any data structure could have done that, but because the object and the
+    function both have an operation that can be run (`send` and `invoke`, respectively),
+    the client can remain oblivious to the details of the configuration and just pass
+    the information that is specific to each invocation (the `Email`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One way of unifying the functional and OO solutions is to view a function as
+    an object with a single `invoke` method. This is exactly what Java 8 did when
+    it introduced lambdas. To refer to a function type, Java uses interfaces with
+    a *Single Abstract Method* (SAM) that has the desired signature. Lambdas in Java
+    are a special syntax to implement a SAM interface. The Java runtime defines SAM
+    interfaces named by role: `Consumer`, `Supplier`, `Function`, `BiFunction`, `Predicate`,
+    and so on for us. It also provides primitive specializations, like `DoublePredicate`,
+    to avoid boxing issues.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Expressed in Java, our functional solution is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_CO31-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`accept` is the name of the single abstract method on the `Consumer` interface.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`createEmailSender` can be implemented with a lambda:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is equivalent to creating an anonymous implementation of the interface,
+    a technique that will be very familiar to those of us who programmed in Java before
+    Java 8:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: We say “equivalent to creating an anonymous implementation of the interface,”
+    but under the hood, the implementation is more complex to avoid unnecessarily
+    defining classes and instantiating objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that we can’t assign the `(Email) -> Unit` result of the Kotlin `createEmailSender`
+    to a variable of type `Consumer<Email>`. This is because the Kotlin runtime uses
+    its own function types, and the compiler compiles `(Email) -> Unit` into `Function1<Email,
+    Unit>`. There are a whole series of Kotlin `FunctionN` interfaces for the different
+    numbers of parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because the interfaces are not compatible, to mix Java and Kotlin at this functional
+    level, we will have to thunk sometimes. Given a Kotlin function type `(Email)
+    -> Unit`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can’t just assign `sender` to `Consumer<Email`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_CO32-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Type mismatch. Required: Consumer<Email> Found:(Email) -> Unit`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can, though, convert with a lambda:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There is a situation where we don’t have to convert, which is calling a Java
+    method that takes a SAM parameter, for example, this constructor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, the compiler *is* able to convert `(Email) -> Unit` to `Consumer<Email>`,
+    because Kotlin will convert parameters automatically, so that we can say:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Mix and Match
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: There are two sides to an abstraction, the client code and the implementation
+    code. So far, both client and implementor have either been object-oriented or
+    functional. In the OO case, fields carry configuration, and the client invokes
+    a method. In the functional scheme, a function closes over the configuration,
+    and the client invokes the function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Can we unify these approaches, passing an OO implementation to a function-expecting
+    client or vice versa? Or, in Kotlin terms, can we convert `ISendEmail` to `(Email)
+    -> Unit` and the inverse? Why yes we can!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remember that in Java and Kotlin, function types are just interfaces. Because
+    of this, `EmailSender` can implement the type `Consumer<Email>` or `(Email) ->
+    Unit`, respectively, by defining a method with the signature of the function type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So in Java, we can write:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_CO33-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Declare
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_introduction_CO33-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implement
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is the Kotlin equivalent:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_CO34-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Declare
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_introduction_CO34-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implement
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we do this, we can use our class-based sender in place of our functional
+    one. We’ll stick with Kotlin now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_CO35-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is an implicit `invoke` here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now our object-oriented implementation has gained an `invoke` method to fit
+    in with the functional approach. This calls into question the usefulness of our
+    `ISendEmail` interface. We can see that it is equivalent to the function type
+    `(Email) -> Unit`. All it does is give the name `send` to what happens when you
+    invoke it. Maybe we could just use the type `(Email) -> Unit` everywhere in place
+    of `ISendEmail`?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you think that isn’t expressive enough, then maybe you aren’t a functional
+    programmer. Luckily, there is a middle ground: we can use a type alias to give
+    a name to the functional type, thus communicating our intent:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: In reality, we would probably call `EmailSenderFunction`, `EmailSender`. Here
+    we’ve given it a different name to avoid confusion with the OO version, but the
+    fact that we want to call them the same thing shows that they serve the same purpose
+    from the client’s perspective.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is another way of bridging the OO–FP gap that doesn’t involve making
+    our classes implement function types: create a function reference at the point
+    of translation. Here is our old class-based solution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can convert an instance of `EmailSender` to a function type with a lambda:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'or just use a method reference:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although we’ve shown these conversions in Kotlin, they also work in Java (with
+    a slightly different syntax). They work with the `send` method on the `ISendEmail`
+    interface too, although it’s not clear that the interface is doing much for us
+    if we are using the function type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Can we do the opposite and pass our functional sender into something that expects
+    an `ISendEmail`? This requires more ceremony, because we have to create an anonymous
+    object implementing `ISendEmail` to perform the thunk:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we had used a Kotlin 1.4 `fun interface`, we could again remove some boilerplate:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: Comparing the Approaches
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let’s remind ourselves of the OO approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First we define a type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then we create instances and call methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In functional land, we don’t have to define a type, because `(Email) -> Unit`
+    just exists (which is to say, is provided by the runtime), so we can just say:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_introduction_CO36-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With or without the `invoke`
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clients using the *object* have to know to call the `send` method to send email;
+    in contrast, clients using the *function* just have to invoke it, but they only
+    know that the function sends email because it has been assigned the name `sender`.
+    If that name got lost in the call hierarchy, we are left to guess what happens
+    from the function signature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The quid pro quo of the OO clients having to know to call the `send` method
+    is that we could package up a number of email-related operations into an `EmailSystem`,
+    with methods like `send`, `list`, and `delete`, and pass all this functionality
+    to clients in one go. Clients can then choose which they need in which context:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To achieve this functionally would require either passing individual functions
+    around or some sort of map of name to function, maybe an instance of a class itself:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Given such an object, clients could treat it very much like an implementation
+    of the interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But this is not the same as the OO code. Instead of invoking a `send` *method*,
+    what is actually happening here is that we are calling `getSender` to access a
+    property of function type, and then calling `invoke` on that function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code may read the same, but it generates very different, and fundamentally
+    incompatible, bytecode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coupling
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A subtle difference between expressing a dependency as either an implementation
+    of `ISendEmail`, or as an implementation of the function type `(Email) -> Unit`,
+    is the coupling between the client and the implementation, in particular when
+    they are in different code modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ISendEmail` has to be defined somewhere. The client can’t define it, because
+    the implementor will depend on the interface, and the client on the implementation,
+    leading to a circular dependency. So the interface has to be defined either with
+    the implementation, or in a separate place (package or JAR file) depended on by
+    both implementation and its clients. The latter (an application of the [dependency
+    inversion principle](https://oreil.ly/AcrWj)) is in theory preferable but in practice
+    more work and thus often neglected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With or without dependency inversion, the result is the client and implementation
+    being coupled by the interface in ways that can make systems hard to reason with
+    and refactor. Any change to methods on `EmailSystem` might affect all code that
+    depends on the interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In contrast, in the functional world, the runtime defines all the function types,
+    so they don’t introduce a compile-time dependency between the client and an implementation.
+    Unlike `ISendEmail`, which we have to define somewhere, `(Email) -> Unit` (or
+    in Java, `Consumer<Email>`) is part of the language. Of course, there will be
+    a runtime dependency—the constructor code needs to be visible where the dependency
+    is created, and the client has to be able to invoke the implementation code—but
+    these cause less coupling. For example, when a dependency is expressed as a function
+    type, we can rename `EmailSystem.send`, and the only change in our client code
+    will be to use a different method reference; the internals of `sendThanks` are
+    unaffected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only Pass Types That You Own or That the Runtime Defines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: An early rule of thumb for OO systems was that, on the inside of our systems,
+    we should program in terms of types that we own rather than those supplied by
+    libraries. That way we are insulated from changes that we don’t control and are
+    more likely to write code that can be reused with different implementations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An exception to this rule is taking a dependency on types provided by the runtime;
+    these are very unlikely to change. Function types allow us to easily convert from
+    unstable to stable interfaces, allowing parts of our systems to evolve at different
+    rates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Object-Oriented or Functional?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Both the object-oriented and functional approaches can achieve the same goals,
+    and with similar levels of expressiveness. Which should we choose?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s consider this from the context of the client code. If our client only
+    needs to list email, it should have a dependency on a single `(Folder) -> List<Email>`
+    function. This way it is not coupled to an implementation, and the dependency
+    can be satisfied by anything implementing the function type, including:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A plain function
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An object implementing the function type
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Method reference selecting a method with the desired signature
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A lambda with the desired signature
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Even if we already happen to have an interface, let’s say `EmailSystem`, which
+    defines the desired method along with `send`, `move`, and `delete`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'we shouldn’t needlessly couple our client to this interface when the function
+    type will do:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: Depending on the wider interface misses the opportunity to communicate precisely
+    which operations we require and forces clients to provide an implementation of
+    the whole interface. This is particularly irritating in tests, where we will have
+    to introduce fake objects just to get our test code to compile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The drives of communication and reduced coupling are so strong that even if
+    our client needs to send and delete email, and in practice these will be supplied
+    by a single `EmailSystem`, the client should probably depend on two functions
+    rather than the interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Only when the client requires three related operations does it feel like a
+    multimethod interface should be the default:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Even here, it might be better for the client to accept an object that only
+    supports the desired operations. We can do that with a new interface (`Dependencies`
+    here), implemented with an `object`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That’s pretty irritating though; maybe this is a place where a class of functions
+    would be better:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, until it becomes hard work, we should default to expressing our client’s
+    needs as function types. Our implementation then can be just a function, or something
+    implementing the function type, or a method converted to the function type through
+    method references or lambdas, whichever makes most sense in context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Legacy of Java
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Although we said earlier that “our runtime defines all the functions types,”
+    that wasn’t true of Java until Java 8 introduced `Supplier`, `Consumer`, `Predicate`,
+    and so on, and the ability to implement them with method references or lambdas.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because of this, legacy Java code usually expresses dependencies with the same
+    multimethod interfaces that we would use to group them by subsystem (like `EmailSystem`),
+    even when only one of those methods is required to implement the functionality.
+    This leads to the coupling problems described earlier. It also leads to a need
+    for mocking (or, more pedantically, faking) frameworks to create test implementations
+    of broad interfaces where in practice only one method will be called. These fakes
+    then sprout the functionality to fail early if you call a method that you didn’t
+    mean to call, a problem that would be solved at compile time if a single function
+    expressed the dependency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once we have introduced a mocking framework into our codebase (or, more usually,
+    two or three mocking frameworks to cater to different tastes), they allow us to
+    solve problems, like generating implementations for unused methods and stubbing
+    out interactions with external systems. Usually, though, our code would be improved
+    by restructuring to avoid the need for mocks. Expressing dependencies as function
+    types is one example; another is moving the interaction with external systems
+    to the outer layers of our code, as we will see in [Chapter 20](ch20.html#performing-io-to-passing-data).
+    [Chapter 17](ch17.html#mocks-to-maps) looks at how to reduce mock use by refactoring
+    our tests to a more functional form.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Traceability
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: There is a downside to expressing dependencies with function types, and it is
+    a common issue with adding a layer of indirection. If we use IntelliJ to find
+    the callers of `EmailSystem.send`, the trail goes cold at the point where `EmailSystem::send`
+    is converted to `(Email) -> Unit`. The IDE doesn’t know that invocations of the
+    function are actually calling the method. It’s like our hero enters a river, and
+    the posse tracking them has to scour both banks upstream and downstream to find
+    where they get out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is a price we pay for indirection with method calls too, but our tooling
+    is wise to these and can at least find all places where a particular method is
+    implemented, and where an implementation is called through an interface. As with
+    using unencapsulated collections ([Chapter 15](ch15.html#encapsulated-collections-to-typealiases)),
+    the price that we pay for decoupling and generality is that tooling, and developers,
+    have less context to hang analysis on. We trust that IDE support will improve
+    its functional analysis, and in the meantime, we can help by not passing function
+    types too far from where they are initialized to where they are used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refactoring from Interfaces to Functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Travelator is quite well-designed in the Java fashion, with interfaces expressing
+    the relations between components. For example, the `Recommendations` engine depends
+    on `FeaturedDestinations` and a `DistanceCalculator`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.1 [interfaces-to-funs.0:src/main/java/travelator/recommendations/Recommendations.java]](https://java-to-kotlin.dev/code.html?ref=16.1&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.1&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `FeaturedDestinations` interface has a few methods, grouping functionality
+    that accesses a remote service:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.2 [interfaces-to-funs.0:src/main/java/travelator/destinations/FeaturedDestinations.java]](https://java-to-kotlin.dev/code.html?ref=16.2&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.2&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It looks like we’ve already converted the `DistanceCalculator` interface to
+    Kotlin. It too has more than one method, and hides another external service:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.3 [interfaces-to-funs.0:src/main/java/travelator/domain/DistanceCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=16.3&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.3&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Despite taking a dependency on a total of seven methods, `Recommendations`
+    only actually uses two of them in its implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.4 [interfaces-to-funs.0:src/main/java/travelator/recommendations/Recommendations.java]](https://java-to-kotlin.dev/code.html?ref=16.4&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.4&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO37-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Method on `FeaturedDestinations`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_introduction_CO37-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Method on `DistanceCalculator`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`RecommendationsTests` uses mocks to provide implementations of its `Distance​Cal⁠cula⁠tor`
+    and `FeaturedDestinations`, which are passed to the instance of `Recommendations`
+    under test:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.5 [interfaces-to-funs.0:src/test/java/travelator/recommendations/RecommendationsTests.java]](https://java-to-kotlin.dev/code.html?ref=16.5&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.5&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The tests specify that the expected interactions with the mocks are using two
+    methods: `givenFeaturedDestinationsFor` and `givenADistanceBetween`, which we
+    won’t bore you with:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.6 [interfaces-to-funs.0:src/test/java/travelator/recommendations/RecommendationsTests.java]](https://java-to-kotlin.dev/code.html?ref=16.6&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.6&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introduce Functions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Before we start moving from interfaces to functions, we’ll convert `Recommendations`
+    to Kotlin. This is the class that currently expresses its dependencies with interfaces,
+    and Kotlin function types are less clunky than Java’s.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Converting to Kotlin and applying the refactorings introduced in Chapters [10](ch10.html#functions-to-extension-functions)
+    and [13](ch13.html#streams-to-sequences) gives:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.7 [interfaces-to-funs.3:src/main/java/travelator/recommendations/Recommendations.kt]](https://java-to-kotlin.dev/code.html?ref=16.7&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.7&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To see how the internals of `Recommendations` would use a function rather than
+    the interface, without having to change its interface yet, we can add a property
+    initialized from an interface method. Let’s add a property for `featuredDestinations::find​Clo⁠seTo`,
+    calling it `destinationFinder`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.8 [interfaces-to-funs.4:src/main/java/travelator/recommendations/Recommendations.kt]](https://java-to-kotlin.dev/code.html?ref=16.8&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.8&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO38-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extract a function from the interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_introduction_CO38-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use it in place of the method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This passes the tests, so we are on to something. It feels like there should
+    be a refactoring to move `destinationFinder` into the constructor, but we haven’t
+    found anything better than cutting the definition and pasting where we want it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.9 [interfaces-to-funs.5:src/main/java/travelator/recommendations/Recommendations.kt]](https://java-to-kotlin.dev/code.html?ref=16.9&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.9&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is, once again, the *expand* in [“Expand-and-Contract Refactoring”](ch04.html#expand-contract).
+    Unfortunately, Java doesn’t understand the defaulted parameter, so we have to
+    fix up the call sites to add the function argument. It doesn’t really matter,
+    because this is what we want really anyway:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.10 [interfaces-to-funs.5:src/test/java/travelator/recommendations/RecommendationsTests.java]](https://java-to-kotlin.dev/code.html?ref=16.10&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.10&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now nothing in `Recommendations` uses the `featuredDestinations` property,
+    so we can remove it (contract):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.11 [interfaces-to-funs.6:src/main/java/travelator/recommendations/Recommendations.kt]](https://java-to-kotlin.dev/code.html?ref=16.11&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.11&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The places in our code that create `Recommendations` now look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.12 [interfaces-to-funs.6:src/test/java/travelator/recommendations/RecommendationsTests.java]](https://java-to-kotlin.dev/code.html?ref=16.12&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.12&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you’re used to refactoring tests with mocks, it may surprise you that the
+    tests have continued to pass through this refactoring. We can reason that they
+    *should* pass—the effect of calling the function bound to `featuredDestinations::findCloseTo`
+    is still to invoke the method on the mocked interface—but our reasoning is so
+    often proved wrong by running the tests that we don’t count our chickens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We do like a single basket though, so let’s do the same thing with the `distance​Cal⁠cula⁠tor`,
+    this time in a fell swoop, whatever that is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.13 [interfaces-to-funs.7:src/main/java/travelator/recommendations/Recommendations.kt]](https://java-to-kotlin.dev/code.html?ref=16.13&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.13&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO39-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calling the new function
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The constructor invocations are now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16.14 [interfaces-to-funs.7:src/test/java/travelator/recommendations/RecommendationsTests.java]](https://java-to-kotlin.dev/code.html?ref=16.14&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=16.14&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that a little thought around what to call functional variables can go a
+    long way to making them seem natural in use, although that does sometimes make
+    them a little cryptic where they are defined.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Again the tests still pass, giving us confidence that our production code will
+    see the transformation the same way. It’s particularly nice that we have shown
+    that we can simultaneously cross a method/function boundary and a Java/Kotlin
+    boundary. Maybe this interop will work out OK after all!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Moving On
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We want our code to be simple and flexible. To this end, libraries need to hide
+    implementation details from client code, and we want to be able to substitute
+    one implementation of some functionality with another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In OO, we hide configuration and implementation inside classes and express substitutable
+    functionality with interfaces. In functional programming, functions take both
+    roles. We might see the function as more fundamental, but we can view an object
+    as a collection of functions, and a function as an object with a single method.
+    Both Kotlin and Java allow us to move between realms at the boundaries between
+    implementations and clients, but Kotlin’s native function type syntax encourages
+    the use of function types rather than interfaces. This allows even more decoupling
+    than defining our own interfaces and should be our default approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We continue refactoring this example, and examining this relationship, in [Chapter 17,
+    *Mocks to Maps*](ch17.html#mocks-to-maps).
+  prefs: []
+  type: TYPE_NORMAL

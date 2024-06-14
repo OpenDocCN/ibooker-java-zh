@@ -1,0 +1,842 @@
+- en: 'Chapter 10\. Reactive Messaging: The Connective Tissue'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Part III](part03.html#quarkus-part), you saw many features to develop reactive
+    applications with Quarkus. But, as you remember from [Part II](part02.html#reactive-part),
+    we don’t want to limit ourselves to reactive applications; we want to build reactive
+    systems. That’s what we are going to do now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive systems use asynchronous message passing among their components. However,
+    while middleware and frameworks can sometimes hide this message-passing aspect,
+    we believe it’s far more efficient to make it apparent. It not only helps you
+    write event-driven code (*on event x, do y*), but also helps decompose your application
+    into a set of components receiving and producing messages. Thus, Quarkus offers
+    a message-driven development model that is simple but powerful to consume, process,
+    and create messages. This chapter focuses on this model, how it relates to Reactive
+    Streams, and how it makes building message-driven and event-driven applications
+    straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From Reactive Applications to Reactive Systems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When you talk to a Java developer about messaging, you can feel the frustration.
+    For years, JMS has been the de facto standard for messaging. However, that API
+    didn’t age well, and new messaging technologies such as Kafka and Pulsar use concepts
+    that do not work well with JMS. In addition, JMS is a blocking API, which prevents
+    us from implementing reactive principles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While Quarkus can use JMS, we are going to look at another approach called *Reactive
+    Messaging*. This MicroProfile specification builds reactive and event-driven applications.
+    Quarkus implements version 2*.x* of the specification but also provides many extensions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Applications using Reactive Messaging can send, consume, and process messages
+    in a protocol-agnostic way. For example, as you will see in [Chapter 11](ch11.html#event-bus),
+    you will be able to use Apache Kafka or AMQP or even combine both. Reactive Messaging
+    also provides a natural development model for developers used to Contexts and
+    Dependency Injection (CDI), a standard dependency injection framework. Typically,
+    you can summarize Reactive Messaging to a couple of annotations. But before seeing
+    it in action, let’s describe a few concepts that it relies on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Channels and Messages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When using Reactive Messaging, your applications and components forming them
+    interact using *messages*, represented with the `o⁠r⁠g.e⁠c⁠l⁠i⁠p⁠s⁠e.m⁠i⁠c⁠r⁠o⁠p⁠r⁠o⁠f⁠i⁠l⁠e⁠.​r⁠e⁠a⁠c⁠t⁠i⁠v⁠e⁠.m⁠e⁠s⁠s⁠a⁠g⁠i⁠n⁠g⁠.M⁠e⁠s⁠s⁠a⁠g⁠e⁠<T>`
+    class. A *message* is an envelope that has a payload of type `T`. In addition,
+    a message can have metadata and provides acknowledgment methods to notify the
+    framework of the successful or failed processing of a message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Messages transit on *channels*. You can picture channels as pipes. A channel
+    can be internal to an application or mapped, by a connector, to an external message
+    queue or topic ([Figure 10-1](#image:channels)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Message-based Application Architecture](assets/rsij_1001.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10-1\. Message-based application architecture
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Your application reads from channels and writes to channels. You can split your
+    application into a set of components, with all of them reading and writing to
+    different channels. That’s it. Reactive Messaging binds everything all together,
+    and so constructs streams in which messages flow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Producing Messages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Reactive Messaging provides multiple ways to produce messages, but let’s start
+    with the simplest and probably more natural one for developers familiar with imperative
+    programming: emitters. `Emitter` is an object that is attached to a channel and
+    emits messages to that channel.^([1](ch10.html#idm45358821092016)) [Example 10-1](#messaging::emitter)
+    illustrates the use of `MutinyEmitter`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-1\. Use an emitter to send messages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: To access an emitter, you just inject it in your CDI bean. The target channel
+    is indicated using the `@Channel` annotation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: There’s no need to use the `@Inject` annotation, as Quarkus detects the injection
+    for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Example 10-1](#messaging::emitter), we don’t produce a `Message` instance;
+    we just send a payload (`Person`), automatically wrapped into a message. Note
+    that the `send` method returns `Uni<Void>`. This `Uni` produces a `null` item
+    when the message processing completes successfully. Otherwise, it produces a failure
+    indicating why the processing failed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An emitter can also send an instance of `Message` directly, as shown in [Example 10-2](#messaging::emitter-message).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-2\. Injection and use of an emitter
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: When sending a `Message`, you can directly pass the acknowledgment callbacks.
+    We cover acknowledgment in [“Acknowledgments”](#acknowledgements_aspect).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Emitters are convenient when you want to decide when to send a message. They
+    allow imperative code to emit messages that will be handled in a reactive manner.
+    For example, you can use an emitter in an HTTP endpoint and send a message when
+    you receive a request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another way to produce messages is with the `@Outgoing` annotation. It instructs
+    Reactive Messaging to send the output of the method to the specified channel.
+    Note that methods annotated with `@Outgoing` can’t be called from your code; Reactive
+    Messaging calls them for you. You may wonder about the benefits. It looks a bit
+    less flexible than emitters. But there is a trick: `@Outgoing` allows producing
+    streams (`Multi`) directly ([Example 10-3](#messaging:outgoing)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-3\. Usage of `@Outgoing`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can produce infinite streams every second, as demonstrated in [Example 10-4](#messaging:outgoing-infinite).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-4\. Generate infinite streams by using `@Outgoing`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: When the application starts, Reactive Messaging connects all the elements to
+    the channels. Under the hood, it creates reactive streams (covered in [Chapter 5](ch05.html#reactive-programming)).
+    So, your application is a set of reactive streams, enforcing the backpressure
+    protocol. The consumption rate is controlled by the downstream subscribers. This
+    is the reason we need `onOverflow.drop` in the preceding example. Otherwise, if
+    the downstream subscriber does not consume fast enough, it would fail (you can’t
+    apply backpressure in time).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As for `Emitter`, you can produce a stream of messages ([Example 10-5](#messaging:outgoing-message)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-5\. Produce a stream of messages by using `@Outgoing`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, our messages are just wrapping the payload. As we have seen in the example,
+    you can pass the acknowledgment callbacks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Attentive readers may have observed a significant difference between the emitter
+    and the `@Outgoing` approaches. Reactive Messaging handles the `@Outgoing` method
+    completely (invoking it), so enforcing the backpressure protocol is no problem.
+    But with the emitter, Reactive Messaging can’t. If your code uses an emitter to
+    send messages faster than the consumption rate, you may be in trouble!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fortunately, to avoid this, you can configure an overflow strategy when using
+    an emitter. This strategy describes what happens when the downstream does not
+    consume fast enough. `@OnOverflow` offers six strategies. The most common, demonstrated
+    in [Example 10-6](#messaging:onoverflow), consists of using a buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-6\. Usage of the `@OnOverflow` annotation
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `OnOverflow` strategies are similar to those in Mutiny:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`BUFFER`, the default, uses a buffer to store the messages. The size can be
+    configured; the default is 256.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`UNBOUNDED_BUFFER` is like `BUFFER` but uses an unbounded buffer. Be cautious
+    when using this strategy as it can lead to memory issues.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`DROP` and `LATEST` drop the newest and oldest message, respectively.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`FAIL` sends a failure downstream. Remember, failures are terminal for Reactive
+    Streams. So, you can use the emitter after this.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`THROW_EXCEPTION` throws an exception upstream to the caller of the `send`
+    method. The caller can then react; for example, it can’t wait until the downstream
+    subscriber catches up.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Consuming Messages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let’s have a look at the other side of the message pipe. To consume messages,
+    you can inject the stream by using the `@Channel` annotation, as shown in [Example 10-7](#messaging:channel).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-7\. Inject a channel
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, you must subscribe to the injected stream. Remember, if you
+    don’t subscribe, nothing will happen, and you won’t receive any messages. Note
+    that your code can inject multiple streams and consume them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can also inject a stream of messages. In this case, you must acknowledge
+    the messages manually ([Example 10-8](#messaging:channel-ack)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-8\. Inject a stream of messages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Acknowledgment is automatically done for you when injecting a stream of payloads.
+    Messages give you more control on the acknowledgment, as well as the possibility
+    to reject a message by using `nack`. In addition, you can access the message metadata.
+    But, remember, with more power comes greater responsibility.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `@Channel` injection is convenient when you want to access the stream directly
+    or when you want to control the subscription.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Reactive Messaging also offers a more declarative way to consume messages:
+    the `@Incoming` annotation. This annotation is the opposite of `@Outgoing`. Reactive
+    Messaging invokes the annotated method for each message transiting on the specified
+    channel ([Example 10-9](#messaging:incoming)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-9\. An example of a method using `@Incoming`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 10-9](#messaging:incoming) provides a convenient way to process every
+    incoming `Person`. You don’t need to worry about acknowledgment; it’s done for
+    you. You can also receive `Message`, as demonstrated in [Example 10-10](#messaging:incoming-message).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-10\. An example of a method using `@Incoming` and receiving messages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this case, as for `@Channel` injecting a stream of messages, you need to
+    handle the acknowledgment yourself. Remember: more control, but more responsibility.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Processing Messages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now that you have seen the two ends, let’s look at the middle of the pipeline:
+    processing. To process messages, you combine `@Incoming` and `@Outgoing`, as shown
+    in Example 10-11.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-11\. Method using `@Incoming` and `@Outgoing`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this snippet, we read strings from the `from` channel. For each received
+    string, we create a `Person` instance that is sent to the `to` channel. This method
+    is synchronous and accepts an individual payload and returns an individual payload.
+    That’s not the only supported signature. Reactive Messaging supports more than
+    30 signatures, allowing asynchronous processing (such as returning `Uni`), or
+    even stream processing (where you receive and return `Multi`s),^([2](ch10.html#idm45358820227664))
+    see [Example 10-12](#messaging:stream).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-12\. Example of stream manipulation
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: In addition to payloads, you can process messages. But as for the consumption
+    of messages, you need to be more attentive. Indeed, you often need to *chain*
+    messages, or link the incoming message with the one you produce, as shown in [Example 10-13](#messaging:processing-messages).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-13\. Process messages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this snippet, look at the `withPayload` method. The `Message` interface provides
+    various `with` methods that link messages together. You may wonder why it’s so
+    important to link them. It’s all about acknowledgment. You have seen this word
+    a couple of times already, so it’s time to explain what it means.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Acknowledgment* is an essential aspect of any messaging system. When you use
+    a message broker, the consumers, receiving and processing messages, must indicate
+    to the broker when the message processing completes (successfully or not). Then
+    the broker can decide to dispatch the next message, or to redeliver the same one
+    if the processing failed. While the broker strategy is dependent on the broker
+    itself, acknowledgment is a well-known concept that most messaging protocols use
+    one way or another.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Reactive Messaging, each message must be *acked* (acknowledged successfully)
+    or *nacked* (acknowledged negatively, or not acked). The `Message` interface offers
+    the `ack` and `nack` methods to indicate the successful or failed processing of
+    the message, respectively. Both methods are asynchronous and return `CompletionStage<Void>`.
+    Indeed, when using a remote broker, acknowledging a message means telling the
+    broker whether the message has been processed successfully. You will see in [Chapter 11](ch11.html#event-bus)
+    how these acknowledgments are integrated with Apache Kafka and AMQP 1.0.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When using individual payloads, Reactive Messaging handles the acknowledgment
+    (positive or negative) for you. However, when you receive messages, you need to
+    call these methods or produce a message that is *linked* to the incoming one.
+    This link is essential. When the downstream consumer receives your message and
+    acknowledges it, that consumer also acknowledges the linked message. These links
+    form a chain of messages, and acknowledgments go up the chain until they reach
+    the top (generally, a message produced by an emitter or from an external destination).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As depicted on [Figure 10-2](#image:ack), the chain allows indicating the outcome
+    of the processing, even when the processing is composed of several steps, potentially
+    asynchronous ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Acknowledgement chain](assets/rsij_1002.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10-2\. Acknowledgment chain
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Let’s consider an example to illustrate the behavior. Imagine receiving a message
+    from a broker, transforming the content, and then sending this message to a remote
+    service. For each message from the broker, this process creates a chain:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: When everything is fine, the framework acknowledges the message `(b)`, which
+    acknowledges the message `(a)`. The successful acknowledgment logic of the message
+    is executed. However, if interacting with the remote service fails, it calls the
+    `nack` method on the message `(b)`, which also calls `nack` on the message `(a)`.
+    And so, it executes the negative acknowledgment logic attached to the message
+    `(a)`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In more advanced scenarios, this chain can be too rigid, and you’ll want more
+    control. Typically, you may want to decide when to acknowledge a specific message,
+    or decide to acknowledge before the processing instead of after. When using `Message`,
+    you have full control and can decide to deliberately not chain messages or wait
+    for a certain condition to acknowledge. For example, when producing multiple messages
+    from a single one, you would acknowledge the message when all the produced messages
+    have been acknowledged. Regardless of the use case, when using `Message`, don’t
+    forget to call `ack` or `nack`. Alternatively, you can use the `@Acknowledgment`
+    annotation to decide where to split the chain in a more declarative manner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgment is essential, and with Reactive Messaging, all messages must
+    be either *acked* or *nacked*. It’s vital to implement the elasticity and resilience
+    patterns from reactive systems. But how do we connect the applications and message
+    brokers? That’s what you are going to see in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Connectors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Connectors* are specific components that map a channel to something managed
+    externally, such as a queue or a topic. They are specific to a particular protocol
+    or technology. There are two kinds of connectors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inbound connectors
+  prefs: []
+  type: TYPE_NORMAL
+- en: These receive messages and feed the channels. They must enforce the Reactive
+    Streams backpressure protocol and create messages with the appropriate `ack` and
+    `nack` logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Outbound connectors
+  prefs: []
+  type: TYPE_NORMAL
+- en: These receive messages from within the application and send them to external
+    destinations. So they map internal messages to the external format and track the
+    outcome to call the `ack` or `nack` method on the incoming messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quarkus offers multiple connectors. [Chapter 11](ch11.html#event-bus) covers
+    the Kafka and AMQP connectors in detail. The HTTP connector allows binding HTTP
+    and WebSockets with your message processing. The Camel connector allows integrating
+    legacy systems. In your application configuration, you need to specify a connector
+    used for each channel mapped to an external destination.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building Message-Based Applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Enough talking; it’s time to see Reactive Messaging in action. This example
+    is located in the *chapter-10/hello-messaging* directory. To use Reactive Messaging,
+    you need to have a dependency on `quarkus-smallrye-reactive-messaging` in your
+    *pom.xml* file; see [Example 10-14](#dependency-reactive-messaging-10-14).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-14\. Dependency for the Reactive Messaging extension (*chapter-10/hello-messaging/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you will see in the next chapter, you will also need to add dependencies
+    for the connectors. However, in this chapter, we won’t use connectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Reactive Messaging application includes beans containing methods annotated
+    with `@Incoming` and `@Outgoing`. [Example 10-15](#hellomessage-10-15) contains
+    a single bean with three methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-15\. Hello messaging application (*chapter-10/hello-messaging/src/main/java/org/acme/HelloMessaging.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The methods form a processing pipeline. The first method, `ticks`, generates
+    messages on the `ticks` channel. The method returns a `Multi` emitting a number
+    every second. This number is wrapped into a simple message automatically. Then,
+    the method `hello` consumes these ticks and produces a `String`, sent to the `hello`
+    channel. Finally, the `print` method receives these messages and displays them
+    on the console. We get the pipeline in Example 10-16.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-16\. The processing pipeline
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you go into the *chapter-10/hello-messaging* directory and run `mvn quarkus:dev`,
+    you will see [Example 10-17](#hello-messages-10-17).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-17\. Hello messages
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, building a message-processing pipeline is pretty straightforward.
+    Beneath the hood, Reactive Messaging creates a reactive stream and creates the
+    acknowledgment chain. That’s what we are going to illustrate in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Message and Acknowledgment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To better understand the message chain, let’s look at the chapter-10/messages-example
+    directory. In this module, we create a specific implementation of `Message` (`MyMessage`),
+    which displays on the console when a message is *acked* or *nacked* (Example 10-18).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-18\. An implementation of `Message` (*chapter-10/messages-example/src/main/java/org/acme/MyMessage.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The application itself, shown in [Example 10-19](#rm::using-messages), is similar
+    to the one from the previous section. We generate a message every second, but
+    this time, it’s an instance of `MyMessage` instead of a payload automatically
+    wrapped into a message. The `hello` method receives these messages and creates
+    a new one with a different payload. The `print` method is unchanged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-19\. Usage of messages (*chapter-10/messages-example/src/main/java/org/acme/MessageExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Look at the `hello` method. It returns a new message built from the receiving
+    one. The `with` methods link the two messages to form the chain. When the returned
+    message is acknowledged, the received message is also acknowledged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you run `mvn quarkus:dev` from the *chapter-10/messages-example* directory,
+    you should see this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: When the `print` method invocation completes for a specific message, it acknowledges
+    this message (created in the `hello` method), which also acknowledges the one
+    emitted by the `tick` method. That’s why you can see “Acknowledgment for …” on
+    the console.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Failures and Negative Acknowledgment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Message processing may fail, and in this case, we expect the failing message
+    to be *nacked*. To illustrate this, let’s update the code to throw an exception
+    when it processes the third message, as shown in [Example 10-20](#messaging:auto-nack).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-20\. Throwing an exception acknowledges the message negatively
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Restart the application. Now the third message is nacked:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Throwing an exception calls the `nack` method on the message and goes up the
+    chain to call `nack` on the `MyMessage` instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, our `ack` and `nack` implementations are simplistic. But they
+    demonstrate how `ack` and `nack` can notify a message broker about the processing
+    outcome.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stream Manipulation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Manipulating messages one by one is straightforward, but sometimes we need to
+    do more complicated processing. To achieve this, Reactive Messaging allows manipulating
+    the stream of messages directly. Instead of an individual message or payload,
+    the method receives a `Multi` and produces another `Multi` ([Example 10-21](#stream-10-21)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-21\. Stream manipulation with Reactive Messaging (*chapter-10/stream-example/src/main/java/org/acme/StreamingExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can find the complete code in the *chapter-10/stream-example* directory.
+    The method `group` takes the stream of ticks as input and groups the items into
+    lists of five elements. The `processGroup` method takes each group and processes
+    them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although this example uses just the `group` operator, you can use the whole
+    Mutiny API to orchestrate asynchronous calls, skip messages, handle failure recovery,
+    or apply complex manipulations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blocking Processing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Reactive Messaging implements the reactive principles. It avoids blocking the
+    caller thread, but sometimes it’s not possible to do otherwise. Imagine lengthy
+    processing or using a blocking API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When facing such a situation, you can use the `@Blocking` annotation, which
+    automatically switches the processing to a worker thread and then switches back
+    to the I/O thread (see [Example 10-22](#annotate-10-22)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-22\. Annotate methods with `@Blocking` (*chapter-10/blocking-example/src/main/java/org/acme/BlockingExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the *blocking-example* directory, you can find a modified version of our
+    simple pipeline simulating a long operation in the `hello` method. Using `Thread.sleep`
+    is blocking, so it cannot be executed on the I/O thread. Fortunately, thanks to
+    the `@Blocking` annotation, that method is invoked on a worker thread. The `@Blocking`
+    annotation is particularly interesting when integrating with blocking APIs. However,
+    please don’t abuse it, as it reduces the concurrency of your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrying Processing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Intermittent failures happen. Network disruptions or temporary unavailability
+    are part of the life of any distributed system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To handle this case, you can use the Mutiny API and use `onFailure.retry`, but
+    you can also use the SmallRye Fault-Tolerance and its `@Retry` annotation. First,
+    you need to declare a dependency on Fault-Tolerance, as shown in [Example 10-23](#dependency-10-23).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-23\. Dependency for the fault-tolerance support (*chapter-10/fault-tolerance-example/pom.xml*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Then, you can use the `@Retry` annotation that automatically catches exceptions
+    and retries the invocation. In *chapter-10/fault-tolerance-example*, you can see
+    the code in [Example 10-24](#retry-10-24).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-24\. Retry the processing of messages (*chapter-10/fault-tolerance-example/src/main/java/org/acme/FaultToleranceExample.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `maybeFaulty` method throws exceptions randomly. So the `@Retry` annotation
+    is used to retry the processing of the message, hoping for a better outcome. Remember,
+    don’t retry if your processing is not idempotent! It can have terrible consequences.
+    It might be better to store the faulty messages on a dead-letter queue (this is
+    covered in the next chapter).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Putting Everything Together
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The last few sections have demonstrated some features offered by Reactive Messaging.
+    These examples are simplistic on purpose. Let’s now work on a more realistic pipeline
+    where we receive HTTP requests, manipulate the body, and write it into a database.
+    We will use RESTEasy Reactive and Hibernate Reactive, which we have seen in Chapters
+    [8](ch08.html#http) and [9](ch09.html#data). While the application could be perfectly
+    implemented without Reactive Messaging, we use it to illustrate how to build more
+    complex pipelines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code of this application is in the *chapter-10/database-example* directory.
+    Four classes compose the application. First, the `Person` class is a Hibernate
+    Reactive Panache entity. This entity contains two fields: the name (unique) and
+    the age. In this application, the user posts `Person` instances (sent as JSON),
+    which are sent to the Reactive Messaging pipeline (as illustrated in [Example 10-25](#person-10-25)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-25\. The `Person` structure (*chapter-10/database-example/src/main/java/org/acme/Person.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `HTTPEndpoint` class uses an emitter to send the received `Person` instances
+    to the `upload` channel. In addition, this class has two methods. The `upload`
+    method receives the `Person` sent by the user and emits it. The `getAll` method
+    returns the list of the stored `Person` instances from the database. In [Example 10-26](#http-endpoint-10-26),
+    we use this method to verify that everything works as expected. The `upload` method
+    returns `Uni<Response>`. It creates the HTTP response asynchronously when the
+    emitted message is acknowledged positively (then it returns a `202 - Accepted`
+    response), or negatively (then it returns a `400 - Bad Request` response with
+    the error message). So, when the processing is successful, the user receives its
+    response after the insertion in the database completes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-26\. The HTTP endpoint (*chapter-10/database-example/src/main/java/org/acme/HttpEndpoint.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Processing` bean receives the uploaded `Person` instances and validates
+    and formats the input ([Example 10-27](#process-10-27)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-27\. Process `Person` instances (*chapter-10/database-example/src/main/java/org/acme/Processing.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: It forwards the result to the `database` channel. The `Database` class reads
+    this channel and writes the received `Person` to the database. To achieve this,
+    we use the `withTransaction` and `persist` methods offered by Panache, as shown
+    in [Example 10-28](#persist-10-28).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-28\. Persist the entities in the database (*chapter-10/database-example/src/main/java/org/acme/Database.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: This pipeline only passes payloads. So, when the last step completes, it acknowledges
+    the message, which, going through the chain of messages, notifies the emitter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Run the application with `mvn quarkus:dev` from the *chapter-10/database-example*
+    directory. No need to provision a database; Quarkus starts a test database for
+    you. Then, in a terminal, send a `Person` instance by using [Example 10-29](#upload-new-10-29).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-29\. Upload a new person
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: You should get a `202 - Accepted` response. If you try to send an invalid payload,
+    as shown in [Example 10-30](#upload-invalid-10-30), you will get a `400` response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 10-30\. Upload an invalid person
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can use `curl` to check the stored instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In addition to having a reactive engine and providing asynchronous and nonblocking
+    ways to deal with HTTP and databases, Quarkus comes with a message-based model
+    called Reactive Messaging.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Remember:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive Messaging allows receiving, processing, and consuming messages transiting
+    on channels.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The channel can be internal to the application, as you have seen in this chapter,
+    or mapped to external destinations, as you will see in the next chapter.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reactive Messaging supports positive and negative acknowledgment. You can decide
+    the amount of control you need.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reactive Messaging allows handling messages individually or supports the Mutiny
+    API to implement more complex transformations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the next chapter, we will look at two connectors that will allow interacting
+    with Apache Kafka and AMQP to build reactive systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch10.html#idm45358821092016-marker)) In this book, we use `MutinyEmitter`,
+    but you can use plain `Emitter` instead, providing a slightly different API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch10.html#idm45358820227664-marker)) [You can find the list of supported
+    signatures on GitHub](https://oreil.ly/hewBO).
+  prefs: []
+  type: TYPE_NORMAL

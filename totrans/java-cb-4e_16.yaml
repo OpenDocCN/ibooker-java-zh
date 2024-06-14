@@ -1,0 +1,977 @@
+- en: Chapter 16\. Threaded Java
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 16.0 Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We live in a world of multiple activities. A person may be talking on the phone
+    while doodling or reading a memo. A multifunction office machine may scan one
+    fax while receiving another and printing a document from somebody’s computer.
+    We expect the GUI programs we use to be able to respond to a menu while updating
+    the screen. But ordinary computer programs can do only one thing at a time. The
+    conventional computer programming model—that of writing one statement after another,
+    punctuated by repetitive loops and binary decision making—is sequential at heart.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sequential processing is straightforward but not as efficient as it could be.
+    To enhance performance, Java offers *threading*, the capability to handle multiple
+    flows of control within a single application or process. Java provides thread
+    support and, in fact, requires threads: the Java runtime itself is inherently
+    multithreaded. For example, window system action handling and Java’s garbage collection—that
+    miracle that lets us avoid having to free everything we allocate, as others must
+    do when working in languages at or below C level—run in separate threads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Just as multitasking allows a single operating system to give the appearance
+    of running more than one program at the same time on a single-processor computer,
+    multithreading can allow a single program or process to give the appearance of
+    working on more than one thing at the same time. Multithreading leads to more
+    interactive graphics and more responsive GUI applications (the program can draw
+    in a window while responding to a menu, with both activities occurring more or
+    less independently), more reliable network servers (if one client does something
+    wrong, the server continues communicating with the others), and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that I did not say “multiprocessing” in the previous paragraph. The term
+    multi-tasking is sometimes erroneously called multiprocessing, but that term in
+    fact refers to different issue: it’s the case of two or more CPUs running under
+    a single operating system. Multiprocessing per se is nothing new: IBM mainframes
+    did it in the 1970s, Sun SPARCstations did it in the 1980s, and Intel PCs did
+    it in the 1990s. Since the mid-2010s, it has become increasingly hard to buy a
+    single-processor computer packaged inside anything larger than a wristwatch. True
+    multiprocessing allows you to have more than one process running concurrently
+    on more than one CPU. Java’s support for threading includes multiprocessing, as
+    long as the operating system supports it. Consult your system documentation for
+    details.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though most modern operating systems provide threads, Java was the first mainstream
+    programming language to have intrinsic support for threaded operations built right
+    into the language. The semantics of `java.lang.Object`, of which all objects are
+    instances, includes the notion of monitor locking of objects, and some methods
+    (`notify`, `notifyAll`, `wait`) are meaningful only in the context of a multithreaded
+    application. Java also has language keywords such as `synchronized` to control
+    the behavior of threaded applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that the world has had years of experience with threaded Java, experts have
+    started building better ways of writing threaded applications. The Concurrency
+    Utilities, specified in JSR 166^([1](ch16.html#idm45290633711352)) and included
+    in all modern Java releases, are heavily based on the `util.concurrent` package
+    by Professor Doug Lea of the Computer Science Department at the State University
+    of New York at Oswego. This package aims to do for the difficulties of threading
+    what the Collections classes (see [Chapter 7](ch07.html#javacook-structure)) did
+    for structuring data. This is no small undertaking, but they pulled it off.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `java.util.concurrent` package includes several main sections:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Executor`s, thread pools (`ExecutorService`s), and `Future`s/`CompletableFuture`s'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Queue`s and `BlockingQueue`s'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Locks and conditions, with JVM support for faster locking and unlocking
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Synchronizers, including `Semaphore`s and `Barrier`s
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Atomic variables
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In this chapter I will focus on the first set of these, thread pools and `Future`s.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An implementation of the `Executor` interface is, as the name implies, a class
+    that can execute code for you. The code to be executed can be the familiar `Runnable`
+    or a new interface `Callable`. One common kind of `Executor` is a *thread pool*.
+    The `Future` interface represents the future state of something that has been
+    started; it has methods to wait until the result is ready. A `CompletableFuture`
+    is an implementation of `Future` that adds many additional methods for chaining
+    `CompletableFuture`s and post-applied methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These brief definitions are oversimplifications. Addressing all the issues is
+    beyond the scope of this chapter, but I do provide several examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 16.1 Running Code in a Different Thread
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to write a threaded application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Write code that implements `Runnable`; pass it to an `Executor`, or instantiate
+    a `Thread` and start it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are several ways to implement threading, and they all require you to
+    implement the `Runnable` or `Callable` interface. `Runnable` has only one method,
+    and it returns no value; this is its signature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`Callable` has similarly only one method, but the `call()` method returns a
+    specific type so the interface has a type parameter (`V` here, for “value”):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: You must provide an implementation of the `run()` or `call()` method. There
+    is nothing special to this method; it’s an ordinary method and you could call
+    it yourself. But if you did, what then? There wouldn’t be the special magic that
+    launches it as an independent flow of control, so it wouldn’t run concurrently
+    with your main program or flow of control. For this, you need to invoke the magic
+    of thread creation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The original way of using threads, no longer generally recommended, is to create
+    `Thread` objects directly and call their `start()` method, which would cause the
+    thread to call the `run()` method after the new thread had been initialized. There
+    was no support for the `Callable` interface in the original threads model. You
+    create threads by doing one of the following things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Subclass `java.lang.Thread` (which implements `Runnable`) and override the `run()`
+    method.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create your `Runnable` and pass it into the `Thread` constructor.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: With Java 8+, as shown in [Recipe 9.0](ch09.html#javacook-fp-intro), you can
+    use a lambda expression to implement `Runnable`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This approach is no longer recommended because of issues such as performance
+    (`Thread` objects are expensive to create and tear down, and a thread is unusable
+    once its `run()` method returns). Because it is no longer recommended to invoke
+    threading in this fashion, I no longer show examples of doing so. There are some
+    examples in the online source, in the *threads* directory; see especially *ThreadsDemo4*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead, the recommended way to perform threaded operations is to use the `java.util.concurrent`
+    package’s `ExecutorService`. An `ExecutorService` is, as its name implies, a service
+    class that can execute code for you. The code to be executed can be in a `Runnable`
+    or a `Callable`. You obtain an `ExecutorService` by invoking a factory method
+    on the `Executors` class. The code in [Example 16-1](#javacook-threads-EX-16)
+    shows a simple example of a thread pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-1\. main/src/main/java/threads/ThreadPoolDemo.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will print a series of lines like the following, showing the threads running
+    interspersed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that there are several submission methods, the first in the parent interface
+    `Executor` and two more in `ExecutorService`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: That is, `execute()` takes a `Runnable` and returns nothing, whilst the `submit()`
+    methods both return a `Future<T>` (for the method `submit(Runnable)`, the type
+    parameter `x` is always `java.lang.Void`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you are finished with the thread pool, you should call its `shutDown()`
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 16.2 Displaying a Moving Image with Animation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to update a graphical display while other parts of the program are
+    running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use a background thread to drive the animation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One common use of threads is an animator, a class that displays a moving image.
+    This animator program does just that. It draws a graphical image at locations
+    around the screen; the location is updated and redrawn from a different `Thread`
+    for each such image so that all the animations run in parallel. You can see the
+    program running in [Figure 16-1](#javacook-threads-FIG-1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jcb4 1601](assets/jcb4_1601.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 16-1\. Animator
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The code for the animator program consists of two classes, `Sprite` (see [Example 16-4](#javacook-threads-EX-4ch22))
+    and `Bounce`^([2](ch16.html#idm45290632776280)) (see [Example 16-5](#javacook-threads-EX-5)).
+    A `Sprite` is one image that moves around; `Bounce` is the main program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-4\. main/src/main/java/threads/Sprite.java (part of animator program)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: This example features several uses of the `volatile` keyword. The `volatile`
+    keyword is used to inform Java that a variable is subject to change by more than
+    one thread, so that its current value must always be fetched when it is used.
+    Absent this keyword, it is legal for Java to use a cached version of the given
+    variable. That increases performance when a variable is only used in one thread,
+    but (without `volatile`) can give incorrect results when the variable is modified
+    in one thread and observed in another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-5\. main/src/main/java/threads/Bounce.java (part of animator program)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 16.3 Stopping a Thread
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to stop a thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Don’t use the `Thread.stop()` method; instead, use a `boolean` tested at the
+    top of the main loop in the `run()` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Though you can use the thread’s `stop()` method, it is not recommended. That’s
+    because the method is so drastic that it can never be made to behave reliably
+    in a program with multiple active threads. That is why, when you try to use it,
+    the compiler will generate deprecation warnings. The recommended method is to
+    use a `boolean` variable in the main loop of the `run()` method. The program in
+    [Example 16-6](#javacook-threads-EX-6) prints a message endlessly until its `shutDown()`
+    method is called; it then sets the controlling variable `done` to false, which
+    terminates the loop. This causes the `run()` method to return, ending its processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-6\. main/src/main/java/threads/StopBoolean.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running it looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: But what if your thread is blocked reading from a network connection? You then
+    cannot check a `boolean`, because the thread that is reading is asleep. This is
+    what the `stop` method was designed for, but, as we’ve seen, it is now deprecated.
+    Instead, you can simply close the socket. The program shown in [Example 16-7](#javacook-threads-EX-7)
+    intentionally deadlocks itself by reading from a socket that you are supposed
+    to write to, simply to demonstrate that closing the socket does in fact terminate
+    the loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-7\. main/src/main/java/threads/StopClose.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When run, it prints a message that the close is happening:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: “But wait,” you say. “What if I want to break the wait, but not really terminate
+    the socket?” A good question, indeed, and there is no perfect answer. But you
+    can *interrupt* the thread that is reading; the read is interrupted by a `java.io.InterruptedIOException`,
+    and you can retry the read. The file *Intr.java* in this chapter’s source code
+    shows this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 16.4 Rendezvous and Timeouts
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to know whether something finished or whether it finished in a certain
+    length of time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Start that something in its own thread and call its `join()` method with or
+    without a timeout value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `join()` method of the target thread is used to suspend the current thread
+    until the target thread is finished (returns from its `run()` method). This method
+    is overloaded; a version with no arguments waits forever for the thread to terminate,
+    whereas a version with arguments waits up to the specified time. For a simple
+    example, I create (and start!) a simple thread that just reads from the console
+    terminal, and the main thread simply waits for it. When I run the program, it
+    looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16-8](#javacook-threads-EX-8) lists the code for the `join()` demo.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-8\. main/src/main/java/threads/Join.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, it uses an inner class `Runnable` (see [Recipe 16.1](#javacook-threads-SECT-1))
+    in `Thread t` to be runnable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 16.5 Synchronizing Threads with the synchronized Keyword
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to protect certain data from access by multiple threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the `synchronized` keyword on the method or code you wish to protect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: I discussed the `synchronized` keyword briefly in [Recipe 13.5](ch13.html#javacook-netserver-SECT-4).
+    This keyword specifies that only one thread at a time is allowed to run the given
+    method (or any other synchronized method in the same class) in a given object
+    instance (for static methods, only one thread is allowed to run the method at
+    a time). You can synchronize methods or smaller blocks of code. It is easier and
+    safer to synchronize entire methods, but this can be more costly in terms of blocking
+    threads that could run. You can simply add the `synchronized` keyword on the method.
+    For example, many of the methods of `Vector` (see [Recipe 7.4](ch07.html#javacook-structure-SECT-3))
+    are synchronized in order to ensure that the vector does not become corrupted
+    or give incorrect results when two threads update or retrieve from it at the same
+    time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Bear in mind that threads can be interrupted at almost any time, in which case
+    control is given to another thread. Consider the case of two threads appending
+    to a data structure at the same time. Let’s suppose we have the same methods as
+    `Vector`, but we’re operating on a simple array. The `add()` method simply uses
+    the current number of objects as an array index, then increments it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Threads A and B both wish to call this method. Suppose that Thread A gets interrupted
+    after [![1](assets/1.png)](#co_threaded_java_CO1-1) but before [![2](assets/2.png)](#co_threaded_java_CO1-2),
+    and then Thread B gets to run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_threaded_java_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread B does [![1](assets/1.png)](#co_threaded_java_CO1-1), overwriting the
+    contents of `data[max]`; we’ve now lost all reference to the object that Thread
+    A passed in!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_threaded_java_CO1-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread B then increments `max` at [![2](assets/2.png)](#co_threaded_java_CO1-2)
+    and returns. Later, Thread A gets to run again; it resumes at [![2](assets/2.png)](#co_threaded_java_CO1-2)
+    and increments `max` past the last valid object. So not only have we lost an object,
+    but we have an uninitialized reference in the array. This state of affairs is
+    shown in [Figure 16-2](#javacook-threads-FIG-2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jcb4 1602](assets/jcb4_1602.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 16-2\. Non-thread-safe add method in operation: normal and failed updates'
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Now you might think, “No problem, I’ll just combine the two lines of code!”:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: As the game show host sometimes says, “Bzzzzt! Thanks for playing!” This change
+    makes the code a bit shorter but has absolutely no effect on reliability. Interrupts
+    don’t happen conveniently on Java statement boundaries; they can happen between
+    any of the many JVM machine instructions that correspond to your program. The
+    code can still be interrupted after the store and before the increment. The only
+    good solution is to use proper synchronization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Making the method `synchronized` means that any invocations of it will wait
+    if one thread has already started running the method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Any time you wish to synchronize some code, but not an entire method, use the
+    `synchronized` keyword on an unnamed code block within a method, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The choice of object to synchronize on is up to you. Sometimes it makes sense
+    to synchronize on the object containing the code, as in [Example 16-9](#javacook-threads-EX-9).
+    For synchronizing access to an `ArrayList`, it would make sense to use the `ArrayList`
+    instance, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 16-9](#javacook-threads-EX-9) is a web servlet that I wrote for use
+    in the classroom, following a suggestion from fellow Learning Tree instructor
+    Scott Weingust.^([3](ch16.html#idm45290630859608)) It lets you play a quiz show
+    game of the style where the host asks a question and the first person to press
+    their buzzer (buzz in) gets to try to answer the question correctly. To ensure
+    against having two people buzz in simultaneously, the code uses a synchronized
+    block around the code that updates the `Boolean` `buzzed` variable. And for reliability,
+    any code that accesses this `Boolean` is also synchronized.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-9\. main/src/main/java/threads/BuzzInServlet.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Two HTML pages lead to the servlet. The contestant’s page simply has a large
+    link (`<a href=/servlet/BuzzInServlet>`). Anchor links generate an HTML GET, so
+    the servlet engine calls `doGet()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The HTML is pretty plain, but it does the job. [Figure 16-3](#javacook-threads-FIG-3)
+    shows the look and feel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jcb4 1603](assets/jcb4_1603.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 16-3\. BuzzInServlet in action
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The game show host has access to an HTML form with a POST method, which calls
+    the `doPost()` method. This displays the winner to the game show host and resets
+    the buzzer for the next question.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A password is provided; it’s hardcoded here, but in reality the password would
+    come from a properties file ([Recipe 7.10](ch07.html#javacook-structure-SECT-7))
+    or a servlet initialization parameter (as described in *[Java Servlet Programming](http://shop.oreilly.com/product/9780596000400.do)*
+    [O’Reilly]):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The game show host functionality is shown in [Figure 16-4](#javacook-threads-FIG-4).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jcb4 1604](assets/jcb4_1604.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 16-4\. BuzzInServlet game show host function
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: For a more complete game, of course, the servlet would keep a `Stack` (see [Recipe
+    7.16](ch07.html#javacook-structure-SECT-14)) of people in the order they buzzed
+    in, in case the first person doesn’t answer the question correctly. Access to
+    this would have to be synchronized, too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 16.6 Simplifying Synchronization with Locks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want an easier means of synchronizing threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the `Lock` mechanism in `java.util.concurrent.locks`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Use the `java.util.concurrent.locks` package; its major interface is `Lock`.
+    This interface has several methods for locking and one for unlocking. Here is
+    the general pattern for using it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The point of putting the `unlock()` call in the `finally` block is, of course,
+    to ensure that it is not bypassed if an exception occurs (the code may also include
+    one or more `catch` blocks, as required by the work being performed).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The improvement here, compared with the traditional synchronized methods and
+    blocks, is that using a `Lock` actually looks like a locking operation! And, as
+    I mentioned, several means of locking are available, shown in [Table 16-1](#javacook-threads-TABLE-1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 16-1\. Locking methods of the Lock class
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Return type | Method | Meaning |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| void | `lock( )` | Get the lock, even if you have to wait until another thread
+    frees it first |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | `tryLock( )` | Get the lock only if it is free right now |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolean | `tryLock(long time, TimeUnit units) throws` `InterruptedException`
+    | Try to get the lock, but only wait for the length of time indicated |'
+  prefs: []
+  type: TYPE_TB
+- en: '| void | `lockInterruptibly( ) throws` `InterruptedException` | Get the lock,
+    waiting unless interrupted |'
+  prefs: []
+  type: TYPE_TB
+- en: '| void | `unlock( )` | Release the lock |'
+  prefs: []
+  type: TYPE_TB
+- en: The `TimeUnit` class lets you specify the units for the amount of time specified,
+    including `TimeUnit.SECONDS`, `TimeUnit.MILLISECONDS`, `TimeUnit.MICROSECONDS`,
+    and `TimeUnit.NANOSECONDS`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In all cases, the lock must be released with `unlock()` before it can be locked
+    again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The standard `Lock` is useful in many applications, but depending on the application’s
+    requirements, other types of locks may be more appropriate. Applications with
+    asymmetric load patterns may benefit from a common pattern called the *reader-writer
+    lock*; I call this one a readers-writer lock to emphasize that there can be many
+    readers but only one writer. It’s actually a pair of interconnected locks; any
+    number of readers can hold the read lock and read the data, as long as it’s not
+    being written (shared read access). A thread trying to lock the write lock, however,
+    waits until all the readers are finished and then locks them out until the writer
+    is finished (exclusive write access). To support this pattern, both the `ReadWriteLock`
+    interface and the implementing class `ReentrantReadWriteLock` are available. The
+    interface has only two methods, `readLock()` and `writeLock()`, which provide
+    a reference to the appropriate `Lock` implementation. *These methods do not, in
+    themselves, lock or unlock the locks*; they only provide access to them, so it
+    is common to see code like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: To demonstrate `ReadWriteLock` in action, I wrote the business logic portion
+    of a web-based voting application. It could be used in voting for candidates or
+    for the more common web poll. Presuming that you display the results on the home
+    page and change the data only when somebody takes the time to click a response
+    to vote, this application fits one of the intended criteria for `ReadWriteLock`—that
+    is, that you have more readers than writers. The main class, `ReadersWritersDemo`,
+    is shown in [Example 16-10](#javacook-threads-EX-10). The helper class `BallotBox`
+    is online; it simply keeps track of the votes and returns a read-only `Iterator`
+    upon request. Note that in the `run()` method of the reading threads, you could
+    obtain the iterator while holding the lock but release the lock before printing
+    it; this allows greater concurrency and better performance, but it could (depending
+    on your application) require additional locking against concurrent update.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-10\. main/src/main/java/threads/ReadersWriterDemo.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Because this is a simulation and the voting is random, it does not always come
+    out 50/50\. In two consecutive runs, the following were the last line of each
+    run:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `Lock` interface also makes available `Condition` objects, which provide
+    even more flexibility. Consult the online documentation for more information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 16.7 Simplifying Producer/Consumer with the Queue Interface
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to control producer/consumer implementations involving multiple threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the `Queue` interface or the `BlockingQueue` subinterface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As an example of the simplifications possible with the `java.util.Concurrent`
+    package, consider the standard producer/consumer program. An implementation synchronized
+    using traditional `Thread` code (`wait()` and `notifyAll()`) is in the online
+    source as `ProdCons2`. [Example 16-11](#javacook-threads-EX-13), *ProdCons15.java*,
+    uses the `java​.util.BlockingQueue` (a subinterface of `java.util.Queue`) to reimplement
+    `ProdCons2` in about two-thirds the number of lines of code, and it’s simpler.
+    The application simply puts items into a queue and takes them from it. In the
+    example, I have four producers and only three consumers, so the producers eventually
+    wait. Running the application on one of my older notebooks, the producers’ lead
+    over the consumers increases to about 350 over the 10 seconds or so of running
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-11\. main/src/main/java/threads/ProdCons15.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`ProdCons15` is superior to `ProdCons2` in almost all aspects. However, the
+    queue sizes that are output no longer necessarily exactly reflect the size of
+    the queue after the object is inserted or removed. Because there’s no longer any
+    locking ensuring atomicity here, any number of queue operations could occur on
+    other threads between the `Producer` thread’s `queue.put()` and the `Consumer`
+    thread’s queue size query.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 16.8 Optimizing Parallel Processing with Fork/Join
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You want to optimize use of multiple processors and/or large problem spaces.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Use the Fork/Join framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Fork/Join is an `ExecutorService` intended mainly for reasonably large tasks
+    that can naturally be divided recursively, where you don’t have to ensure equal
+    timing for each division. It uses work-stealing to keep threads busy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The basic means of using Fork/Join is to extend `RecursiveTask` or `RecursiveAction`
+    and override its `compute()` method along these lines:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are two classes: `RecursiveTask` and `RecursiveAction`. The main difference
+    is that `RecursiveTask` has each step of the work returning a value, whereas `RecursiveAction`
+    does not. In other words, the `RecursiveAction` method `compute()` has a return
+    type of void, whereas the `RecursiveAction` method of the same name has a return
+    type of `T`, some type parameter. You might use `RecursiveTask` when each call
+    returns a value that represents the computation for its subset of the overall
+    task, in other words, to divide a problem like summarizing data—each task would
+    summarize one part and return that. You might use `RecursiveAction` to operate
+    over a large data structure performing some transform of the data in place.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two demos of the Fork/Join framework here, named after the `ForkJoinTask`
+    that each subclasses:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`RecursiveTaskDemo` uses `fork()` and `join()` directly.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`RecursiveActionDemo` uses `invokeAll()` to invoke the two subtasks. `invoke()`
+    is just a `fork()` and a `join()`; and `invokeAll()` just does this repeatedly
+    until done. Compare the versions of `compute()` in Examples [16-12](#javacook-threads-forkjoin-recursiveActionDemo)
+    and [16-13](#javacook-threads-forkjoin-recursiveTaskDemo) and this will make sense.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Example 16-12\. main/src/main/java/threads/RecursiveActionDemo.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 16-13\. main/src/main/java/threads/RecursiveTaskDemo.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: The biggest undefined part there is “small enough”; you may have to do some
+    experimentation to see what works well as a chunk size. Or, better yet, write
+    more code using a feedback control system, measuring the system throughput as
+    the parameter is dynamically tweaked up and down, and have the system automatically
+    arrive at the optimal value for that particular computer system and runtime. This
+    is left as an extended exercise for the reader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '16.9 Scheduling Tasks: Future Times, Background Saving in an Editor'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Problem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You need to schedule something for a fixed time in the future. You need to save
+    the user’s work periodically in an interactive program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For one-shot future tasks, use the `Timer` service with a `TimerTask` object.
+    For recurring tasks, either use a background thread, or use the `Timer` service
+    and recompute the next time. For more complex tasks, such as running something
+    at high noon every second Thursday, consider using a third-party scheduling library
+    such as [Quartz](http://www.quartz-scheduler.org) or, in JavaEE/Jakarta, the [EJB
+    Timer Service](https://eclipse-ee4j.github.io/jakartaee-tutorial/ejb-basicexamples005.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There are several ways of scheduling things in the future. For one-shot scheduling,
+    you can use the `Timer` service from `java.util`. For recurring tasks, you can
+    use a `Runnable`, which sleeps in a loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is an example of the `Timer` service in `java.util`. These are the basics
+    of using this API:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a `Timer` service object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Use it to schedule instances of `TimerTask` with a legacy `Date` object indicating
+    the date and time.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The example code in [Example 16-14](#javacook-CHAPTER-EX-ReminderService) uses
+    `Item` as a subclass of `TimerTask` to perform a simple notification action in
+    the future, based on reading lines with `year-month-day-hour-minute Task`, such
+    as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Example 16-14\. main/src/main/java/threads/ReminderService.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: In real life the program would need to run for long periods of time and use
+    some more sophisticated messaging pattern; here we only show the timing scheduling
+    portion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code fragment in [Example 16-15](#javacook-CHAPTER-EX-AutoSave) creates
+    a background thread to handle background saves, as in most word processors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 16-15\. main/src/main/java/threads/ReminderService.java
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see in the `run()` method, this code sleeps for five minutes (300
+    seconds), then checks whether it should do anything. If the user has turned autosave
+    off, or hasn’t made any changes since the last save, nothing needs to be done.
+    Otherwise, we call the `saveFile()` method in the main program, which saves the
+    data to the current file. It would be smarter to save it to a recovery file of
+    some name, as the better word processors do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What’s not shown is that now all the methods must be synchronized. It’s easy
+    to see why if you think about how the save method would work if the user clicked
+    the Save button at the same time that the autosave method called it, or if the
+    user clicked Exit while the file save method had just opened the file for writing.
+    The strategy of saving to a recovery file gets around some of this, but it still
+    needs a great deal of care.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See Also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For details on `java.util.concurrent`, see the documentation accompanying the
+    JDK. For background on JSR 166, see [Doug Lea’s home page](http://gee.cs.oswego.edu)
+    and his [JSR 166 page](http://gee.cs.oswego.edu/dl/concurrency-interest/index.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: A great reference on Java threading is *Java Concurrency in Practice* by Brian
+    Goetz et al. (Addison-Wesley).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Project Loom: Fibers and Continuations](https://wiki.openjdk.java.net/display/loom/Main)
+    aims to promote easier-to-use, lighter-weight concurrency mechanisms.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch16.html#idm45290633711352-marker)) JSR stands for Java Specification
+    Request. The Java Community Process calls standards, both proposed and adopted,
+    JSRs. See [*http://www.jcp.org*](http://www.jcp.org) for details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch16.html#idm45290632776280-marker)) The title belies some unfulfilled
+    ambitions to make the animations follow the bouncing curves seen in some flashier
+    animation demonstrations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch16.html#idm45290630859608-marker)) A *servlet* is a low-level server-side
+    API for interacting with remote clients; today it would probably be written in
+    the form of a JavaServer Faces (JSF) handler.
+  prefs: []
+  type: TYPE_NORMAL

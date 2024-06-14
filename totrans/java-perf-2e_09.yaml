@@ -1,0 +1,1848 @@
+- en: Chapter 9\. Threading and Synchronization Performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: From its first days, some of Java’s appeal has been because it is multithreaded.
+    Even in the days before multicore and multi-CPU systems were the norm, the ability
+    to easily write threaded programs in Java has been considered one of its hallmark
+    features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In performance terms, the appeal is obvious: if two CPUs are available, an
+    application might be able to do twice as much work or the same amount of work
+    twice as fast. This assumes that the task can be broken into discrete segments,
+    since Java is not an autoparallelizing language that will figure out the algorithmic
+    parts. Fortunately, computing today is often about discrete tasks: a server handling
+    simultaneous requests from discrete clients, a batch job performing the same operation
+    on a series of data, mathematical algorithms that break into constituent parts,
+    and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter explores how to get the maximum performance out of Java threading
+    and synchronization facilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Threading and Hardware
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Recall the discussion from [Chapter 1](ch01.html#Introduction) about multicore
+    systems and hyper-threaded systems. Threading at the software level allows us
+    to take advantage of a machine’s multiple cores and hyper-threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Doubling the cores on a machine allows us to double the performance of our correctly
+    written application, though as we discussed in [Chapter 1](ch01.html#Introduction),
+    adding hyper-threading to a CPU does not double its performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Almost all examples in this chapter are run on a machine with four single-threaded
+    CPUs—the exception being the first example that shows the difference between hyper-threaded
+    and non-hyper-threaded CPUs. After that, we will look at scaling only in terms
+    of single-threaded CPU cores so that we can better understand the performance
+    effects of adding threads. That is not to say that hyper-threaded CPUs aren’t
+    important; the 20%–40% performance boost from that extra hardware thread will
+    certainly improve the overall performance or throughput of your application. From
+    a Java perspective, we should still consider the hyper-threads as actual CPUs
+    and tune our application running on a four-core, eight hyper-thread machine as
+    if it had eight CPUs. But from a measurement perspective, we should be expecting
+    only a five-to-six times improvement compared to a single core.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread Pools and ThreadPoolExecutors
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Threads can be managed by custom code in Java, or applications can utilize
+    a thread pool. Java servers are typically built around the notion of one or more
+    thread pools to handle requests: each call into the server is handled by a (potentially
+    different) thread from the pool. Similarly, other applications can use Java’s
+    `ThreadPoolExecutor` to execute tasks in parallel.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In fact, some server frameworks use instances of the `ThreadPoolExecutor` class
+    to manage their tasks, though many have written their own thread pools (if only
+    because they predate the addition of `ThreadPoolExecutor` to the Java API). Although
+    the implementation of the pools in these cases might differ, the basic concepts
+    are the same, and both are discussed in this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The key factor in using a thread pool is that tuning the size of the pool is
+    crucial to getting the best performance. Thread pool performance varies depending
+    on basic choices about thread pool size, and under certain circumstances an oversized
+    thread pool will be detrimental to performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All thread pools work in essentially the same way. Tasks are submitted to a
+    queue (there can be more than one queue, but the concept is the same). Then a
+    certain number of threads picks up tasks from the queue and executes them. The
+    result of the task can be sent back to the client (e.g., in the case of a server),
+    stored in a database, stored in an internal data structure, or whatever. But after
+    finishing the task, the thread returns to the task queue to retrieve another job
+    to execute (and if there are no more tasks to perform, the thread waits for a
+    task).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Thread pools have a minimum and maximum number of threads. The minimum number
+    of threads is kept around, waiting for tasks to be assigned to them. Because creating
+    a thread is a fairly expensive operation, this speeds up the overall operation
+    when a task is submitted: it is expected that an already existing thread can pick
+    it up. On the other hand, threads require system resources—including native memory
+    for their stacks—and having too many idle threads can consume resources that could
+    be used by other processes. The maximum number of threads also serves as a necessary
+    throttle, preventing too many tasks from executing at once.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The terminology of the `ThreadPoolExecutor` and related classes is somewhat
+    different. These classes refer to a *core* pool size and *maximum* pool size,
+    and the meaning of those terms varies depending on how the pool is constructed.
+    Sometimes the core pool size is the minimum pool size, sometimes it is the maximum
+    pool size, and sometimes it is ignored altogether. Similarly, sometimes the maximum
+    pool size is the maximum size, but sometimes it is ignored.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Details are given at the end of this section, but to keep things simple, we’ll
+    set the core and maximum sizes the same for our tests and refer to only a maximum
+    size. The thread pools in the examples therefore always have the given number
+    of threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting the Maximum Number of Threads
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let’s address the maximum number of threads first: what is the optimal maximum
+    number of threads for a given workload on given hardware? There is no simple answer;
+    it depends on characteristics of the workload and the hardware on which it is
+    run. In particular, the optimal number of threads depends on how often each individual
+    task will block.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We’ll use a machine with four single-threaded CPUs for this discussion. Note
+    that it doesn’t matter if the system has only four cores, if it has 128 cores
+    but you want to utilize only four of them, or if you have a Docker container limiting
+    the CPU usage to four: the goal is to maximize the usage of those four cores.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clearly, then, the maximum number of threads must be set to at least four. Granted,
+    some threads in the JVM are doing things other than processing these tasks, but
+    these threads will almost never need an entire core. One exception is if a concurrent
+    mode garbage collector is being used as discussed in [Chapter 5](ch05.html#GC)—the
+    background threads there must have enough CPU (cores) to operate, lest they fall
+    behind in processing the heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Does it help to have more than four threads? This is where the characteristics
+    of the workload come into play. Take the simple case where the tasks are all compute-bound:
+    they don’t make external network calls (e.g., to a database), nor do they have
+    significant contention on an internal lock. The stock price history batch program
+    is such an application (when using a mock entity manager): the data on the entities
+    can be calculated completely in parallel.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 9-1](#TablePool1) shows the performance of calculating the history of
+    10,000 mock stock entities using a thread pool set to use the given number of
+    threads on a machine with four cores. With only a single thread in the pool, 55.2
+    seconds are needed to calculate the data set; with four threads, only 13.9 seconds
+    are required. After that, a little more time is needed as threads are added.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 9-1\. Time required to calculate 10,000 mock price histories
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of threads | Seconds required | Percent of baseline |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 55.2 ± 0.6 | 100% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 28.3 ± 0.3 | 51.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 13.9 ± 0.6 | 25.1% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 14.3 ± 0.2 | 25.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 14.5 ± 0.3 | 26.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'If the tasks in the application were completely parallel, the “Percent of baseline”
+    column would show 50% for two threads and 25% for four threads. Such completely
+    linear scaling is impossible to come by for several reasons: if nothing else,
+    the threads must coordinate among themselves to pick a task from the run queue
+    (and in general, there is usually more synchronization among the threads). By
+    the time four threads are used, the system is consuming 100% of available CPU,
+    and although the machine may not be running any other user-level applications,
+    various system-level processes will kick in and use some CPU, preventing the JVM
+    from utilizing all 100% of the cycles. Still, this application is doing a good
+    job of scaling, and even if the number of threads in the pool is overestimated,
+    we have only a slight penalty to pay.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In other circumstances, though, the penalty for too many threads can be larger.
+    In the REST version of the stock history calculator, having too many threads has
+    a bigger effect, as is shown in [Table 9-3](#TablePool3). The application server
+    is configured to have the given number of threads, and a load generator is sending
+    16 simultaneous requests to the server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 9-3\. Operations per second for mock stock prices through a REST server
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of threads | Operations per second | Percent of baseline |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 46.4 | 27% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 169.5 | 100% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 165.2 | 97% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 162.2 | 95% |'
+  prefs: []
+  type: TYPE_TB
+- en: Given that the REST server has four available CPUs, maximum throughput is achieved
+    with that many threads in the pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Chapter 1](ch01.html#Introduction) discussed the need to determine where the
+    bottleneck is when investigating performance issues. In this example, the bottleneck
+    is clearly the CPU: at four CPUs, the CPU is 100% utilized. Still, the penalty
+    for adding more threads in this case is somewhat minimal, at least until there
+    are four times too many threads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But what if the bottleneck is elsewhere? This example is also somewhat unusual
+    in that the tasks are completely CPU-bound: they do no I/O. Typically, the threads
+    might be expected to make calls to a database or write their output somewhere
+    or even rendezvous with another resource. In that case, the CPU won’t necessarily
+    be the bottleneck: that external resource might be.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When that is the case, adding threads to the thread pool is detrimental. Although
+    I said (only somewhat tongue in cheek) in [Chapter 1](ch01.html#Introduction)
+    that the database is always the bottleneck, the bottleneck can be any external
+    resource.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As an example, consider the stock REST server with the roles reversed: what
+    if the goal is to make optimal use of the load generator machine (which, after
+    all, is simply running a threaded Java program)?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In typical usage, if the REST application is run in a server with four CPUs
+    and has only a single client requesting data, the REST server will be about 25%
+    busy, and the client machine will be almost idle. If the load is increased to
+    four concurrent clients, the server will be 100% busy, and the client machine
+    may be only 20% busy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Looking only at the client, it is easy to conclude that because the client
+    has a lot of excess CPU, it should be possible to add more threads to the client
+    and improve its throughput. [Table 9-4](#TablePool4) shows how wrong that assumption
+    is: when threads are added to the client, performance is drastically affected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 9-4\. Average response time for calculating mock stock price histories
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of client threads | Average response time | Percent of baseline |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 0.022 second | 100% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 0.022 second | 100% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 0.024 second | 109% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 0.046 second | 209% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 0.093 second | 422% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 0.187 second | 885% |'
+  prefs: []
+  type: TYPE_TB
+- en: Once the REST server is the bottleneck in this example (i.e., at four client
+    threads), adding load into the server is quite harmful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This example may seem somewhat contrived. Who would add more client threads
+    when the server is already CPU-bound? But I’ve used this example simply because
+    it is easy to understand and uses only Java programs. You can run it yourself
+    to understand how it works, without having to set up database connections and
+    schemas and whatnot.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The point is that the same principle holds here for a REST server that is sending
+    requests to a database that is CPU- or I/O-bound. You might look only at the server’s
+    CPU, see that is it well below 100% and that it has additional requests to process,
+    and assume that increasing the number of threads in the server is a good idea.
+    That would lead to a big surprise, because increasing the number of threads in
+    that situation will actually decrease the total throughput (and possibly significantly),
+    just as increasing the number of client threads did in the Java-only example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is another reason it is important to know where the actual bottleneck
+    in a system is: if load is increased into the bottleneck, performance will decrease
+    significantly. Conversely, if load into the current bottleneck is reduced, performance
+    will likely increase.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is also why self-tuning of thread pools is difficult. Thread pools usually
+    have some visibility into the amount of work that they have pending and perhaps
+    even how much CPU the machine has available—but they usually have no visibility
+    into other aspects of the entire environment in which they are executing. Hence,
+    adding threads when work is pending—a key feature of many self-tuning thread pools
+    (as well as certain configurations of the `ThreadPoolExecutor`)—is often exactly
+    the wrong thing to do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [Table 9-4](#TablePool4), the default configuration of the REST server was
+    to create 16 threads on the four-CPU machine. That makes sense in a general default
+    case, because the threads can be expected to make external calls. When those calls
+    block waiting for a response, other tasks can be run, and the server will require
+    more than four threads in order to execute those tasks. So a default that creates
+    a few too many threads is a reasonable compromise: it will have a slight penalty
+    for tasks that are primarily CPU-bound, and it will allow increased throughput
+    for running multiple tasks that perform blocking I/O. Other servers might have
+    created 32 threads by default, which would have had a bigger penalty for our CPU-bound
+    test, but also had a bigger advantage for handling a load that is primarily I/O
+    bound.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, this is also why setting the maximum size of a thread pool is
+    often more art than science. In the real world, a self-tuning thread pool may
+    get you 80% to 90% of the possible performance of the system under test, and overestimating
+    the number of threads needed in a pool may exact only a small penalty. But when
+    things go wrong with this sizing, they can go wrong in a big way. Adequate testing
+    in this regard is, unfortunately, still a key requirement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting the Minimum Number of Threads
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Once the maximum number of threads in a thread pool has been determined, it’s
+    time to determine the minimum number of threads needed. To cut to the chase, it
+    rarely matters, and for simplicity sake in almost all cases, you can set the minimum
+    number of threads to the same value as the maximum.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The argument for setting the minimum number of threads to another value (e.g.,
+    1) is that it prevents the system from creating too many threads, which saves
+    on system resources. It is true that each thread requires a certain amount of
+    memory, particularly for its stack (which is discussed later in this chapter).
+    Again, though, following one of the general rules from [Chapter 2](ch02.html#SampleApplications),
+    the system needs to be sized to handle the maximum expected throughput, at which
+    point it will need to create all those threads. If the system can’t handle the
+    maximum number of threads, choosing a small minimum number of threads doesn’t
+    really help: if the system does hit the condition that requires the maximum number
+    of threads (and which it cannot handle), the system will certainly be in the weeds.
+    Better to create all the threads that might eventually be needed and ensure that
+    the system can handle the maximum expected load.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other hand, the downside to specifying a minimum number of threads is
+    fairly nominal. That downside occurs the first time there are multiple tasks to
+    execute: then the pool will need to create a new thread. Creating threads is detrimental
+    to performance—which is why thread pools are needed in the first place—but this
+    one-time cost for creating the thread is likely to be unnoticed as long as it
+    then remains in the pool.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In a batch application, it does not matter whether the thread is allocated
+    when the pool is created (which is what will occur if you set the minimum and
+    maximum number of threads to the same value) or whether the thread is allocated
+    on demand: the time to execute the application will be the same. In other applications,
+    the new threads are likely allocated during the warm-up period (and again, the
+    total time to allocate the threads is the same); the effect on the performance
+    of an application will be negligible. Even if the thread creation occurs during
+    the measurement cycle, as long as the thread creation is limited, it will likely
+    not be noticed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One other tuning that applies here is the idle time for a thread. Say that the
+    pool is sized with a minimum of one thread and a maximum of four. Now suppose
+    that usually one thread is executing a task, and then the application starts a
+    cycle in which every 15 seconds, the workload has on average two tasks to execute.
+    The first time through that cycle, the pool will create the second thread—and
+    now it makes sense for that second thread to stay in the pool for at least a certain
+    period of time. You want to avoid the situation in which that second thread is
+    created, finishes its task in 5 seconds, is idle for 5 seconds, and then exits—since
+    5 seconds later, a second thread will be needed for the next task. In general,
+    after a thread is created in a pool for a minimum size, it should stick around
+    for at least a few minutes to handle any spike in load. To the extent that you
+    have a good model of the arrival rate, you can base the idle time on that. Otherwise,
+    plan on the idle time being measured in minutes, at least anywhere from 10 to
+    30.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keeping idle threads around usually has little impact on an application. Usually,
+    the thread object itself doesn’t take a very large amount of heap space. The exception
+    to that rule is if the thread holds onto a large amount of thread-local storage
+    or if a large amount of memory is referenced through the thread’s runnable object.
+    In either of those cases, freeing a thread can offer significant savings in terms
+    of the live data left in the heap (which in turn affects the efficiency of GC).
+  prefs: []
+  type: TYPE_NORMAL
+- en: These cases really should not happen for thread pools, however. When a thread
+    in a pool is idle, it should not be referencing any runnable object anymore (if
+    it is, a bug exists somewhere). Depending on the pool implementation, the thread-local
+    variables may remain in place—but while thread-local variables can be an effective
+    way to promote object reuse in certain circumstances (see [Chapter 7](ch07.html#Memory)),
+    the total amount of memory those thread-local objects occupy should be limited.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One important exception to this rule is for thread pools that can grow to be
+    very large (and hence run on a very large machine). Say the task queue for a thread
+    pool is expected to average 20 tasks; 20 is then a good minimum size for the pool.
+    Now say the pool is running on a very large machine and that it is designed to
+    handle a spike of 2,000 tasks. Keeping 2,000 idle threads around in this pool
+    will affect its performance when it is running only the 20 tasks—the throughput
+    of this pool may be as much as 50% when it contains 1,980 idle threads, as opposed
+    to when it has only the core 20 busy threads. Thread pools don’t usually encounter
+    sizing issues like that, but when they do, that’s a good time to make sure they
+    have a good minimum value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread Pool Task Sizes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The tasks pending for a thread pool are held in a queue or list; when a thread
+    in the pool can execute a task, it pulls a task from the queue. This can lead
+    to an imbalance, as the number of tasks on the queue could grow very large. If
+    the queue is too large, tasks in the queue will have to wait a long time until
+    the tasks in front of them have completed execution. Imagine a web server that
+    is overloaded: if a task is added to the queue and isn’t executed for 3 seconds,
+    the user has likely moved on to another page.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a result, thread pools typically limit the size of the queue of pending tasks.
+    The `ThreadPoolExecutor` does this in various ways, depending on the data structure
+    it is configured with (more on that in the next section); servers usually have
+    a tuning parameter to adjust this value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As with the maximum size of the thread pool, no universal rule indicates how
+    this value should be tuned. A server with 30,000 items in its queue and four available
+    CPUs can clear the queue in 6 minutes if it takes only 50 ms to execute a task
+    (assuming no new tasks arrive during that time). That might be acceptable, but
+    if each task requires 1 second to execute, it will take 2 hours to clear the queue.
+    Once again, measuring your actual application is the only way to be sure of what
+    value will give you the performance you require.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In any case, when the queue limit is reached, attempts to add a task to the
+    queue will fail. A `ThreadPoolExecutor` has a `rejectedExecution()` method that
+    handles that case (by default, it throws a `RejectedExecutionException`, but you
+    can override that behavior). Application servers should return a reasonable response
+    to the user (with a message that indicates what has happened), and REST servers
+    should return a status code of either 429 (too many requests) or 503 (service
+    unavailable).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sizing a ThreadPoolExecutor
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The general behavior for a thread pool is that it starts with a minimum number
+    of threads, and if a task arrives when all existing threads are busy, a new thread
+    is started (up to the maximum number of threads) and the task is executed immediately.
+    If the maximum number of threads have been started but they are all busy, the
+    task is queued, unless many tasks are pending already, in which case the task
+    is rejected. While that is the canonical behavior of a thread pool, the `ThreadPoolExecutor`
+    can behave somewhat differently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `ThreadPoolExecutor` decides when to start a new thread based on the type
+    of queue used to hold the tasks. There are three possibilities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`SynchronousQueue`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When the executor uses `SynchronousQueue`, the thread pool behaves as expected
+    with respect to the number of threads: new tasks will start a new thread if all
+    existing threads are busy and if the pool has less than the number of maximum
+    threads. However, this queue has no way to hold pending tasks: if a task arrives
+    and the maximum number of threads is already busy, the task is always rejected.
+    So this choice is good for managing a small number of tasks, but otherwise may
+    be unsuitable. The documentation for this class suggests specifying a very large
+    number for the maximum thread size—which may be OK if the tasks are completely
+    I/O-bound but as we’ve seen may be counterproductive in other situations. On the
+    other hand, if you need a thread pool in which the number of threads is easy to
+    tune, this is the better choice.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this case, the core value is the minimum pool size: the number of threads
+    that will be kept running even if they are idle. The maximum value is the maximum
+    number of threads in the pool.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the type of thread pool (with an unbounded maximum thread value) returned
+    by the `newCachedThreadPool()` method of the `Executors` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unbounded queues
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When the executor uses an unbounded queue (such as `LinkedBlockedingQueue`),
+    no task will ever be rejected (since the queue size is unlimited). In this case,
+    the executor will use at most the number of threads specified by the core thread
+    pool size: the maximum pool size is ignored. This essentially mimics a traditional
+    thread pool in which the core size is interpreted as the maximum pool size, though
+    because the queue is unbounded, it runs the risk of consuming too much memory
+    if tasks are submitted more quickly than they can be run.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the type of thread pool returned by the `newFixedThreadPool()` and `newSingleThreadScheduledExecutor()`
+    methods of the `Executors` class. The core (or maximum) pool size of the first
+    case is the parameter passed to construct the pool; in the second case, the core
+    pool size is 1.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bounded queues
+  prefs: []
+  type: TYPE_NORMAL
+- en: Executors that use a bounded queue (e.g., `ArrayBlockingQueue`) employ a complicated
+    algorithm to determine when to start a new thread. For example, say that the pool’s
+    core size is 4, its maximum size is 8, and the maximum size of `ArrayBlockingQueue`
+    is 10\. As tasks arrive and are placed in the queue, the pool will run a maximum
+    of 4 threads (the core pool size). Even if the queue completely fills up—so that
+    it is holding 10 pending tasks—the executor will utilize 4 threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An additional thread will be started only when the queue is full, and a new
+    task is added to the queue. Instead of rejecting the task (since the queue is
+    full), the executor starts a new thread. That new thread runs the first task on
+    the queue, making room for the pending task to be added to the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, the only way the pool will end up with 8 threads (its specified
+    maximum) is if there are 7 tasks in progress, 10 tasks in the queue, and a new
+    task is added to the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The idea behind this algorithm is that the pool will operate with only the core
+    threads (four) most of the time, even if a moderate number of tasks is in the
+    queue waiting to be run. That allows the pool to act as a throttle (which is advantageous).
+    If the backlog of requests becomes too great, the pool then attempts to run more
+    threads to clear out the backlog (subject to a second throttle, the maximum number
+    of threads).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If no external bottlenecks are in the system and CPU cycles are available,
+    everything here works out: adding the new threads will process the queue faster
+    and likely bring it back to its desired size. So cases where this algorithm is
+    appropriate can certainly be constructed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, this algorithm has no idea why the queue size has increased.
+    If it is caused by an external backlog, adding more threads is the wrong thing
+    to do. If the pool is running on a machine that is CPU-bound, adding more threads
+    is the wrong thing to do. Adding threads will make sense only if the backlog occurred
+    because additional load came into the system (e.g., more clients started making
+    an HTTP request). (Yet if that is the case, why wait to add threads until the
+    queue size has reached a certain bound? If the additional resources are available
+    to utilize additional threads, adding them sooner will improve the overall performance
+    of the system.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are many arguments for and against each of these choices, but when attempting
+    to maximize performance, this is a time to apply the KISS principle: keep it simple,
+    stupid. As always, the needs of the application may dictate otherwise, but as
+    a general recommendation, don’t use the `Executors` class to provide default,
+    unbounded thread pools that don’t allow you to control the application’s memory
+    use. Instead, construct your own `ThreadPoolExecutor` that has the same number
+    of core and maximum threads and utilizes an `ArrayBlockingQueue` to limit the
+    number of requests that can be held in memory waiting to be executed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Thread pools are one case where object pooling is a good thing: threads are
+    expensive to initialize, and a thread pool allows the number of threads on a system
+    to be easily throttled.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Thread pools must be carefully tuned. Blindly adding new threads into a pool
+    can, in some circumstances, degrade performance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using simpler options for a `ThreadPoolExecutor` will usually provide the best
+    (and most predictable) performance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The ForkJoinPool
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In addition to the general-purpose `ThreadPoolExecutors`, Java provides a somewhat
+    special-purpose pool: the `ForkJoinPool` class. This class looks just like any
+    other thread pool; like the `ThreadPoolExecutor` class, it implements the `Executor`
+    and `ExecutorService` interfaces. When those interfaces are used, `ForkJoinPool`
+    uses an internal unbounded list of tasks that will be run by the number of threads
+    specified in its constructor. If no argument is passed to the constructor, the
+    pool will size itself based on the number of CPUs available on the machine (or
+    based on the CPUs available to the Docker container, if applicable).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `ForkJoinPool` class is designed to work with divide-and-conquer algorithms:
+    those where a task can be recursively broken into subsets. The subsets can be
+    processed in parallel, and then the results from each subset are merged into a
+    single result. The classic example of this is the quicksort sorting algorithm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The important point about divide-and-conquer algorithms is that they create
+    a lot of tasks that must be managed by relatively few threads. Say that we want
+    to sort an array of 10 million elements. We start by creating separate tasks to
+    perform three operations: sort the subarray containing the first 5 million elements,
+    sort the subarray containing the second 5 million elements, and then merge the
+    two subarrays.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The sorting of the 5-million-element arrays is similarly accomplished by sorting
+    subarrays of 2.5 million elements and merging those arrays. This recursion continues
+    until at some point (e.g., when the subarray has 47 elements), it is more efficient
+    to use insertion sort on the array and sort it directly. [Figure 9-1](#FigureForkJoin)
+    shows how that all works out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the end, we will have 262,144 tasks to sort the leaf arrays, each of which
+    will have 47 (or fewer) elements. (That number—47—is algorithm-dependent and the
+    subject of a lot of analysis, but it is the number Java uses for quicksort.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jp2e 0901](assets/jp2e_0901.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-1\. Tasks in a recursive quicksort
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: An additional 131,072 tasks are needed to merge those sorted arrays, 65,536
+    additional tasks to merge the next set of sorted arrays, and so on. In the end,
+    there will be 524,287 tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The larger point here is that none of the tasks can complete until the tasks
+    that they have spawned have also completed. The tasks directly sorting arrays
+    of fewer than 47 elements must be completed first, and then tasks can merge the
+    two small arrays that they created, and so on: everything is merged up the chain
+    until the entire array is merged into its final, sorted value.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It isn’t possible to perform that algorithm efficiently using `ThreadPoolExecutor`,
+    because a parent task must wait for its child tasks to complete. A thread inside
+    a thread-pool executor cannot add another task to the queue and then wait for
+    it to finish: once the thread is waiting, it cannot be used to execute one of
+    the subtasks. `ForkJoinPool`, on the other hand, allows its threads to create
+    new tasks and then suspend their current task. While the task is suspended, the
+    thread can execute other pending tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s take a simple example: say that we have an array of doubles, and the
+    goal is to count the number of values in the array that are less than 0.5\. It’s
+    trivial simply to scan the array sequentially (and possibly advantageous, as you’ll
+    see later in this section)—but for now, it is instructive to divide the array
+    into subarrays and scan them in parallel (emulating the more complex quicksort
+    and other divide-and-conquer algorithms). Here’s an outline of the code to achieve
+    that with a `ForkJoinPool`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `fork()` and `join()` methods here are the key: we’d be hard-pressed to
+    implement this sort of recursion without those methods (which are not available
+    in the tasks executed by `ThreadPoolExecutor`). Those methods use a series of
+    internal, per-thread queues to manipulate the tasks and switch threads from executing
+    one task to executing another. The details are transparent to the developer, though
+    if you’re interested in algorithms, the code makes fascinating reading. Our focus
+    here is on the performance: what trade-offs exist between the `ForkJoinPool` and
+    `ThreadPoolExecutor` classes?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First and foremost is that the suspension implemented by the fork/join paradigm
+    allows all the tasks to be executed by only a few threads. Counting the double
+    values in an array of 2 million elements using this example code creates more
+    than 4 million tasks, but those tasks are easily executed by only a few threads
+    (even one, if that makes sense for the machine running the test). Running a similar
+    algorithm using `ThreadPoolExecutor` would require more than 4 million threads,
+    since each thread would have to wait for its subtasks to complete, and those subtasks
+    could complete only if additional threads were available in the pool. So the fork/join
+    suspension allows us to use algorithms that we otherwise could not, which is a
+    performance win.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other hand, a simple algorithm like this isn’t particularly well-suited
+    for a real-world use of the fork-join pool. This pool is ideally suited for the
+    following cases:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The merge part of the algorithm performs some interesting work (rather than
+    simply adding two numbers as in this example).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The leaf calculation of the algorithm performs enough work to offset creating
+    the task.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Absent these two criteria, it is easy enough to partition the array into chunks
+    and use `ThreadPoolExecutor` to have multiple threads scan the array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: On a four-CPU machine, this code will fully utilize all available CPUs, processing
+    the array in parallel while avoiding creating and queuing the 4 million tasks
+    used by the fork/join example. The performance is predictably faster, as [Table 9-5](#TableForkJoin)
+    shows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 9-5\. Time to count an array of 2 million elements
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of threads | `ForkJoinPool` | `ThreadPoolExecutor` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 125 ± 1 ms | 1.731 ± 0.001 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 37.7 ± 1 ms | 0.55 ± 0.002 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: The two tests differ in GC time, but the real difference comes from the divide-and-conquer,
+    particularly with a leaf value of 10. The overhead of creating and managing the
+    4 million task objects hampers the performance of `ForkJoinPool`. When a similar
+    alternative is available, it is likely to be faster—at least in this simple case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternatively, we could have required far fewer tasks by ending the recursion
+    earlier. At one extreme, we could end the recursion when the subarray has 500,000
+    elements, which neatly partitions the work into four tasks, which is the same
+    as the thread pool example does. At that point, the performance of this test would
+    be the same (though if the work partitions that easily, there’s no reason to use
+    a divide-and-conquer algorithm in the first place).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For illustrative purposes, we can easily enough mitigate the second point in
+    our criteria by adding work to the leaf calculation phase of our task:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now the test will be dominated by the calculation of `d[i]`. But because the
+    merge portion of the algorithm isn’t doing any significant work, creating all
+    the tasks still carries a penalty, as we see in [Table 9-6](#TableForkJoinWork).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 9-6\. Time to count an array of 2 million elements with added work
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of threads | `ForkJoinPool` | `ThreadPoolExecutor` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 271 ± 3 ms | 258 ± 1 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: Now that the time is dominated by actual calculation in the test, the fork-join
+    pool isn’t quite as bad compared to a partition. Still, the time to create the
+    tasks is significant, and when the tasks could simply be partitioned (i.e., when
+    no significant work is in the merge stage), a simple thread pool will be faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Work Stealing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'One rule about using this pool is to make sure splitting the tasks makes sense.
+    But a second feature of the `ForkJoinPool` makes it even more powerful: it implements
+    work stealing. That’s basically an implementation detail; it means that each thread
+    in the pool has its own queue of tasks it has forked. Threads will preferentially
+    work on tasks from their own queue, but if that queue is empty, they will steal
+    tasks from the queues of other threads. The upshot is that even if one of the
+    4 million tasks takes a long time to execute, other threads in the `ForkJoinPool`
+    can complete any and all of the remaining tasks. The same is not true of the `ThreadPoolExecutor`:
+    if one of its tasks requires a long time, the other threads cannot pick up additional
+    work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we added work to the original example, the amount of work per value was
+    constant. What if that work varied depending on the position of the item in the
+    array?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Because the outer loop (indexed by `j`) is based on the position of the element
+    in the array, the calculation requires a length of time proportional to the element
+    position: calculating the value for `d[0]` will be very fast, while calculating
+    the value for `d[d.length - 1]` will take more time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now the simple partitioning of the `ThreadPoolExecutor` test will be at a disadvantage.
+    The thread calculating the first partition of the array will take a very long
+    time to complete, much longer than the time spent by the fourth thread operating
+    on the last partition. Once that fourth thread is finished, it will remain idle:
+    everything must wait for the first thread to complete its long task.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The granularity of the 4 million tasks in the `ForkJoinPool` means that although
+    one thread will get stuck doing the very long calculations on the first 10 elements
+    in the array, the remaining threads will still have work to perform, and the CPU
+    will be kept busy during most of the test. That difference is shown in [Table 9-7](#TableForkJoinBalance).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 9-7\. Time to process an array of 2,000,000 elements with an unbalanced
+    workload
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of threads | `ForkJoinPool` | `ThreadPoolExecutor` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 22.0 ± 0.01 seconds | 21.7 ± 0.1 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 5.6 ± 0.01 seconds | 9.7 ± 0.1 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: 'When the pool has a single thread, the computation takes essentially the same
+    amount of time. That makes sense: the number of calculations is the same regardless
+    of the pool implementation, and since those calculations are never done in parallel,
+    they can be expected to take the same amount of time (though some small overhead
+    exists for creating the 4 million tasks). But when the pool contains four threads,
+    the granularity of the tasks in the `ForkJoinPool` gives it a decided advantage:
+    it is able to keep the CPUs busy for almost the entire duration of the test.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This situation is called *unbalanced*, because some tasks take longer than others
+    (and hence the tasks in the previous example are called *balanced*). In general,
+    this leads to the recommendation that using `ThreadPoolExecutor` with partitioning
+    will give better performance when the tasks can be easily partitioned into a balanced
+    set, and `ForkJoinPool` will give better performance when the tasks are unbalanced.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is a more subtle performance recommendation here as well: carefully consider
+    the point at which the recursion for the fork/join paradigm should end. In this
+    example, we’ve arbitrarily chosen it to end when the array size is less than 10\.
+    In the balanced case, we’ve already discussed that ending the recursion at 500,000
+    would be optimal.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, the recursion in the unbalanced case gives even better performance
+    for smaller leaf values. Representative data points are shown in [Table 9-8](#TableForkJoinRecurse).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 9-8\. Time to process an array of 2,000,000 elements with varying leaf
+    values
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Target size of leaf array | `ForkJoinPool` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 500,000 | 9,842 ± 5 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50,000 | 6,029 ± 100 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10,000 | 5,764 ± 55 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1,000 | 5,657 ± 56 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | 5,598 ± 20 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | 5,601 ± 15 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: With a leaf size of 500,000, we’ve duplicated the thread pool executor case.
+    As the leaf size drops, we benefit from the unbalanced nature of the test, until
+    between 1,000 and 10,000, where the performance levels off.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This tuning of the leaf value is routinely done in these kind of algorithms.
+    As you saw earlier in this section, Java uses 47 for the leaf value in its implementation
+    of the quicksort algorithm: that’s the point (for that algorithm) at which the
+    overhead of creating the tasks outweighs the benefits of the divide-and-conquer
+    approach.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Automatic Parallelization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Java has the ability to automatically parallelize certain kinds of code. This
+    parallelization relies on the use of the `ForkJoinPool` class. The JVM will create
+    a common fork-join pool for this purpose; it is a static element of the `ForkJoinPoolClass`
+    that is sized by default to the number of processors on the target machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This parallelization occurs in many methods of the `Arrays` class: methods
+    to sort an array using parallel quicksorting, methods to operate on each individual
+    element of an array, and so on. It is also used within the streams feature, which
+    allows for operations (either sequential or parallel) to be performed on each
+    element in a collection. Basic performance implications of streams are discussed
+    in [Chapter 12](ch12.html#Misc); in this section, we’ll look at how streams can
+    automatically be processed in parallel.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given a collection containing a series of integers, the following code will
+    calculate the stock price history for the symbol corresponding to the given integer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code will calculate the mock price histories in parallel: the `forEach()`
+    method will create a task for each element in the array list, and each task will
+    be processed by the common `ForkJoinTask` pool. That is essentially equivalent
+    to the test at the beginning of this chapter, which used a thread pool to calculate
+    the histories in parallel—though this code is much easier to write than dealing
+    with the thread pool explicitly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sizing the common `ForkJoinTask` pool is as important as sizing any other thread
+    pool. By default, the common pool will have as many threads as the target machines
+    has CPUs. If you are running multiple JVMs on the same machine, limiting that
+    number makes sense so that the JVMs do not compete for CPU against each other.
+    Similarly, if a server will execute other requests in parallel and you want to
+    make sure that CPU is available for those other tasks, consider lowering the size
+    of the common pool. On the other hand, if tasks in the common pool will block
+    waiting for I/O or other data, the common pool size might need to be increased.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The size can be set by specifying the system property `-Djava.util.concurrent``.ForkJoinPool.common.parallelism=`*`N`*.
+    As usual for Docker containers, it should be set manually in Java 8 versions prior
+    to update 192.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Earlier in this chapter, [Table 9-1](#TablePool1) showed the effect on the performance
+    of the parallel stock history calculations when the pool had various sizes. [Table 9-9](#TablePoolStockJoin)
+    compares that data to the `forEach()` construct using the common `ForkJoinPool`
+    (with the `parallelism` system property set to the given value).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 9-9\. Time required to calculate 10,000 mock price histories
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of threads | `ThreadPoolExecutor` | `ForkJoinPool` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 40 ± 0.1 seconds | 20.2 ± 0.2 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 20.1 ± 0.07 seconds | 15.1 ± 0.05 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 10.1 ± 0.02 seconds | 11.7 ± 0.1 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 10.2 ± 0.3 seconds | 10.5 ± 0.1 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 10.3 ± 0.03 seconds | 10.3 ± 0.7 seconds |'
+  prefs: []
+  type: TYPE_TB
+- en: 'By default, the common pool will have four threads (on our usual four-CPU machine),
+    so the third line in the table is the common case. The results for a common pool
+    size of one and two are exactly the sort of result that should give a performance
+    engineer fits: they seem to be completely out of line because `ForkJoinPool` is
+    performing far better than might be expected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When a test is out of line like that, the most common reason is a testing error.
+    In this case, however, it turns out that the `forEach()` method does something
+    tricky: it uses both the thread executing the statement and the threads in the
+    common pool to process the data coming from the stream. Even though the common
+    pool in the first test is configured to have a single thread, two threads are
+    used to calculate the result. Consequently, the time for a `ThreadPoolExecutor`
+    with two threads and a `ForkJoinPool` with one thread is essentially the same.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you need to tune the size of the common pool when using parallel stream constructs
+    and other autoparallel features, consider decreasing the desired value by one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `ForkJoinPool` class should be used for recursive, divide-and-conquer algorithms.
+    This class in not suited for cases that can be handled via simple partitioning.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Make the effort to determine the best point at which the recursion of tasks
+    in the algorithm should cease. Creating too many tasks can hurt performance, but
+    too few tasks will also hurt performance if the tasks do not take the same amount
+    of time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Features that use automatic parallelization will use a common instance of the
+    `ForkJoinPool` class. You may need to adjust the default size of that common instance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Thread Synchronization
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In a perfect world—or in examples for a book—it is relatively easy for threads
+    to avoid the need for synchronization. In the real world, things are not necessarily
+    so easy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Costs of Synchronization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Synchronized areas of code affect performance in two ways. First, the amount
+    of time an application spends in a synchronized block affects the scalability
+    of an application. Second, obtaining the synchronization lock requires CPU cycles
+    and hence affects performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronization and scalability
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'First things first: when an application is split up to run on multiple threads,
+    the speedup it sees is defined by an equation known as *Amdahl’s law*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: <math alttext="upper S p e e d u p equals StartStartFraction 1 OverOver left-parenthesis
+    1 minus upper P right-parenthesis plus StartFraction upper P Over upper N EndFraction
+    EndEndFraction" display="block"><mrow><mi>S</mi> <mi>p</mi> <mi>e</mi> <mi>e</mi>
+    <mi>d</mi> <mi>u</mi> <mi>p</mi> <mo>=</mo> <mfrac><mn>1</mn> <mrow><mrow><mo>(</mo><mn>1</mn><mo>-</mo><mi>P</mi><mo>)</mo></mrow><mo>+</mo><mfrac><mi>P</mi>
+    <mi>N</mi></mfrac></mrow></mfrac></mrow></math>
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*P* is the amount of the program that is run in parallel, and *N* is the number
+    of threads utilized (assuming that each thread always has available CPU). So if
+    20% of the code exists in serialized blocks (meaning that *P* is 80%), the code
+    can be expected to run (only) 3.33 times faster with eight available CPUs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One key fact about this equation is that as *P* decreases—that is, as more code
+    is located within serialized blocks—the performance benefit of having multiple
+    threads also decreases. That is why limiting the amount of code that lies in the
+    serialized block is so important. In this example, with eight CPUs available,
+    we might have hoped for an eight times increase in speed. When only 20% of the
+    code is within a serialized block, the benefit of having multiple threads was
+    reduced by more than 50% (i.e., the increase was only 3.3 times).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Costs of locking objects
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Aside from its impact on scalability, the operation of synchronization carries
+    two basic costs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we have the cost of obtaining the synchronization lock. If a lock is
+    uncontended—meaning that two threads are not attempting to access the lock at
+    the same time—this cost is minimal. There is a slight difference here between
+    the `synchronized` keyword and CAS-based constructs. Uncontended `synchronized`
+    locks are known as *uninflated locks*, and the cost of obtaining an uninflated
+    lock is on the order of a few hundred nanoseconds. Uncontended CAS code will see
+    an even smaller performance penalty. (See [Chapter 12](ch12.html#Misc) for an
+    example of the difference.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Contended constructs are more expensive. When a second thread attempts to access
+    a `synchronized` lock, the lock becomes (predictably) inflated. This slightly
+    increases the time to acquire the lock, but the real impact here is that the second
+    thread must wait for the first thread to release the lock. That waiting time is
+    application-dependent, of course.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The cost for a contended operation in code using CAS instructions is unpredictable.
+    The classes that use CAS primitives are based on an optimistic strategy: the thread
+    sets a value, executes code, and then makes sure that the initial value has not
+    changed. If it has, the CAS-based code must execute the code again. In the worst
+    case, two threads could run into an infinite loop as each modifies the CAS-protected
+    value, only to see that the other thread has modified it simultaneously. In practice,
+    two threads are not going to get into an infinite loop like that, but as the number
+    of threads contending for the CAS-based value increases, the number of retries
+    increases.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second cost of synchronization is specific to Java and depends on the Java
+    Memory Model. Java, unlike languages such as C++ and C, has a strict guarantee
+    about the memory semantics around synchronization, and the guarantee applies to
+    CAS-based protection, to traditional synchronization, and to the `volatile` keyword.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The purpose of synchronization is to protect access to values (or variables)
+    in memory. As discussed in [Chapter 4](ch04.html#JustInTimeCompilation), variables
+    may be temporarily stored in registers, which is much more efficient than directly
+    accessing them in main memory. Register values are not visible to other threads;
+    the thread that modifies a value in a register must at some point flush that register
+    to main memory so that other threads can see the value. The point when the register
+    values must be flushed is dictated by thread synchronization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The semantics can get fairly complicated, but the easiest way to think of this
+    is that when a thread leaves a synchronized block, it must flush any modified
+    variables to main memory. That means other threads that enter the synchronized
+    block will see the most recently updated values. Similarly, CAS-based constructs
+    ensure that variables modified during their operation are flushed to main memory,
+    and a variable marked `volatile` is always consistently updated in main memory
+    whenever it is changed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [Chapter 1](ch01.html#Introduction), I mentioned that you should learn to
+    avoid nonperformant code constructs in Java, even if it seems like that might
+    be “prematurely optimizing” your code (it isn’t). An interesting case of that—and
+    a real-world example—comes from this loop:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: In production, this loop was found to be taking a surprising amount of time,
+    and the logical assumption was that the `process()` method was the culprit. But
+    it wasn’t that, nor was the issue the `size()` and `get()` method calls themselves
+    (which had been inlined by the compiler). The `get()` and `size()` methods of
+    the `Vector` class are synchronized, and it turned out that the register flushing
+    required by all those calls was a huge performance problem.^([1](ch09.html#idm45775548329048))
+  prefs: []
+  type: TYPE_NORMAL
+- en: This isn’t ideal code for other reasons. In particular, the state of the vector
+    can change between the time a thread calls the `size()` method and the time it
+    calls the `get()` method. If a second thread removes the last element from the
+    vector in between the two calls made by the first thread, the `get()` method will
+    throw an `ArrayIndexOutOf``BoundsException`. Quite apart from the semantic issues
+    in the code, the fine-grained synchronization was a bad choice here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One way to avoid that is to wrap lots of successive, fine-grained synchronization
+    calls within a synchronized block:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: That doesn’t work well if the `process()` method takes a long time to execute,
+    since the vector can no longer be processed in parallel. Alternately, it may be
+    necessary to copy and partition the vector so that its elements can be processed
+    in parallel within the copies, while other threads can still modify the original
+    vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The effect of register flushing is also dependent on the kind of processor the
+    program is running on; processors that have a lot of registers for threads will
+    require more flushing than simpler processors. In fact, this code executed for
+    a long time without problems in thousands of environments. It became an issue
+    only when it was tried on a large SPARC-based machine with many registers per
+    thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Does that mean you are unlikely to see issues around register flushing in smaller
+    environments? Perhaps. But just as multicore CPUs have become the norm for simple
+    laptops, more complex CPUs with more caching and registers are also becoming more
+    commonplace, which will expose hidden performance issues like this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Thread synchronization has two performance costs: it limits the scalability
+    of an application, and it requires obtaining locks.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The memory semantics of synchronization, CAS-based utilities, and the `volatile`
+    keyword can negatively impact performance, particularly on large machines with
+    many registers.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Avoiding Synchronization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If synchronization can be avoided altogether, locking penalties will not affect
+    the application’s performance. Two general approaches can be used to achieve that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first approach is to use different objects in each thread so that access
+    to the objects will be uncontended. Many Java objects are synchronized to make
+    them thread-safe but don’t necessarily need to be shared. The `Random` class falls
+    into that category; [Chapter 12](ch12.html#Misc) shows an example within the JDK
+    where the thread-local technique was used to develop a new class to avoid the
+    synchronization in that class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the flip side, many Java objects are expensive to create or use a substantial
+    amount of memory. Take, for example, the `NumberFormat` class: instances of that
+    class are not thread-safe, and the internationalization required to create an
+    instance makes constructing new objects expensive. A program could get by with
+    a single, shared global `NumberFormat` instance, but access to that shared object
+    would need to be synchronized.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Instead, a better pattern is to use a `ThreadLocal` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: By using a thread-local variable, the total number of objects is limited (minimizing
+    the effect on GC), and each object will never be subject to thread contention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second way to avoid synchronization is to use CAS-based alternatives. In
+    some sense, this isn’t avoiding synchronization as much as solving the problem
+    differently. But in this context, by reducing the penalty for synchronization,
+    it works out to have the same effect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The difference in performance between CAS-based protections and traditional
+    synchronization seems like the ideal case to employ a microbenchmark: it should
+    be trivial to write code that compares a CAS-based operation with a traditional
+    synchronized method. For example, the JDK provides a simple way to keep a counter
+    using CAS-based protection: the `AtomicLong` and similar classes. A microbenchmark
+    could then compare code that uses CAS-based protection to traditional synchronization.
+    For example, say a thread needs to get a global index and increment it atomically
+    (so that the next thread gets the next index). Using CAS-based operations, that’s
+    done like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The traditional synchronized version of that operation looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The difference between these two implementations turns out to be impossible
+    to measure with a microbenchmark. If there is a single thread (so there is no
+    possibility of contention), the microbenchmark using this code can produce a reasonable
+    estimate of the cost of using the two approaches in an uncontended environment
+    (and the result of that test is cited in [Chapter 12](ch12.html#Misc)). But that
+    doesn’t provide any information about what happens in a contended environment
+    (and if the code won’t ever be contended, it doesn’t need to be thread-safe in
+    the first place).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In a microbenchmark built around these code snippets that is run with only
+    two threads, an enormous amount of contention will exist on the shared resource.
+    That isn’t realistic either: in a real application, it is unlikely that two threads
+    will always be accessing the shared resource simultaneously. Adding more threads
+    simply adds more unrealistic contention to the equation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As discussed in [Chapter 2](ch02.html#SampleApplications), microbenchmarks tend
+    to greatly overstate the effect of synchronization bottlenecks on the test in
+    question. This discussion ideally elucidates that point. A much more realistic
+    picture of the trade-off will be obtained if the code in this section is used
+    in an actual application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the general case, the following guidelines apply to the performance of CAS-based
+    utilities compared to traditional synchronization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If access to a resource is uncontended, CAS-based protection will be slightly
+    faster than traditional synchronization. If the access is always uncontended,
+    no protection at all will be slightly faster still and will avoid corner-cases
+    like the one you just saw with the register flushing from the `Vector` class.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If access to a resource is lightly or moderately contended, CAS-based protection
+    will be faster (often much faster) than traditional synchronization.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As access to the resource becomes heavily contended, traditional synchronization
+    will at some point become the more efficient choice. In practice, this occurs
+    only on very large machines running many threads.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: CAS-based protection is not subject to contention when values are read and not
+    written.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'In the end, there is no substitute for extensive testing under the actual production
+    conditions where the code will run: only then can a definite statement be made
+    as to which implementation of a particular method is better. Even in that case,
+    the definite statement applies only to those conditions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Avoiding contention for synchronized objects is a useful way to mitigate their
+    performance impact.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Thread-local variables are never subject to contention; they are ideal for holding
+    synchronized objects that don’t actually need to be shared between threads.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: CAS-based utilities are a way to avoid traditional synchronization for objects
+    that do need to be shared.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: False Sharing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One little-discussed performance implication of synchronization involves *false
+    sharing* (also known as *cache line sharing*). It used to be a fairly obscure
+    artifact of threaded programs, but as multicore machines become the norm—and as
+    other, more obvious, synchronization performance issues are addressed—false sharing
+    is an increasingly important issue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'False sharing occurs because of the way CPUs handle their cache. Consider the
+    data in this simple class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each `long` value is stored in memory adjacent to one another; for example,
+    `l1` could be stored at memory location 0xF20\. Then `l2` would be stored in memory
+    at 0xF28, `l3` at 0xF2C, and so on. When it comes time for the program to operate
+    on `l2`, it will load a relatively large amount of memory—for example, 128 bytes
+    from location 0xF00 to 0xF80—into a cache line on one of the cores of one of the
+    CPUs. A second thread that wants to operate on `l3` will load that same chunk
+    of memory into a cache line on a different core.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Loading nearby values like that makes sense in most cases: if the application
+    accesses one particular instance variable in an object, it is likely to access
+    nearby instance variables. If they are already loaded into the core’s cache, that
+    memory access is very, very fast—a big performance win.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The downside to this scheme is that whenever the program updates a value in
+    its local cache, that core must notify all the other cores that the memory in
+    question has been changed. Those other cores must invalidate their cache lines
+    and reload that data from memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s see what happens if the `DataHolder` class is heavily used by multiple
+    threads:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have four separate threads, and they are not sharing any variables: each
+    is accessing only a single member of the `DataHolder` class. From a synchronization
+    standpoint, there is no contention, and we might reasonably expect that this code
+    would execute (on our four-core machine) in the same amount of time regardless
+    of whether it runs one thread or four threads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It doesn’t turn out that way. When one particular thread writes the `volatile`
+    value in its loop, the cache line for every other thread will get invalidated,
+    and the memory values must be reloaded. [Table 9-10](#TableFalseSharing) shows
+    the result: performance gets worse as more threads are added.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 9-10\. Time to sum 100,000 values with false sharing
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of threads | Elapsed time |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 0.8 ± 0.001 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 5.7 ± 0.3 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3 | 10.4 ± 0.6 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 15.5 ± 0.8 ms |'
+  prefs: []
+  type: TYPE_TB
+- en: 'This test case is constructed to show the most severe penalty for false sharing:
+    essentially every write invalidates all the other cache lines, and performance
+    is serial.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Strictly speaking, false sharing does not have to involve synchronized (or
+    `volatile`) variables: whenever any data value in the CPU cache is written, other
+    caches that hold the same data range must be invalidated. However, remember that
+    the Java memory model requires that the data must be written to main memory only
+    at the end of a synchronization primitive (including CAS and `volatile` constructs).
+    So that is the situation where it will be encountered most frequently. If, in
+    this example, the `long` variables are not `volatile`, the compiler will hold
+    the values in registers, and the test will execute in about 0.7 milliseconds regardless
+    of the number of threads involved.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is obviously an extreme example, but it brings up the question of how false
+    sharing can be detected and corrected. Unfortunately, the answer is murky and
+    incomplete. Nothing in the standard set of tools discussed in [Chapter 3](ch03.html#Tools)
+    addresses false sharing, since it requires specific knowledge about the architecture
+    of a processor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are lucky, the vendor of the target processor for your application will
+    have a tool that can be used to diagnose false sharing. Intel, for example, has
+    a program called VTune Amplifier that can be used to help detect false sharing
+    by inspecting cache miss events. Certain native profilers can provide information
+    about the number of clock cycles per instruction (CPI) for a given line of code;
+    a high CPI for a simple instruction within a loop can indicate that the code is
+    waiting to reload the target memory into the CPU cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Otherwise, detecting false sharing requires intuition and experimentation. If
+    an ordinary profile indicates that a particular loop is taking a surprising amount
+    of time, check whether multiple threads may be accessing unshared variables within
+    the loop. (In the realm of performance tuning as an art rather than a science,
+    even the Intel VTune Amplifier manual says that the “primary means of avoiding
+    false sharing is through code inspection.”)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preventing false sharing requires code changes. An ideal situation is when the
+    variables involved can be written less frequently. In the preceding example, the
+    calculation could take place using local variables, and only the end result is
+    written back to the `DataHolder` variable. The very small number of writes that
+    ensues is unlikely to create contention for the cache lines, and they won’t have
+    a performance impact even if all four threads update their results at the same
+    time at the end of the loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A second possibility involves padding the variables so that they won’t be loaded
+    on the same cache line. If the target CPU has 128-byte cache lines, padding like
+    this may work (but also, it may not):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using arrays like that is unlikely to work, because the JVM will probably rearrange
+    the layout of those instance variables so that all the arrays are next to each
+    other, and then all the `long` variables will still be next to each other. Using
+    primitive values to pad the structure is more likely to work, though it can be
+    impractical because of the number of variables required.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We need to consider other issues when using padding to prevent false sharing.
+    The size of the padding is hard to predict, since different CPUs will have different
+    cache sizes. And the padding obviously adds significant size to the instances
+    in question, which will have an impact on the garbage collector (depending, of
+    course, on the number of instances required). Still, absent an algorithmic solution,
+    padding of the data can sometimes offer significant advantages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: False sharing can significantly slow down performance code that frequently modifies
+    `volatile` variables or exits synchronized blocks.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: False sharing is difficult to detect. When a loop seems to be taking too long
+    to occur, inspect the code to see if it matches the pattern where false sharing
+    can occur.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: False sharing is best avoided by moving the data to local variables and storing
+    them later. Alternately, padding can sometimes be used to move the conflicting
+    variables to different cache lines.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: JVM Thread Tunings
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The JVM has a few miscellaneous tunings that affect the performance of threads
+    and synchronization. These tunings will have a minor impact on the performance
+    of applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tuning Thread Stack Sizes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When space is at a premium, the memory used by threads can be adjusted. Each
+    thread has a native stack, which is where the OS stores the call stack information
+    of the thread (e.g., the fact that the `main()` method has called the `calculate()`
+    method, which has called the `add()` method).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The size of this native stack is 1 MB (except for 32-bit Windows JVMs, where
+    it is 320 KB). In a 64-bit JVM, there is usually no reason to set this value unless
+    the machine is quite strained for physical memory and the smaller stack size will
+    prevent applications from running out of native memory. This is especially true
+    when running inside a Docker container in which memory is limited.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a practical rule, many programs can run with a stack size of 256 KB, and
+    few need the full 1 MB. The potential downside to setting this value too small
+    is that a thread with an extremely large call stack will throw a `StackOverflowError`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To change the stack size for a thread, use the `-Xss=`*`N`* flag (e.g., `-Xss=256k`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Thread stack sizes can be reduced on machines where memory is scarce.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Biased Locking
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When locks are contended, the JVM (and operating system) have choices about
+    how the lock should be allocated. The lock can be granted fairly, meaning that
+    each thread will be given the lock in a round-robin fashion. Alternately, the
+    lock can be biased toward the thread that most recently accessed the lock.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The theory behind biased locking is that if a thread recently used a lock, the
+    processor’s cache is more likely to still contain data the thread will need the
+    next time it executes code protected by that same lock. If the thread is given
+    priority for reobtaining the lock, the probability of cache hits increases. When
+    this works out, performance is improved. But because biased locking requires bookkeeping,
+    it can sometimes be worse for performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In particular, applications that use a thread pool—including some application
+    and REST servers—often perform worse when biased locking is in effect. In that
+    programming model, different threads are equally likely to access the contended
+    locks. For these kinds of applications, a small performance improvement can be
+    obtained by disabling biased locking via the `-XX:-UseBiasedLocking` option. Biased
+    locking is enabled by default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread Priorities
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Each Java thread has a developer-defined *priority*, which is a hint to the
+    operating system about how important the program thinks the particular thread
+    is. If you have different threads doing different tasks, you might think you could
+    use the thread priority to improve the performance of certain tasks at the expense
+    of other tasks running on a lower-priority thread. Unfortunately, it doesn’t quite
+    work like that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Operating systems calculate a *current priority* for every thread running on
+    a machine. The current priority takes into account the Java-assigned priority
+    but also includes many other factors, the most important of which is how long
+    it has been since the thread last ran. This ensures that all threads will have
+    an opportunity to run at some point. Regardless of its priority, no thread will
+    “starve” waiting for access to the CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The balance between these two factors varies among operating systems. On Unix-based
+    systems, the calculation of the overall priority is dominated by the amount of
+    time since the thread has last run—the Java-level priority of a thread has little
+    effect. On Windows, threads with a higher Java priority tend to run more than
+    threads with a lower priority, but even low-priority threads get a fair amount
+    of CPU time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In either case, you cannot depend on the priority of a thread to affect how
+    frequently it runs. If some tasks are more important than other tasks, application
+    logic must be used to prioritize them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Monitoring Threads and Locks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When analyzing an application’s performance for the efficiency of threading
+    and synchronization, we should look for two things: the overall number of threads
+    (to make sure it is neither too high nor too low) and the amount of time threads
+    spend waiting for a lock or other resource.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread Visibility
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Virtually every JVM monitoring tool provides information about the number of
+    threads (and what they are doing). Interactive tools like `jconsole` show the
+    state of threads within the JVM. On the `jconsole` Threads panel, you can watch
+    in real time as the number of threads increases and decreases during the execution
+    of your program. [Figure 9-2](#FigureJConsoleThread) shows an example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jp2e 0902](assets/jp2e_0902.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-2\. View of live threads in `jconsole`
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: At one point, the application (NetBeans) was using a maximum of 45 threads.
+    At the beginning of the graph, we can see a burst where the application was using
+    up to 38, but it settled on using between 30 and 31. `jconsole` can also print
+    an individual thread stack; as the figure shows, the Java2D Disposer thread is
+    presently waiting on a reference queue lock.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blocked Thread Visibility
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Real-time thread monitoring is useful for a very high-level picture of what
+    threads are running in the application, but it doesn’t really provide any data
+    on what those threads are doing. Determining where the threads are spending CPU
+    cycles requires the use of a profiler, as discussed in [Chapter 3](ch03.html#Tools).
+    Profilers provide great visibility into what threads are executing, and they are
+    generally sophisticated enough to guide you to areas in the code where better
+    algorithms and code choices can speed up overall execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is more difficult to diagnose threads that are blocked, although that information
+    is often more important in the overall execution of an application—particularly
+    if that code is running on a multi-CPU system and is not utilizing all the available
+    CPU. Three approaches can be used to perform this diagnosis. One approach is again
+    to use a profiler, since most profiling tools will provide a timeline of thread
+    execution that allows you to see the points when a thread was blocked. An example
+    was given in [Chapter 3](ch03.html#Tools).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blocked threads and JFR
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: By far, the best way to know when threads are blocked is to use tools that can
+    look into the JVM and know at a low level when the threads are blocked. One such
+    tool is the Java Flight Recorder, introduced in [Chapter 3](ch03.html#Tools).
+    We can drill into the events that JFR captures and look for those that are causing
+    a thread to block. The usual event to look for is threads that are waiting to
+    acquire a monitor, but if we observe threads with long reads (and rarely, long
+    writes) to a socket, they are likely blocked as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These events can be easily viewed on the Histogram panel of Java Mission Control,
+    as shown in [Figure 9-3](#FigureJFRMonitor).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this sample, the lock associated with the `HashMap` in the `sun.awt.AppCon⁠text.get()`
+    method was contended 163 times (over 66 seconds), causing an average 31 ms increase
+    in the response time of the request being measured. The stack trace points out
+    that the contention stems from the way the JSP is writing a `java.util.Date` object.
+    To improve the scalability of this code, a thread-local date formatter could be
+    used instead of simply calling the date’s `toString()` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![jp2e 0903](assets/jp2e_0903.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9-3\. Threads blocked by a monitor in JFR
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This process—choosing the blocking event from the histogram and examining the
+    calling code—works for any kind of blocking event; it is made possible by the
+    tight integration of the tool with the JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blocked threads and JStack
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If a JFR recording of the program is not available, an alternative is to take
+    a lot of thread stacks from the program and examine those. `jstack`, `jcmd`, and
+    other tools can provide information about the state of every thread in a VM, including
+    whether the thread is running, waiting for a lock, waiting for I/O, and so on.
+    This can be quite useful for determining what’s going on in an application, as
+    long as too much is not expected from the output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first caveat in looking at thread stacks is that the JVM can dump a thread’s
+    stack only at safepoints. Second, stacks are dumped for each thread one at a time,
+    so it is possible to get conflicting information from them: two threads can show
+    up holding the same lock, or a thread can show up waiting for a lock that no other
+    thread holds.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread stacks can show how significantly threads are blocked (since a thread
+    that is blocked is already at a safepoint). If successive thread dumps show many
+    threads blocked on a lock, you can conclude that the lock in question has significant
+    contention. If successive thread dumps show many threads blocked waiting for I/O,
+    you can conclude that whatever I/O they are reading needs to be tuned (e.g., if
+    they are making a database call, the SQL they are executing needs to be tuned,
+    or the database itself needs to be tuned).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The online examples for this book have a rudimentary parser for `jstack` output
+    that can summarize the state of all threads from one or more thread dumps. A problem
+    with `jstack` output is that it can change from release to release, so developing
+    a robust parser can be difficult. There is no guarantee that the parser in the
+    online examples won’t need to be tweaked for your particular JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The basic output of the `jstack` parser looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The parser aggregates all the threads and shows how many are in various states.
+    Eight threads are currently running (they happen to be doing a stack trace—an
+    expensive operation that is better to avoid).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Forty-one threads are blocked by a lock. The method reported is the first non-JDK
+    method in the stack trace, which in this example is the GlassFish method `EJBClassLoader.getResourceAsStream()`.
+    The next step would be to consult the stack trace, search for that method, and
+    see what resource the thread is blocked on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, all the threads were blocked waiting to read the same JAR file,
+    and the stack trace for those threads showed that all the calls came from instantiating
+    a new Simple API for XML (SAX) parser. It turns out that the SAX parser can be
+    defined dynamically by listing the resource in the manifest file of the application’s
+    JAR files, which means that the JDK must search the entire classpath for those
+    entries until it finds the one the application wants to use (or until it doesn’t
+    find anything and falls back to the system parser). Because reading the JAR file
+    requires a synchronization lock, all those threads trying to create a parser end
+    up contending for the same lock, which is greatly hampering the application’s
+    throughput. (To overcome this case, set the `-Djavax.xml``.parsers.SAXParserFactory`
+    property to avoid those lookups.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: The larger point is that having a lot of blocked threads diminishes performance.
+    Whatever the cause of the blocking, changes need to be made to the configuration
+    or application to avoid it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What about the threads that are waiting for notification? Those threads are
+    waiting for something else to happen. Often they are in a pool waiting for notification
+    that a task is ready (e.g., the `getTask()` method in the preceding output is
+    waiting for a request). System threads are doing things like RMI distributed GC
+    or JMX monitoring—they appear in the `jstack` output as threads that have only
+    JDK classes in their stack. These conditions do not necessarily indicate a performance
+    problem; it is normal for them to be waiting for a notification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another problem creeps up in the threads waiting for I/O read: these are doing
+    a blocking I/O call (usually the `socketRead0()` method). This is also hampering
+    throughput: the thread is waiting for a backend resource to answer its request.
+    That’s the time to start looking into the performance of the database or other
+    backend resource.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Basic visibility into the threads of a system provides an overview of the number
+    of threads running.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Thread visibility allows us to determine why threads are blocked: whether because
+    they are waiting for a resource or for I/O.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Java Flight Recorder provides an easy way to examine the events that caused
+    a thread to block.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`jstack` provides a level of visibility into the resources threads are blocked
+    on.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Understanding how threads operate can yield important performance benefits.
+    Thread performance, though, is not so much about tuning—there are relatively few
+    JVM flags to tweak, and those few flags have limited effects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead, good thread performance is about following best-practice guidelines
+    for managing the number of threads and for limiting the effects of synchronization.
+    With the help of appropriate profiling and lock analysis tools, applications can
+    be examined and modified so that threading and locking issues do not negatively
+    affect performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch09.html#idm45775548329048-marker)) Although modern code would use a
+    difference collection class, the example would be the same with a collection wrapped
+    via the `synchronizedCollection()` method, or any other loop with excessive register
+    flushing.
+  prefs: []
+  type: TYPE_NORMAL

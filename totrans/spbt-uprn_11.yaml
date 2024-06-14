@@ -1,0 +1,596 @@
+- en: Chapter 11\. Deploying Your Spring Boot Application
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In software development, deployment is the on-ramp to production for an application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Regardless of any capabilities an application may promise its end users, until
+    said users can actually use the application, it is effectively an academic what-if
+    exercise. Figuratively and often very literally, deployment is the payoff.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Referencing the Spring Initializr, many developers are aware that Spring Boot
+    applications can be created as WAR files or JAR files. Most of those same developers
+    also know that there are many good reasons (several of which were mentioned earlier
+    in this book) to eschew the WAR option and create executable JAR files, and few
+    good reasons to do the opposite. What many developers may not realize is that
+    even when building a Spring Boot executable JAR, there are numerous options for
+    deployment to fulfill various requirements and use cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, I examine ways to deploy your Spring Boot application with
+    options useful for different target destinations and discuss their relative merits.
+    I then demonstrate how to create these deployment artifacts, explain options for
+    optimal execution, and show how to verify their components and provenance. You
+    almost certainly have more and better tools for deploying your Spring Boot applications
+    than you realized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code Checkout Checkup
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Please check out branch *chapter11begin* from the code repository to begin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Revisiting the Spring Boot Executable JAR
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As discussed way back in [Chapter 1](ch01.xhtml#sbur-01), Spring Boot’s executable
+    JAR provides maximum utility and versatility in a single, self-contained, testable,
+    and deployable unit. It’s fast to create and iterate, dynamically self-configurable
+    to changes in its environment, and simple in the extreme to distribute and maintain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every cloud provider offers an application hosting option that enjoys widespread
+    use for prototyping through production deployments, and most of those application
+    platforms expect a largely self-contained deployable application, offering only
+    the barest of environmental essentials. A Spring Boot JAR fits quite naturally
+    into these clean environments, requiring only the presence of a JDK for frictionless
+    execution; some platforms even specify Spring Boot by name due to its seamless
+    fit for app hosting. By bringing mechanisms with it for external interactions
+    involving HTTP exchanges, messaging, and more, a Spring Boot application can eliminate
+    installation, configuration, and maintenance of an application server or other
+    externalities. This dramatically reduces developer workload and application platform
+    overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since a Spring Boot application possesses full control over dependent libraries,
+    it eliminates fear of external dependency changes. Scheduled updates to an application
+    server, servlet engine, database or messaging libraries, or any of a number of
+    other critical components have crashed countless non-Boot applications over the
+    years. In those applications that rely on external components maintained by the
+    underlying app platform, developers must be hypervigilant for unplanned outages
+    due to the world shifting under their feet, simply due to a dot-release change
+    of a single dependent library. Exciting times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With a Spring Boot application, upgrades to any dependencies—whether core Spring
+    libraries or second- (or third- , or fourth- , etc.) tier dependencies—are much
+    less painful and stressful as well. The app developer upgrades and tests the application
+    and deploys an update (typically using a [blue-green deployment](https://en.wikipedia.org/wiki/Blue-green_deployment))
+    only when satisfied that everything is working as expected. Since dependencies
+    are no longer external to the application but instead bundled with it, the developer
+    has full control over dependency versions and upgrade timing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Spring Boot JARs have another useful trick up their sleeve, courtesy of the
+    Spring Boot Maven and Gradle plug-ins: the ability to create what is sometimes
+    called a “fully executable” JAR. The quotes are intentional and are present in
+    official documentation as well because a JDK is still required for the application
+    to function. So what is meant by a “fully executable” Spring Boot application,
+    and how does one create it?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s begin with the how.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a “Fully Executable” Spring Boot JAR
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'I’ll use PlaneFinder for this example. For purposes of comparison, I build
+    the project from the command line without changes using `mvn clean package`. This
+    results in the following JAR being created in the project’s *target* directory
+    (result trimmed to fit page):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This Spring Boot JAR is referred to as an *executable JAR* because it consists
+    of the entire application without need for external downstream dependencies; all
+    it requires to execute is a JVM provided by an installed JDK. Running the app
+    in its current state looks something like this (results trimmed and edited to
+    fit page):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: This works as expected, of course, and it serves as a baseline for what comes
+    next. I now revisit PlaneFinder’s *pom.xml* to add the indicated XML snippet to
+    the existing section for the `spring-boot-maven-plug-in`, as shown in [Figure 11-1](#plug-ins_section_of_planefinder_pom_xml_file).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1101](Images/sbur_1101.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-1\. Plugins section of PlaneFinder *pom.xml* file
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Returning to the terminal, I again build the project from the command line
+    using `mvn clean package`. This time, there is a notable difference in the resultant
+    JAR created within the project’s *target* directory, as indicated in the following
+    output (result trimmed to fit page):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: It’s ever so slightly larger than Boot’s standard executable JAR, to the tune
+    of 9,110 byte, or just under 9 KB. What does this gain you?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Java JAR files are read from end to beginning—yes, you read that correctly—until
+    an end-of-file marker is found. When creating a so-called “fully executable JAR,”
+    the Spring Boot Maven plug-in ingeniously prepends a script to the beginning of
+    the usual Spring Boot executable JAR that enables it to be run like any other
+    executable binary (assuming the presence of a JDK) on a Unix- or Linux-based system,
+    including registering it with `init.d` or `systemd`. Examining PlaneFinder’s JAR
+    in an editor results in the following (only a portion of the script header is
+    shown for brevity; it is quite extensive):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The Spring Boot Maven (or Gradle, if chosen as the build system) plug-in also
+    sets file owner permissions to read, write, and execute (rwx) for the output JAR.
+    Doing so enables it to be executed as indicated previously and allows the header
+    script to locate the JDK, prepare the application for execution, and run it as
+    demonstrated here (results trimmed and edited to fit page):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that I’ve demonstrated how, it’s time to discuss what this option brings
+    to the table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What Does It Mean?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The ability to create a Spring Boot “fully executable” JAR is not a solution
+    to all problems, but it does provide a unique capability for deeper integration
+    with underlying Unix- and Linux-based systems when necessary. Adding a Spring
+    Boot application to supply startup functionality becomes trivial thanks to the
+    embedded startup script and execute permissions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you don’t need or can’t make use of that capability in your current application
+    environments, you should continue to simply create typical Spring Boot executable
+    JAR output that makes use of `java -jar`. This is simply another tool in your
+    toolbox, included at no cost and requiring nearly no effort from you to implement,
+    for when you find you need it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exploding JARs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Spring Boot’s innovative approach of nesting dependent JAR files completely
+    intact and unchanged within the Boot executable JAR lends itself brilliantly to
+    subsequent actions like extraction. Reversing the process that was involved in
+    adding them to the Spring Boot executable JAR produces the component artifacts
+    in their original, unaltered state. It sounds simple because it *is* simple.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are many reasons you might want to rehydrate a Spring Boot executable
+    JAR into its various, separate parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extracted Boot applications offer slightly faster execution. This is rarely
+    reason enough to rehydrate, but it is a nice bonus.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Extracted dependencies are easily replaceable discrete units. App updates can
+    be done more quickly and/or with lower bandwidth because only the changed files
+    must be redeployed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Many cloud platforms, such as Heroku and any build or brand/derivative of Cloud
+    Foundry, do this as part of the app deployment process. Mirroring local and remote
+    environments to the maximum extent possible can aid in consistency and, when necessary,
+    diagnosis of any issues.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Both standard Spring Boot executable JARs and “fully executable” JARs can be
+    rehydrated in the following manner, using `jar -xvf <spring_boot_jar>` (most file
+    entries removed for brevity):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once files are extracted, I find it useful to examine the structure a bit more
+    visually using the *nix `tree` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Viewing the JAR contents using `tree` offers a nice hierarchical display of
+    the application’s composition. It also calls out the numerous dependencies that
+    combine to provide the capabilities chosen for this application. Listing the files
+    under *BOOT-INF/lib* confirms that the component libraries remain unchanged through
+    the building of the Spring Boot JAR and subsequent extraction of its contents,
+    even down to original component JAR timestamps, as shown here (most entries removed
+    for brevity):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once all files are extracted from the Spring Boot JAR, there are a few ways
+    to run the application. The recommended approach is to use `JarLauncher`, which
+    maintains a consistent classloading order across executions, as shown below (results
+    trimmed and edited to fit page):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, PlaneFinder started just over a full second faster expanded than
+    in the Spring Boot “fully executable” JAR. This positive alone may or may not
+    outweigh the advantages of a single, fully self-contained deployable unit; it
+    likely will not. But combined with the ability to only push deltas when a small
+    number of files change and (if applicable) better alignment between local and
+    remote environments, the ability to run exploded Spring Boot applications can
+    be a very useful option.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deploying Spring Boot Applications to Containers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As mentioned earlier, some cloud platforms—both on-premises/private and public
+    cloud—take deployable applications and create a container image on a developer’s
+    behalf using widely optimized defaults and settings provided by the app’s developer.
+    These images are then used to create (and destroy) containers with the running
+    application based on the application’s replication settings and utilization. Platforms
+    like Heroku and numerous versions of Cloud Foundry enable a developer to push
+    a Spring Boot executable JAR, and provide any desired configuration settings (or
+    simply accept the defaults), and the rest is handled by the platform. Other platforms
+    like VMware’s Tanzu Application Service for Kubernetes incorporate this as well,
+    and the feature list is increasing in both scope and fluid execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many platforms and deployment targets that don’t support this level
+    of frictionless developer enablement. Whether you or your organization has committed
+    to one of those other offerings, or if you have other requirements that guide
+    you in a different direction, Spring Boot has you covered.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While you can handcraft your own container images for your Spring Boot applications,
+    it isn’t optimal; doing so adds no value to the application itself and has usually
+    been considered a necessary evil (at best) to go from dev to prod. No more.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Leveraging many of the same tools used by the previously mentioned platforms
+    to intelligently containerize applications, Spring Boot incorporates within its
+    Maven and Gradle plug-ins the capability to build painlessly and frictionlessly
+    fully compliant Open Container Initiative (OCI) images used by Docker, Kubernetes,
+    and every major container engine/mechanism. Built upon industry-leading [Cloud
+    Native Buildpacks](https://buildpacks.io) and the [Paketo](https://paketo.io)
+    buildpacks initiative, the Spring Boot build plug-ins provide the option to create
+    an OCI image using a locally installed and locally running Docker daemon and push
+    it to a local or designated remote image repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the Spring Boot plug-in to create an image from your application is opinionated
+    in all the best ways as well, using a conceptual “autoconfiguration” to optimize
+    image creation by layering image contents, separating code/libraries based on
+    each code unit’s anticipated frequency of change. Staying true to the Spring Boot
+    philosophy behind autoconfiguration and opinions, Boot also provides a way to
+    override and guide the layering process should you need to customize your configuration.
+    This is rarely necessary or even desirable, but it’s easily accomplished should
+    your needs fall within one of those rare, exceptional cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The default settings produce the following layers for all versions of Spring
+    Boot from 2.4.0 Milestone 2 onward:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`dependencies`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Includes regularly released dependencies, i.e., GA versions
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`spring-boot-loader`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Includes all files found under *org/springframework/boot/loader*
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`snapshot-dependencies`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Forward-looking releases not yet considered GA
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`application`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Application classes and related resources (templates, properties files, scripts,
+    etc.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code volatility, or its propensity and frequency of change, typically increases
+    as you move through this list of layers from top to bottom. By creating separate
+    layers in which to place similarly volatile code, subsequent image creation is
+    much more efficient and thus much faster to complete. This *drastically* reduces
+    the time and resources required to rebuild the deployable artifact over the life
+    of the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a Container Image from an IDE
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Creating a layered container image from a Spring Boot application can be done
+    from within an IDE very easily. I use IntelliJ for this example, but nearly all
+    major IDEs have similar capabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: A local version of Docker—Docker Desktop for Mac in my case—must be running
+    to create images.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To create the image, I open the Maven panel by expanding the tab labeled *Maven*
+    in IntelliJ’s right margin, then expand *Plugins*, choose and expand the *spring-boot*
+    plug-in, and double-click the *spring-boot:build-image* option to execute the
+    goal, as shown in [Figure 11-2](#building_a_spring_boot_application_container_image_from_intellijs_maven_panel).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1102](Images/sbur_1102.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-2\. Building a Spring Boot application container image from IntelliJ’s
+    Maven panel
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Creating the image produces a rather lengthy log of actions. Of particular
+    interest are entries listed here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: As noted earlier, image layers (referred to as *slices* in the preceding listing)
+    and their contents can be modified if necessary for unique circumstances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the image has been created, results like those that follow will complete
+    the log.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Creating a Container Image from the Command Line
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: It’s of course also possible—and simple—to create the same container image from
+    the command line. Prior to doing so, I do want to make a small change to the naming
+    settings for the resultant image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a matter of convenience, I prefer to create images that align with my [Docker
+    Hub](https://hub.docker.com) account and naming conventions, and your choice of
+    image repository likely has similar, specific conventions. Spring Boot’s build
+    plug-ins accept *<configuration>* section details that smooth the step of pushing
+    the image to repository/catalog. I add a single, properly tagged line to the *<plug-ins>*
+    section of `Aircraft Position` ’s *pom.xml* file to match my requirements/preferences:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, I issue the following command from the project directory in the terminal
+    window to re-create the application container image and soon thereafter receive
+    the results shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Notice that the image output is no longer *docker.io/library/aircraft-positions:0.0.1-SNAPSHOT*
+    as it was when I built it using defaults from within the IDE. The new image coordinates
+    match those I specified in the *pom.xml*: *docker.io/hecklerm/aircraft-positions:latest*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Verifying the Image Exists
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To verify that the images created in the prior two sections have been loaded
+    into the local repository, I run the following command from the terminal window,
+    filtering by name to get the following results (and trimmed to fit page):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Pushing the image shown last in the preceding output—since it now aligns with
+    expected and desired account and naming conventions—to Docker Hub is accomplished
+    as follows, with the following results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Visiting the Docker Hub allows me to confirm successful public deployment of
+    the image, as shown in [Figure 11-3](#spring_boot_application_container_image_in_docker_hub).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![sbur 1103](Images/sbur_1103.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11-3\. Spring Boot application container image in Docker Hub
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Deploying to Docker Hub or any other container image repository available from
+    outside of your local machine is the last step prior to wider (and hopefully production)
+    deployment of your Spring Boot containerized application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the Containerized Application
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To run the application, I use the `docker run` command. Your organization likely
+    has a deployment pipeline that moves applications from container images (retrieved
+    from image repositories) to running, containerized applications, but the steps
+    performed are likely the same, albeit with more automation and less typing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since I already have a local copy of the image, no remote retrieval will be
+    necessary; otherwise, remote access to the image repository is required for the
+    daemon to retrieve the remote image and/or layers to reconstruct it locally prior
+    to starting a container based upon the image specified.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the containerized Aircraft Positions application, I execute the following
+    command and see the following results (trimmed and edited to fit page):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now to take a quick look inside a Spring Boot plug-in-created image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Utilities for Examining Spring Boot Application Container Images
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Numerous utilities exist to work with container images, and much of the functionality
+    provided by them falls well outside the scope of this book. I do want to briefly
+    mention two that I’ve found useful in certain circumstances: `pack` and `dive`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pack
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To examine the materials that go into the creation of a Spring Boot application
+    container image using Cloud Native (Paketo) Buildpacks—and the buildpacks themselves—one
+    can use the `pack` utility. `pack` is the designated CLI for building apps using
+    Cloud Native Buildpacks and can be obtained by various means. I used `homebrew`
+    to retrieve and install it with a simple `brew install pack` command on my Mac.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running `pack` against the image created previously results in the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Using the `pack` utility’s `inspect-image` command provides some key bits of
+    information about the image, particularly the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Which Docker base image/Linux version (bionic) was used as the foundation for
+    this image
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Which buildpacks were used to populate the image (five Paketo buildpacks listed)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What processes will be run and by what means (Java commands executed by the
+    shell)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note that both local and remote connected repositories are polled for the specified
+    image, and details are provided for both. This is particularly helpful in diagnosing
+    issues caused by an out-of-date container image in one location or the other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dive
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `dive` utility was created by Alex Goodman as a way to “dive” into a container
+    image, viewing the very granular OCI image layers and the tree structure of the
+    entire image filesystem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`dive` goes far beneath the application-level layers of the Spring Boot layering
+    construct and into the operating system. I find it less useful than `pack` due
+    to its focus on the OS versus the application, but it’s ideal for verifying the
+    presence or absence of particular files, file permissions, and other essential
+    low-level concerns. It’s a rarely used tool but essential when that level of detail
+    and control is needed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code Checkout Checkup
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For complete chapter code, please check out branch *chapter11end* from the code
+    repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Until an application’s users can actually use that application, it is little
+    more than a what-if exercise. Figuratively and often very literally, deployment
+    is the payoff.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Many developers are aware that Spring Boot applications can be created as WAR
+    files or JAR files. Most of those developers also know that there are many good
+    reasons to skip the WAR option and create executable JAR files and few good reasons
+    to do the opposite. What many developers may not realize is that even when building
+    a Spring Boot executable JAR, there are numerous options for deployment to fulfill
+    various requirements and use cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, I examined several ways to deploy your Spring Boot application
+    with options useful for different target destinations and discussed their relative
+    merits. I then demonstrated how to create those deployment artifacts, explained
+    options for optimal execution, and showed how to verify their components and provenance.
+    Targets included the standard Spring Boot executable JARs, “fully executable”
+    Spring Boot JARs, exploded/expanded JARs, and container images built using Cloud
+    Native (Paketo) Buildpacks that run on Docker, Kubernetes, and every major container
+    engine/mechanism. Spring Boot gives you numerous frictionless deployment options,
+    extending your development superpowers into deployment superpowers as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next and final chapter, I round out this book and journey by delving
+    a bit further into two slightly deeper topics. If you’d like to know more about
+    testing and debugging reactive applications, you won’t want to miss it.
+  prefs: []
+  type: TYPE_NORMAL

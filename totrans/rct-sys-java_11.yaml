@@ -1,0 +1,877 @@
+- en: Chapter 8\. HTTP with Reactive in Mind
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Even when building a reactive system, HTTP is unavoidable. HTTP is a prevalent
+    protocol, and REST, for instance, is a well-known approach to designing services
+    and APIs. The problem with HTTP, as mentioned in [Chapter 4](ch04.html#reactive-systems),
+    is the request/response interaction scheme that leads to undesirable time coupling.
+    Also, to implement space decoupling, you often need proxies that would route the
+    requests or advanced service discovery and load-balancing mechanism.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But let’s face it: we need to be pragmatic, and HTTP has plenty of great features.
+    We recommend using HTTP at the edge of your system (the places interacting with
+    external entities), as shown in [Figure 8-1](#image:architecture-http) For example,
+    HTTP is often used on the front tier to expose an API easily consumable by other
+    external services. Besides, we often use HTTP at the various integration points
+    with other external services, such as consuming services exposed using a REST
+    API.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Integrating HTTP should not prevent or limit the responsiveness of the reactive
+    system you are building. As a consequence, we need to implement this integration
+    carefully. It’s not rare to see a system using a so-called asynchronous HTTP client,
+    which can do more harm than provide benefits as it may rely on a hidden thread
+    pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using HTTP at the edge of a reactive system](assets/rsij_0801.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-1\. Using HTTP at the edge of a reactive system
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This chapter explores the features Quarkus offers to expose HTTP endpoints and
+    the ways we can implement these endpoints. In [Figure 8-1](#image:architecture-http),
+    this part is circled with a dotted line; the right side, HTTP service consumption,
+    is covered in [Chapter 12](ch12.html#http-client).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Journey of an HTTP Request
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To understand the benefits of using Quarkus to handle HTTP in a reactive way,
+    we need to look under the hood. As shown in [Chapter 6](ch06.html#quarkus-reactive),
+    Quarkus is based on a reactive engine, so every facet of Quarkus benefits from
+    this engine to provide asynchronous and nonblocking features. Naturally, that
+    also includes HTTP. However, while we implemented HTTP endpoints in the previous
+    Quarkus applications, the code was not benefiting from all the features that engine
+    provides. Let’s see how Quarkus handles HTTP requests and where we can unleash
+    the power of the reactive engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To handle HTTP requests, you need an HTTP server. This server listens on a specific
+    port (8080, in the case of Quarkus) and waits for incoming connections. When the
+    server receives a new connection, it reads the frame and assembles the HTTP request.
+    Typically, the server parses the HTTP method (for example, `GET` or `POST`), the
+    invoked path, the body, and so on. Several frames can compose an HTTP request,
+    and large bodies are split among multiple frames.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the HTTP request is assembled, Quarkus determines how to handle it. It
+    checks for *interceptors* (to handle security or logging concerns) and looks for
+    the endpoint that can process the request. This lookup is based on the path, but
+    can also include content type negotiation. Once the endpoint method is found,
+    Quarkus invokes the method, and it’s up to the method to process the request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s imagine that we call a synchronous method and that the result of the method
+    is the payload of the HTTP response. Quarkus captures that result and builds an
+    HTTP response. It then writes the response into the appropriate HTTP connection,
+    encoding content accordingly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, so good—but not very reactive, right? One of the essential pieces in
+    this exchange is the HTTP service. The HTTP server used by Quarkus is nonblocking,
+    highly efficient, and concurrent. It’s powered by Vert.x and handles the HTTP
+    interaction by using the I/O thread. So, it follows the reactive approach we explained
+    previously in [Figure 4-1](ch04.html#image:reactive-systems) and can handle multiple
+    HTTP connections using few threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once this HTTP server receives a request, the server delegates that request
+    to Quarkus to handle the lookup. This *routing* layer builds the chain of responsibility
+    that handles the request (typically the interceptors and the endpoint) and invokes
+    it. In the case of a JAX-RS endpoint, the routing layer would delegate the lookup
+    to the JAX-RS framework and wait for the JAX-RS response to be computed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But, wait—are we still on the I/O thread? If so, how can we prevent the user
+    endpoint from blocking the I/O thread inadvertently? Fortunately, Quarkus has
+    a routing layer that decides how the request must be handled ([Figure 8-2](#image:routing)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Quarkus Routing Layer](assets/rsij_0802.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-2\. Quarkus routing layer
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In the previous Quarkus application we used in [Chapter 2](ch02.html#quarkus),
+    the requests were always dispatched on a worker thread, avoiding any risk of blocking.
+    It was not ideal in terms of reactive principles. Let’s see what Quarkus can do
+    to improve this situation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Say Hello to RESTEasy Reactive!
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the previous application we used in [Chapter 2](ch02.html#quarkus), we relied
+    on *classic* RESTEasy, which follows the old-school model of associating a thread
+    to each request. However, as we have seen before, that model does not scale and
+    lacks responsiveness. Fortunately, Quarkus offers an alternative: *RESTEasy Reactive*.
+    It’s the same development model, except that this variant is aware of the reactive
+    engine and relies on it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s have a look and experiment with the features offered by RESTEasy Reactive.
+    Go to [*https://code.quarkus.io*](https://code.quarkus.io) and select the following
+    extensions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: RESTEasy Reactive
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: RESTEasy Reactive Jackson
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Then, click “Generate your application” and unzip it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The reactive version is quite similar to the classic RESTEasy version. [Example 8-1](#rr::resource)
+    shows the generated HTTP endpoint. You may notice the introduction of the `@NonBlocking`
+    annotation. This is one of the essential differences with classic RESTEasy; RESTEasy
+    Reactive can dispatch the requests on the I/O thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-1\. An HTTP endpoint using RESTEasy Reactive
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s run this application using `mvn quarkus:dev`, and point your browser
+    to [*http://localhost:8080/hello-resteasy-reactive*](http://localhost:8080/hello-resteasy-reactive).
+    You should see this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: OK, well, that’s nothing fancy, and not very attractive so far.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, let’s enhance our endpoint and, in addition to Hello RESTEasy Reactive,
+    add the name of the thread handling the request ([Example 8-2](#rr::resource-thread)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-2\. Requests are processed on the I/O thread
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Because Quarkus runs in dev mode, there is no need to restart the application,
+    as it will auto-update itself. Refresh your browser and you should see something
+    like [Example 8-3](#output-indicating-thread-8-3).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-3\. Output of the application indicating the thread used for the processing
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The endpoint method is invoked from the I/O thread!^([1](ch08.html#idm45358825012512))
+    Much more reactive, but…wait…how do we handle blocking logic now? With RESTEasy
+    Reactive, you can use the `@NonBlocking` and `@Blocking` annotations to indicate
+    on which thread you want the request to be handled.^([2](ch08.html#idm45358825016128))
+    Let’s illustrate this. Create another endpoint method with the same code as the
+    `hello` method, but target a different path and without the `@NonBlocking` annotation,
+    as illustrated in [Example 8-4](#rr::resource-blocking).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-4\. Requests are processed on a worker thread when `@Blocking` is
+    used
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Refresh your browser again, and voilà:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: What Happens If I Block the I/O Thread Inadvertently?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Quarkus will warn you if you attempt to block an I/O thread for too long or
+    if you try to execute a blocking operation from an I/O thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'RESTEasy Reactive proposes a set of defaults to avoid having to use the `@NonBlocking`
+    annotation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Method returning an object, such as `String` in the previous example, is executed
+    on a worker thread, except if the `@NonBlocking` annotation is used. In this case,
+    the method uses an I/O thread.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Method returning `Uni` is executed on an I/O thread, except if the method is
+    annotated with `@Blocking`. In this case, the method uses a worker thread.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Method returning `Multi` is executed on an I/O thread, except if the method
+    is annotated with `@Blocking`. In this case, the method uses a worker thread.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What’s the Benefit?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: By dispatching the request on the I/O thread, you are allowing the application
+    to handle the request in a reactive manner. You are not only embracing the reactive
+    principles, but also increasing the throughput of your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s have a deeper look at the throughput difference. We will compare *classic*
+    and *reactive* RESTEasy by using [wrk](https://oreil.ly/kkvBU). This benchmark
+    is far from being irreproachable (we run everything on the same machine); it’s
+    there just to illustrate the benefits. Also note that the result may differ from
+    machine to machine. The benchmark is just about calling a *hello* endpoint concurrently
+    and measuring the response time. In *chapter-8/simple-benchmark/classic*, you
+    get the version using RESTEasy *classic*. In *chapter-8/simple-benchmark/reactive*,
+    you get the RESTEasy *reactive* variant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, go into *chapter-8/simple-benchmark/classic*, build the application using
+    `mvn package`, and run it using *java -jar target/quarkus-app/quarkus-run.jar*.
+    Once the application is started in another terminal, run [Example 8-5](#usewrk-8-5).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-5\. Use `wrk` to stress the application endpoint
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: This command hammers the *hello* endpoint for 40 seconds, using 10 threads and
+    50 connections. This is a simple test, but it will give us an idea of the benefits.
+    You should get a report with the result in the terminal. For us, we got the result
+    in [Example 8-6](#benchmark-8-6).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-6\. Benchmark result
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Close the application, and build and run the version using RESTEasy Reactive,
+    as shown in [Example 8-7](#buildrun-8-7).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-7\. Build and run a reactive application
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Run the same `wrk` command in another terminal ([Example 8-8](#usewrk-8-8)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-8\. Use `wrk` to stress the application endpoint
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, let’s compare the number of requests per second: 29,000 for classic RESTEasy
+    versus 84,000 for RESTEasy Reactive. RESTEasy Reactive provides almost three times
+    more throughput.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, we compared a reactive framework against a blocking one. But what about
+    the `@Blocking` annotation, which instructs Quarkus to call the endpoint with
+    a worker thread? Would `@Blocking` reduce the performance gain? Well, let’s test
+    it. In *chapter-8/simple-benchmark/reactive-blocking*, a variant of the application
+    uses RESTEasy Reactive but without the `@NonBlocking` annotation. So, it invokes
+    the method on a worker thread. Let’s run our benchmark against that version, as
+    shown in [Example 8-9](#build-and-run-reactive-blocking).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-9\. Build and run reactive blocking applications
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: In another terminal, run the `wrk` command ([Example 8-10](#stress-8-10)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-10\. Stress the application endpoint by using `wrk`
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Even when using a worker thread, the application serves 50,000 requests per
+    second. That’s more than 1.5 times the throughput of RESTEasy classic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: RESTEasy Reactive offers a solid and highly concurrent alternative to the traditional
+    one-thread-per-request approach. And, thanks to the `@Blocking` and `@NonBlocking`
+    annotations, you can even use it when dealing with asynchronous and synchronous
+    logic. At the end of this chapter, you will see how RESTEasy Reactive produces
+    a reactive score of your endpoint. Next, we will look at this integration because
+    returning Hello is nice, but it’s rarely enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asynchronous Endpoints Returning Uni
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: One way to avoid the temptation to write blocking code is to design your HTTP
+    endpoint method to return a `Uni` instance. `Uni` represents an asynchronous computation
+    that may not have produced a result yet. When an endpoint returns a `Uni` instance,
+    Quarkus subscribes to it, and when the `Uni` emits the result, it writes this
+    result into the HTTP response. If, unfortunately, the `Uni` emits a failure, the
+    HTTP response conveys that failure as an HTTP internal server error, bad request,
+    or not found error, depending on the failure. While *waiting* for the outcome
+    of the `Uni`, the thread can be used to handle other requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There’s no need to use `@NonBlocking` when returning a `Uni`. RESTEasy Reactive
+    recognizes it and automatically considers it nonblocking. Let’s see how this works
+    in practice. In this example, we will use the Vert.x filesystem asynchronous API.
+    Of course, Quarkus offers other more convenient ways to serve files, but this
+    is just to illustrate the purpose.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: You can find the related code in the *chapter-8/mutiny-integration-examples*
+    directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we said in [Chapter 6](ch06.html#quarkus-reactive), Quarkus is based on Vert.x.
+    If you add the `quarkus-vertx` extension, you get access to the *managed* Vert.x
+    instance, as shown in [Example 8-11](#inject-vertx-8-11).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-11\. Inject the Vert.x instance
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Be sure to import `io.vertx.mutiny.core.Vertx`. Note that we inject the Mutiny
+    variant of Vert.x. This variant exposes all the Vert.x API using Mutiny, which
+    is convenient in Quarkus. So, reading a file can be done as in [Example 8-12](#rr::fs).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-12\. Read a file with the Vert.x filesystem API
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Accessing the filesystem is, in most cases, a blocking operation. However, thanks
+    to the Vert.x API, we get a nonblocking variant, already providing a `Uni` instance!
+    But it’s a `Uni<Buffer>`, and to get `String`, we need to transform the emitted
+    result.^([3](ch08.html#idm45358824653424)) In other words, [Example 8-12](#rr::fs)
+    reads a file specified with a *path*. This operation returns `Uni`. When the content
+    is ready to be consumed, `Uni` emits `Buffer` as an item, and we transform `Buffer`
+    into a `String` object. All this, without blocking the thread!
+  prefs: []
+  type: TYPE_NORMAL
+- en: But that’s not all! We can return that `Uni` directly and let Quarkus subscribe
+    and handle the heavy lifting for us, as illustrated in [Example 8-13](#rr::fs-uni).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-13\. Return a file read with the Vert.x filesystem API (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Quarkus subscribes to the returned `Uni` and sends the emitted item to the HTTP
+    response. If the `Uni` emits a failure, it sends an HTTP error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s see this in action. Start the application, located in *chapter-8/mutiny-integration-examples*,
+    with `mvn quarkus:dev` and invoke the endpoint by using [Example 8-14](#retrieve-8-14).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-14\. Retrieve the lorem file
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Most Quarkus APIs have reactive variants using Mutiny, such as the mailer service,
+    database access (we will look at Hibernate Reactive in [Chapter 9](ch09.html#data)),
+    messaging, templating, gRPC, and so on. Besides, the Mutiny variant of Vert.x
+    gives you access to a vast reactive ecosystem ranging from network protocols (DNS,
+    TCP, UDP, HTTP), to messaging (Apache Kafka, AMQP, RabbitMQ, MQTT) via data accesses
+    and web utilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dealing with Failure and Customizing the Response
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Just because a method is asynchronous doesn’t mean it cannot fail. For example,
+    the file we are trying to serve may not be available, so we need to handle such
+    a failure. But, first, let’s see what Quarkus does by default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s add an example with a failing operation with the following endpoint (as
+    shown in [Example 8-15](#rr::fs-fail)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-15\. Read a missing file with the Vert.x filesystem API (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Invoke the endpoint by using [Example 8-16](#endpoint-8-16).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-16\. Propagation of failures
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Quarkus returns `500 Internal Server Error`. This makes sense; there’s clearly
+    a bug in our code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s see what we can do. As you have seen in [Chapter 7](ch07.html#mutiny),
+    `Uni` provides failure-handling capabilities that we can use here. [Example 8-17](#rr::fs-recover)
+    shows how we can recover with a simple message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-17\. Recover on failure (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: This returns `oops`, as you can see in [Example 8-18](#failure-recovery-8-18).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-18\. Failure recovery
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can also customize the HTTP response and return a proper `404 Not Found`
+    error ([Example 8-19](#rr::fs-404)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-19\. Response customization (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The signature of the endpoint is a bit different. Instead of returning `Uni<String>`,
+    we return `Uni<Response>`. The emitted item (`Response`) represents the HTTP response
+    we want to send back. In [Example 8-20](#customize-8-20), we set that on any failure
+    we return a `404 Not Found`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-20\. Customize the HTTP response
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: You can use `Response` to customize the response—for example, by adding headers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative is to register an exception mapper for the `FileSystemException`,
+    as illustrated in [Example 8-21](#rr::exception-mapper).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-21\. Declare an exception mapper (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: With such a mapper defined, Quarkus captures the failure emitted by `Uni` and
+    invokes the mapper to produce the appropriate `Response`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: And what about time-out? While the chances of having a time-out when reading
+    from the filesystem are relatively low, it becomes much more critical when dealing
+    with a remote service. Handle time-out as shown in [Example 8-22](#rr::timeout).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-22\. Handling timeout
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can specify the exception to emit in this case, and if you need, register
+    an exception mapper.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When implementing an HTTP endpoint with RESTEasy Reactive, ask yourself if you
+    can use the Mutiny integration to compose asynchronous actions and fully benefit
+    from the performance and efficiency of the reactive engine of Quarkus. Of course,
+    you can use `@Blocking`, but there is a cost to consider.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Streaming Data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Returning `Uni` is perfect when we have a single piece of data to send into
+    the response. But what about *streams*?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to `Uni`, Quarkus lets you return a `Multi` instance. Quarkus subscribes
+    to the returned `Multi` and writes the items emitted by this `Multi`, one by one,
+    into the HTTP response. It’s an efficient way to deal with streams and limit the
+    application’s memory consumption, as you don’t have to buffer the entire content
+    in memory. Indeed, Quarkus uses HTTP *chunked* responses by setting the [`Transfer-Encoding
+    header`](https://oreil.ly/QcHFs) when dealing with `Multi`. That feature from
+    HTTP allows writing into the response chunk after chunk.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As with `Uni`, a method retuning a `Multi` is considered nonblocking by default.
+    There’s no need to use `@NonBlocking`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But when returning `Multi`, we need to ask ourselves: What envelope do we want?
+    Do we want to stream bytes? Do we want to send a JSON array instead? Or maybe
+    individual events using Server-Sent Events? Quarkus supports all these, and that’s
+    what we are going to see in this section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Raw Streaming
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let’s start with *raw* streaming, basically no envelope. This model is great
+    for writing large payloads in response, as we can write them chunk by chunk, in
+    order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Raw streaming is straightforward with Quarkus and RESTEasy Reactive: just return
+    `Multi`. Let’s look at an example. You have probably heard about the book *War
+    and Peace*. It’s what we would call a brick, more than 1,200 pages! Let’s say
+    that we want to accumulate the full content of *War and Peace* and return it in
+    an HTTP response as a single batch. It’s doable, but let’s make the book easy
+    to digest by streaming the content ([Example 8-23](#rr::stream)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-23\. Stream responses (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code opens the book text from the filesystem, using the Vert.x filesystem
+    API, and reads it chunk by chunk. `AsyncFile::toMulti` is responsible for reading
+    the file (and `AsyncFile`) and emitting the content chunk by chunk. As we did
+    previously in [Example 8-13](#rr::fs-uni), we transform the content into UTF-8
+    strings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can find this code in *chapter-8/mutiny-integration-examples*. Run the application
+    by using `mvn quarkus:dev` and then test it with [Example 8-24](#consume-chunked-responses-8-24).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-24\. Consume chunked responses
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[![1](assets/1.png)](#co_http_with_reactive_in_mind_CO1-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-N` instructs `curl` to read the response chunk by chunk (it disables the
+    buffering).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We get the content, but it’s hard to see that it was sent as a set of chunks.
+    Let’s update the endpoint to send a chunk every second ([Example 8-25](#rr::stream-pace)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-25\. Pace streamed responses (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 8-25](#rr::stream-pace) combines two streams. First, it creates a
+    periodic stream, emitting a tick every second (`ticks`). Then it retrieves the
+    stream reading the book (`book`). The combination creates a stream of tuples that
+    will be emitted every second. Each tuple contains a tick (`getItem1`) and the
+    chunk (`getItem2`). We just need to forward the chunk, dropping the tick.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, rerun the `curl` command, and you will see the content appearing chunk
+    by chunk every second. Don’t wait until the end because there are many chunks;
+    just hit Ctrl-C to interrupt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Streaming JSON Array
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The *War and Peace* example is interesting for binary content or simple text,
+    but you may want to send a more structured response, such as a JSON array. Imagine
+    you are building a response that is a JSON array, but a potentially large one.
+    Each item is a JSON object. You could build that structure in memory and flush
+    everything in a single batch, but it may be more efficient to push the JSON objects
+    one by one. First, that approach would save some memory on our part, and the client
+    receiving the data may be able to start processing the items immediately. To stream
+    a JSON array, you need to adapt the produced content type. In the previous example,
+    we just used `text/plain`. To create a JSON array, we need to set it to `application/json`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We recommend using the `MediaType` class that provides constants for the most
+    common content types. A typo can quickly become a debugging nightmare.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s imagine we have a bunch of books. Each `Book` has an ID, a title, and
+    a list of authors ([Example 8-26](#rr::book)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-26\. The `Book` structure (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let’s imagine we have a *service* that lets us retrieve our collection of books
+    as a `Multi`. In other words, we have a service offering the API in [Example 8-27](#rr::book-service).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-27\. Stream books API
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: To build a JSON array from this method, we can return an instance of `Multi`
+    produced by the `getBooks` method ([Example 8-28](#rr::book-stream)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-28\. Stream books (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you call this endpoint by using the command in [Example 8-29](#consume-stream-of-books),
+    you will get all the books.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-29\. Consume the stream of books
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The result is a well-formed JSON array containing our books, serialized as JSON
+    objects. But, again, it’s hard to see that it was streamed. We can use the same
+    approach as we did before to limit the emission to one per second, as in [Example 8-30](#rr::stream-book-page).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-30\. Produce a book every second (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: With this code, if you rerun the `curl` command, you will see the items appearing
+    one by one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Server-Sent-Events
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Raw streams and JSON arrays are helpful for bounded streams. But, sometimes,
+    we have to deal with unbounded ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Server-Sent Events](https://oreil.ly/NjQNL) (SSE) was designed with this use
+    case in mind. It provides a way to stream potentially unbounded structured data
+    using HTTP.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To produce an SSE response, you set the produced content type to `text/event-stream`.
+    Let’s try this. Imagine we want to stream events from a financial market. Each
+    event is a `Quote` containing the name of a company and the new stock value ([Example 8-31](#rr::quote)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-31\. The `Quote` structure (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let’s imagine a service emitting a `Quote` every second to represent the
+    fluctuation of the market. We can produce an SSE response by returning that stream
+    directly ([Example 8-32](#rr::stream-quotes)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-32\. Stream quotes (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: By setting the produced content to SSE, Quarkus writes the response accordingly.
+    Each individual `Quote` is encoded to JSON automatically ([Example 8-33](#consume-sse-8-33)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example 8-33\. Consume the SSE response
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: A client reading SSE, such as a [JavaScript `EventSource`](https://oreil.ly/scARA),
+    can process the quotes one by one as they come.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reactive Score
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far, we have looked at various features of RESTEasy Reactive and Quarkus.
+    But what about tooling around Reactive?
+  prefs: []
+  type: TYPE_NORMAL
+- en: We already experienced dev mode, which made us highly productive, but there
+    is more. RESTEasy Reactive produces a *reactive score* for your endpoints, indicating
+    how *responsive* the endpoints are.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To compute this score, RESTEasy Reactive looks at the execution model (typically,
+    an endpoint using worker threads will get a lower score), instantiation scheme
+    (favoring singleton over request-based instantiation), the usage of marshaller
+    and reflection-based mechanisms (such as object mapper), and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s look at the score in an example. In *chapter-8/reactive-scores*, an application
+    contains a bunch of endpoints using various features. Launch the application in
+    dev mode by using `mvn quarkus:dev`, and then open a browser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: This reactive score page is part of the Quarkus dev console. Each extension
+    can contribute to the dev console. In dev mode, access the dev console using [*http://localhost:8080/q/dev*](http://localhost:8080/q/dev).
+    In our example, you can navigate to [*http://localhost:8080/q/swagger-ui/*](http://localhost:8080/q/swagger-ui/)
+    to try all the defined endpoints.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can see scores going from 50/100 (rather bad) to 100/100 (excellent!) in
+    our application ([Figure 8-3](#image:scores)). You can click each method to understand
+    the given score. This feature is handy when trying to improve the concurrency
+    and the efficiency of your application. If you realize that you have a bottleneck,
+    check the score and try to improve it. The effect on your application will be
+    immediate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Endpoint Scores](assets/rsij_0803.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8-3\. Endpoint scores
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: HTTP is unavoidable. Although it does not enforce reactive principles, Quarkus
+    offers a way to expose HTTP APIs without renouncing to those reactive principles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thanks to RESTEasy Reactive, you get a familiar declarative development model
+    that is a lot more efficient and performant. We only scratched the surface. RESTEasy
+    Reactive also supports Bean Validation to automatically validate the incoming
+    payloads or OpenAPI to describe your API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You may wonder how to consume HTTP endpoints. This is covered in [Chapter 12](ch12.html#http-client).
+    But, there is one aspect we didn’t discuss yet: data and how to reactively access
+    data stores. This is the topic of the next chapter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([1](ch08.html#idm45358825012512-marker)) Vert.x event loop threads are I/O
+    threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([2](ch08.html#idm45358825016128-marker)) Methods returning instances of `Multi`
+    or `Uni` are automatically considered nonblocking if not specified otherwise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^([3](ch08.html#idm45358824653424-marker)) `Buffer` is a convenient way to represent
+    a bag of bytes in Vert.x.
+  prefs: []
+  type: TYPE_NORMAL

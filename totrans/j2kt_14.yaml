@@ -1,0 +1,662 @@
+- en: Chapter 14\. Accumulating Objects to Transformations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Java programs usually rely heavily on mutable state because it is so arduous
+    in Java to define value types and transform values, even with the Streams API.
+    What is the best way to translate Java code that relies upon mutable objects and
+    side effects to Kotlin code that transforms immutable values?
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Calculating with Accumulator Parameters
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: One of the most important things our travelers want to know is how much their
+    adventures will cost. International travel makes this rather complicated. A trip
+    will incur costs in multiple currencies as it wends its way across borders, but
+    the traveler wants to be able to compare overall costs to make decisions about
+    routes and where to stay. So Travelator summarizes costs by local currency *and*
+    the traveler’s preferred currency, and then shows the overall total in the preferred
+    currency. It does this using the `CostSummary` and `CostSummaryCalculator` classes.
+    Let’s take a look at how they are used, and then we’ll look at their implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `Itinerary` class has an operation for summarizing its costs with a `CostSummary​Cal⁠culator`.
+    It is used like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.1 [accumulator.0:src/test/java/travelator/itinerary/Itinerary_CostTest.kt]](https://java-to-kotlin.dev/code.html?ref=14.1&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.1&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![1](assets/1.png)](#co_introduction_CO22-1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here the code creates a `CostSummaryCalculator` with the traveler’s preferred
+    currency and a source of currency exchange rates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![2](assets/2.png)](#co_introduction_CO22-2)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This tells the `Itinerary` to add its costs to the calculator. In response,
+    the `Itinerary` adds the cost of its elements: the journeys along the route, accommodation,
+    and other chargeable services.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[![3](assets/3.png)](#co_introduction_CO22-3)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This calls the calculator’s `summarise` method to obtain the `CostSummary` after
+    all the costs have been collected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Someone has already converted the `Itinerary` class to Kotlin, but the implementations
+    of `addCostsTo` still have a Java flavor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.2 [accumulator.0:src/main/java/travelator/itinerary/Itinerary.kt]](https://java-to-kotlin.dev/code.html?ref=14.2&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.2&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The logic relies upon side effects to accumulate costs in the mutable state
+    of the `CostSummaryCalculator`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The benefit of this design is that we can use the calculator to summarize the
+    costs of any object in our domain model, without knowing the structure of that
+    object. The object is responsible for adding its costs to the calculator and passing
+    the calculator to its children so that they can add *their* costs. This decouples
+    the code that needs the costs from the code that provides the costs, allowing
+    us to evolve them independently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, a `Route` contains a list of `Journey`, each of which has a cost,
+    and `Accommodation` has a room rate, a number of nights, and additional costs
+    such as meals and hotel services. The `Itinerary` doesn’t have to know or care
+    how these objects are structured, or how to collect their respective costs. That
+    knowledge is encapsulated in the `Route` and `Accommodation` classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, our use of mutable state has two significant disadvantages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, it introduces the possibility of [aliasing errors](https://oreil.ly/PeqKs).
+    Aliasing errors create “spooky action at a distance” (as Einstein famously described
+    quantum entanglement) that is not immediately obvious from the source code. We
+    saw an example in [Chapter 6](ch06.html#java-to-kotlin-collections), when a function
+    sorted a mutable list parameter and broke its caller.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case of the `CostSummaryCalculator`, if we reuse a calculator to summarize
+    the costs of multiple entities, we have to reset its state between each calculation.
+    If we do not reset the calculator state, costs collected during one calculation
+    will be included in the next. The type system cannot help us avoid this mistake.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The example at the start of this chapter *may* make this error. The calculator
+    is not local to the `costSummary` method, and `costSummary` does not reset the
+    calculator before each calculation. We can’t tell whether this is a problem merely
+    by looking at the `costSummary` method. We have to understand how that method
+    is used in its wider context, and as we make changes in that context, we have
+    to make sure those changes do not break our assumptions about how the `costSummary`
+    method is used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second problem with mutable state is that it scatters the implementation
+    of our algorithms across the code. We’ll return to this later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we look at `CostSummaryCalculator`, let’s have a look at the `CostSummary`
+    that it computes. It uses `CurrencyConversion` (thankfully already Kotlin):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.3 [accumulator.0:src/main/java/travelator/money/CurrencyConversion.kt]](https://java-to-kotlin.dev/code.html?ref=14.3&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.3&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A `CostSummary` is a mutable POJO (as described in [Chapter 5](ch05.html#beans-to-values))
+    that holds a list of `CurrencyConversion`, from local currencies to the traveler’s
+    preferred currency:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.4 [accumulator.0:src/main/java/travelator/itinerary/CostSummary.java]](https://java-to-kotlin.dev/code.html?ref=14.4&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.4&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CostSummary` also reports the total cost in the preferred currency. It stores
+    the total cost in a field rather than calculating it in `getTotal` because the
+    application often sorts items by their `CostSummary.total`, and recalculating
+    every time we make a comparison turned out to be a bottleneck. This means that
+    a `CostSummary` has to update `total` whenever a `CurrencyConversion` is added.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CostSummary` is also effectively a shared mutable collection. Because this
+    breaks our rule of thumb in [“Don’t Mutate Shared Collections”](ch06.html#dont-mutate-shared-collections),
+    it performs a copy in `getLines` to limit the damage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now to `CostSummaryCalculator`. It keeps a running total for each `Currency`
+    in a `currencyTotals` field when `addCost` is called. The `summarise` method constructs
+    a `CostSummary` using a source of exchange rates to convert local costs to the
+    traveler’s preferred currency:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.5 [accumulator.0:src/main/java/travelator/itinerary/CostSummaryCalculator.java]](https://java-to-kotlin.dev/code.html?ref=14.5&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.5&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Thus, the calculation of a `CostSummary` is spread between two classes that
+    intertwine the following responsibilities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hold information from the context of the calculation that is needed to compute
+    the summary.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Calculate per-currency totals, so the calculation doesn’t accumulate rounding
+    errors.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Convert costs to the traveler’s preferred currency.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Calculate the grand total in the traveler’s preferred currency.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sort the currency conversions in alphabetical order of the original currency
+    code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Store the currency conversions and grand total so they can be displayed to the
+    traveler.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Such smearing of responsibilities across classes is common when we compute by
+    mutating shared state. We’d like to disentangle the responsibilities and simplify
+    the implementation. What final structure we should we aim for?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One clue is in the name of the `CostCurrencyCalculator` class. In linguistic
+    jargon, the `CostCurrencyCalculator` is an *agent noun*: a noun derived from a
+    verb that means no more than a thing that performs the action identified by the
+    verb, like *driver* or *baker* or *calculator*. `CostCurrencyCalculator` is a
+    so-called “doer class.”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another clue is in the data that the class holds. The traveler’s preferred currency
+    and source of exchange rates are the context for the calculation. They are managed
+    elsewhere in the application and held by `CostCurrencyCalculator` so that they
+    are close at hand for its calculations. The map of totals by currency (`currencyTotals`)
+    contains transient, intermediate results of the calculation that are irrelevant
+    after the calculation is complete and, in fact, should be discarded to avoid aliasing
+    errors. The class doesn’t *own* any data, only holds it temporarily for operational
+    reasons.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `CostCurrencyCalculator` class doesn’t represent a *concept* in our application
+    domain model, but a *function* that we perform upon elements of that domain model.
+    In Kotlin, we usually implement functions not with objects but with, well, functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s refactor the calculation from mutable classes to functions that work with
+    immutable data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Refactoring to Functions over Immutable Data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Converting the two classes to Kotlin leaves us with Java in Kotlin syntax.
+    Here is `CostSummary` after a little tidying and rearranging:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.6 [accumulator.1:src/main/java/travelator/itinerary/CostSummary.kt]](https://java-to-kotlin.dev/code.html?ref=14.6&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.6&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The automatic conversion of `CostSummaryCalculator` needs less tidying:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.7 [accumulator.1:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.7&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.7&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can start from here and refactor away the mutability. We’ll work from the
+    inside, making `CostSummary` an immutable value type, and gradually push immutability
+    outward through the `CostSummaryCalculator`. Before we do though, we’ve been stung
+    by Java’s obsession with sorting collections in place before now, so we fix that
+    first:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.8 [accumulator.2:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.8&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.8&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we see a pattern that is common in mutating code: create an object (`CostSummary`
+    in this case), call some initialization steps, and then return it. Whenever we
+    see initialization steps like this, we should reach for `apply`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.9 [accumulator.3:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.9&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.9&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using `apply` allows us to group the initialization steps into a block to better
+    express our intent. It’s like a mini builder: the `summarise` function never sees
+    a reference to a partially initialized `CostSummary`, only the completed object.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is small-scale functional thinking—trying to limit the scope of mutation
+    even within a function. Functional thinking also helps us see that looping over
+    `totals`, creating a `CurrencyConversion` for each, and calling `addLine` with
+    it, is the same as creating a `conversions` list and looping over that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.10 [accumulator.4:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.10&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.10&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Why make this change? Well, we want to strip a `CostSummary` down to its immutable
+    essence. If `CostSummary` was immutable, client code would have to pass the list
+    of lines to its constructor instead of calling its `addLine` method. `CostSummary`
+    shouldn’t be responsible for currency conversion, so we’re making the `apply`
+    block look like we want its constructor to look. From here we add a secondary
+    constructor that duplicates this initialization logic:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.11 [accumulator.5:src/main/java/travelator/itinerary/CostSummary.kt]](https://java-to-kotlin.dev/code.html?ref=14.11&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.11&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we can change the `CostSummaryCalculator.summarise` method to call the
+    new constructor, treating the `CostSummary` class as if it was an immutable value
+    type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.12 [accumulator.5:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.12&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.12&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This in turn allows us to make the `CostSummary` class actually immutable,
+    at least from outside:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.13 [accumulator.6:src/main/java/travelator/itinerary/CostSummary.kt]](https://java-to-kotlin.dev/code.html?ref=14.13&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.13&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we can see from that nasty `var` and `init`, it’s sometimes hard to get
+    away from mutation once it has set in, especially for accumulators like this;
+    `fold` is our friend here. We had a series of actions ([“Actions”](ch07.html#actions))
+    acting on the mutable variable `total`, and `fold` converts the actions to a single
+    calculation ([“Calculations”](ch07.html#calculations)) that we can use to initialize
+    an immutable variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.14 [accumulator.7:src/main/java/travelator/itinerary/CostSummary.kt]](https://java-to-kotlin.dev/code.html?ref=14.14&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.14&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that it is fully immutable, we can make `CostSummary` a data class if we
+    can make `total` a primary constructor parameter. We could do this by converting
+    the current constructor to a secondary constructor, but instead we are going to
+    move all the calculation into the `CostSummaryCalculator`, leaving the `CostSummary`
+    merely to hold the results of that calculation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To do this, we first select the expression to the right of the equals sign
+    in the definition of the `total` property and use the IDE’s “Introduce Parameter”
+    refactoring to push the expression out as a constructor parameter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.15 [accumulator.8:src/main/java/travelator/itinerary/CostSummary.kt]](https://java-to-kotlin.dev/code.html?ref=14.15&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.15&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `total` property is now highlighted as a style warning: the IDE detected
+    that the property can be declared in the constructor parameter. A quick Alt-Enter
+    on the warning leaves the class declaration as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.16 [accumulator.9:src/main/java/travelator/itinerary/CostSummary.kt]](https://java-to-kotlin.dev/code.html?ref=14.16&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.16&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Meanwhile, back at the `CostSummaryCalculator`, IntelliJ has pulled the calculation
+    into `summarise`, leaving it looking like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.17 [accumulator.9:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.17&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.17&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Now* we can make `CostSummary` a data class. Its sole responsibility is to
+    hold the results of the calculation for filtering, sorting, and display:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.18 [accumulator.10:src/main/java/travelator/itinerary/CostSummary.kt]](https://java-to-kotlin.dev/code.html?ref=14.18&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.18&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We said previously that mutable state can obscure algorithms by smearing them
+    through the code. We can now look back and see that was the case with `CostSummary`.
+    When we arrived, calculating the total was split into initializing a mutable `total`
+    property and updating it in the `addLine` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.19 [accumulator.1:src/main/java/travelator/itinerary/CostSummary.kt]](https://java-to-kotlin.dev/code.html?ref=14.19&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.19&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now the calculation is a single expression in `summarise`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.20 [accumulator.9:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.20&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.20&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s Do That Again
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Similarly, whatever is happening with currencies is still hidden in the remaining
+    mutations in `CostSummaryCalculator`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.21 [accumulator.9:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.21&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.21&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can apply a similar process to eliminate these, but this time we won’t add
+    a secondary constructor. Instead, we will apply [“Expand-and-Contract Refactoring”](ch04.html#expand-contract)
+    by adding an overload of the `summarise` method that takes the costs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.22 [accumulator.11:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.22&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.22&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is quite sneaky. The old `summarise` method is an action: its result depends
+    on the past history of calling `addCost` and `reset`. This new `summarise` is
+    a calculation: its result depends only on the values of its inputs (the `costs`
+    parameter plus the `userCurrency` and `exchangeRates` properties it accesses).
+    And yet the new `summarise` uses the old one; it just limits the scope of mutation
+    to a local variable, converting it to a calculation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we use this version of `summarise`, we have drawn a distinction between
+    the *context* of cost-summary calculations, which we pass to the constructor as
+    `userCurrency` and `exchangeRates`, and the parameters of a *specific* calculation
+    (the `costs` that we pass to the `summarise` method). This will be significant
+    later ([“Enriching the Abstraction We Discovered”](#pricing-context)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have two `summarise` methods, we can move our callers to the new
+    one. To switch over to using the new `summarise`, we’ll have to extract the costs
+    from the entities we want to summarize, rather than telling them to add their
+    costs to a mutable calculator that we pass in. Instead of asking children to add
+    their costs to the `CostSummaryCalculator`, parents will ask their children for
+    their costs and combine them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We’ll end up using the calculator like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.23 [accumulator.12:src/test/java/travelator/itinerary/Itinerary_CostTest.kt]](https://java-to-kotlin.dev/code.html?ref=14.23&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.23&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'And we’ll report the costs from our domain models like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.24 [accumulator.12:src/main/java/travelator/itinerary/Itinerary.kt]](https://java-to-kotlin.dev/code.html?ref=14.24&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.24&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When all uses of `CostSummaryCalculator` in the application are using our new
+    `summarise` method, we can flatten the calculation of the `currencyTotals` and
+    `CostSummary` into that method, the one that currently uses a local to do the
+    job:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.25 [accumulator.11:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.25&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.25&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can effectively inline the entire class into this method using local variables
+    instead:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.26 [accumulator.13:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.26&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.26&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our tests still pass, and IntelliJ tells us that all the other methods of `CostSummary​Cal⁠cu⁠lator`
+    are now unused, as is the `currencyTotals` field, so by deleting them all we have
+    finally succeeded in removing all the mutable state from the class. Not from that
+    method though—we still have a mutable map! This is the last remnant of the smearing
+    out of the algorithm that we mentioned earlier. We have finally brought all the
+    logic into this one method, and because all our logic is in one place, we know
+    that it happens at one time and is safe to refactor to any equivalent form.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What is that form? We have to think about that, but come to the conclusion
+    that the `MutableMap.merge` is accumulating a total per currency. When we have
+    all the data at once, as we do now, we can perform the same calculation by grouping
+    by currency and summing the lists:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.27 [accumulator.14:src/main/java/travelator/itinerary/CostSummaryCalculator.kt]](https://java-to-kotlin.dev/code.html?ref=14.27&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.27&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is a bit irritating that we have to use `reduce` to sum monies instead of
+    having a nice `Iterable<Money>.sum()` extension function. We should probably fix
+    that. And now that the calculation is all in one place, we might ponder whether
+    there is meaning in the fact that we use `reduce` in one expression and `fold`
+    in another (hint, there is), but these are thoughts that we can have only because
+    the code is now set out in one place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The key thing is that we can see the shape of the `summarise` calculation more
+    clearly now. It is a pure function that is applied to a collection of costs and
+    is evaluated in the context of some exchange rates and the traveler’s preferred
+    currency. The function transforms the nested entities of our domain model into
+    a flat collection of costs and then transforms the costs into a map of the total
+    for each currency, transforms the totals for each `Currency` into a list of `CurrencyConversion`,
+    and finally transforms the list of currency conversions into a `CostSummary`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: A functional program transforms its inputs into outputs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you can’t write that easily in one step, transform the inputs into an intermediate
+    representation that is easy to transform into the outputs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introduce intermediate forms and transformations until you have a pipeline of
+    simple transformations between intermediate forms that compose to transform the
+    inputs that you *have* to the outputs that you *want*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will look more at pure functions evaluated in context in [Chapter 16](ch16.html#interfaces-to-functions).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enriching the Abstraction We Discovered
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Travelator does more with exchange rates and the traveler’s preferred currency
+    than summarize costs. For example, while the user is browsing hotel rooms, it
+    shows the cost of each room in both local and preferred currencies. That is, the
+    hotel room browser performs a currency conversion on an individual cost. The `CostSummary​Cal⁠cu⁠lator`
+    also has to perform currency conversions on individual costs to calculate a summary.
+    If we extract that functionality as a public method, which we can call `toUserCurrency`,
+    we can initialize the hotel room browser with a `CostSummary​Cal⁠cul⁠ator` instead
+    of passing it both the exchange rates and preferred currency. We can also remove
+    the currency conversion calculation—that we now see is duplicated code—from the
+    hotel room browser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At that point, the class is no longer a calculator of cost summaries. It holds
+    the context for any pricing we do for an individual traveler. So let’s rename
+    it to reflect its newfound responsibility. At the moment, we can’t think of a
+    better name than `PricingContext`, which leaves our class looking like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.28 [accumulator.16:src/main/java/travelator/itinerary/PricingContext.kt]](https://java-to-kotlin.dev/code.html?ref=14.28&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.28&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This leaves the code that used to use the `CostSummaryCalculator` looking like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[Example 14.29 [accumulator.16:src/test/java/travelator/itinerary/Itinerary_CostTest.kt]](https://java-to-kotlin.dev/code.html?ref=14.29&show=file)
+    [(diff)](https://java-to-kotlin.dev/code.html?ref=14.29&show=diff)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have this concept in our codebase, we can identify other parts of
+    our application that can use it. We can move logic from those parts onto the `Pricing​Con⁠text`,
+    making it a one-stop shop for operations that need to convert monetary amounts
+    into the traveler’s preferred currency. And should it end up full of disparate
+    methods for different use cases, then we can move the operations from methods
+    to extension functions to keep them closer to where they are needed (see [Chapter 10](ch10.html#functions-to-extension-functions)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Moving On
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We started this chapter with a calculation that relied on shared, mutable state.
+    It duplicated logic from the standard library and introduced the risk of aliasing
+    errors. By the end of the chapter, we had refactored the same calculation to a
+    transformation of immutable data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To do so, we moved mutation out of our code in two directions, outward and
+    inward. Outward was obvious: we made the `CostSummaryCalculator` treat the `CostSummary`
+    class as an immutable value type and then made `CostSummary` immutable. Then we
+    made users of `CostSummaryCalculator` treat it as an immutable context to a calculation
+    and then made `CostSummaryCalculator` immutable. But inward? We replaced the imperative
+    code that mutated collections and fields with calls to standard higher-order functions,
+    like `groupingBy`, `fold`, and `reduce`. Under the hood, those functions may mutate
+    state, but they hide that mutation from their callers. From outside, the functions
+    are calculations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can use the same approach in our own code when we need to. Sometimes mutating
+    a collection is the easiest thing to do. The standard library does not always
+    have a higher-order function that transforms data the way we want. If we do need
+    a mutable collection, we can hide that mutation inside a calculation to limit
+    the blast radius of any potential aliasing errors. However, every release adds
+    more functions to the standard library, so the need diminishes over time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Functional programming does not eliminate mutable state but instead *makes it
+    the responsibility of the runtime*. A functional program declares what the runtime
+    should calculate and lets the runtime be responsible for computing that calculation.
+    Kotlin is not a pure functional language, but we benefit by following that principle
+    where we can.
+  prefs: []
+  type: TYPE_NORMAL
