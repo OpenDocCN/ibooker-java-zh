@@ -1,385 +1,546 @@
 - en: Chapter 11\. Classloading, Reflection, and Method Handles
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第11章。类加载、反射和方法句柄
 - en: In [Chapter 3](ch03.xhtml#javanut8-CHP-3), we met Java’s `Class` objects, a
     way of representing a live type in a running Java process. In this chapter, we
     will build on this foundation to discuss how the Java environment loads and makes
     new types available. In the second half of the chapter, we will introduce Java’s
     introspection capabilities—both the original Reflection API and the newer Method
     Handles capabilities.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[第3章](ch03.xhtml#javanut8-CHP-3)中，我们遇到了Java的`Class`对象，一种表示运行中Java进程中的活动类型的方式。在本章中，我们将在此基础上讨论Java环境如何加载和使新类型可用。在本章的下半部分，我们将介绍Java的内省能力——原始的反射API和较新的方法句柄功能。
 - en: Class Files, Class Objects, and Metadata
+  id: totrans-2
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 类文件、类对象和元数据
 - en: Class files, as we saw in [Chapter 1](ch01.xhtml#javanut8-CHP-1), are the result
     of compiling Java source files (or, potentially, other languages) into the intermediate
     form used by the JVM. These are binary files that are not designed to be human
     readable.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 类文件，正如我们在[第1章](ch01.xhtml#javanut8-CHP-1)中所看到的，是将Java源文件（或者，可能是其他语言）编译成JVM使用的中间形式的结果。这些是不打算供人类阅读的二进制文件。
 - en: The runtime representation of these class files are the class objects that contain
     metadata, which represents the Java type that the class file was created from.
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些类文件的运行时表示是包含元数据的类对象，该元数据表示创建该类文件的Java类型。
 - en: Examples of Class Objects
+  id: totrans-5
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 类对象示例
 - en: 'You can obtain a class object in Java in several ways. The simplest is:'
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 在Java中，您可以通过几种方式获取类对象。最简单的方法是：
 - en: '[PRE0]'
+  id: totrans-7
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'This returns the class object of the instance that it is called from. However,
     as we know from our survey of the public methods of `Object`, the `getClass()`
     method on `Object` is public, so we can also obtain the class of an arbitrary
     object `o`:'
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 这会返回调用它的实例的类对象。然而，正如我们从调查`Object`的公共方法所知道的那样，`Object`上的`getClass()`方法是公共的，所以我们也可以获取任意对象`o`的类：
 - en: '[PRE1]'
+  id: totrans-9
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'Class objects for known types can also be written as “class literals”:'
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 已知类型的类对象也可以写为“类文字”：
 - en: '[PRE2]'
+  id: totrans-11
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: 'For primitive types and `void`, we also have class objects that are represented
     as literals:'
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于原始类型和`void`，我们还有表示为字面量的类对象：
 - en: '[PRE3]'
+  id: totrans-13
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'There is also the possibility of using the `.class` syntax directly on a primitive
     type, like this:'
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 还有可能直接在原始类型上使用`.class`语法，像这样：
 - en: '[PRE4]'
+  id: totrans-15
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'The relationship between `.class` and `.TYPE` can be seen with some simple
     tests:'
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: '`.class`和`.TYPE`之间的关系可以通过一些简单的测试看出：'
 - en: '[PRE5]'
+  id: totrans-17
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: Note that the wrapper types (`Integer`, etc) have a `.TYPE` property, but in
     general classes do not. Also, all of this works only for types that are known
     at compile time; for unknown types, we will have to use more sophisticated methods.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 请注意，包装器类型（`Integer`等）具有`.TYPE`属性，但一般类不具备。此外，所有这些仅适用于在编译时已知的类型；对于未知类型，我们将不得不使用更复杂的方法。
 - en: Class Objects and Metadata
+  id: totrans-19
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 类对象和元数据
 - en: The class objects contain metadata about the given type. This includes the methods,
     fields, constructors, and the like that are defined on the class in question.
     This metadata can be accessed by the programmer to investigate the class, even
     if nothing is known about the class when it is loaded.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 类对象包含有关给定类型的元数据。这包括在所讨论的类上定义的方法、字段、构造函数等。程序员可以访问此元数据来调查类，即使在加载类时对该类一无所知也可以。
 - en: 'For example, we can find all the deprecated methods in the class file (they
     will be marked with the `@Deprecated` annotation):'
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，我们可以在类文件中找到所有已弃用的方法（它们将用`@Deprecated`注解标记）：
 - en: '[PRE6]'
+  id: totrans-22
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'We could also find the common ancestor class of a pair of class files. This
     simple form will work when both classes have been loaded by the same classloader:'
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们还可以找到一对类文件的公共祖先类。当这两个类都由同一个类加载器加载时，这种简单的形式将起作用：
 - en: '[PRE7]'
+  id: totrans-24
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'Class files have a very specific layout they must conform to if they are to
     be legal and loadable by the JVM. The sections of the class file are (in order):'
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果类文件要合法并且能够被JVM加载，它们必须符合非常具体的布局。类文件的各个部分依次是：
 - en: Magic number (all class files starting with the four bytes `CA FE BA BE` in
     hexadecimal)
+  id: totrans-26
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 魔数（所有以十六进制的四个字节`CA FE BA BE`开头的类文件）
 - en: Version of class file standard in use
+  id: totrans-27
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用的类文件标准的版本
 - en: Constant pool for this class
+  id: totrans-28
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 此类的常量池
 - en: Access flags (`abstract`, `public`, etc.)
+  id: totrans-29
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 访问标志（`abstract`，`public`等）
 - en: Name of this class
+  id: totrans-30
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 此类的名称
 - en: Inheritance info (e.g., name of superclass)
+  id: totrans-31
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 继承信息（例如，超类的名称）
 - en: Implemented interfaces
+  id: totrans-32
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 实现的接口
 - en: Fields
+  id: totrans-33
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 字段
 - en: Methods
+  id: totrans-34
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 方法
 - en: Attributes
+  id: totrans-35
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 属性
 - en: The class file is a simple binary format, but it is not human readable. Instead,
     tools like `javap` (see [Chapter 13](ch13.xhtml#javanut8-CHP-13)) should be used
     to comprehend the contents.
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 类文件是一种简单的二进制格式，但它并不是人类可读的。相反，应该使用类似`javap`（参见[第13章](ch13.xhtml#javanut8-CHP-13)）的工具来理解其内容。
 - en: One of the most frequently used sections in the class file is the *constant
     pool*, which contains representations of all the methods, classes, fields, and
     constants that the class needs to refer to (whether they are in this class or
     another). It is designed so that bytecodes can simply refer to a constant pool
     entry by its index number—which saves space in the bytecode representation.
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 类文件中最常用的部分之一是*常量池*，其中包含类需要引用的所有方法、类、字段和常量的表示（无论它们是在本类中还是在其他类中）。它的设计使得字节码可以简单地通过索引号引用常量池条目，从而节省字节码表示中的空间。
 - en: A number of different class file versions are created by various Java versions.
     However, one of Java’s backward compatibility rules is that JVMs (and tools) from
     newer versions can always use older class files.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 多个不同的 Java 版本创建了不同的类文件版本。然而，Java 的向后兼容规则之一是，更新版本的 JVM（和工具）始终可以使用旧的类文件。
 - en: Let’s look at how the classloading process takes a collection of bytes on disk
     and turns it into a new class object.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看看类加载过程如何将磁盘上的一组字节转换为一个新的类对象。
 - en: Phases of Classloading
+  id: totrans-40
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 类加载的阶段
 - en: Classloading is the process by which a new type is added to a running JVM process.
     This is the only way that new code can enter the system and the only way to turn
     data into code in the Java platform. There are several phases to the process of
     classloading, so let’s examine them in turn.
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 类加载是将新类型添加到正在运行的 JVM 进程中的过程。这是新代码可以进入系统的唯一方式，也是将数据转换为代码的 Java 平台的唯一方式。类加载过程包括多个阶段，让我们逐个审视它们。
 - en: Loading
+  id: totrans-42
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 加载
 - en: The classloading process starts with loading a byte array. This is usually read
     in from a filesystem, but it also can be read from a URL or other location (often
     represented as a `Path` object).
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 类加载过程从加载字节数组开始。通常情况下，这些字节数组是从文件系统读取的，但也可以从 URL 或其他位置读取（通常表示为 `Path` 对象）。
 - en: The `ClassLoader::defineClass()` method is responsible for turning a class file
     (represented as a byte array) into a class object. It is a protected method and
     so is not accessible without subclassing.
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ClassLoader::defineClass()` 方法负责将类文件（表示为字节数组）转换为类对象。这是一个受保护的方法，因此在没有子类化的情况下是不可访问的。'
 - en: The first job of `defineClass()` is loading. This produces the skeleton of a
     class object, corresponding to the class you’re attempting to load. By this stage,
     some basic checks have been performed on the class (e.g., the constants in the
     constant pool have been checked to ensure that they’re self-consistent).
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: '`defineClass()` 的第一个任务是加载。这会生成一个类对象的骨架，对应于您尝试加载的类。在这个阶段，对类执行了一些基本检查（例如，检查常量池中的常量以确保它们是自洽的）。'
 - en: 'However, loading doesn’t produce a complete class object by itself, and the
     class isn’t yet usable. Instead, after loading, the class must be linked. This
     step breaks down into separate subphases:'
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，加载本身并不会产生完整的类对象，该类也还不能被使用。相反，在加载后，必须链接该类。这一步骤分解为多个子阶段：
 - en: Verification
+  id: totrans-47
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 验证
 - en: Preparation and resolution
+  id: totrans-48
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 准备和解析
 - en: Initialization
+  id: totrans-49
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 初始化
 - en: Verification
+  id: totrans-50
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 验证
 - en: Verification confirms that the class file conforms to expectations, and that
     it doesn’t try to violate the JVM’s security model (see [“Secure Programming and
     Classloading”](#javanut8-CHP-11-SECT-3) for details).
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 验证确认类文件符合预期，并且不会尝试违反 JVM 的安全模型（详情见[“安全编程与类加载”](#javanut8-CHP-11-SECT-3)）。
 - en: JVM bytecode is designed so that it can be (mostly) checked statically. This
     has the effect of slowing down the classloading process but speeding up runtime
     (as checks can be omitted).
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 字节码设计使得它可以（大部分）静态检查。这样做的效果是减慢类加载过程但加快运行时（因为可以省略一些检查）。
 - en: The verification step is designed to prevent the JVM from executing bytecodes
     that might crash it or put it into an undefined and untested state where it might
     be vulnerable to other attacks by malicious code. Bytecode verification is a defense
     against malicious hand-crafted Java bytecodes and untrusted Java compilers that
     might output invalid bytecodes.
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 验证步骤旨在防止 JVM 执行可能导致崩溃或将其置于未定义和未经测试状态的字节码，从而可能使其易受恶意代码攻击的字节码。字节码验证是防范恶意手工制作的
+    Java 字节码和不受信任的 Java 编译器可能输出无效字节码的防御措施。
 - en: Note
+  id: totrans-54
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 注意
 - en: The default methods mechanism works via classloading. When an implementation
     of an interface is being loaded, the class file is examined to see if implementations
     for default methods are present. If they are, classloading continues normally.
     If some are missing, the implementation is patched to add in the default implementation
     of the missing methods.
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认方法机制通过类加载工作。在加载接口的实现时，会检查类文件是否包含默认方法的实现。如果存在这些方法，类加载将正常继续。如果某些方法缺失，则会补丁化以添加缺失方法的默认实现。
 - en: Preparation and Resolution
+  id: totrans-56
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备和解析
 - en: After successful verification, the class is prepared for use. Memory is allocated
     and static variables in the class are readied for initialization.
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 验证成功后，类准备好供使用。会为类分配内存，并为类中的静态变量做好初始化准备。
 - en: At this stage, variables aren’t initialized, and no bytecode from the new class
     has been executed. Before we run any code, the JVM checks that every type referred
     to by the new class file is known to the runtime. If the types aren’t known, they
     may also need to be loaded—which can kick off the classloading process again,
     as the JVM loads the new types.
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个阶段，变量尚未初始化，并且新类中没有执行任何字节码。在运行任何代码之前，JVM 检查新类文件引用的每种类型是否已知于运行时。如果类型不被认识，则可能需要加载它们——这可能会重新启动类加载过程，因为
+    JVM 加载新类型。
 - en: This process of loading and discovery can execute iteratively until a stable
     set of types is reached. This is called the “transitive closure” of the original
     type that was loaded.^([1](ch11.xhtml#idm45927708690512))
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种加载和发现的过程可以迭代执行，直到达到一组稳定的类型。这称为最初加载的类型的“传递闭包”^([1](ch11.xhtml#idm45927708690512))。
 - en: Let’s look at a quick example by examining the dependencies of `java.lang.Object`.
     [Figure 11-1](#javanut8-CHP-11-FIG-1) shows a simplified dependency graph for
     `Object`. It shows only the direct dependencies of `Object` that are visible in
     the public API of `Object` and the direct, API-visible dependencies of those dependencies.
     In addition, the dependencies of `Class` on the reflection subsystem, and of `PrintStream`
     and `PrintWriter` on the I/O subsystems, are shown in very simplified form.
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们通过检查 `java.lang.Object` 的依赖关系的示例来快速看一下。 [图 11-1](#javanut8-CHP-11-FIG-1)
+    展示了 `Object` 的简化依赖图。它仅显示了 `Object` 在其公共 API 中可见的直接依赖项，以及这些依赖项的直接 API 可见依赖项的依赖项。此外，还以非常简化的形式显示了
+    `Class` 对反射子系统的依赖，以及 `PrintStream` 和 `PrintWriter` 对 I/O 子系统的依赖。
 - en: In [Figure 11-1](#javanut8-CHP-11-FIG-1), we can see part of the transitive
     closure of `Object`.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 [图 11-1](#javanut8-CHP-11-FIG-1) 中，我们可以看到 `Object` 的传递闭包的一部分。
 - en: '![JN7 1101](assets/jns8_1101.png)'
+  id: totrans-62
   prefs: []
   type: TYPE_IMG
+  zh: '![JN7 1101](assets/jns8_1101.png)'
 - en: Figure 11-1\. Transitive closure of types
+  id: totrans-63
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 11-1. 类型的传递闭包
 - en: Initialization
+  id: totrans-64
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 初始化
 - en: Once resolved, the JVM can finally initialize the class. Static variables can
     be initialized and static initialization blocks are run.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 解析完成后，JVM 最终可以初始化类。静态变量可以初始化，并且会运行静态初始化块。
 - en: This is the first time that the JVM is executing bytecode from the newly loaded
     class. When the static blocks complete, the class is fully loaded and ready to
     go.
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是 JVM 首次执行新加载类的字节码。静态块完成后，类就完全加载并且准备就绪。
 - en: Secure Programming and Classloading
+  id: totrans-67
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 安全编程和类加载
 - en: Java programs can dynamically load Java classes from a variety of sources, including
     untrusted sources, such as websites reached across an insecure network. The ability
     to create and work with such dynamic sources of code is one of the great strengths
     and features of Java. To make it work successfully, however, Java puts great emphasis
     on a security architecture that allows untrusted code to run safely, without fear
     of damage to the host system.
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 程序可以从各种来源动态加载 Java 类，包括来自不受信任的来源，例如通过不安全网络到达的网站。能够创建和使用这些动态代码源是 Java 的一个伟大优势和特性之一。为了成功地使其工作，Java
+    非常重视一种安全架构，允许不受信任的代码安全地运行，而无需担心对主机系统的损害。
 - en: 'Java’s classloading subsystem is where a lot of safety features are implemented.
     The central idea of the security aspects of the classloading architecture is that
     there is only one way to get new executable code into the process: a class.'
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 的类加载子系统是许多安全特性的实现地方。类加载架构安全方面的核心思想是，将新的可执行代码引入进程的唯一方法是通过类。
 - en: This provides a “pinch point”—the only way to create a new class is to use the
     functionality provided by `ClassLoader` to load a class from a stream of bytes.
     By concentrating on making classloading secure, we can constrain the attack surface
     that needs to be protected.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
 - en: One extremely helpful aspect of the JVM’s design is that the JVM is a stack
     machine, so all operations are evaluated on a stack, rather than in registers.
     The stack state can be deduced at every point in a method, and this can be used
     to ensure that the bytecode doesn’t attempt to violate the security model.
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
 - en: 'Some of the security checks implemented by the JVM are:'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
 - en: All the bytecode of the class has valid parameters.
+  id: totrans-73
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: All methods are called with the right number of parameters of the correct static
     types.
+  id: totrans-74
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Bytecode never tries to underflow or overflow the JVM stack.
+  id: totrans-75
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Local variables are not used before they are initialized.
+  id: totrans-76
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Variables are only assigned suitably typed values.
+  id: totrans-77
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Field, method, and class access control modifiers must be respected.
+  id: totrans-78
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: No unsafe casts (e.g., attempts to convert an `int` to a pointer).
+  id: totrans-79
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: All branch instructions are to legal points within the same method.
+  id: totrans-80
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: 'Of fundamental importance is the approach to memory, and pointers. In assembly
     and C/C++, integers and pointers are interchangeable, so an integer can be used
     as a memory address. We can write it in assembly like this:'
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE8]'
+  id: totrans-82
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: The lowest level of the Java security architecture involves the design of the
     Java Virtual Machine and the bytecodes it executes. The JVM does not allow any
     kind of direct access to individual memory addresses of the underlying system,
     which prevents Java code from interfering with the native hardware and operating
     system. These intentional restrictions on the JVM are reflected in the Java language
     itself, which does not support pointers or pointer arithmetic.
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
 - en: Neither the language nor the JVM allow an integer to be cast to an object reference
     or vice versa, and there is no way whatsoever to obtain an object’s address in
     memory. Without capabilities like these, malicious code simply cannot gain a foothold.
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
 - en: Recall from [Chapter 2](ch02.xhtml#javanut8-CHP-2) that Java has two types of
@@ -387,154 +548,219 @@
     put into variables. Note that “object contents” cannot be put into variables.
     Java has no equivalent of C’s `struct` and always has pass-by-value semantics.
     For reference types, what is passed is a copy of the reference—which is a value.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
 - en: References are represented in the JVM as pointers, but they are not directly
     manipulated by the bytecode. In fact, bytecode does not have opcodes for “access
     memory at location X.”
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
 - en: Instead, all we can do is access fields and methods; bytecode cannot call an
     arbitrary memory location. This means that the JVM always knows the difference
     between code and data. In turn, this prevents a whole class of stack overflow
     and other attacks.
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
 - en: Applied Classloading
+  id: totrans-88
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: To apply knowledge of classloading, it’s important to fully understand `java.lang.ClassLoader`.
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 要应用类加载知识，充分理解`java.lang.ClassLoader`是很重要的。
 - en: This is an abstract class that is fully functional and has no abstract methods.
     The `abstract` modifier exists only to ensure that users must subclass `ClassLoader`
     if they want to use it.
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是一个抽象类，是完全功能的，并且没有抽象方法。`abstract`修饰符只存在以确保用户必须子类化`ClassLoader`才能使用它。
 - en: In addition to the aforementioned `defineClass()` method, we can load classes
     via a public `loadClass()` method. This is commonly used by the `URLClassLoader`
     subclass, which can load classes from a URL or file path.
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了上述的`defineClass()`方法之外，我们还可以通过一个公共的`loadClass()`方法加载类。这通常由`URLClassLoader`子类使用，它可以从
+    URL 或文件路径加载类。
 - en: 'We can use `URLClassLoader` to load classes from the local disk like this:'
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以使用`URLClassLoader`从本地磁盘加载类，就像这样：
 - en: '[PRE9]'
+  id: totrans-93
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: The argument to `loadClass()` is the binary name of the class file. Note that
     for the `URLClassLoader` to find the classes correctly, they need to be in the
     expected place on the filesystem. In this example, the class `com.example.DFACaller`
     would need to be found in the file *com/example/DFACaller.class* relative to the
     working directory.
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: 对`loadClass()`的参数是类文件的二进制名称。注意，为了使`URLClassLoader`正确找到类，它们需要在文件系统上的预期位置上。在这个例子中，类`com.example.DFACaller`需要在工作目录相对路径*com/example/DFACaller.class*中找到。
 - en: Alternatively, `Class` provides `Class.forName()`, a static method that can
     load classes that are present on the classpath but that haven’t been referred
     to yet.
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 或者，`Class`提供了`Class.forName()`，一个静态方法，可以加载类，这些类存在于类路径上，但尚未被引用。
 - en: 'This method takes a fully qualified class name. For example:'
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 该方法接受一个完全限定的类名。例如：
 - en: '[PRE10]'
+  id: totrans-97
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: It throws a `ClassNotFoundException` if the class can’t be found. As the example
     indicates, this was commonly used in older versions of Java Database Connectivity
     (JDBC) to ensure that the correct driver was loaded, while avoiding a direct `import`
     dependency on the driver classes. With the advent of JDBC 4.0, this initialization
     step is no longer required.
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果找不到类，则会抛出`ClassNotFoundException`。正如示例所示，在较早的 Java 数据库连接（JDBC）的版本中通常使用它来确保加载正确的驱动程序，同时避免对驱动程序类的直接`import`依赖。随着
+    JDBC 4.0 的到来，这个初始化步骤不再需要了。
 - en: '`Class.forName()` has an alternative, three-argument form, which is sometimes
     used in conjunction with alternative classloaders:'
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Class.forName()`有一个替代的、三参数形式，有时与替代的类加载器一起使用：'
 - en: '[PRE11]'
+  id: totrans-100
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: There are a host of subclasses of `ClassLoader` that deal with individual special
     cases of classloading—which fit into the classloader hierarchy.
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: 有一系列`ClassLoader`的子类处理类加载的各种特殊情况——它们适应类加载器的层次结构。
 - en: Classloader Hierarchy
+  id: totrans-102
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 类加载器层次结构
 - en: The JVM has a hierarchy of classloaders; each classloader in the system (apart
     from the initial, “bootstrap” classloader) has a parent that it can delegate to.
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 有一个类加载器的层次结构；系统中的每个类加载器（除了初始的“引导”类加载器）都有一个可以委托的父加载器。
 - en: Note
+  id: totrans-104
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 注意
 - en: The arrival of modules in Java 9 has affected the details of the way that classloading
     operates. In particular, the classloaders that load the JRE classes are now *modular
     classloaders*.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 9 中模块的引入影响了类加载的细节操作方式。特别是，加载 JRE 类的类加载器现在是*模块化类加载器*。
 - en: The convention is that a classloader will ask its parent to resolve and load
     a class, and it will perform the job itself if only the parent classloader is
     unable to comply. Some common classloaders are shown in [Figure 11-2](#javanut8-CHP-11-FIG-2).
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 惯例是类加载器将请求其父加载器来解析和加载一个类，如果只有父类加载器无法遵守，它将自己执行这个任务。一些常见的类加载器显示在[图 11-2](#javanut8-CHP-11-FIG-2)中。
 - en: '![JN7 1102](assets/jns8_1102.png)'
+  id: totrans-107
   prefs: []
   type: TYPE_IMG
+  zh: '![JN7 1102](assets/jns8_1102.png)'
 - en: Figure 11-2\. Classloader hierarchy
+  id: totrans-108
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 11-2\. 类加载器层次结构
 - en: Bootstrap classloader
+  id: totrans-109
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 引导类加载器
 - en: This is the first classloader to appear in any JVM process and is only used
     to load the core system classes. In older texts, it is sometimes referred to as
     the *primordial classloader*, but modern usage favors the bootstrap name.
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是任何 JVM 进程中出现的第一个类加载器，仅用于加载核心系统类。在较早的文本中，它有时被称为*原始类加载器*，但现代用法更倾向于使用引导名称。
 - en: For performance reasons, the bootstrap classloader does no verification and
     relies on the boot classpath being secure. Types loaded by the bootstrap classloader
     are implicitly granted all security permissions, and so this group of modules
     is kept as restricted as possible.
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: 出于性能原因，引导类加载器不执行验证，并依赖于引导类路径的安全性。由引导类加载器加载的类型隐含地被授予所有安全权限，因此这组模块尽可能地保持受限。
 - en: Platform classloader
+  id: totrans-112
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 平台类加载器
 - en: This level of the classloader hierarchy was originally used as the *extension
     classloader*, but this mechanism has now been removed.
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个类加载器层次结构的这个级别最初被用作*扩展类加载器*，但这种机制现在已被移除。
 - en: In its new role, this classloader (which has the bootstrap classloader as its
     parent) is now known as the *platform classloader*. It is available via the method
     `ClassLoader::getPlatformClassLoader` and appears in (and is required by) the
     Java specification from version 9 onward. It loads the remaining modules from
     the base system (the equivalent of the old `rt.jar` used in version 8 and earlier).
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: 在其新角色中，这个类加载器（其父类加载器为引导类加载器）现在被称为*平台类加载器*。它可以通过方法`ClassLoader::getPlatformClassLoader`获得，并且从Java
+    9版开始出现在（和被）Java规范中。它从基本系统中加载剩余的模块（相当于旧版Java 8及更早版本中使用的`rt.jar`）。
 - en: In the new modular implementations of Java, far less code is required to bootstrap
     a Java process; accordingly, as much JDK code (now represented as modules) as
     possible has been moved out of the scope of the bootstrap loader and into the
     platform loader instead.
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: 在新的Java模块化实现中，启动Java进程需要的代码大大减少；因此，尽可能多的JDK代码（现在表示为模块）已从引导加载器的范围移出，并移到了平台加载器中。
 - en: Application classloader
+  id: totrans-116
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 应用程序类加载器
 - en: Historically, this was sometimes called the system classloader, but this is
     a bad name, as it doesn’t load the system (the bootstrap and platform classloaders
     do). Instead, it is the classloader that loads application code from either the
     module path or the classpath. It is the most commonly encountered classloader,
     and it has the platform classloader as its parent.
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 历史上，有时被称为系统类加载器，但这是一个不好的名字，因为它并不加载系统（引导加载器和平台类加载器负责）。相反，它是从模块路径或类路径加载应用程序代码的类加载器。它是最常遇到的类加载器，并且其父加载器是平台类加载器。
 - en: To perform classloading, the application classloader first searches the named
     modules on the module path (the modules known to any of the three built-in classloaders).
     If the requested class is found in a module known to one of these classloaders
@@ -543,469 +769,680 @@
     classloader). If the parent fails to find the class, the application classloader
     searches the classpath. If the class is found on the classpath, it is loaded as
     a member of the application classloader’s unnamed module.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 在执行类加载时，应用程序类加载器首先搜索模块路径上的命名模块（任何三个内置类加载器中已知的模块）。如果请求的类在已知的某个这些类加载器的模块中找到，则该类加载器将加载该类。如果在任何已知的命名模块中找不到该类，则应用程序类加载器委托给其父加载器（平台类加载器）。如果父加载器未能找到该类，则应用程序类加载器搜索类路径。如果在类路径上找到该类，则作为应用程序类加载器的未命名模块的成员加载。
 - en: The application classloader is very widely used, but many advanced Java frameworks
     require functionality that the main classloaders do not supply. Instead, extensions
     to the standard classloaders are required. This forms the basis of “custom classloading”—which
     relies on implementing a new subclass of `ClassLoader`.
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 应用程序类加载器被广泛使用，但许多高级Java框架需要主类加载器无法提供的功能。相反，需要对标准类加载器进行扩展。这形成了“自定义类加载”的基础，依赖于实现`ClassLoader`的新子类。
 - en: Custom classloader
+  id: totrans-120
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 自定义类加载器
 - en: When performing classloading, sooner or later we have to turn data into code.
     As noted earlier, the `defineClass()` (actually a group of related methods) is
     responsible for converting a `byte[]` into a class object.
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: 在执行类加载时，迟早我们必须将数据转换为代码。如前所述，`defineClass()`（实际上是一组相关方法）负责将`byte[]`转换为类对象。
 - en: 'This method is usually called from a subclass—for example, this simple custom
     classloader that creates a class object from a file on disk:'
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个方法通常由子类调用，例如，这个简单的自定义类加载器从磁盘上的文件创建一个类对象：
 - en: '[PRE12]'
+  id: totrans-123
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: Notice that in the preceding example we didn’t need to have the class file in
     the “correct” location on disk, as we did for the `URLClassLoader` example.
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，在前面的例子中，我们不需要将类文件放在磁盘上的“正确”位置，就像我们在`URLClassLoader`示例中所做的那样。
 - en: We need to provide a classloader to act as parent for any custom classloader.
     In this example, we provided the classloader that loaded the `DiskLoader` class
     (which would usually be the application classloader).
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们需要提供一个类加载器来作为任何自定义类加载器的父加载器。在这个例子中，我们提供了加载`DiskLoader`类的类加载器（通常是应用程序类加载器）。
 - en: Custom classloading is a very common technique in Java EE and advanced SE environments,
     and it provides very sophisticated capabilities to the Java platform. We’ll see
     an example of custom classloading later in this chapter.
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 自定义类加载是Java EE和高级SE环境中非常常见的技术，它为Java平台提供了非常复杂的能力。我们将在本章后面看到自定义类加载的示例。
 - en: One drawback of dynamic classloading is that when working with a class object
     that we loaded dynamically, we typically have little or no information about the
     class. To work effectively with this class, we will therefore have to use a set
     of dynamic programming techniques known as reflection.
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 动态类加载的一个缺点是，当与动态加载的类对象一起工作时，通常对该类的信息很少或没有。为了有效地使用这个类，因此我们将不得不使用一组称为反射的动态编程技术。
 - en: Reflection
+  id: totrans-128
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 反射
 - en: Reflection is the capability of examining, operating on, and modifying objects
     at runtime. This includes modifying their structure and behavior—even self-modification.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 反射是在运行时检查、操作和修改对象的能力。这包括修改它们的结构和行为，甚至自我修改。
 - en: Warning
+  id: totrans-130
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 警告
 - en: The Java modules system introduces major changes to how reflection works on
     the platform. It is important to reread this section after you have gained an
     understanding of how modules work and how the two capabilities interact. More
     details on how modules restrict reflection are available in [“Open Modules”](ch12.xhtml#javanut8-CHP-12-SECT-2-5).
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: Java模块系统对平台上的反射工作引入了重大变化。重要的是，在理解模块如何工作及两种能力如何交互之后，重新阅读本节。有关模块如何限制反射的详细信息，请参见[“开放模块”](ch12.xhtml#javanut8-CHP-12-SECT-2-5)。
 - en: Reflection is capable of working even when type and method names are not known
     at compile time. It uses the essential metadata provided by class objects and
     can discover method or field names from the class object—and then acquire an object
     representing the method or field.
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 反射能够在编译时甚至不知道类型和方法名称的情况下工作。它使用类对象提供的基本元数据，并且可以从类对象中发现方法或字段名称，然后获取表示方法或字段的对象。
 - en: Instances can also be constructed reflectively (by using `Class::newInstance()`
     or another constructor). With a reflectively constructed object and a `Method`
     object, we can call any method on an object of a previously unknown type.
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 实例也可以通过反射方式构造（使用`Class::newInstance()`或另一个构造函数）。通过一个反射构造的对象和一个`Method`对象，我们可以在先前未知类型的对象上调用任何方法。
 - en: This makes reflection a very powerful technique, so it’s important to understand
     when we should use it, and when it’s overkill.
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 这使得反射成为一种非常强大的技术，因此重要的是要理解何时应该使用它，以及何时它过于复杂。
 - en: When to Use Reflection
+  id: totrans-135
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 何时使用反射
 - en: Many, if not most, Java frameworks use reflection in some capacity. Writing
     architectures that are flexible enough to cope with code that is unknown until
     runtime usually requires reflection. For example, plug-in architectures, debuggers,
     code browsers, and read-evaluate-print loop (REPL)-like environments are usually
     implemented on top of reflection.
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 许多，如果不是大多数，Java框架在某种程度上使用反射。编写足够灵活以处理运行时未知代码的架构通常需要反射。例如，插件架构、调试器、代码浏览器和类似读取-评估-打印循环（REPL）的环境通常是在反射之上实现的。
 - en: Reflection is also widely used in testing (e.g., by the JUnit and TestNG libraries)
     and for mock object creation. If you’ve used any kind of Java framework you have
     almost certainly been using reflective code, even if you didn’t realize it.
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 反射在测试中也被广泛使用（例如，通过JUnit和TestNG库），以及用于模拟对象的创建。如果你使用过任何一种Java框架，你几乎肯定在使用反射代码，即使你没有意识到它。
 - en: To start using the Reflection API in your own code, the most important thing
     to realize is that it is about accessing objects where virtually no information
     is known, and that the interactions can be cumbersome because of this.
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 要在自己的代码中开始使用反射API，最重要的是意识到它是关于访问几乎不知道信息的对象，并且由于这一点，交互可能会很繁琐。
 - en: If some static information is known about dynamically loaded classes (e.g.,
     that the classes loaded all implement a known interface), this can greatly simplify
     the interaction with the classes and reduce the burden of operating reflectively.
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果对动态加载的类有一些静态信息（例如，加载的所有类都实现了已知接口），这可以极大地简化与类的交互，并减少反射操作的负担。
 - en: It is a common mistake to try to create a reflective framework that attempts
     to account for all possible circumstances, instead of dealing only with the cases
     that are immediately applicable to the problem domain.
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 常见的错误是尝试创建一个反射框架，试图涵盖所有可能的情况，而不是只处理与问题域直接相关的情况。
 - en: How to Use Reflection
+  id: totrans-141
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何使用反射
 - en: The first step in any reflective operation is to get a `Class` object representing
     the type to be operated on. From this, other objects, representing fields, methods,
     or constructors, can be accessed and applied to instances of the unknown type.
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 任何反射操作的第一步是获取代表要操作的类型的`Class`对象。从这个对象可以访问并应用于未知类型的实例的其他对象，如字段、方法或构造函数。
 - en: 'If we already have an instance of an unknown type, we can retrieve its class
     via the `Object::getClass()` method. Alternatively, the static `Class.forName()`
     method demonstrated in [“Applied Classloading”](#javanut8-CHP-11-SECT-4) for classloading
     can also perform lookup of a `Class` object by name:'
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们已经有一个未知类型的实例，可以通过`Object::getClass()`方法检索其类。或者，也可以通过类加载的静态`Class.forName()`方法在[“应用类加载”](#javanut8-CHP-11-SECT-4)中进行`Class`对象的查找：
 - en: '[PRE13]'
+  id: totrans-144
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: Once we have an instance of a `Class` object, the next reasonable step is calling
     a method reflectively. The `Method` objects are some of the most commonly used
     objects provided by the Reflection API. We’ll discuss them in detail—the `Constructor`
     and `Field` objects are similar in many respects.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦我们有一个`Class`对象的实例，下一个合理的步骤就是通过反射调用方法。`Method`对象是Reflection API提供的一些最常用的对象之一。我们将详细讨论它们——`Constructor`和`Field`对象在许多方面都很相似。
 - en: Method objects
+  id: totrans-146
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 方法对象
 - en: A class object contains a `Method` object for each method on the class. These
     are lazily created after classloading, and so they aren’t immediately visible
     in an IDE’s debugger.
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
+  zh: 类对象包含每个类上的`Method`对象。这些在类加载后延迟创建，因此它们在IDE的调试器中并不立即可见。
 - en: 'Methods on `Class` allow us to retrieve (and if necessary lazily initialize)
     these `Method` objects:'
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Class`上的方法允许我们检索（并在必要时惰性初始化）这些`Method`对象：'
 - en: '[PRE14]'
+  id: totrans-149
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: The second parameter to `getMethod()` takes an array of `Class` objects representing
     the method’s parameters to distinguish between method overrides.
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: '`getMethod()`的第二个参数接受一个`Class`对象数组，表示方法的参数，以区分方法重写。'
 - en: The code demonstrated here will only list and find public methods on our `Class`
     objects. There are alternative methods of the form `getDeclaredMethod` that parallel
     what we’ve shown that allow access to protected and private methods. We’ll have
     more to say shortly about using these mechanisms to circumvent Java’s access model,
     though.
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 此处演示的代码将仅列出并查找`Class`对象上的公共方法。有一些类似`getDeclaredMethod`形式的替代方法，可以访问受保护和私有方法。我们很快将有更多关于使用这些机制来绕过Java访问模型的内容。
 - en: 'Like any good Java object, `Method` provides accessors for all the relevant
     information about the method. Let’s look at the most critical metadata about a
     method that we can retrieve:'
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 像任何良好的Java对象一样，`Method`提供了所有关于方法的相关信息的访问器。让我们看看我们可以检索到的关于方法的最关键的元数据：
 - en: '[PRE15]'
+  id: totrans-153
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: We can explore the metadata of a `Method` object by calling accessor methods,
     but by far the single biggest use case for `Method` is reflective invocation.
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以通过调用访问器方法来探索`Method`对象的元数据，但远远最大的用例是反射调用`Method`。
 - en: The methods represented by these objects can be executed by reflection using
     the `invoke()` method on `Method`.
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些对象所代表的方法可以通过反射使用`Method`上的`invoke()`方法执行。
 - en: 'An example of invoking `hashCode()` on a `String` object follows:'
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
+  zh: 在`String`对象上调用`hashCode()`的示例如下：
 - en: '[PRE16]'
+  id: totrans-157
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: Note that the static type of `rcvr` was declared to be `Object`. No static type
     information was used during the reflective invocation. The `invoke()` method also
     returns `Object`, so the actual return type of `hashCode()` has been autoboxed
     to `Integer`.
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 请注意，`rcvr`的静态类型声明为`Object`。在反射调用期间没有使用静态类型信息。`invoke()`方法还返回`Object`，因此`hashCode()`的实际返回类型已经自动装箱为`Integer`。
 - en: This autoboxing is one of the aspects of Reflection where you can see some of
     the slight awkwardness of the API—which we’ll discuss in an upcoming section.
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种自动装箱是Reflection的一个方面，您可以看到API的一些轻微笨拙之处——我们将在即将到来的部分讨论。
 - en: Creating instances with Reflection
+  id: totrans-160
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 使用反射创建实例
 - en: If you’re looking to create new instances of a `Class` object, you’ll find that
     the method lookups don’t help. Our constructors don’t have names that those APIs
     are able to find.
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您想创建`Class`对象的新实例，您会发现方法查找并不起作用。我们的构造函数没有那些API能够找到的名称。
 - en: 'In the simplest case of a no-argument constructor, a helper is available via
     the `Class` object:'
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 在没有参数的构造函数的最简单情况下，可以通过`Class`对象获取助手：
 - en: '[PRE17]'
+  id: totrans-163
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: For constructors that take arguments, `Class` has methods like `getConstructor`
     that allow for finding the override you’re after. While they return a separate
     `Constructor` type, using these is very similar to what we’ve already seen for
     interacting with `Method` objects.
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于接受参数的构造函数，`Class` 类有像 `getConstructor` 这样的方法，允许找到你需要的覆盖方法。虽然它们返回一个单独的 `Constructor`
+    类型，但使用它们与我们已经看到的与 `Method` 对象交互非常相似。
 - en: 'Let’s look at an extended example and see how to combine reflection with custom
     classloading to inspect a class file on disk for any deprecated methods (these
     should be marked with `@Deprecated`):'
+  id: totrans-165
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看一个扩展示例，并看看如何将反射与自定义类加载结合起来，以检查磁盘上的类文件是否有任何已过时的方法（这些方法应标记为 `@Deprecated`）：
 - en: '[PRE18]'
+  id: totrans-166
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: This showcases some of the power of reflective techniques, but there are also
     problems that come with using the API.
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 这展示了反射技术的一些强大之处，但是使用 API 也会带来一些问题。
 - en: Problems with Reflection
+  id: totrans-168
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 反射的问题
 - en: 'Java’s Reflection API is often the only way to deal with dynamically loaded
     code, but a number of annoyances in the API can make it slightly awkward to deal
     with:'
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 的反射 API 常常是处理动态加载代码的唯一途径，但 API 中的一些恼人之处可能会使其处理起来稍显麻烦：
 - en: Heavy use of `Object[]` to represent call arguments and other instances.
+  id: totrans-170
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 大量使用 `Object[]` 来表示调用参数和其他实例。
 - en: Also uses `Class[]` when talking about types.
+  id: totrans-171
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 还有在讨论类型时使用 `Class[]` 的情况。
 - en: Methods can be overloaded on name, so we need an array of types to distinguish
     between methods.
+  id: totrans-172
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 方法可以根据名称重载，因此我们需要一个类型数组来区分方法。
 - en: Representing primitive types can be problematic—we have to manually box and
     unbox.
+  id: totrans-173
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 表示原始类型可能会有问题——我们必须手动装箱和拆箱。
 - en: '`void` is a particular problem—there is a `void.class`, but it’s not used consistently.
     Java doesn’t really know whether `void` is a type or not, and some methods in
     the Reflection API use `null` instead.'
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: '`void` 是一个特殊的问题——有一个 `void.class`，但它的使用不一致。Java 实际上不知道 `void` 是否是一种类型，反射 API
+    中的某些方法使用 `null` 而不是它。'
 - en: This is cumbersome, and can be error prone—in particular, the slight verbosity
     of Java’s array syntax can lead to errors.
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: 这很麻烦，可能会出错——特别是，Java 数组语法的轻微冗长可能会导致错误。
 - en: 'One further problem is the treatment of non-`public` methods. As mentioned
     before, instead of using `getMethod()`, we must use `getDeclaredMethod()` to get
     a reference to a non-`public` method. Additionally, to call non-`public` methods,
     we must override the Java access control subsystem, calling `setAccessible()`
     to allow it to be executed:'
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一个问题是对非 `public` 方法的处理。如前所述，我们不能使用 `getMethod()`，必须使用 `getDeclaredMethod()`
+    来获取非 `public` 方法的引用。此外，要调用非 `public` 方法，我们必须重写 Java 访问控制子系统，调用 `setAccessible()`
+    以允许其执行：
 - en: '[PRE19]'
+  id: totrans-177
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: Because reflection always involves unknown information, we just have to live
     with some of this verbosity. It’s the price of using the dynamic, runtime power
     of reflective invocation.
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 因为反射总是涉及未知信息，我们只能接受一些冗长。这是使用动态运行时反射调用的代价。
 - en: Dynamic Proxies
+  id: totrans-179
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 动态代理
 - en: 'One last piece of the Java Reflection story is the creation of dynamic proxies.
     These are classes (which extend `java.lang.reflect.Proxy`) that implement a number
     of interfaces. The implementing class is constructed dynamically at runtime and
     forwards all calls to an invocation handler object:'
+  id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 反射故事的最后一部分是创建动态代理。这些是类（扩展自 `java.lang.reflect.Proxy`），实现多个接口。实现类在运行时动态构造，并将所有调用转发到一个调用处理器对象：
 - en: '[PRE20]'
+  id: totrans-181
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: Proxies can be used as stand-in objects for testing (especially in test mocking
     approaches).
+  id: totrans-182
   prefs: []
   type: TYPE_NORMAL
+  zh: 代理可以用作测试的替代对象（尤其是在测试模拟方法中）。
 - en: 'Another use case is to provide partial implementations of interfaces, or to
     decorate or otherwise control some aspect of delegation:'
+  id: totrans-183
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一个用例是提供接口的部分实现，或者装饰或以其他方式控制委托的某些方面：
 - en: '[PRE21]'
+  id: totrans-184
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: Proxies are an extremely powerful and flexible capability used within many Java
     frameworks.
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 代理是许多 Java 框架中广泛使用的一种强大而灵活的能力。
 - en: Method Handles
+  id: totrans-186
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 方法句柄
 - en: In Java 7, a brand new mechanism for introspection and method access was introduced.
     This was originally designed for use with dynamic languages, which may need to
     participate in method dispatch decisions at runtime. To support this at the JVM
     level, the new `invokedynamic` bytecode was introduced. This bytecode was not
     used by Java 7 itself, but with the advent of Java 8, it was extensively used
     in both lambda expressions and the Nashorn JavaScript implementation.
+  id: totrans-187
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 Java 7 中，引入了一种全新的用于内省和方法访问的机制。最初设计用于动态语言，在运行时可能需要参与方法分派决策。为了在 JVM 级别支持这一点，引入了新的`invokedynamic`字节码。这个字节码在
+    Java 7 本身中没有使用，但随着 Java 8 的到来，它在 lambda 表达式和 Nashorn JavaScript 实现中得到了广泛应用。
 - en: Even without `invokedynamic`, the new Method Handles API is comparable in power
     to many aspects of the Reflection API—and can be cleaner and conceptually simpler
     to use, even standalone. It can be thought of as Reflection done in a safer, more
     modern way.
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 即使没有`invokedynamic`，新的方法句柄 API 在许多方面与反射 API 相比具有相似的功能强大性，并且即使是独立使用时也可能更加清晰和概念上更简单。可以将其视为以更安全、更现代的方式完成的反射。
 - en: MethodType
+  id: totrans-189
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: MethodType
 - en: In Reflection, method signatures are represented as `Class[]`. This is quite
     cumbersome. By contrast, method handles rely on `MethodType` objects. These are
     a typesafe and object-oriented way to represent the type signature of a method.
+  id: totrans-190
   prefs: []
   type: TYPE_NORMAL
+  zh: 在反射中，方法签名表示为`Class[]`，这相当繁琐。相比之下，方法句柄依赖于`MethodType`对象。这是一种类型安全且面向对象的方法，用于表示方法的类型签名。
 - en: They include the return type and argument types but not the receiver type or
     name of the method. The name is not present, as this allows any method of the
     correct signature to be bound to any name (as per the functional interface behavior
     of lambda expressions).
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
+  zh: 它们包括返回类型和参数类型，但不包括方法的接收器类型或名称。名称不存在，因为这允许将任何具有正确签名的方法绑定到任何名称（根据 lambda 表达式的函数接口行为）。
 - en: A type signature for a method is represented as an immutable instance of `MethodType`,
     as acquired from the factory method `MethodType.methodType()`. The zeroth argument
     to `methodType()` is the return type of the method, with the types of the method
     arguments following it.
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: 方法的类型签名表示为`MethodType`的不可变实例，可以通过工厂方法`MethodType.methodType()`获得。`methodType()`的第零个参数是方法的返回类型，其后是方法参数的类型。
 - en: 'For example:'
+  id: totrans-193
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如：
 - en: '[PRE22]'
+  id: totrans-194
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: This single piece of the puzzle provides significant gains over Reflection,
     as it makes method signatures significantly easier to represent and discuss. The
     next step is to acquire a handle on a method. This is achieved by a lookup process.
+  id: totrans-195
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个单一的谜题部分提供了比反射更显著的增益，因为它显著地简化了方法签名的表示和讨论。下一步是获得方法的句柄。这是通过查找过程实现的。
 - en: Method Lookup
+  id: totrans-196
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 方法查找
 - en: 'Method lookup queries are performed on the class where a method is defined
     and are dependent on the context that they are executed from:'
+  id: totrans-197
   prefs: []
   type: TYPE_NORMAL
+  zh: 方法查找查询是在定义方法的类上执行的，并且依赖于执行它们的上下文：
 - en: '[PRE23]'
+  id: totrans-198
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: We always need to call `MethodHandles.lookup()`—this gives us a lookup context
     object based on the currently executing method.
+  id: totrans-199
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们始终需要调用`MethodHandles.lookup()`—这会给我们一个基于当前执行方法的查找上下文对象。
 - en: Lookup objects have several methods (which all start with `find`) declared on
     them for method resolution. These include `findVirtual()`, `findConstructor()`,
     and `findStatic()`.
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: 查找对象上有几种方法（全部以`find`开头）声明用于方法解析。这些包括`findVirtual()`、`findConstructor()`和`findStatic()`。
 - en: One big difference between the Reflection and Method Handles APIs is access
     control. A `Lookup` object will only return methods that are accessible to the
     context where the lookup was created—and there is no way to subvert this (no equivalent
     of Reflection’s `setAccessible()` hack).
+  id: totrans-201
   prefs: []
   type: TYPE_NORMAL
+  zh: 反射和方法句柄 API 之间的一个重大区别是访问控制。一个`Lookup`对象只会返回在创建查找的上下文中可访问的方法，并且没有办法绕过这一点（没有类似于反射中的`setAccessible()`的黑客方法）。
 - en: 'For example, we can see that when we attempt to look up the protected `ClassLoader::defineClass()`
     method from a general lookup context, we fail to resolve it with an `IllegalAccessException`,
     as the protected method is not accessible:'
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，我们可以看到，当我们尝试从通用查找上下文查找受保护的`ClassLoader::defineClass()`方法时，由于受保护的方法不可访问，我们未能解析它，导致`IllegalAccessException`的抛出：
 - en: '[PRE24]'
+  id: totrans-203
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: Method handles therefore always comply with the security manager, even when
     the equivalent reflective code does not. They are access-checked at the point
     where the lookup context is constructed—the lookup object will not return handles
     to any methods to which it does not have proper access.
+  id: totrans-204
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，方法句柄始终符合安全管理器的要求，即使相应的反射代码没有这样做。它们在构造查找上下文的地方进行访问检查——查找对象不会返回对其没有适当访问权限的方法句柄。
 - en: 'The lookup object, or method handles derived from it, can be returned to other
     contexts, including ones where access to the method would no longer be possible.
     Under those circumstances, the handle is still executable—access control is checked
     at lookup time, as we can see in this example:'
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: 查找对象或从其派生的方法句柄可以返回到其他上下文，包括那些不再可能访问该方法的上下文。在这些情况下，句柄仍然是可执行的——访问控制在查找时检查，正如我们在此示例中所见：
 - en: '[PRE25]'
+  id: totrans-206
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: With a `Lookup` object, we’re able to produce method handles to any method we
     have access to. We can also produce a way of accessing fields that may not have
     a method that gives access. The `findGetter()` and `findSetter()` methods on `Lookup`
     produce method handles that can read or update fields as needed.
+  id: totrans-207
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用`Lookup`对象，我们能够生成对任何我们可以访问的方法的方法句柄。我们还可以生成一种访问可能没有给予访问权限的字段的方式。`Lookup`上的`findGetter()`和`findSetter()`方法生成可以根据需要读取或更新字段的方法句柄。
 - en: Invoking Method Handles
+  id: totrans-208
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 调用方法句柄
 - en: A method handle represents the ability to call a method. They are strongly typed
     and as typesafe as possible. Instances are all of some subclass of `java.lang.invoke.MethodHandle`,
     which is a class that needs special treatment from the JVM.
+  id: totrans-209
   prefs: []
   type: TYPE_NORMAL
+  zh: 方法句柄代表调用方法的能力。它们是强类型的，并尽可能类型安全。所有实例都是`java.lang.invoke.MethodHandle`的某个子类，这是JVM需要特殊处理的类。
 - en: There are two ways to invoke a method handle—`invoke()` and `invokeExact()`.
     Both of these take the receiver and call arguments as parameters. `invokeExact()`
     tries to call the method handle directly as is, whereas `invoke()` will massage
     call arguments if needed.
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: 调用方法句柄有两种方式——`invoke()`和`invokeExact()`。这两种方法都将接收器和调用参数作为参数。`invokeExact()`尝试直接调用方法句柄本身，而`invoke()`则在需要时调整调用参数。
 - en: 'In general, `invoke()` performs an `asType()` conversion if necessary—this
     converts arguments according to these rules:'
+  id: totrans-211
   prefs: []
   type: TYPE_NORMAL
+  zh: 一般而言，如果必要，`invoke()`执行`asType()`转换——这将根据以下规则转换参数：
 - en: A primitive argument will be boxed if required.
+  id: totrans-212
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果需要，原始参数将被装箱。
 - en: A boxed primitive will be unboxed if required.
+  id: totrans-213
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果需要，装箱的原始类型将被取消装箱。
 - en: Primitives will be widened if necessary.
+  id: totrans-214
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果需要，原始类型将被扩展。
 - en: A `void` return type will be massaged to 0 or `null`, depending on whether the
     expected return was primitive or of reference type.
+  id: totrans-215
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 返回类型为`void`的情况将会根据预期返回的是基本类型还是引用类型而转换为0或`null`。
 - en: '`null` values are passed through, regardless of static type.'
+  id: totrans-216
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`null`值将被传递，而不考虑静态类型。'
 - en: 'With these potential conversions in place, invocation looks like this:'
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: 有了这些潜在的转换，调用看起来像这样：
 - en: '[PRE26]'
+  id: totrans-218
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: Method handles provide a clearer and more coherent way to access the same dynamic
     programming capabilities as Reflection. In addition, they are designed to work
     well with the low-level execution model of the JVM and thus hold out the promise
     of much better performance than Reflection can provide.
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 方法句柄提供了一种更清晰和更连贯的方式来访问与反射相同的动态编程能力。此外，它们设计用于与JVM的低级执行模型良好配合，因此比反射提供的性能要好得多。
 - en: ^([1](ch11.xhtml#idm45927708690512-marker)) As in [Chapter 6](ch06.xhtml#javanut8-CHP-6),
     we’re borrowing the expression *transitive closure* from the branch of mathematics
     called graph theory.
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch11.xhtml#idm45927708690512-marker)) 正如在[第6章](ch06.xhtml#javanut8-CHP-6)中，我们从称为图论的数学分支借用了表达式*传递闭包*。
