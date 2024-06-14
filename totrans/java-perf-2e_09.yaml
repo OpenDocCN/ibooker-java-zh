@@ -1,13 +1,17 @@
 - en: Chapter 9\. Threading and Synchronization Performance
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第9章 线程和同步性能
 - en: From its first days, some of Java’s appeal has been because it is multithreaded.
     Even in the days before multicore and multi-CPU systems were the norm, the ability
     to easily write threaded programs in Java has been considered one of its hallmark
     features.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 从最初开始，Java 的一大吸引力就是它的多线程特性。即使在多核和多CPU系统成为标准之前，用Java编写多线程程序的能力也被视为其显著特征之一。
 - en: 'In performance terms, the appeal is obvious: if two CPUs are available, an
     application might be able to do twice as much work or the same amount of work
     twice as fast. This assumes that the task can be broken into discrete segments,
@@ -16,26 +20,36 @@
     simultaneous requests from discrete clients, a batch job performing the same operation
     on a series of data, mathematical algorithms that break into constituent parts,
     and so on.'
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 从性能角度来看，其吸引力是显而易见的：如果有两个CPU可用，应用程序可能能够完成两倍的工作，或者以两倍的速度完成相同数量的工作。这是基于任务可以分解为离散片段的假设，因为Java不是自动并行化语言，不会自动解决算法部分。幸运的是，今天的计算通常涉及到离散任务：服务器同时处理来自离散客户的请求，批处理作业对一系列数据执行相同操作，将算法分解为组成部分等等。
 - en: This chapter explores how to get the maximum performance out of Java threading
     and synchronization facilities.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章探讨如何在Java线程和同步设施中获得最大性能。
 - en: Threading and Hardware
+  id: totrans-4
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 线程和硬件
 - en: Recall the discussion from [Chapter 1](ch01.html#Introduction) about multicore
     systems and hyper-threaded systems. Threading at the software level allows us
     to take advantage of a machine’s multiple cores and hyper-threads.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 回顾[第1章](ch01.html#Introduction)中关于多核系统和超线程系统的讨论。在软件层面上进行线程处理使我们能够利用机器的多个核心和超线程。
 - en: Doubling the cores on a machine allows us to double the performance of our correctly
     written application, though as we discussed in [Chapter 1](ch01.html#Introduction),
     adding hyper-threading to a CPU does not double its performance.
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 在一台机器上加倍核心数，使我们能够将正确编写的应用程序性能提升一倍，尽管如我们在[第1章](ch01.html#Introduction)讨论过的，向CPU添加超线程并不会使其性能翻倍。
 - en: Almost all examples in this chapter are run on a machine with four single-threaded
     CPUs—the exception being the first example that shows the difference between hyper-threaded
     and non-hyper-threaded CPUs. After that, we will look at scaling only in terms
@@ -47,32 +61,43 @@
     and tune our application running on a four-core, eight hyper-thread machine as
     if it had eight CPUs. But from a measurement perspective, we should be expecting
     only a five-to-six times improvement compared to a single core.
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的几乎所有示例都在一个有四个单线程CPU的机器上运行——例外情况是第一个示例，展示了超线程和非超线程CPU之间的差异。之后，我们将仅从单线程CPU核心的角度来看待扩展，以便更好地理解添加线程的性能影响。这并不是说超线程CPU不重要；从硬件线程中获得的额外20%至40%的性能提升肯定会改善应用程序的整体性能或吞吐量。从Java的角度来看，我们仍然应该将超线程视为实际的CPU，并调整我们在一个四核八超线程机器上运行的应用程序，就好像它有八个CPU一样。但从测量的角度来看，我们应该只期望与单核相比提高五到六倍的性能。
 - en: Thread Pools and ThreadPoolExecutors
+  id: totrans-8
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 线程池和ThreadPoolExecutors
 - en: 'Threads can be managed by custom code in Java, or applications can utilize
     a thread pool. Java servers are typically built around the notion of one or more
     thread pools to handle requests: each call into the server is handled by a (potentially
     different) thread from the pool. Similarly, other applications can use Java’s
     `ThreadPoolExecutor` to execute tasks in parallel.'
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 在Java中，线程可以由自定义代码管理，或者应用程序可以利用线程池。Java服务器通常围绕一个或多个线程池的概念构建：服务器中的每次调用都由池中的一个（可能是不同的）线程处理。类似地，其他应用程序可以使用Java的`ThreadPoolExecutor`并行执行任务。
 - en: In fact, some server frameworks use instances of the `ThreadPoolExecutor` class
     to manage their tasks, though many have written their own thread pools (if only
     because they predate the addition of `ThreadPoolExecutor` to the Java API). Although
     the implementation of the pools in these cases might differ, the basic concepts
     are the same, and both are discussed in this section.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 实际上，一些服务器框架使用`ThreadPoolExecutor`类的实例来管理它们的任务，尽管许多人都编写了自己的线程池（即使只是因为它们早于将`ThreadPoolExecutor`添加到Java
+    API中）。虽然在这些情况下池的实现可能有所不同，但基本概念是相同的，并且这两者都在本节中讨论。
 - en: The key factor in using a thread pool is that tuning the size of the pool is
     crucial to getting the best performance. Thread pool performance varies depending
     on basic choices about thread pool size, and under certain circumstances an oversized
     thread pool will be detrimental to performance.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用线程池的关键因素在于调整池的大小对于获得最佳性能至关重要。线程池的性能因对线程池大小的基本选择而异，且在某些情况下，超大型线程池会对性能产生不利影响。
 - en: All thread pools work in essentially the same way. Tasks are submitted to a
     queue (there can be more than one queue, but the concept is the same). Then a
     certain number of threads picks up tasks from the queue and executes them. The
@@ -81,8 +106,10 @@
     finishing the task, the thread returns to the task queue to retrieve another job
     to execute (and if there are no more tasks to perform, the thread waits for a
     task).
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有的线程池工作原理基本相同。任务被提交到一个队列（可能有多个队列，但概念是相同的）。然后，一定数量的线程从队列中获取任务并执行它们。任务的结果可以发送回客户端（例如，在服务器的情况下），存储在数据库中，存储在内部数据结构中，或者其他操作。但在完成任务后，线程将返回到任务队列以获取另一个要执行的作业（如果没有更多任务可执行，则线程将等待任务）。
 - en: 'Thread pools have a minimum and maximum number of threads. The minimum number
     of threads is kept around, waiting for tasks to be assigned to them. Because creating
     a thread is a fairly expensive operation, this speeds up the overall operation
@@ -91,86 +118,120 @@
     for their stacks—and having too many idle threads can consume resources that could
     be used by other processes. The maximum number of threads also serves as a necessary
     throttle, preventing too many tasks from executing at once.'
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程池有最小和最大线程数。最小线程数会保留在周围，等待分配任务给它们。因为创建线程是一个相当昂贵的操作，当任务被提交时，这会加快整体操作：预期已经存在的线程可以接管它。另一方面，线程需要系统资源，包括用于它们的堆栈的本机内存，过多的空闲线程可能会消耗其他进程可以使用的资源。最大线程数还作为一个必要的节流阀，防止过多的任务一次执行。
 - en: The terminology of the `ThreadPoolExecutor` and related classes is somewhat
     different. These classes refer to a *core* pool size and *maximum* pool size,
     and the meaning of those terms varies depending on how the pool is constructed.
     Sometimes the core pool size is the minimum pool size, sometimes it is the maximum
     pool size, and sometimes it is ignored altogether. Similarly, sometimes the maximum
     pool size is the maximum size, but sometimes it is ignored.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ThreadPoolExecutor`及其相关类的术语略有不同。这些类引用*核心*池大小和*最大*池大小，这些术语的含义取决于池是如何构建的。有时核心池大小是最小池大小，有时是最大池大小，有时则完全被忽略。同样，有时最大池大小是最大大小，但有时也会被忽略。'
 - en: Details are given at the end of this section, but to keep things simple, we’ll
     set the core and maximum sizes the same for our tests and refer to only a maximum
     size. The thread pools in the examples therefore always have the given number
     of threads.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节的结尾提供了详细信息，但为了简化问题，我们将为我们的测试设置核心和最大大小相同，并且仅提到最大大小。因此，示例中的线程池始终具有给定数量的线程。
 - en: Setting the Maximum Number of Threads
+  id: totrans-16
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 设置最大线程数
 - en: 'Let’s address the maximum number of threads first: what is the optimal maximum
     number of threads for a given workload on given hardware? There is no simple answer;
     it depends on characteristics of the workload and the hardware on which it is
     run. In particular, the optimal number of threads depends on how often each individual
     task will block.'
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先让我们讨论最大线程数：在给定硬件上的给定工作负载的最佳最大线程数是多少？这并没有简单的答案；它取决于工作负载的特性和运行它的硬件。特别是，最佳线程数取决于每个单独任务多频繁地会被阻塞。
 - en: 'We’ll use a machine with four single-threaded CPUs for this discussion. Note
     that it doesn’t matter if the system has only four cores, if it has 128 cores
     but you want to utilize only four of them, or if you have a Docker container limiting
     the CPU usage to four: the goal is to maximize the usage of those four cores.'
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将使用一台具有四个单线程CPU的机器进行讨论。请注意，如果系统只有四个核心，如果系统有128个核心但您只想利用其中的四个，或者如果您有一个将CPU使用限制为四个的Docker容器：目标是最大化这四个核心的使用。
 - en: Clearly, then, the maximum number of threads must be set to at least four. Granted,
     some threads in the JVM are doing things other than processing these tasks, but
     these threads will almost never need an entire core. One exception is if a concurrent
     mode garbage collector is being used as discussed in [Chapter 5](ch05.html#GC)—the
     background threads there must have enough CPU (cores) to operate, lest they fall
     behind in processing the heap.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 显然，最大线程数必须至少设置为四个。当然，JVM中的一些线程除了处理这些任务之外还会做其他事情，但这些线程几乎永远不会需要整个核心。唯一的例外是如果使用了并发模式垃圾收集器，如[第5章](ch05.html#GC)中讨论的背景线程必须具有足够的CPU（核心）才能运行，否则它们将在处理堆时落后。
 - en: 'Does it help to have more than four threads? This is where the characteristics
     of the workload come into play. Take the simple case where the tasks are all compute-bound:
     they don’t make external network calls (e.g., to a database), nor do they have
     significant contention on an internal lock. The stock price history batch program
     is such an application (when using a mock entity manager): the data on the entities
     can be calculated completely in parallel.'
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 是否有超过四个线程有帮助？这就涉及到工作负载特性的问题。以简单情况为例，如果任务全部是计算密集型的：它们不进行外部网络调用（例如访问数据库），也没有内部锁的显著争用。股票价格历史批处理程序就是这样的应用程序（使用模拟实体管理器时）：可以完全并行计算实体的数据。
 - en: '[Table 9-1](#TablePool1) shows the performance of calculating the history of
     10,000 mock stock entities using a thread pool set to use the given number of
     threads on a machine with four cores. With only a single thread in the pool, 55.2
     seconds are needed to calculate the data set; with four threads, only 13.9 seconds
     are required. After that, a little more time is needed as threads are added.'
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: '[表 9-1](#TablePool1)展示了在一个四核机器上，使用给定数量的线程池计算10,000个模拟股票实体历史的性能。当线程池中只有一个线程时，需要55.2秒来计算数据集；使用四个线程时，仅需13.9秒。随着线程数量的增加，稍微多一点时间将被需要，因为线程需要在任务队列中进行协调。'
 - en: Table 9-1\. Time required to calculate 10,000 mock price histories
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 9-1\. 计算10,000个模拟价格历史所需时间
 - en: '| Number of threads | Seconds required | Percent of baseline |'
+  id: totrans-23
   prefs: []
   type: TYPE_TB
+  zh: '| 线程数 | 所需秒数 | 基准百分比 |'
 - en: '| --- | --- | --- |'
+  id: totrans-24
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 1 | 55.2 ± 0.6 | 100% |'
+  id: totrans-25
   prefs: []
   type: TYPE_TB
+  zh: '| 1 | 55.2 ± 0.6 | 100% |'
 - en: '| 2 | 28.3 ± 0.3 | 51.2% |'
+  id: totrans-26
   prefs: []
   type: TYPE_TB
+  zh: '| 2 | 28.3 ± 0.3 | 51.2% |'
 - en: '| 4 | 13.9 ± 0.6 | 25.1% |'
+  id: totrans-27
   prefs: []
   type: TYPE_TB
+  zh: '| 4 | 13.9 ± 0.6 | 25.1% |'
 - en: '| 8 | 14.3 ± 0.2 | 25.9% |'
+  id: totrans-28
   prefs: []
   type: TYPE_TB
+  zh: '| 8 | 14.3 ± 0.2 | 25.9% |'
 - en: '| 16 | 14.5 ± 0.3 | 26.2% |'
+  id: totrans-29
   prefs: []
   type: TYPE_TB
+  zh: '| 16 | 14.5 ± 0.3 | 26.2% |'
 - en: 'If the tasks in the application were completely parallel, the “Percent of baseline”
     column would show 50% for two threads and 25% for four threads. Such completely
     linear scaling is impossible to come by for several reasons: if nothing else,
@@ -182,116 +243,171 @@
     from utilizing all 100% of the cycles. Still, this application is doing a good
     job of scaling, and even if the number of threads in the pool is overestimated,
     we have only a slight penalty to pay.'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果应用程序中的任务完全并行，那么“基准百分比”列在两个线程时将显示50%，在四个线程时将显示25%。由于多种原因，这种完全线性的扩展是不可能实现的：除此之外，线程必须相互协调以从运行队列中选择任务（通常情况下，线程之间的同步更多）。当使用四个线程时，系统正在消耗100%的可用CPU，尽管可能没有其他用户级应用程序在运行，但各种系统级进程会启动并使用一些CPU，从而阻止JVM利用所有100%的周期。尽管如此，该应用程序在扩展方面表现良好，即使线程池中的线程数被高估，我们也只需支付很小的性能损失。
 - en: In other circumstances, though, the penalty for too many threads can be larger.
     In the REST version of the stock history calculator, having too many threads has
     a bigger effect, as is shown in [Table 9-3](#TablePool3). The application server
     is configured to have the given number of threads, and a load generator is sending
     16 simultaneous requests to the server.
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 在其他情况下，线程过多可能会造成更大的惩罚。在股票历史计算器的REST版本中，线程过多会产生更大的影响，正如[表9-3](#TablePool3)所示。应用服务器被配置为具有给定数量的线程，并且负载生成器正在向服务器发送16个并发请求。
 - en: Table 9-3\. Operations per second for mock stock prices through a REST server
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 表9-3\. 通过REST服务器模拟股票价格的操作每秒
 - en: '| Number of threads | Operations per second | Percent of baseline |'
+  id: totrans-33
   prefs: []
   type: TYPE_TB
+  zh: '| 线程数量 | 计算模拟股票价格历史的平均响应时间 |'
 - en: '| --- | --- | --- |'
+  id: totrans-34
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 1 | 46.4 | 27% |'
+  id: totrans-35
   prefs: []
   type: TYPE_TB
+  zh: '| 1 | 46.4 | 27% |'
 - en: '| 4 | 169.5 | 100% |'
+  id: totrans-36
   prefs: []
   type: TYPE_TB
+  zh: '| 4 | 169.5 | 100% |'
 - en: '| 8 | 165.2 | 97% |'
+  id: totrans-37
   prefs: []
   type: TYPE_TB
+  zh: '| 8 | 165.2 | 97% |'
 - en: '| 16 | 162.2 | 95% |'
+  id: totrans-38
   prefs: []
   type: TYPE_TB
+  zh: '| 16 | 162.2 | 95% |'
 - en: Given that the REST server has four available CPUs, maximum throughput is achieved
     with that many threads in the pool.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 鉴于REST服务器有四个可用的CPU核心，池中有那么多线程才能实现最大吞吐量。
 - en: '[Chapter 1](ch01.html#Introduction) discussed the need to determine where the
     bottleneck is when investigating performance issues. In this example, the bottleneck
     is clearly the CPU: at four CPUs, the CPU is 100% utilized. Still, the penalty
     for adding more threads in this case is somewhat minimal, at least until there
     are four times too many threads.'
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: '[第一章](ch01.html#Introduction)讨论了在调查性能问题时需要确定瓶颈所在的必要性。在这个例子中，瓶颈显然是CPU：在四个CPU核心的情况下，CPU利用率达到100%。但在这种情况下，增加更多线程的惩罚相对较小，至少直到线程数多出四倍为止。'
 - en: 'But what if the bottleneck is elsewhere? This example is also somewhat unusual
     in that the tasks are completely CPU-bound: they do no I/O. Typically, the threads
     might be expected to make calls to a database or write their output somewhere
     or even rendezvous with another resource. In that case, the CPU won’t necessarily
     be the bottleneck: that external resource might be.'
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 但是如果瓶颈在其他地方呢？这个例子也有点不同寻常，因为任务完全受CPU限制：它们不进行I/O操作。通常情况下，线程可能会被期望调用数据库或将其输出写入某个位置，甚至与另一个资源进行会合。在这种情况下，CPU不一定是瓶颈：可能是外部资源。
 - en: When that is the case, adding threads to the thread pool is detrimental. Although
     I said (only somewhat tongue in cheek) in [Chapter 1](ch01.html#Introduction)
     that the database is always the bottleneck, the bottleneck can be any external
     resource.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 当这种情况发生时，向线程池添加线程是有害的。尽管我在[第一章](ch01.html#Introduction)（也只是半开玩笑地）说过数据库总是瓶颈，瓶颈可以是任何外部资源。
 - en: 'As an example, consider the stock REST server with the roles reversed: what
     if the goal is to make optimal use of the load generator machine (which, after
     all, is simply running a threaded Java program)?'
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，考虑一下股票REST服务器，角色发生了逆转：如果目标是充分利用负载生成机器（毕竟只是运行一个线程化的Java程序）呢？
 - en: In typical usage, if the REST application is run in a server with four CPUs
     and has only a single client requesting data, the REST server will be about 25%
     busy, and the client machine will be almost idle. If the load is increased to
     four concurrent clients, the server will be 100% busy, and the client machine
     may be only 20% busy.
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 在典型的使用情况下，如果REST应用在一个具有四个CPU的服务器上运行，并且只有一个客户端请求数据，那么REST服务器将约占用25%的资源，而客户端机器几乎处于空闲状态。如果负载增加到四个并发客户端，则服务器将达到100%的资源利用率，而客户端机器可能只有20%的资源被使用。
 - en: 'Looking only at the client, it is easy to conclude that because the client
     has a lot of excess CPU, it should be possible to add more threads to the client
     and improve its throughput. [Table 9-4](#TablePool4) shows how wrong that assumption
     is: when threads are added to the client, performance is drastically affected.'
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 仅仅看客户端，很容易得出结论，因为客户端有大量空闲CPU资源，应该能够增加更多线程以提高其吞吐量。然而，[表9-4](#TablePool4)显示了这种假设是多么错误：当向客户端添加线程时，性能受到了严重影响。
 - en: Table 9-4\. Average response time for calculating mock stock price histories
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 表9-4\. 添加线程计算平均响应时间
 - en: '| Number of client threads | Average response time | Percent of baseline |'
+  id: totrans-47
   prefs: []
   type: TYPE_TB
+  zh: '| 客户端线程数量 | 平均响应时间 | 基准的百分比 |'
 - en: '| --- | --- | --- |'
+  id: totrans-48
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 1 | 0.022 second | 100% |'
+  id: totrans-49
   prefs: []
   type: TYPE_TB
+  zh: '| 1 | 0.022 second | 100% |'
 - en: '| 2 | 0.022 second | 100% |'
+  id: totrans-50
   prefs: []
   type: TYPE_TB
+  zh: '| 2 | 0.022 second | 100% |'
 - en: '| 4 | 0.024 second | 109% |'
+  id: totrans-51
   prefs: []
   type: TYPE_TB
+  zh: '| 4 | 0.024 second | 109% |'
 - en: '| 8 | 0.046 second | 209% |'
+  id: totrans-52
   prefs: []
   type: TYPE_TB
+  zh: '| 8 | 0.046 second | 209% |'
 - en: '| 16 | 0.093 second | 422% |'
+  id: totrans-53
   prefs: []
   type: TYPE_TB
+  zh: '| 16 | 0.093 second | 422% |'
 - en: '| 32 | 0.187 second | 885% |'
+  id: totrans-54
   prefs: []
   type: TYPE_TB
+  zh: '| 32 | 0.187 second | 885% |'
 - en: Once the REST server is the bottleneck in this example (i.e., at four client
     threads), adding load into the server is quite harmful.
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦在这个例子中 REST 服务器成为瓶颈（即在四个客户端线程处），增加服务器的负载会非常有害。
 - en: This example may seem somewhat contrived. Who would add more client threads
     when the server is already CPU-bound? But I’ve used this example simply because
     it is easy to understand and uses only Java programs. You can run it yourself
     to understand how it works, without having to set up database connections and
     schemas and whatnot.
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个例子可能看起来有些牵强。当服务器已经是 CPU 密集型时，谁会增加更多客户端线程呢？但我之所以使用这个例子，仅仅是因为它易于理解，并且只使用了 Java
+    程序。你可以自己运行它来理解它的工作原理，而不需要设置数据库连接和模式等等。
 - en: The point is that the same principle holds here for a REST server that is sending
     requests to a database that is CPU- or I/O-bound. You might look only at the server’s
     CPU, see that is it well below 100% and that it has additional requests to process,
@@ -299,14 +415,20 @@
     That would lead to a big surprise, because increasing the number of threads in
     that situation will actually decrease the total throughput (and possibly significantly),
     just as increasing the number of client threads did in the Java-only example.
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 关键在于相同的原理在这里也适用于将请求发送到 CPU 或 I/O 瓶颈的数据库的 REST 服务器。你可能只看服务器的 CPU 使用情况，看到它远低于
+    100%，还有额外的请求需要处理，就会认为增加服务器线程数量是个好主意。这将导致一个大惊喜，因为在这种情况下增加线程数量实际上会降低总吞吐量（可能显著降低），就像在仅有
+    Java 的例子中增加客户端线程一样。
 - en: 'This is another reason it is important to know where the actual bottleneck
     in a system is: if load is increased into the bottleneck, performance will decrease
     significantly. Conversely, if load into the current bottleneck is reduced, performance
     will likely increase.'
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 这也是了解系统中实际瓶颈位置的重要原因之一：如果增加负载到瓶颈，性能会显著下降。相反，如果减少当前瓶颈的负载，则性能可能会增加。
 - en: This is also why self-tuning of thread pools is difficult. Thread pools usually
     have some visibility into the amount of work that they have pending and perhaps
     even how much CPU the machine has available—but they usually have no visibility
@@ -314,8 +436,10 @@
     adding threads when work is pending—a key feature of many self-tuning thread pools
     (as well as certain configurations of the `ThreadPoolExecutor`)—is often exactly
     the wrong thing to do.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 这也是为什么线程池的自调整很困难的原因。线程池通常可以看到它们待处理的工作量，甚至可能了解到机器上的 CPU 使用情况，但通常无法看到它们执行的整个环境的其他方面。因此，在有待处理工作时增加线程——这是许多自调整线程池的关键特性（以及`ThreadPoolExecutor`的某些配置）——通常恰恰是错误的做法。
 - en: 'In [Table 9-4](#TablePool4), the default configuration of the REST server was
     to create 16 threads on the four-CPU machine. That makes sense in a general default
     case, because the threads can be expected to make external calls. When those calls
@@ -327,26 +451,36 @@
     created 32 threads by default, which would have had a bigger penalty for our CPU-bound
     test, but also had a bigger advantage for handling a load that is primarily I/O
     bound.'
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[表格 9-4](#TablePool4) 中，REST 服务器的默认配置是在四核机器上创建 16 个线程。在一般默认情况下，这是有道理的，因为可以预期这些线程会进行外部调用。当这些调用因等待响应而阻塞时，其他任务可以运行，服务器将需要多于四个线程来执行这些任务。因此，默认情况下创建稍多的线程是一个合理的折衷方案：对于主要是
+    CPU 密集型的任务会有轻微的惩罚，但对于运行多个执行阻塞 I/O 的任务会提高吞吐量。其他服务器可能默认创建了 32 个线程，这对于我们的 CPU 密集型测试来说会有更大的惩罚，但对于处理主要是
+    I/O 密集型负载的情况则有更大的优势。
 - en: Unfortunately, this is also why setting the maximum size of a thread pool is
     often more art than science. In the real world, a self-tuning thread pool may
     get you 80% to 90% of the possible performance of the system under test, and overestimating
     the number of threads needed in a pool may exact only a small penalty. But when
     things go wrong with this sizing, they can go wrong in a big way. Adequate testing
     in this regard is, unfortunately, still a key requirement.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 不幸的是，这也是为什么设置线程池的最大大小通常更像是一门艺术而不是科学的原因。在现实世界中，自调整的线程池可能使您在测试系统的可能性下获得80%到90%的性能，并且在池中估计所需的线程数量可能只会导致小小的惩罚。但是当这种大小设置出现问题时，问题可能会很严重。在这方面进行充分的测试仍然是一个关键要求。
 - en: Setting the Minimum Number of Threads
+  id: totrans-62
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 设置最小线程数
 - en: Once the maximum number of threads in a thread pool has been determined, it’s
     time to determine the minimum number of threads needed. To cut to the chase, it
     rarely matters, and for simplicity sake in almost all cases, you can set the minimum
     number of threads to the same value as the maximum.
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦确定了线程池中的最大线程数，就该确定所需的最小线程数了。简单地说，在几乎所有情况下，设置最小线程数与最大线程数相同通常都没什么关系，也比较简单。
 - en: 'The argument for setting the minimum number of threads to another value (e.g.,
     1) is that it prevents the system from creating too many threads, which saves
     on system resources. It is true that each thread requires a certain amount of
@@ -359,16 +493,20 @@
     of threads (and which it cannot handle), the system will certainly be in the weeds.
     Better to create all the threads that might eventually be needed and ensure that
     the system can handle the maximum expected load.'
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 将最小线程数设置为另一个值（例如1）的论点是，它可以防止系统创建过多线程，从而节省系统资源。确实，每个线程都需要一定量的内存，特别是用于其堆栈（稍后在本章讨论）。但是同样遵循[第2章](ch02.html#SampleApplications)中的一般规则，系统需要调整大小以处理预期的最大吞吐量，此时系统将需要创建所有这些线程。如果系统无法处理最大数量的线程，选择少量的最小线程数并没有真正帮助：如果系统达到需要最大数量线程的条件（且无法处理），那么系统肯定会遇到问题。最好创建所有可能最终需要的线程，并确保系统能够处理预期的最大负载。
 - en: 'On the other hand, the downside to specifying a minimum number of threads is
     fairly nominal. That downside occurs the first time there are multiple tasks to
     execute: then the pool will need to create a new thread. Creating threads is detrimental
     to performance—which is why thread pools are needed in the first place—but this
     one-time cost for creating the thread is likely to be unnoticed as long as it
     then remains in the pool.'
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，指定最小线程数的缺点相当小。这种缺点发生在第一次有多个任务需要执行时：此时池将需要创建一个新线程。创建线程对性能有害——这也是为什么首先需要线程池的原因——但是对于创建线程的这一次成本，只要线程留在池中，可能不会被注意到。
 - en: 'In a batch application, it does not matter whether the thread is allocated
     when the pool is created (which is what will occur if you set the minimum and
     maximum number of threads to the same value) or whether the thread is allocated
@@ -378,8 +516,10 @@
     of an application will be negligible. Even if the thread creation occurs during
     the measurement cycle, as long as the thread creation is limited, it will likely
     not be noticed.'
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 在   在批处理应用程序中，线程是在池创建时分配还是按需分配（如果将最小和最大线程数设置为相同，则会发生前者），对于执行应用程序所需的时间来说是无关紧要的。在其他应用程序中，新线程可能会在预热期间分配（同样，分配线程的总时间相同）；这对应用程序的性能影响微乎其微。即使线程创建发生在测量周期内，只要线程创建受限，通常不会被注意到。
 - en: One other tuning that applies here is the idle time for a thread. Say that the
     pool is sized with a minimum of one thread and a maximum of four. Now suppose
     that usually one thread is executing a task, and then the application starts a
@@ -394,24 +534,34 @@
     have a good model of the arrival rate, you can base the idle time on that. Otherwise,
     plan on the idle time being measured in minutes, at least anywhere from 10 to
     30.
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里适用的另一种调优是线程的空闲时间。假设池的大小被设置为一个线程的最小值和四个线程的最大值。现在假设通常有一个线程在执行任务，然后应用程序开始一个循环，在该循环中，每隔
+    15 秒，工作负载平均有两个任务需要执行。在通过该循环的第一次时，池将创建第二个线程——现在有理由让第二个线程在池中至少停留一段时间。你希望避免这样的情况：第二个线程被创建，完成其任务需要
+    5 秒钟，空闲了 5 秒钟，然后退出——因为 5 秒钟后，下一个任务将需要第二个线程。一般来说，在池中为一个最小大小创建线程后，应该让它至少保持几分钟以处理负载的任何激增。在你有到达率的良好模型的程度上，你可以根据这个空闲时间来计划。否则，计划空闲时间应该以分钟为单位，至少在
+    10 到 30 分钟之间。
 - en: Keeping idle threads around usually has little impact on an application. Usually,
     the thread object itself doesn’t take a very large amount of heap space. The exception
     to that rule is if the thread holds onto a large amount of thread-local storage
     or if a large amount of memory is referenced through the thread’s runnable object.
     In either of those cases, freeing a thread can offer significant savings in terms
     of the live data left in the heap (which in turn affects the efficiency of GC).
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 保持空闲线程通常对应用程序影响不大。通常，线程对象本身并不占用大量堆空间。唯一的例外是如果线程保持大量的线程本地存储，或者如果通过线程的可运行对象引用了大量内存。在这两种情况下，释放线程可以在堆中剩余的活跃数据方面带来显著的节省（这反过来影响
+    GC 的效率）。
 - en: These cases really should not happen for thread pools, however. When a thread
     in a pool is idle, it should not be referencing any runnable object anymore (if
     it is, a bug exists somewhere). Depending on the pool implementation, the thread-local
     variables may remain in place—but while thread-local variables can be an effective
     way to promote object reuse in certain circumstances (see [Chapter 7](ch07.html#Memory)),
     the total amount of memory those thread-local objects occupy should be limited.
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，线程池中这种情况确实不应该发生。当池中的线程空闲时，它不应再引用任何可运行的对象（如果引用了，说明某处存在 bug）。根据池的实现方式，线程本地变量可能会保留在原地——但是，虽然线程本地变量在某些情况下可以有效地促进对象的重用（见[第7章](ch07.html#Memory)），但这些线程本地对象占用的内存总量应该是有限的。
 - en: One important exception to this rule is for thread pools that can grow to be
     very large (and hence run on a very large machine). Say the task queue for a thread
     pool is expected to average 20 tasks; 20 is then a good minimum size for the pool.
@@ -422,12 +572,18 @@
     to when it has only the core 20 busy threads. Thread pools don’t usually encounter
     sizing issues like that, but when they do, that’s a good time to make sure they
     have a good minimum value.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个规则的一个重要例外是那些可能会增长到非常大（因此运行在非常大机器上）的线程池。假设一个线程池的任务队列平均预期有 20 个任务；那么 20 就是池的一个良好的最小大小。现在假设该池在一个非常大的机器上运行，并且设计成能处理
+    2,000 个任务的高峰。在这个池中保持 2,000 个空闲线程会影响其性能，当它只运行 20 个任务时，该池的吞吐量可能会减少多达 50%，因为当池中有
+    1,980 个空闲线程时，与仅有核心的 20 个繁忙线程时相比。通常情况下，线程池不会遇到这种大小问题，但是当它们出现时，现在是确保它们有一个良好的最小值的好时机。
 - en: Thread Pool Task Sizes
+  id: totrans-71
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 线程池任务大小
 - en: 'The tasks pending for a thread pool are held in a queue or list; when a thread
     in the pool can execute a task, it pulls a task from the queue. This can lead
     to an imbalance, as the number of tasks on the queue could grow very large. If
@@ -435,14 +591,19 @@
     the tasks in front of them have completed execution. Imagine a web server that
     is overloaded: if a task is added to the queue and isn’t executed for 3 seconds,
     the user has likely moved on to another page.'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程池中待处理的任务存储在队列或列表中；当池中的线程可以执行任务时，它会从队列中取出一个任务。这可能导致不平衡，因为队列中的任务数量可能会非常大。如果队列太大，队列中的任务将不得不等待很长时间，直到它们前面的任务完成执行。想象一个负载过重的
+    Web 服务器：如果一个任务被添加到队列中并且在3秒内未执行，用户很可能已经转移到另一页。
 - en: As a result, thread pools typically limit the size of the queue of pending tasks.
     The `ThreadPoolExecutor` does this in various ways, depending on the data structure
     it is configured with (more on that in the next section); servers usually have
     a tuning parameter to adjust this value.
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，线程池通常会限制待处理任务队列的大小。`ThreadPoolExecutor` 根据配置的数据结构以不同方式实现此功能（下一节将详细介绍）；服务器通常有一个调整参数来调整这个值。
 - en: As with the maximum size of the thread pool, no universal rule indicates how
     this value should be tuned. A server with 30,000 items in its queue and four available
     CPUs can clear the queue in 6 minutes if it takes only 50 ms to execute a task
@@ -450,8 +611,10 @@
     if each task requires 1 second to execute, it will take 2 hours to clear the queue.
     Once again, measuring your actual application is the only way to be sure of what
     value will give you the performance you require.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 与线程池的最大大小一样，并没有普遍适用的规则表明应该如何调整这个值。一个服务器如果在队列中有30,000个项目并且有四个可用CPU，如果每个任务执行仅需50毫秒（假设这段时间内没有新任务到达），则可以在6分钟内清除队列。这可能是可以接受的，但如果每个任务需要1秒钟才能执行，则需要2小时才能清空队列。再次强调，测量实际应用程序是确保得到所需性能的唯一方法。
 - en: In any case, when the queue limit is reached, attempts to add a task to the
     queue will fail. A `ThreadPoolExecutor` has a `rejectedExecution()` method that
     handles that case (by default, it throws a `RejectedExecutionException`, but you
@@ -459,12 +622,18 @@
     to the user (with a message that indicates what has happened), and REST servers
     should return a status code of either 429 (too many requests) or 503 (service
     unavailable).
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 在任何情况下，当达到队列限制时，尝试向队列添加任务将失败。`ThreadPoolExecutor` 有一个 `rejectedExecution()`
+    方法来处理这种情况（默认情况下会抛出 `RejectedExecutionException`，但您可以覆盖此行为）。应用服务器应向用户返回合理的响应（包含说明发生了什么的消息），而
+    REST 服务器应返回状态码 429（请求过多）或 503（服务不可用）。
 - en: Sizing a ThreadPoolExecutor
+  id: totrans-76
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 调整 ThreadPoolExecutor 的大小
 - en: The general behavior for a thread pool is that it starts with a minimum number
     of threads, and if a task arrives when all existing threads are busy, a new thread
     is started (up to the maximum number of threads) and the task is executed immediately.
@@ -472,15 +641,22 @@
     task is queued, unless many tasks are pending already, in which case the task
     is rejected. While that is the canonical behavior of a thread pool, the `ThreadPoolExecutor`
     can behave somewhat differently.
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程池的一般行为是从最小线程数开始，并且如果所有现有线程都忙于执行任务时有新任务到达，则启动新线程（最多线程数），并立即执行任务。如果已经启动了最大数量的线程但它们都忙于工作，则任务将被排队，除非已有许多任务在排队，否则该任务将被拒绝。虽然这是线程池的典型行为，但
+    `ThreadPoolExecutor` 的行为可能略有不同。
 - en: 'The `ThreadPoolExecutor` decides when to start a new thread based on the type
     of queue used to hold the tasks. There are three possibilities:'
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ThreadPoolExecutor` 根据用于保存任务的队列类型决定何时启动新线程。有三种可能性：'
 - en: '`SynchronousQueue`'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: '`同步队列`'
 - en: 'When the executor uses `SynchronousQueue`, the thread pool behaves as expected
     with respect to the number of threads: new tasks will start a new thread if all
     existing threads are busy and if the pool has less than the number of maximum
@@ -492,20 +668,28 @@
     I/O-bound but as we’ve seen may be counterproductive in other situations. On the
     other hand, if you need a thread pool in which the number of threads is easy to
     tune, this is the better choice.'
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 当执行器使用`SynchronousQueue`时，线程池的行为与线程数量的预期行为一致：如果所有现有线程都忙于工作，并且池的线程数少于最大线程数，则新任务将启动新线程。然而，这个队列无法持有待处理的任务：如果一个任务到达并且最大线程数已经全部忙碌，那么该任务将被拒绝。因此，这种选择适合管理少量任务，但在其他情况下可能不合适。该类的文档建议为最大线程数指定一个非常大的数值——如果任务完全是I/O绑定的话可能是可以接受的，但正如我们所见，在其他情况下可能会产生反效果。另一方面，如果需要一个可以轻松调整线程数量的线程池，这是更好的选择。
 - en: 'In this case, the core value is the minimum pool size: the number of threads
     that will be kept running even if they are idle. The maximum value is the maximum
     number of threads in the pool.'
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种情况下，核心值是最小池大小：即使处于空闲状态，也会保持运行的线程数。最大值是池中的最大线程数。
 - en: This is the type of thread pool (with an unbounded maximum thread value) returned
     by the `newCachedThreadPool()` method of the `Executors` class.
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是`Executors`类的`newCachedThreadPool()`方法返回的具有无界最大线程值的线程池类型。
 - en: Unbounded queues
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 无界队列
 - en: 'When the executor uses an unbounded queue (such as `LinkedBlockedingQueue`),
     no task will ever be rejected (since the queue size is unlimited). In this case,
     the executor will use at most the number of threads specified by the core thread
@@ -513,50 +697,66 @@
     thread pool in which the core size is interpreted as the maximum pool size, though
     because the queue is unbounded, it runs the risk of consuming too much memory
     if tasks are submitted more quickly than they can be run.'
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 当执行器使用无界队列（例如`LinkedBlockingQueue`）时，永远不会拒绝任何任务（因为队列大小是无限的）。在这种情况下，执行器将最多使用由核心线程池大小指定的线程数：忽略最大池大小。这本质上模仿了传统线程池，其中核心大小被解释为最大池大小，尽管由于队列是无界的，如果任务提交得比可以运行的更快，则存在消耗过多内存的风险。
 - en: This is the type of thread pool returned by the `newFixedThreadPool()` and `newSingleThreadScheduledExecutor()`
     methods of the `Executors` class. The core (or maximum) pool size of the first
     case is the parameter passed to construct the pool; in the second case, the core
     pool size is 1.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是`Executors`类的`newFixedThreadPool()`和`newSingleThreadScheduledExecutor()`方法返回的线程池类型。在第一种情况下，核心（或最大）池大小是构建池时传递的参数；在第二种情况下，核心池大小为1。
 - en: Bounded queues
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 有界队列
 - en: Executors that use a bounded queue (e.g., `ArrayBlockingQueue`) employ a complicated
     algorithm to determine when to start a new thread. For example, say that the pool’s
     core size is 4, its maximum size is 8, and the maximum size of `ArrayBlockingQueue`
     is 10\. As tasks arrive and are placed in the queue, the pool will run a maximum
     of 4 threads (the core pool size). Even if the queue completely fills up—so that
     it is holding 10 pending tasks—the executor will utilize 4 threads.
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用有界队列（例如`ArrayBlockingQueue`）的执行器采用复杂的算法来确定何时启动新线程。例如，假设池的核心大小为4，最大大小为8，而`ArrayBlockingQueue`的最大大小为10。随着任务的到达并放置在队列中，池将运行最多4个线程（核心池大小）。即使队列完全填满——以至于它持有10个待处理任务——执行器也将利用4个线程。
 - en: An additional thread will be started only when the queue is full, and a new
     task is added to the queue. Instead of rejecting the task (since the queue is
     full), the executor starts a new thread. That new thread runs the first task on
     the queue, making room for the pending task to be added to the queue.
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 只有在队列满时并且向队列添加新任务时，才会启动额外的线程。与其拒绝任务（因为队列已满），执行器会启动一个新线程。新线程运行队列中的第一个任务，为待处理的任务腾出空间。
 - en: In this example, the only way the pool will end up with 8 threads (its specified
     maximum) is if there are 7 tasks in progress, 10 tasks in the queue, and a new
     task is added to the queue.
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此示例中，池子最终会拥有8个线程（其指定的最大值），只有在有7个任务在进行中，10个任务在队列中，并且向队列添加了一个新任务时才会发生。
 - en: The idea behind this algorithm is that the pool will operate with only the core
     threads (four) most of the time, even if a moderate number of tasks is in the
     queue waiting to be run. That allows the pool to act as a throttle (which is advantageous).
     If the backlog of requests becomes too great, the pool then attempts to run more
     threads to clear out the backlog (subject to a second throttle, the maximum number
     of threads).
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 此算法的理念在于，即使有一定数量的任务排队等待执行，池子大部分时间只会运行核心线程（四个）。这样池子就能充当节流阀的作用（这是有利的）。如果请求积压过多，池子会试图运行更多线程以清除积压（受第二个节流阀的限制，即最大线程数）。
 - en: 'If no external bottlenecks are in the system and CPU cycles are available,
     everything here works out: adding the new threads will process the queue faster
     and likely bring it back to its desired size. So cases where this algorithm is
     appropriate can certainly be constructed.'
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果系统中没有外部瓶颈并且有CPU周期可用，这里的一切都会顺利进行：添加新线程将更快地处理队列，并可能将其恢复到期望的大小。因此，在适当的情况下，这种算法肯定是有效的。
 - en: On the other hand, this algorithm has no idea why the queue size has increased.
     If it is caused by an external backlog, adding more threads is the wrong thing
     to do. If the pool is running on a machine that is CPU-bound, adding more threads
@@ -566,8 +766,10 @@
     queue size has reached a certain bound? If the additional resources are available
     to utilize additional threads, adding them sooner will improve the overall performance
     of the system.)
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，此算法不知道队列大小为何增加。如果是外部积压引起的，增加线程是错误的做法。如果池子在CPU受限的机器上运行，增加线程也是错误的做法。只有在额外负载进入系统（例如更多客户端开始发出HTTP请求）导致积压时，增加线程才是合理的。然而，如果是这种情况，为何要等到队列大小达到某个界限再添加线程呢？如果有额外资源可供使用额外线程，早点添加会提升系统的整体性能。
 - en: 'There are many arguments for and against each of these choices, but when attempting
     to maximize performance, this is a time to apply the KISS principle: keep it simple,
     stupid. As always, the needs of the application may dictate otherwise, but as
@@ -576,32 +778,44 @@
     use. Instead, construct your own `ThreadPoolExecutor` that has the same number
     of core and maximum threads and utilizes an `ArrayBlockingQueue` to limit the
     number of requests that can be held in memory waiting to be executed.'
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 关于每个选择有很多支持和反对的论点，但在试图最大化性能时，这是应用KISS原则的时刻：保持简单，愚蠢。如常，应用程序的需求可能有所不同，但作为一般建议，不要使用`Executors`类提供的默认、无界的线程池，因为这样无法控制应用程序的内存使用。相反，构建自己的`ThreadPoolExecutor`，它具有相同数量的核心和最大线程，并利用`ArrayBlockingQueue`限制可在内存中等待执行的请求数量。
 - en: Quick Summary
+  id: totrans-94
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: 'Thread pools are one case where object pooling is a good thing: threads are
     expensive to initialize, and a thread pool allows the number of threads on a system
     to be easily throttled.'
+  id: totrans-95
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 线程池是对象池化的一个典型案例：初始化线程代价高昂，而线程池允许系统中线程数量轻松受控。
 - en: Thread pools must be carefully tuned. Blindly adding new threads into a pool
     can, in some circumstances, degrade performance.
+  id: totrans-96
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 线程池必须小心调整。盲目向池中添加新线程在某些情况下可能降低性能。
 - en: Using simpler options for a `ThreadPoolExecutor` will usually provide the best
     (and most predictable) performance.
+  id: totrans-97
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用简化的选项配置`ThreadPoolExecutor`通常能提供最佳（也是最可预测的）性能。
 - en: The ForkJoinPool
+  id: totrans-98
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: '`ForkJoinPool`'
 - en: 'In addition to the general-purpose `ThreadPoolExecutors`, Java provides a somewhat
     special-purpose pool: the `ForkJoinPool` class. This class looks just like any
     other thread pool; like the `ThreadPoolExecutor` class, it implements the `Executor`
@@ -610,53 +824,71 @@
     specified in its constructor. If no argument is passed to the constructor, the
     pool will size itself based on the number of CPUs available on the machine (or
     based on the CPUs available to the Docker container, if applicable).'
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了通用的`ThreadPoolExecutor`外，Java还提供了一种略具特殊用途的池：`ForkJoinPool`类。该类看起来就像任何其他线程池；与`ThreadPoolExecutor`类似，它实现了`Executor`和`ExecutorService`接口。当使用这些接口时，`ForkJoinPool`使用一个内部无界任务列表，这些任务将由其构造函数中指定的线程数运行。如果构造函数没有传递参数，则池将根据机器上可用的CPU数量（或适用的Docker容器可用的CPU数量）自动调整大小。
 - en: 'The `ForkJoinPool` class is designed to work with divide-and-conquer algorithms:
     those where a task can be recursively broken into subsets. The subsets can be
     processed in parallel, and then the results from each subset are merged into a
     single result. The classic example of this is the quicksort sorting algorithm.'
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ForkJoinPool`类设计用于处理分治算法：这些算法将一个任务递归地分解为子集。这些子集可以并行处理，然后将每个子集的结果合并为单个结果。其中一个经典示例是快速排序算法。'
 - en: 'The important point about divide-and-conquer algorithms is that they create
     a lot of tasks that must be managed by relatively few threads. Say that we want
     to sort an array of 10 million elements. We start by creating separate tasks to
     perform three operations: sort the subarray containing the first 5 million elements,
     sort the subarray containing the second 5 million elements, and then merge the
     two subarrays.'
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: 分治算法的重要一点是它们创建了许多任务，这些任务必须由相对较少的线程管理。假设我们要对1000万元素的数组进行排序。我们首先创建单独的任务执行三个操作：对包含前500万元素的子数组进行排序，对包含后500万元素的子数组进行排序，然后合并这两个子数组。
 - en: The sorting of the 5-million-element arrays is similarly accomplished by sorting
     subarrays of 2.5 million elements and merging those arrays. This recursion continues
     until at some point (e.g., when the subarray has 47 elements), it is more efficient
     to use insertion sort on the array and sort it directly. [Figure 9-1](#FigureForkJoin)
     shows how that all works out.
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 对500万元素数组的排序通过对250万元素的子数组进行排序并合并这些数组来类似地完成。这种递归一直持续下去，直到某个时候（例如，当子数组有47个元素时），使用直接在数组上使用插入排序更加高效。[图9-1](#FigureForkJoin)展示了所有这些如何运作。
 - en: In the end, we will have 262,144 tasks to sort the leaf arrays, each of which
     will have 47 (or fewer) elements. (That number—47—is algorithm-dependent and the
     subject of a lot of analysis, but it is the number Java uses for quicksort.)
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 最终，我们将有262,144个任务来对叶子数组进行排序，每个数组将有47个（或更少）元素。（这个数字—47—依赖于算法，并且是大量分析的对象，但Java在快速排序中使用这个数字。）
 - en: '![jp2e 0901](assets/jp2e_0901.png)'
+  id: totrans-104
   prefs: []
   type: TYPE_IMG
+  zh: '![jp2e 0901](assets/jp2e_0901.png)'
 - en: Figure 9-1\. Tasks in a recursive quicksort
+  id: totrans-105
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图9-1。递归快速排序中的任务
 - en: An additional 131,072 tasks are needed to merge those sorted arrays, 65,536
     additional tasks to merge the next set of sorted arrays, and so on. In the end,
     there will be 524,287 tasks.
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 还需要额外的131,072个任务来合并这些排序数组，另外还需要65,536个任务来合并下一组排序数组，依此类推。最终，将会有524,287个任务。
 - en: 'The larger point here is that none of the tasks can complete until the tasks
     that they have spawned have also completed. The tasks directly sorting arrays
     of fewer than 47 elements must be completed first, and then tasks can merge the
     two small arrays that they created, and so on: everything is merged up the chain
     until the entire array is merged into its final, sorted value.'
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的重要一点是，直到它们生成的任务也完成之前，没有一个任务能够完成。必须首先完成直接排序少于47个元素数组的任务，然后任务才能合并它们创建的两个小数组，依此类推：一切都向上合并，直到整个数组合并为其最终排序值。
 - en: 'It isn’t possible to perform that algorithm efficiently using `ThreadPoolExecutor`,
     because a parent task must wait for its child tasks to complete. A thread inside
     a thread-pool executor cannot add another task to the queue and then wait for
@@ -664,8 +896,11 @@
     the subtasks. `ForkJoinPool`, on the other hand, allows its threads to create
     new tasks and then suspend their current task. While the task is suspended, the
     thread can execute other pending tasks.'
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用 `ThreadPoolExecutor` 无法高效地执行该算法，因为父任务必须等待其子任务完成。线程池执行器中的线程无法将另一个任务添加到队列然后等待它完成：一旦线程等待，它就无法用来执行其中一个子任务。另一方面，`ForkJoinPool`
+    允许其线程创建新任务，然后挂起它们当前的任务。在任务挂起期间，线程可以执行其他待处理的任务。
 - en: 'Let’s take a simple example: say that we have an array of doubles, and the
     goal is to count the number of values in the array that are less than 0.5\. It’s
     trivial simply to scan the array sequentially (and possibly advantageous, as you’ll
@@ -673,11 +908,16 @@
     into subarrays and scan them in parallel (emulating the more complex quicksort
     and other divide-and-conquer algorithms). Here’s an outline of the code to achieve
     that with a `ForkJoinPool`:'
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们举一个简单的例子：假设我们有一个双精度数组，目标是计算数组中小于 0.5 的值的数量。顺序扫描数组非常简单（并且可能是有利的，稍后在本节中会看到）——但现在，将数组分成子数组并并行扫描它们（模拟更复杂的快速排序和其他分治算法）是很有教育意义的。这里是使用
+    `ForkJoinPool` 实现这一目标的代码大纲：
 - en: '[PRE0]'
+  id: totrans-110
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'The `fork()` and `join()` methods here are the key: we’d be hard-pressed to
     implement this sort of recursion without those methods (which are not available
     in the tasks executed by `ThreadPoolExecutor`). Those methods use a series of
@@ -686,8 +926,11 @@
     if you’re interested in algorithms, the code makes fascinating reading. Our focus
     here is on the performance: what trade-offs exist between the `ForkJoinPool` and
     `ThreadPoolExecutor` classes?'
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的 `fork()` 和 `join()` 方法是关键：如果没有这些方法（在 `ThreadPoolExecutor` 执行的任务中不可用），我们很难实现这种递归。这些方法使用一系列内部的每个线程队列来操作任务，并在执行一个任务后将线程切换到执行另一个任务。虽然开发者对细节是透明的，但如果你对算法感兴趣，代码读起来会很有趣。我们这里的重点是性能：`ForkJoinPool`
+    和 `ThreadPoolExecutor` 类之间存在哪些权衡？
 - en: First and foremost is that the suspension implemented by the fork/join paradigm
     allows all the tasks to be executed by only a few threads. Counting the double
     values in an array of 2 million elements using this example code creates more
@@ -698,99 +941,147 @@
     could complete only if additional threads were available in the pool. So the fork/join
     suspension allows us to use algorithms that we otherwise could not, which is a
     performance win.
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: 首要的是，由 fork/join 范式实现的挂起允许仅由少数线程执行所有任务。使用此示例代码在一个包含 200 万元素的数组中计数双值会创建超过 400
+    万个任务，但这些任务可以轻松地由少数线程（如果这对运行测试的机器有意义的话，甚至一个线程）执行。使用 `ThreadPoolExecutor` 运行类似的算法将需要超过
+    400 万个线程，因为每个线程必须等待其子任务完成，而这些子任务只有在线程池中有额外线程可用时才能完成。因此，fork/join 挂起允许我们使用否则无法使用的算法，这是性能的胜利。
 - en: 'On the other hand, a simple algorithm like this isn’t particularly well-suited
     for a real-world use of the fork-join pool. This pool is ideally suited for the
     following cases:'
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，像这样简单的算法并不特别适合于实际使用 fork-join 池。这个池子最适合以下情况：
 - en: The merge part of the algorithm performs some interesting work (rather than
     simply adding two numbers as in this example).
+  id: totrans-114
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 算法的合并部分执行一些有趣的工作（而不仅仅是像这个例子中简单地加两个数字）。
 - en: The leaf calculation of the algorithm performs enough work to offset creating
     the task.
+  id: totrans-115
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 算法中的叶子计算足以抵消任务的创建。
 - en: 'Absent these two criteria, it is easy enough to partition the array into chunks
     and use `ThreadPoolExecutor` to have multiple threads scan the array:'
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 在缺少这两个标准的情况下，将数组分成块并使用 `ThreadPoolExecutor` 让多个线程扫描数组非常容易：
 - en: '[PRE1]'
+  id: totrans-117
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: On a four-CPU machine, this code will fully utilize all available CPUs, processing
     the array in parallel while avoiding creating and queuing the 4 million tasks
     used by the fork/join example. The performance is predictably faster, as [Table 9-5](#TableForkJoin)
     shows.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 在四核 CPU 上，此代码将充分利用所有可用的 CPU，在并行处理数组的同时避免创建和排队使用 fork/join 示例中的 400 万个任务。性能可预见地更快，如[表 9-5](#TableForkJoin)所示。
 - en: Table 9-5\. Time to count an array of 2 million elements
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 9-5\. 计算包含 200 万元素数组所需时间
 - en: '| Number of threads | `ForkJoinPool` | `ThreadPoolExecutor` |'
+  id: totrans-120
   prefs: []
   type: TYPE_TB
+  zh: '| 线程数 | `ForkJoinPool` | `ThreadPoolExecutor` |'
 - en: '| --- | --- | --- |'
+  id: totrans-121
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 1 | 125 ± 1 ms | 1.731 ± 0.001 ms |'
+  id: totrans-122
   prefs: []
   type: TYPE_TB
+  zh: '| 1 | 125 ± 1 毫秒 | 1.731 ± 0.001 毫秒 |'
 - en: '| 4 | 37.7 ± 1 ms | 0.55 ± 0.002 ms |'
+  id: totrans-123
   prefs: []
   type: TYPE_TB
+  zh: '| 4 | 37.7 ± 1 毫秒 | 0.55 ± 0.002 毫秒 |'
 - en: The two tests differ in GC time, but the real difference comes from the divide-and-conquer,
     particularly with a leaf value of 10. The overhead of creating and managing the
     4 million task objects hampers the performance of `ForkJoinPool`. When a similar
     alternative is available, it is likely to be faster—at least in this simple case.
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 两个测试在 GC 时间上有所不同，但真正的差异来自分治算法，特别是在叶值为 10 时。创建和管理 400 万个任务对象的开销阻碍了`ForkJoinPool`的性能。当有类似的替代方案时，至少在这种简单情况下，它可能会更快。
 - en: Alternatively, we could have required far fewer tasks by ending the recursion
     earlier. At one extreme, we could end the recursion when the subarray has 500,000
     elements, which neatly partitions the work into four tasks, which is the same
     as the thread pool example does. At that point, the performance of this test would
     be the same (though if the work partitions that easily, there’s no reason to use
     a divide-and-conquer algorithm in the first place).
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 或者，我们可以通过更早地结束递归来减少任务数量。在一个极端情况下，当子数组有 500,000 元素时结束递归，这将任务划分为四个任务，与线程池示例相同。在这种情况下，测试的性能将是相同的（尽管如果工作很容易划分，那么首先为什么要使用分治算法）。
 - en: 'For illustrative purposes, we can easily enough mitigate the second point in
     our criteria by adding work to the leaf calculation phase of our task:'
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了说明目的，我们可以通过在任务的叶计算阶段添加工作轻松地缓解我们标准中的第二点：
 - en: '[PRE2]'
+  id: totrans-127
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Now the test will be dominated by the calculation of `d[i]`. But because the
     merge portion of the algorithm isn’t doing any significant work, creating all
     the tasks still carries a penalty, as we see in [Table 9-6](#TableForkJoinWork).
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在测试将被计算`d[i]`所主导。但是因为算法的合并部分没有进行任何重要工作，创建所有任务仍然会带来惩罚，正如我们在[表 9-6](#TableForkJoinWork)中所见。
 - en: Table 9-6\. Time to count an array of 2 million elements with added work
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 9-6\. 增加工作量后计算包含 200 万元素数组所需时间
 - en: '| Number of threads | `ForkJoinPool` | `ThreadPoolExecutor` |'
+  id: totrans-130
   prefs: []
   type: TYPE_TB
+  zh: '| 线程数 | `ForkJoinPool` | `ThreadPoolExecutor` |'
 - en: '| --- | --- | --- |'
+  id: totrans-131
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 4 | 271 ± 3 ms | 258 ± 1 ms |'
+  id: totrans-132
   prefs: []
   type: TYPE_TB
+  zh: '| 4 | 271 ± 3 毫秒 | 258 ± 1 毫秒 |'
 - en: Now that the time is dominated by actual calculation in the test, the fork-join
     pool isn’t quite as bad compared to a partition. Still, the time to create the
     tasks is significant, and when the tasks could simply be partitioned (i.e., when
     no significant work is in the merge stage), a simple thread pool will be faster.
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在测试时间主要由实际计算占据，与分区相比，fork-join pool 的性能并不差。但是，创建任务的时间仍然显著，当任务仅需简单分区时（即合并阶段没有重要工作时），简单线程池的速度会更快。
 - en: Work Stealing
+  id: totrans-134
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 工作窃取
 - en: 'One rule about using this pool is to make sure splitting the tasks makes sense.
     But a second feature of the `ForkJoinPool` makes it even more powerful: it implements
     work stealing. That’s basically an implementation detail; it means that each thread
@@ -801,51 +1092,76 @@
     can complete any and all of the remaining tasks. The same is not true of the `ThreadPoolExecutor`:
     if one of its tasks requires a long time, the other threads cannot pick up additional
     work.'
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用此池的一个规则是确保分割任务是有意义的。但是，`ForkJoinPool`的第二个特性使其更加强大：它实现了工作窃取。这基本上是一个实现细节；这意味着池中的每个线程都有自己的任务队列。线程优先处理来自自己队列的任务，但如果队列为空，它们将从其他线程的队列中窃取任务。结果是，即使其中一个
+    400 万个任务执行时间较长，`ForkJoinPool`中的其他线程仍然可以完成任何和所有剩余任务。`ThreadPoolExecutor`则不然：如果其中一个任务需要很长时间，其他线程就无法接手额外的工作。
 - en: When we added work to the original example, the amount of work per value was
     constant. What if that work varied depending on the position of the item in the
     array?
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们在原始示例中增加工作量时，每个值的工作量是恒定的。如果这个工作量根据数组中项的位置而变化呢？
 - en: '[PRE3]'
+  id: totrans-137
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'Because the outer loop (indexed by `j`) is based on the position of the element
     in the array, the calculation requires a length of time proportional to the element
     position: calculating the value for `d[0]` will be very fast, while calculating
     the value for `d[d.length - 1]` will take more time.'
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 因为外部循环（由 `j` 索引）是基于数组中元素的位置的，所以计算需要花费的时间与元素位置成比例：计算 `d[0]` 的值将非常快，而计算 `d[d.length
+    - 1]` 的值将需要更长时间。
 - en: 'Now the simple partitioning of the `ThreadPoolExecutor` test will be at a disadvantage.
     The thread calculating the first partition of the array will take a very long
     time to complete, much longer than the time spent by the fourth thread operating
     on the last partition. Once that fourth thread is finished, it will remain idle:
     everything must wait for the first thread to complete its long task.'
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，`ThreadPoolExecutor` 测试的简单分区将处于不利地位。计算数组第一个分区的线程将花费很长时间才能完成，比最后一个分区上操作的第四个线程花费的时间要长得多。一旦第四个线程完成，它将保持空闲状态：一切都必须等待第一个线程完成其长时间的任务。
 - en: The granularity of the 4 million tasks in the `ForkJoinPool` means that although
     one thread will get stuck doing the very long calculations on the first 10 elements
     in the array, the remaining threads will still have work to perform, and the CPU
     will be kept busy during most of the test. That difference is shown in [Table 9-7](#TableForkJoinBalance).
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ForkJoinPool` 中 400 万个任务的粒度意味着虽然一个线程将卡住在对数组前 10 个元素进行非常长时间的计算上，但其余线程仍然有工作要做，并且
+    CPU 将在测试的大部分时间内保持忙碌状态。这种差异显示在 [表 9-7](#TableForkJoinBalance) 中。'
 - en: Table 9-7\. Time to process an array of 2,000,000 elements with an unbalanced
     workload
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 9-7\. 处理包含 2,000,000 个元素的数组的时间，带有不平衡的工作负载
 - en: '| Number of threads | `ForkJoinPool` | `ThreadPoolExecutor` |'
+  id: totrans-142
   prefs: []
   type: TYPE_TB
+  zh: '| 线程数量 | `ForkJoinPool` | `ThreadPoolExecutor` |'
 - en: '| --- | --- | --- |'
+  id: totrans-143
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 1 | 22.0 ± 0.01 seconds | 21.7 ± 0.1 seconds |'
+  id: totrans-144
   prefs: []
   type: TYPE_TB
+  zh: '| 1 | 22.0 ± 0.01 秒 | 21.7 ± 0.1 秒 |'
 - en: '| 4 | 5.6 ± 0.01 seconds | 9.7 ± 0.1 seconds |'
+  id: totrans-145
   prefs: []
   type: TYPE_TB
+  zh: '| 4 | 5.6 ± 0.01 秒 | 9.7 ± 0.1 秒 |'
 - en: 'When the pool has a single thread, the computation takes essentially the same
     amount of time. That makes sense: the number of calculations is the same regardless
     of the pool implementation, and since those calculations are never done in parallel,
@@ -853,76 +1169,115 @@
     exists for creating the 4 million tasks). But when the pool contains four threads,
     the granularity of the tasks in the `ForkJoinPool` gives it a decided advantage:
     it is able to keep the CPUs busy for almost the entire duration of the test.'
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 当线程池只有一个线程时，计算所需时间基本相同。这很合理：无论线程池的实现方式如何，计算的次数都是相同的，而且由于这些计算从未并行进行，可以预期它们所需的时间相同（尽管为创建
+    400 万个任务存在一些小的开销）。但是，当线程池包含四个线程时，`ForkJoinPool` 中任务的粒度赋予它明显的优势：它能够几乎在整个测试期间让 CPU
+    保持忙碌状态。
 - en: This situation is called *unbalanced*, because some tasks take longer than others
     (and hence the tasks in the previous example are called *balanced*). In general,
     this leads to the recommendation that using `ThreadPoolExecutor` with partitioning
     will give better performance when the tasks can be easily partitioned into a balanced
     set, and `ForkJoinPool` will give better performance when the tasks are unbalanced.
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种情况被称为*不平衡*，因为某些任务花费的时间比其他任务长（因此前一个示例中的任务被称为*平衡*）。一般而言，这导致了一个建议：当任务可以轻松分割为平衡集时，使用带分区的
+    `ThreadPoolExecutor` 将提供更好的性能，而当任务不平衡时，`ForkJoinPool` 将提供更好的性能。
 - en: 'There is a more subtle performance recommendation here as well: carefully consider
     the point at which the recursion for the fork/join paradigm should end. In this
     example, we’ve arbitrarily chosen it to end when the array size is less than 10\.
     In the balanced case, we’ve already discussed that ending the recursion at 500,000
     would be optimal.'
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里还有一个更微妙的性能建议：仔细考虑 fork/join 范例的递归应该在何时结束。在这个例子中，我们任意选择当数组大小小于 10 时结束递归。在平衡情况下，我们已经讨论过将递归在
+    500,000 处结束将是最优的。
 - en: On the other hand, the recursion in the unbalanced case gives even better performance
     for smaller leaf values. Representative data points are shown in [Table 9-8](#TableForkJoinRecurse).
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，不平衡情况下的递归对较小的叶值表现出更好的性能。代表性数据点显示在 [表 9-8](#TableForkJoinRecurse) 中。
 - en: Table 9-8\. Time to process an array of 2,000,000 elements with varying leaf
     values
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 9-8\. 使用不同叶子值处理包含 2,000,000 个元素的数组所需的时间
 - en: '| Target size of leaf array | `ForkJoinPool` |'
+  id: totrans-151
   prefs: []
   type: TYPE_TB
+  zh: '| 目标叶子数组大小 | `ForkJoinPool` |'
 - en: '| --- | --- |'
+  id: totrans-152
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| 500,000 | 9,842 ± 5 ms |'
+  id: totrans-153
   prefs: []
   type: TYPE_TB
+  zh: '| 500,000 | 9,842 ± 5 ms |'
 - en: '| 50,000 | 6,029 ± 100 ms |'
+  id: totrans-154
   prefs: []
   type: TYPE_TB
+  zh: '| 50,000 | 6,029 ± 100 ms |'
 - en: '| 10,000 | 5,764 ± 55 ms |'
+  id: totrans-155
   prefs: []
   type: TYPE_TB
+  zh: '| 10,000 | 5,764 ± 55 ms |'
 - en: '| 1,000 | 5,657 ± 56 ms |'
+  id: totrans-156
   prefs: []
   type: TYPE_TB
+  zh: '| 1,000 | 5,657 ± 56 ms |'
 - en: '| 100 | 5,598 ± 20 ms |'
+  id: totrans-157
   prefs: []
   type: TYPE_TB
+  zh: '| 100 | 5,598 ± 20 ms |'
 - en: '| 10 | 5,601 ± 15 ms |'
+  id: totrans-158
   prefs: []
   type: TYPE_TB
+  zh: '| 10 | 5,601 ± 15 ms |'
 - en: With a leaf size of 500,000, we’ve duplicated the thread pool executor case.
     As the leaf size drops, we benefit from the unbalanced nature of the test, until
     between 1,000 and 10,000, where the performance levels off.
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 当叶子大小为 500,000 时，我们复制了线程池执行器的情况。随着叶子大小的减少，我们从测试的不平衡性中受益，直到在 1,000 到 10,000 之间，性能趋于稳定。
 - en: 'This tuning of the leaf value is routinely done in these kind of algorithms.
     As you saw earlier in this section, Java uses 47 for the leaf value in its implementation
     of the quicksort algorithm: that’s the point (for that algorithm) at which the
     overhead of creating the tasks outweighs the benefits of the divide-and-conquer
     approach.'
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这类算法中通常会调整叶子值的调整。正如您在本节前面看到的，Java 在其快速排序算法的实现中使用 47 作为叶子值：对于该算法而言，这是创建任务的开销超过分治方法优势的点。
 - en: Automatic Parallelization
+  id: totrans-161
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 自动并行化
 - en: Java has the ability to automatically parallelize certain kinds of code. This
     parallelization relies on the use of the `ForkJoinPool` class. The JVM will create
     a common fork-join pool for this purpose; it is a static element of the `ForkJoinPoolClass`
     that is sized by default to the number of processors on the target machine.
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 具有自动并行化特定类型代码的能力。这种并行化依赖于 `ForkJoinPool` 类的使用。JVM 将为此目的创建一个公共的 fork-join
+    池；这是 `ForkJoinPoolClass` 的静态元素，默认大小为目标机器上的处理器数量。
 - en: 'This parallelization occurs in many methods of the `Arrays` class: methods
     to sort an array using parallel quicksorting, methods to operate on each individual
     element of an array, and so on. It is also used within the streams feature, which
@@ -930,23 +1285,32 @@
     element in a collection. Basic performance implications of streams are discussed
     in [Chapter 12](ch12.html#Misc); in this section, we’ll look at how streams can
     automatically be processed in parallel.'
+  id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种并行化出现在 `Arrays` 类的许多方法中：使用并行快速排序对数组进行排序的方法，对数组中每个单独元素进行操作的方法等。它还在流特性中使用，允许在集合中的每个元素上执行操作（无论是顺序执行还是并行执行）。流的基本性能影响在[第12章](ch12.html#Misc)中讨论；在本节中，我们将看看如何自动并行处理流。
 - en: 'Given a collection containing a series of integers, the following code will
     calculate the stock price history for the symbol corresponding to the given integer:'
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 给定包含一系列整数的集合，以下代码将计算与给定整数对应的股票价格历史数据：
 - en: '[PRE4]'
+  id: totrans-165
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'This code will calculate the mock price histories in parallel: the `forEach()`
     method will create a task for each element in the array list, and each task will
     be processed by the common `ForkJoinTask` pool. That is essentially equivalent
     to the test at the beginning of this chapter, which used a thread pool to calculate
     the histories in parallel—though this code is much easier to write than dealing
     with the thread pool explicitly.'
+  id: totrans-166
   prefs: []
   type: TYPE_NORMAL
+  zh: 这段代码将并行计算模拟价格历史数据：`forEach()` 方法会为数组列表中的每个元素创建一个任务，每个任务都会由公共的 `ForkJoinTask`
+    池来处理。这与本章开头的测试基本相当，该测试使用线程池来并行计算历史数据，但这段代码比显式处理线程池要简单得多。
 - en: Sizing the common `ForkJoinTask` pool is as important as sizing any other thread
     pool. By default, the common pool will have as many threads as the target machines
     has CPUs. If you are running multiple JVMs on the same machine, limiting that
@@ -955,50 +1319,77 @@
     make sure that CPU is available for those other tasks, consider lowering the size
     of the common pool. On the other hand, if tasks in the common pool will block
     waiting for I/O or other data, the common pool size might need to be increased.
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 设置公共的 `ForkJoinTask` 池的大小和设置任何其他线程池的大小一样重要。默认情况下，公共池将拥有与目标机器CPU数量相同的线程。如果在同一台机器上运行多个
+    JVM，限制该数字是有意义的，以避免 JVM 之间相互竞争 CPU。同样地，如果服务器将并行执行其他请求，并且您希望确保 CPU 为这些其他任务保留，考虑减小公共池的大小。另一方面，如果公共池中的任务会阻塞等待
+    I/O 或其他数据，可能需要增加公共池的大小。
 - en: The size can be set by specifying the system property `-Djava.util.concurrent``.ForkJoinPool.common.parallelism=`*`N`*.
     As usual for Docker containers, it should be set manually in Java 8 versions prior
     to update 192.
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
+  zh: 可以通过设置系统属性`-Djava.util.concurrent.ForkJoinPool.common.parallelism=N`来设置大小。在Java
+    8更新版本192之前的Docker容器中，应手动设置。
 - en: Earlier in this chapter, [Table 9-1](#TablePool1) showed the effect on the performance
     of the parallel stock history calculations when the pool had various sizes. [Table 9-9](#TablePoolStockJoin)
     compares that data to the `forEach()` construct using the common `ForkJoinPool`
     (with the `parallelism` system property set to the given value).
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章前面提到的[表9-1](#TablePool1)展示了池大小对并行股票历史计算性能的影响。[表9-9](#TablePoolStockJoin)将该数据与使用通用`ForkJoinPool`（并设置`parallelism`系统属性为给定值）的`forEach()`构造函数进行了比较。
 - en: Table 9-9\. Time required to calculate 10,000 mock price histories
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 表9-9. 计算10,000个模拟价格历史所需的时间
 - en: '| Number of threads | `ThreadPoolExecutor` | `ForkJoinPool` |'
+  id: totrans-171
   prefs: []
   type: TYPE_TB
+  zh: '| 线程数 | `ThreadPoolExecutor` | `ForkJoinPool` |'
 - en: '| --- | --- | --- |'
+  id: totrans-172
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 1 | 40 ± 0.1 seconds | 20.2 ± 0.2 seconds |'
+  id: totrans-173
   prefs: []
   type: TYPE_TB
+  zh: '| 1 | 40 ± 0.1 秒 | 20.2 ± 0.2 秒 |'
 - en: '| 2 | 20.1 ± 0.07 seconds | 15.1 ± 0.05 seconds |'
+  id: totrans-174
   prefs: []
   type: TYPE_TB
+  zh: '| 2 | 20.1 ± 0.07 秒 | 15.1 ± 0.05 秒 |'
 - en: '| 4 | 10.1 ± 0.02 seconds | 11.7 ± 0.1 seconds |'
+  id: totrans-175
   prefs: []
   type: TYPE_TB
+  zh: '| 4 | 10.1 ± 0.02 秒 | 11.7 ± 0.1 秒 |'
 - en: '| 8 | 10.2 ± 0.3 seconds | 10.5 ± 0.1 seconds |'
+  id: totrans-176
   prefs: []
   type: TYPE_TB
+  zh: '| 8 | 10.2 ± 0.3 秒 | 10.5 ± 0.1 秒 |'
 - en: '| 16 | 10.3 ± 0.03 seconds | 10.3 ± 0.7 seconds |'
+  id: totrans-177
   prefs: []
   type: TYPE_TB
+  zh: '| 16 | 10.3 ± 0.03 秒 | 10.3 ± 0.7 秒 |'
 - en: 'By default, the common pool will have four threads (on our usual four-CPU machine),
     so the third line in the table is the common case. The results for a common pool
     size of one and two are exactly the sort of result that should give a performance
     engineer fits: they seem to be completely out of line because `ForkJoinPool` is
     performing far better than might be expected.'
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，通用池将有四个线程（在我们通常的四核CPU机器上），所以表中的第三行是常见情况。对于共享池大小为一和二的结果完全不符合预期的情况，这可能使性能工程师感到困扰：`ForkJoinPool`的表现远远超出预期。
 - en: 'When a test is out of line like that, the most common reason is a testing error.
     In this case, however, it turns out that the `forEach()` method does something
     tricky: it uses both the thread executing the statement and the threads in the
@@ -1006,73 +1397,105 @@
     pool in the first test is configured to have a single thread, two threads are
     used to calculate the result. Consequently, the time for a `ThreadPoolExecutor`
     with two threads and a `ForkJoinPool` with one thread is essentially the same.'
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: 当测试结果如此偏离正常时，最常见的原因是测试错误。然而，在这种情况下，`forEach()`方法进行了一些巧妙的处理：它使用执行语句的线程和来自流的数据处理通用池中的线程。尽管第一个测试中的通用池配置为单线程，但实际上使用了两个线程来计算结果。因此，具有两个线程的`ThreadPoolExecutor`和一个线程的`ForkJoinPool`的时间基本相同。
 - en: If you need to tune the size of the common pool when using parallel stream constructs
     and other autoparallel features, consider decreasing the desired value by one.
+  id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果在使用并行流结构和其他自动并行功能时需要调整共享池的大小，请考虑将期望值减少一。
 - en: Quick Summary
+  id: totrans-181
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: The `ForkJoinPool` class should be used for recursive, divide-and-conquer algorithms.
     This class in not suited for cases that can be handled via simple partitioning.
+  id: totrans-182
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 递归的分而治之算法应使用`ForkJoinPool`类。此类不适用于可以通过简单分区处理的情况。
 - en: Make the effort to determine the best point at which the recursion of tasks
     in the algorithm should cease. Creating too many tasks can hurt performance, but
     too few tasks will also hurt performance if the tasks do not take the same amount
     of time.
+  id: totrans-183
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 努力确定算法中任务递归应停止的最佳点。创建太多任务会影响性能，但如果任务执行时间不一致，任务过少同样会影响性能。
 - en: Features that use automatic parallelization will use a common instance of the
     `ForkJoinPool` class. You may need to adjust the default size of that common instance.
+  id: totrans-184
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用自动并行化功能的特性将使用`ForkJoinPool`类的共享实例。您可能需要调整该共享实例的默认大小。
 - en: Thread Synchronization
+  id: totrans-185
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 线程同步
 - en: In a perfect world—or in examples for a book—it is relatively easy for threads
     to avoid the need for synchronization. In the real world, things are not necessarily
     so easy.
+  id: totrans-186
   prefs: []
   type: TYPE_NORMAL
+  zh: 在理想世界或书中的示例中，线程可以相对容易地避免同步需求。但在现实世界中，情况可能并非如此简单。
 - en: Costs of Synchronization
+  id: totrans-187
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 同步成本
 - en: Synchronized areas of code affect performance in two ways. First, the amount
     of time an application spends in a synchronized block affects the scalability
     of an application. Second, obtaining the synchronization lock requires CPU cycles
     and hence affects performance.
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 代码的同步区域影响性能有两种方式。首先，应用程序在同步块中花费的时间影响应用程序的可扩展性。其次，获取同步锁需要CPU周期，因此也影响性能。
 - en: Synchronization and scalability
+  id: totrans-189
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 同步和可扩展性
 - en: 'First things first: when an application is split up to run on multiple threads,
     the speedup it sees is defined by an equation known as *Amdahl’s law*:'
+  id: totrans-190
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先要明确的是：当一个应用程序分割成多个线程运行时，它所看到的加速效果由一个称为*Amdahl定律*的方程定义：
 - en: <math alttext="upper S p e e d u p equals StartStartFraction 1 OverOver left-parenthesis
     1 minus upper P right-parenthesis plus StartFraction upper P Over upper N EndFraction
     EndEndFraction" display="block"><mrow><mi>S</mi> <mi>p</mi> <mi>e</mi> <mi>e</mi>
     <mi>d</mi> <mi>u</mi> <mi>p</mi> <mo>=</mo> <mfrac><mn>1</mn> <mrow><mrow><mo>(</mo><mn>1</mn><mo>-</mo><mi>P</mi><mo>)</mo></mrow><mo>+</mo><mfrac><mi>P</mi>
     <mi>N</mi></mfrac></mrow></mfrac></mrow></math>
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
+  zh: <math alttext="upper S p e e d u p equals StartStartFraction 1 OverOver left-parenthesis
+    1 minus upper P right-parenthesis plus StartFraction upper P Over upper N EndFraction
+    EndEndFraction" display="block"><mrow><mi>S</mi> <mi>p</mi> <mi>e</mi> <mi>e</mi>
+    <mi>d</mi> <mi>u</mi> <mi>p</mi> <mo>=</mo> <mfrac><mn>1</mn> <mrow><mrow><mo>(</mo><mn>1</mn><mo>-</mo><mi>P</mi><mo>)</mo></mrow><mo>+</mo><mfrac><mi>P</mi>
+    <mi>N</mi></mfrac></mrow></mfrac></mrow></math>
 - en: '*P* is the amount of the program that is run in parallel, and *N* is the number
     of threads utilized (assuming that each thread always has available CPU). So if
     20% of the code exists in serialized blocks (meaning that *P* is 80%), the code
     can be expected to run (only) 3.33 times faster with eight available CPUs.'
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: '*P*是并行运行的程序比例，*N*是所使用的线程数（假设每个线程始终有可用的CPU）。因此，如果代码中有20%存在于序列化块中（即*P*为80%），那么可以预期代码在有八个可用CPU时仅会运行3.33倍速。'
 - en: One key fact about this equation is that as *P* decreases—that is, as more code
     is located within serialized blocks—the performance benefit of having multiple
     threads also decreases. That is why limiting the amount of code that lies in the
@@ -1080,16 +1503,22 @@
     we might have hoped for an eight times increase in speed. When only 20% of the
     code is within a serialized block, the benefit of having multiple threads was
     reduced by more than 50% (i.e., the increase was only 3.3 times).
+  id: totrans-193
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于这个方程的一个关键事实是，随着*P*的减少——即随着更多代码位于序列化块中——多线程带来的性能优势也在减少。这就是为什么限制位于序列化块中的代码量如此重要。在这个例子中，当有八个CPU可用时，我们本可以希望速度增加八倍。但当代码仅有20%位于序列化块中时，多线程的好处减少了超过50%（即增加仅为3.3倍）。
 - en: Costs of locking objects
+  id: totrans-194
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 锁定对象的成本
 - en: Aside from its impact on scalability, the operation of synchronization carries
     two basic costs.
+  id: totrans-195
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了对可扩展性的影响之外，同步操作还带来两个基本成本。
 - en: First, we have the cost of obtaining the synchronization lock. If a lock is
     uncontended—meaning that two threads are not attempting to access the lock at
     the same time—this cost is minimal. There is a slight difference here between
@@ -1098,15 +1527,19 @@
     lock is on the order of a few hundred nanoseconds. Uncontended CAS code will see
     an even smaller performance penalty. (See [Chapter 12](ch12.html#Misc) for an
     example of the difference.)
+  id: totrans-196
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们有获取同步锁的成本。如果锁是非竞争的——意味着两个线程不同时尝试访问锁——这个成本是很小的。在`synchronized`关键字和基于CAS的构造之间存在一些差异。非竞争的`synchronized`锁称为*未膨胀的锁*，获取未膨胀的锁的成本大约是几百纳秒的量级。非竞争的CAS代码将看到更小的性能惩罚。（参见[第12章](ch12.html#Misc)中的一个例子以了解差异。）
 - en: Contended constructs are more expensive. When a second thread attempts to access
     a `synchronized` lock, the lock becomes (predictably) inflated. This slightly
     increases the time to acquire the lock, but the real impact here is that the second
     thread must wait for the first thread to release the lock. That waiting time is
     application-dependent, of course.
+  id: totrans-197
   prefs: []
   type: TYPE_NORMAL
+  zh: 竞争构造造成的成本更高。当第二个线程尝试访问一个`synchronized`锁时，该锁变得（可预见地）膨胀。这略微增加了获取锁的时间，但真正的影响在于第二个线程必须等待第一个线程释放锁。当然，这个等待时间依赖于应用程序本身。
 - en: 'The cost for a contended operation in code using CAS instructions is unpredictable.
     The classes that use CAS primitives are based on an optimistic strategy: the thread
     sets a value, executes code, and then makes sure that the initial value has not
@@ -1116,14 +1549,18 @@
     two threads are not going to get into an infinite loop like that, but as the number
     of threads contending for the CAS-based value increases, the number of retries
     increases.'
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用CAS指令的代码中争用操作的成本是不可预测的。使用CAS原语的类基于乐观策略：线程设置一个值，执行代码，然后确保初始值没有更改。如果已更改，则CAS-based代码必须重新执行代码。在最坏的情况下，两个线程可能陷入无限循环，因为每个线程修改了CAS保护的值，只是看到另一个线程同时修改了它。实际上，两个线程不会像那样陷入无限循环，但随着争用CAS-based值的线程数增加，重试次数也会增加。
 - en: The second cost of synchronization is specific to Java and depends on the Java
     Memory Model. Java, unlike languages such as C++ and C, has a strict guarantee
     about the memory semantics around synchronization, and the guarantee applies to
     CAS-based protection, to traditional synchronization, and to the `volatile` keyword.
+  id: totrans-199
   prefs: []
   type: TYPE_NORMAL
+  zh: 同步的第二个成本是特定于Java并且取决于Java内存模型。Java与诸如C++和C等语言不同，在同步周围有关内存语义的严格保证，该保证适用于CAS-based保护、传统同步和`volatile`关键字。
 - en: The purpose of synchronization is to protect access to values (or variables)
     in memory. As discussed in [Chapter 4](ch04.html#JustInTimeCompilation), variables
     may be temporarily stored in registers, which is much more efficient than directly
@@ -1131,8 +1568,10 @@
     the thread that modifies a value in a register must at some point flush that register
     to main memory so that other threads can see the value. The point when the register
     values must be flushed is dictated by thread synchronization.
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: 同步的目的是保护内存中值（或变量）的访问。如[第4章](ch04.html#JustInTimeCompilation)所述，变量可以临时存储在寄存器中，这比直接访问主内存效率高得多。寄存器的值对其他线程不可见；修改寄存器中的值的线程必须在某个时刻将其刷新到主内存，以便其他线程能够看到该值。必须刷新寄存器值的时间由线程同步规定。
 - en: The semantics can get fairly complicated, but the easiest way to think of this
     is that when a thread leaves a synchronized block, it must flush any modified
     variables to main memory. That means other threads that enter the synchronized
@@ -1140,116 +1579,158 @@
     ensure that variables modified during their operation are flushed to main memory,
     and a variable marked `volatile` is always consistently updated in main memory
     whenever it is changed.
+  id: totrans-201
   prefs: []
   type: TYPE_NORMAL
+  zh: 语义可能相当复杂，但最简单的思考方式是，当一个线程离开同步块时，它必须将任何修改的变量刷新到主内存。这意味着进入同步块的其他线程将看到最近更新的值。同样，CAS-based结构确保在操作期间修改的变量被刷新到主内存，并且标记为`volatile`的变量在每次更改时都会在主内存中得到一致更新。
 - en: 'In [Chapter 1](ch01.html#Introduction), I mentioned that you should learn to
     avoid nonperformant code constructs in Java, even if it seems like that might
     be “prematurely optimizing” your code (it isn’t). An interesting case of that—and
     a real-world example—comes from this loop:'
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[第1章](ch01.html#Introduction)中，我提到过，即使看起来可能是“过早优化”代码，你也应该学会避免在Java中使用非高效的代码结构（实际上并不是）。一个有趣的案例和一个真实的例子来自于这个循环：
 - en: '[PRE5]'
+  id: totrans-203
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: In production, this loop was found to be taking a surprising amount of time,
     and the logical assumption was that the `process()` method was the culprit. But
     it wasn’t that, nor was the issue the `size()` and `get()` method calls themselves
     (which had been inlined by the compiler). The `get()` and `size()` methods of
     the `Vector` class are synchronized, and it turned out that the register flushing
     required by all those calls was a huge performance problem.^([1](ch09.html#idm45775548329048))
+  id: totrans-204
   prefs: []
   type: TYPE_NORMAL
+  zh: 在生产中，发现这个循环花费了令人惊讶的时间，逻辑推断是`process()`方法是罪魁祸首。但事实并非如此，问题也不在于编译器已经内联的`size()`和`get()`方法调用本身。`Vector`类的`get()`和`size()`方法是同步的，结果发现，所有这些调用所需的寄存器刷新是一个巨大的性能问题。^([1](ch09.html#idm45775548329048))
 - en: This isn’t ideal code for other reasons. In particular, the state of the vector
     can change between the time a thread calls the `size()` method and the time it
     calls the `get()` method. If a second thread removes the last element from the
     vector in between the two calls made by the first thread, the `get()` method will
     throw an `ArrayIndexOutOf``BoundsException`. Quite apart from the semantic issues
     in the code, the fine-grained synchronization was a bad choice here.
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于其他原因，这不是理想的代码。特别是，向量的状态可能会在一个线程调用`size()`方法和调用`get()`方法之间发生变化。如果第二个线程在第一个线程进行的两次调用之间从向量中删除最后一个元素，则`get()`方法将抛出`ArrayIndexOutOfBoundsException`异常。除了代码中的语义问题外，在这里选择细粒度同步是一个糟糕的选择。
 - en: 'One way to avoid that is to wrap lots of successive, fine-grained synchronization
     calls within a synchronized block:'
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: 一种避免这种情况的方法是在同步块内包装大量连续的、细粒度的同步调用：
 - en: '[PRE6]'
+  id: totrans-207
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: That doesn’t work well if the `process()` method takes a long time to execute,
     since the vector can no longer be processed in parallel. Alternately, it may be
     necessary to copy and partition the vector so that its elements can be processed
     in parallel within the copies, while other threads can still modify the original
     vector.
+  id: totrans-208
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果`process()`方法执行时间较长，则这不适合，因为向量不再能够并行处理。或者，可能需要复制和分割向量，以便在副本内部可以并行处理其元素，而其他线程仍然可以修改原始向量。
 - en: The effect of register flushing is also dependent on the kind of processor the
     program is running on; processors that have a lot of registers for threads will
     require more flushing than simpler processors. In fact, this code executed for
     a long time without problems in thousands of environments. It became an issue
     only when it was tried on a large SPARC-based machine with many registers per
     thread.
+  id: totrans-209
   prefs: []
   type: TYPE_NORMAL
+  zh: 寄存器刷新的效果也取决于程序运行的处理器类型；具有大量线程寄存器的处理器将需要比简单处理器更多的刷新。事实上，这段代码在成千上万个环境中长时间运行而没有问题。只有在尝试在具有许多线程寄存器的大型SPARC机器上运行时才成为问题。
 - en: Does that mean you are unlikely to see issues around register flushing in smaller
     environments? Perhaps. But just as multicore CPUs have become the norm for simple
     laptops, more complex CPUs with more caching and registers are also becoming more
     commonplace, which will expose hidden performance issues like this.
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是否意味着在较小的环境中，你不太可能看到有关寄存器刷新的问题？也许是。但是正如多核CPU已成为简单笔记本电脑的常态一样，具有更多缓存和寄存器的更复杂的CPU也变得越来越普遍，这将暴露出像这样的隐藏性能问题。
 - en: Quick Summary
+  id: totrans-211
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: 'Thread synchronization has two performance costs: it limits the scalability
     of an application, and it requires obtaining locks.'
+  id: totrans-212
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 线程同步有两个性能成本：限制应用程序的可伸缩性，并且需要获取锁。
 - en: The memory semantics of synchronization, CAS-based utilities, and the `volatile`
     keyword can negatively impact performance, particularly on large machines with
     many registers.
+  id: totrans-213
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 同步的内存语义、基于CAS的工具以及`volatile`关键字可能会对性能产生负面影响，特别是在具有多个寄存器的大型机器上。
 - en: Avoiding Synchronization
+  id: totrans-214
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 避免同步
 - en: If synchronization can be avoided altogether, locking penalties will not affect
     the application’s performance. Two general approaches can be used to achieve that.
+  id: totrans-215
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果完全可以避免同步，锁定开销将不会影响应用程序的性能。可以使用两种一般方法来实现这一点。
 - en: The first approach is to use different objects in each thread so that access
     to the objects will be uncontended. Many Java objects are synchronized to make
     them thread-safe but don’t necessarily need to be shared. The `Random` class falls
     into that category; [Chapter 12](ch12.html#Misc) shows an example within the JDK
     where the thread-local technique was used to develop a new class to avoid the
     synchronization in that class.
+  id: totrans-216
   prefs: []
   type: TYPE_NORMAL
+  zh: 第一种方法是在每个线程中使用不同的对象，以便对对象的访问不受争用。许多Java对象是同步的，以使它们线程安全，但不一定需要共享。`Random`类属于这一类；[第12章](ch12.html#Misc)展示了JDK中使用线程本地技术开发新类以避免该类中同步的示例。
 - en: 'On the flip side, many Java objects are expensive to create or use a substantial
     amount of memory. Take, for example, the `NumberFormat` class: instances of that
     class are not thread-safe, and the internationalization required to create an
     instance makes constructing new objects expensive. A program could get by with
     a single, shared global `NumberFormat` instance, but access to that shared object
     would need to be synchronized.'
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，许多Java对象创建成本高，或者使用大量内存。例如，`NumberFormat`类：该类的实例不是线程安全的，而且为了创建实例所需的国际化使得构造新对象变得昂贵。程序可以通过使用单个共享的全局`NumberFormat`实例来解决，但需要对该共享对象的访问进行同步。
 - en: 'Instead, a better pattern is to use a `ThreadLocal` object:'
+  id: totrans-218
   prefs: []
   type: TYPE_NORMAL
+  zh: 相反，更好的模式是使用 `ThreadLocal` 对象：
 - en: '[PRE7]'
+  id: totrans-219
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: By using a thread-local variable, the total number of objects is limited (minimizing
     the effect on GC), and each object will never be subject to thread contention.
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过使用线程本地变量，对象的总数是有限的（最小化对 GC 的影响），并且每个对象永远不会遭受线程争用的影响。
 - en: The second way to avoid synchronization is to use CAS-based alternatives. In
     some sense, this isn’t avoiding synchronization as much as solving the problem
     differently. But in this context, by reducing the penalty for synchronization,
     it works out to have the same effect.
+  id: totrans-221
   prefs: []
   type: TYPE_NORMAL
+  zh: 避免同步的第二种方式是使用基于 CAS 的替代方案。在某种意义上，这并不是完全避免同步，而是以不同的方式解决问题。但在这种情况下，通过减少同步的惩罚，其效果与完全避免同步效果相同。
 - en: 'The difference in performance between CAS-based protections and traditional
     synchronization seems like the ideal case to employ a microbenchmark: it should
     be trivial to write code that compares a CAS-based operation with a traditional
@@ -1259,17 +1740,27 @@
     For example, say a thread needs to get a global index and increment it atomically
     (so that the next thread gets the next index). Using CAS-based operations, that’s
     done like this:'
+  id: totrans-222
   prefs: []
   type: TYPE_NORMAL
+  zh: 基于 CAS 保护与传统同步之间的性能差异似乎是使用微基准测试的理想情况：可以轻松编写代码来比较基于 CAS 的操作与传统的同步方法。例如，JDK 提供了一种简单的方法来使用基于
+    CAS 的保护来保持计数器：`AtomicLong` 和类似的类。微基准测试可以比较使用基于 CAS 的保护和传统同步的代码。例如，假设一个线程需要获取全局索引并以原子方式递增它（以便下一个线程获取下一个索引）。使用基于
+    CAS 的操作，可以这样做：
 - en: '[PRE8]'
+  id: totrans-223
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'The traditional synchronized version of that operation looks like this:'
+  id: totrans-224
   prefs: []
   type: TYPE_NORMAL
+  zh: 该操作的传统同步版本如下：
 - en: '[PRE9]'
+  id: totrans-225
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: The difference between these two implementations turns out to be impossible
     to measure with a microbenchmark. If there is a single thread (so there is no
     possibility of contention), the microbenchmark using this code can produce a reasonable
@@ -1278,92 +1769,127 @@
     doesn’t provide any information about what happens in a contended environment
     (and if the code won’t ever be contended, it doesn’t need to be thread-safe in
     the first place).
+  id: totrans-226
   prefs: []
   type: TYPE_NORMAL
+  zh: 这两种实现之间的差异结果在微基准测试中无法测量。如果只有一个线程（因此不存在争用的可能性），使用此代码的微基准测试可以产生对在非争用环境中使用这两种方法的成本的合理估计（并且该测试的结果在
+    [第 12 章](ch12.html#Misc) 中引用）。但这并不提供任何关于在有争用环境下发生的情况的信息（如果代码永远不会争用，则首先不需要在线程安全上保护）。
 - en: 'In a microbenchmark built around these code snippets that is run with only
     two threads, an enormous amount of contention will exist on the shared resource.
     That isn’t realistic either: in a real application, it is unlikely that two threads
     will always be accessing the shared resource simultaneously. Adding more threads
     simply adds more unrealistic contention to the equation.'
+  id: totrans-227
   prefs: []
   type: TYPE_NORMAL
+  zh: 在围绕这些代码片段构建的微基准测试中，仅使用两个线程运行，将存在大量的共享资源争用。这也不是现实的：在真实的应用程序中，不太可能总是有两个线程同时访问共享资源。添加更多线程只会增加不真实的竞争。
 - en: As discussed in [Chapter 2](ch02.html#SampleApplications), microbenchmarks tend
     to greatly overstate the effect of synchronization bottlenecks on the test in
     question. This discussion ideally elucidates that point. A much more realistic
     picture of the trade-off will be obtained if the code in this section is used
     in an actual application.
+  id: totrans-228
   prefs: []
   type: TYPE_NORMAL
+  zh: 如 [第 2 章](ch02.html#SampleApplications) 讨论的那样，微基准测试往往会极大地夸大同步瓶颈对所测试的影响。这个讨论理想地阐明了这一点。如果在实际应用中使用本节中的代码，将会得到一个更加真实的权衡图片。
 - en: 'In the general case, the following guidelines apply to the performance of CAS-based
     utilities compared to traditional synchronization:'
+  id: totrans-229
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常情况下，以下准则适用于基于 CAS 的工具性能与传统同步性能的比较：
 - en: If access to a resource is uncontended, CAS-based protection will be slightly
     faster than traditional synchronization. If the access is always uncontended,
     no protection at all will be slightly faster still and will avoid corner-cases
     like the one you just saw with the register flushing from the `Vector` class.
+  id: totrans-230
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果对资源的访问没有争用，基于 CAS 的保护将比传统同步略快。如果访问总是没有争用，那么根本不保护将会更快，而且将避免 `Vector` 类中刚刚看到的寄存器刷新之类的边界情况。
 - en: If access to a resource is lightly or moderately contended, CAS-based protection
     will be faster (often much faster) than traditional synchronization.
+  id: totrans-231
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果对资源的访问轻度或中度竞争，基于CAS的保护将比传统同步更快（通常快得多）。
 - en: As access to the resource becomes heavily contended, traditional synchronization
     will at some point become the more efficient choice. In practice, this occurs
     only on very large machines running many threads.
+  id: totrans-232
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 随着对资源的访问变得竞争激烈，传统的同步方法在某些情况下会成为更有效的选择。实际上，这种情况仅发生在运行许多线程的非常大的机器上。
 - en: CAS-based protection is not subject to contention when values are read and not
     written.
+  id: totrans-233
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 基于CAS的保护在读取而不是写入值时不会受到竞争的影响。
 - en: 'In the end, there is no substitute for extensive testing under the actual production
     conditions where the code will run: only then can a definite statement be made
     as to which implementation of a particular method is better. Even in that case,
     the definite statement applies only to those conditions.'
+  id: totrans-234
   prefs: []
   type: TYPE_NORMAL
+  zh: 最终，没有什么可以替代在实际生产环境中进行广泛测试的：只有在那种情况下，才能明确地说明哪种方法实现更好。即使在这种情况下，明确的陈述也仅适用于那些条件。
 - en: Quick Summary
+  id: totrans-235
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Avoiding contention for synchronized objects is a useful way to mitigate their
     performance impact.
+  id: totrans-236
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 避免为同步对象争用是减少它们性能影响的一种有用方法。
 - en: Thread-local variables are never subject to contention; they are ideal for holding
     synchronized objects that don’t actually need to be shared between threads.
+  id: totrans-237
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 线程本地变量从不受到争用的影响；它们非常适合持有不需要在线程之间共享的同步对象。
 - en: CAS-based utilities are a way to avoid traditional synchronization for objects
     that do need to be shared.
+  id: totrans-238
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 基于CAS的实用程序是避免为需要共享的对象进行传统同步的一种方式。
 - en: False Sharing
+  id: totrans-239
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 伪共享
 - en: One little-discussed performance implication of synchronization involves *false
     sharing* (also known as *cache line sharing*). It used to be a fairly obscure
     artifact of threaded programs, but as multicore machines become the norm—and as
     other, more obvious, synchronization performance issues are addressed—false sharing
     is an increasingly important issue.
+  id: totrans-240
   prefs: []
   type: TYPE_NORMAL
+  zh: 同步操作的一个不太被讨论的性能影响是*伪共享*（也称为*缓存行共享*）。在多核机器变得普遍，并且其他更明显的同步性能问题得到解决的情况下，它曾经是多线程程序的一个相对隐秘的现象，但现在变得越来越重要。
 - en: 'False sharing occurs because of the way CPUs handle their cache. Consider the
     data in this simple class:'
+  id: totrans-241
   prefs: []
   type: TYPE_NORMAL
+  zh: 伪共享发生是因为CPU处理它们的缓存的方式。考虑这个简单类中的数据：
 - en: '[PRE10]'
+  id: totrans-242
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: Each `long` value is stored in memory adjacent to one another; for example,
     `l1` could be stored at memory location 0xF20\. Then `l2` would be stored in memory
     at 0xF28, `l3` at 0xF2C, and so on. When it comes time for the program to operate
@@ -1371,66 +1897,96 @@
     from location 0xF00 to 0xF80—into a cache line on one of the cores of one of the
     CPUs. A second thread that wants to operate on `l3` will load that same chunk
     of memory into a cache line on a different core.
+  id: totrans-243
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个`long`值存储在相邻的内存中；例如，`l1`可以存储在内存位置0xF20。然后，`l2`将存储在内存中的0xF28，`l3`存储在0xF2C等等。当程序需要操作`l2`时，它将从位置0xF00到0xF80加载一个相对较大的内存块（例如128字节）到一个CPU的一个核心的缓存行中。希望操作`l3`的第二个线程将该相同的内存块加载到另一个核心的缓存行中。
 - en: 'Loading nearby values like that makes sense in most cases: if the application
     accesses one particular instance variable in an object, it is likely to access
     nearby instance variables. If they are already loaded into the core’s cache, that
     memory access is very, very fast—a big performance win.'
+  id: totrans-244
   prefs: []
   type: TYPE_NORMAL
+  zh: 像这样加载附近的值在大多数情况下是有道理的：如果应用程序访问对象中的一个特定实例变量，它可能会访问附近的实例变量。如果它们已经加载到核心的缓存中，那么内存访问会非常快，这是一个很大的性能优势。
 - en: The downside to this scheme is that whenever the program updates a value in
     its local cache, that core must notify all the other cores that the memory in
     question has been changed. Those other cores must invalidate their cache lines
     and reload that data from memory.
+  id: totrans-245
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种方案的缺点在于，每当程序更新其本地缓存中的值时，该核心必须通知所有其他核心，指示已更改相关内存。其他核心必须使其缓存行无效，并重新从内存中加载数据。
 - en: 'Let’s see what happens if the `DataHolder` class is heavily used by multiple
     threads:'
+  id: totrans-246
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看看如果`DataHolder`类被多个线程大量使用会发生什么：
 - en: '[PRE11]'
+  id: totrans-247
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'We have four separate threads, and they are not sharing any variables: each
     is accessing only a single member of the `DataHolder` class. From a synchronization
     standpoint, there is no contention, and we might reasonably expect that this code
     would execute (on our four-core machine) in the same amount of time regardless
     of whether it runs one thread or four threads.'
+  id: totrans-248
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们有四个单独的线程，它们不共享任何变量：每个线程仅访问`DataHolder`类的单个成员。从同步的角度来看，没有争用，并且我们可以合理地期望这段代码在我们的四核机器上，无论是一个线程还是四个线程运行时，都将在相同的时间内执行。
 - en: 'It doesn’t turn out that way. When one particular thread writes the `volatile`
     value in its loop, the cache line for every other thread will get invalidated,
     and the memory values must be reloaded. [Table 9-10](#TableFalseSharing) shows
     the result: performance gets worse as more threads are added.'
+  id: totrans-249
   prefs: []
   type: TYPE_NORMAL
+  zh: 结果并非如此。当一个特定线程在其循环中写入`volatile`值时，每个其他线程的缓存行都将无效，并且必须重新加载内存值。[表 9-10](#TableFalseSharing)显示了结果：随着增加的线程数，性能变差。
 - en: Table 9-10\. Time to sum 100,000 values with false sharing
+  id: totrans-250
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 9-10\. 带有虚假共享的 100,000 个值求和所需时间
 - en: '| Number of threads | Elapsed time |'
+  id: totrans-251
   prefs: []
   type: TYPE_TB
+  zh: '| 线程数 | 经过时间 |'
 - en: '| --- | --- |'
+  id: totrans-252
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| 1 | 0.8 ± 0.001 ms |'
+  id: totrans-253
   prefs: []
   type: TYPE_TB
+  zh: '| 1 | 0.8 ± 0.001 毫秒 |'
 - en: '| 2 | 5.7 ± 0.3 ms |'
+  id: totrans-254
   prefs: []
   type: TYPE_TB
+  zh: '| 2 | 5.7 ± 0.3 毫秒 |'
 - en: '| 3 | 10.4 ± 0.6 ms |'
+  id: totrans-255
   prefs: []
   type: TYPE_TB
+  zh: '| 3 | 10.4 ± 0.6 毫秒 |'
 - en: '| 4 | 15.5 ± 0.8 ms |'
+  id: totrans-256
   prefs: []
   type: TYPE_TB
+  zh: '| 4 | 15.5 ± 0.8 毫秒 |'
 - en: 'This test case is constructed to show the most severe penalty for false sharing:
     essentially every write invalidates all the other cache lines, and performance
     is serial.'
+  id: totrans-257
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个测试用例是为了展示虚假共享的最严重惩罚：几乎每次写操作都会使所有其他缓存行无效，并且性能是串行的。
 - en: 'Strictly speaking, false sharing does not have to involve synchronized (or
     `volatile`) variables: whenever any data value in the CPU cache is written, other
     caches that hold the same data range must be invalidated. However, remember that
@@ -1440,15 +1996,21 @@
     this example, the `long` variables are not `volatile`, the compiler will hold
     the values in registers, and the test will execute in about 0.7 milliseconds regardless
     of the number of threads involved.'
+  id: totrans-258
   prefs: []
   type: TYPE_NORMAL
+  zh: 严格来说，虚假共享不一定涉及同步（或`volatile`）变量：每当 CPU 缓存中的任何数据值被写入时，持有相同数据范围的其他缓存必须无效。然而，请记住，Java
+    内存模型要求数据必须仅在同步原语的末尾（包括 CAS 和`volatile`构造）时写入主内存。因此，在这种情况下，虚假共享会最频繁地遇到。例如，在此示例中，如果`long`变量不是`volatile`，编译器将在寄存器中保存这些值，并且无论涉及的线程数如何，测试都将在大约
+    0.7 毫秒内执行。
 - en: This is obviously an extreme example, but it brings up the question of how false
     sharing can be detected and corrected. Unfortunately, the answer is murky and
     incomplete. Nothing in the standard set of tools discussed in [Chapter 3](ch03.html#Tools)
     addresses false sharing, since it requires specific knowledge about the architecture
     of a processor.
+  id: totrans-259
   prefs: []
   type: TYPE_NORMAL
+  zh: 这显然是一个极端的例子，但它引出了如何检测和修正虚假共享的问题。不幸的是，答案模糊不清且不完整。在讨论的标准工具集中，没有任何工具可以解决虚假共享问题，因为它需要对处理器架构有特定的了解。
 - en: If you are lucky, the vendor of the target processor for your application will
     have a tool that can be used to diagnose false sharing. Intel, for example, has
     a program called VTune Amplifier that can be used to help detect false sharing
@@ -1456,16 +2018,22 @@
     about the number of clock cycles per instruction (CPI) for a given line of code;
     a high CPI for a simple instruction within a loop can indicate that the code is
     waiting to reload the target memory into the CPU cache.
+  id: totrans-260
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你很幸运，你的应用程序目标处理器的供应商可能会有工具，用于诊断虚假共享。例如，Intel 公司有一个名为 VTune Amplifier 的程序，可以通过检查缓存未命中事件来帮助检测虚假共享。某些本地分析器可以提供关于给定代码行的每指令时钟周期数（CPI）的信息；在循环内部简单指令的高
+    CPI 可能表明代码在等待将目标内存重新加载到 CPU 缓存中。
 - en: Otherwise, detecting false sharing requires intuition and experimentation. If
     an ordinary profile indicates that a particular loop is taking a surprising amount
     of time, check whether multiple threads may be accessing unshared variables within
     the loop. (In the realm of performance tuning as an art rather than a science,
     even the Intel VTune Amplifier manual says that the “primary means of avoiding
     false sharing is through code inspection.”)
+  id: totrans-261
   prefs: []
   type: TYPE_NORMAL
+  zh: 否则，检测虚假共享需要直觉和实验。如果普通的性能分析表明某个特定循环花费了意外的长时间，请检查是否多个线程可能在循环内访问未共享的变量。（在性能调优被视为一门艺术而非科学的领域中，即使是英特尔
+    VTune 放大器手册也指出，“避免虚假共享的主要方法是通过代码检查。”）
 - en: Preventing false sharing requires code changes. An ideal situation is when the
     variables involved can be written less frequently. In the preceding example, the
     calculation could take place using local variables, and only the end result is
@@ -1473,192 +2041,268 @@
     ensues is unlikely to create contention for the cache lines, and they won’t have
     a performance impact even if all four threads update their results at the same
     time at the end of the loop.
+  id: totrans-262
   prefs: []
   type: TYPE_NORMAL
+  zh: 防止虚假共享需要代码更改。理想情况是，涉及的变量可以较少频繁写入。在前面的示例中，可以使用局部变量进行计算，只有最终结果被写回`DataHolder`变量。即使四个线程在循环结束时同时更新它们的结果，由于写入的数量非常少，不太可能因为竞争缓存行而影响性能。
 - en: 'A second possibility involves padding the variables so that they won’t be loaded
     on the same cache line. If the target CPU has 128-byte cache lines, padding like
     this may work (but also, it may not):'
+  id: totrans-263
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二种可能性涉及填充变量，使其不会加载到同一缓存行。如果目标 CPU 的缓存行大小为 128 字节，像这样填充可能会奏效（但也可能不会）：
 - en: '[PRE12]'
+  id: totrans-264
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: Using arrays like that is unlikely to work, because the JVM will probably rearrange
     the layout of those instance variables so that all the arrays are next to each
     other, and then all the `long` variables will still be next to each other. Using
     primitive values to pad the structure is more likely to work, though it can be
     impractical because of the number of variables required.
+  id: totrans-265
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用类似这样的数组是不太可能奏效的，因为 JVM 可能会重新排列这些实例变量的布局，使得所有数组彼此相邻，然后所有的`long`变量仍然会相邻。使用基本值来填充结构更有可能奏效，尽管由于所需变量的数量而可能不切实际。
 - en: We need to consider other issues when using padding to prevent false sharing.
     The size of the padding is hard to predict, since different CPUs will have different
     cache sizes. And the padding obviously adds significant size to the instances
     in question, which will have an impact on the garbage collector (depending, of
     course, on the number of instances required). Still, absent an algorithmic solution,
     padding of the data can sometimes offer significant advantages.
+  id: totrans-266
   prefs: []
   type: TYPE_NORMAL
+  zh: 当使用填充来防止虚假共享时，我们需要考虑其他问题。填充的大小难以预测，因为不同的 CPU 将具有不同的缓存大小。显然，填充显著增加了相关实例的大小，这将影响垃圾收集器的性能（当然，这取决于所需实例的数量）。尽管缺乏一种算法解决方案，但数据的填充有时确实可以提供显著优势。
 - en: Quick Summary
+  id: totrans-267
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: False sharing can significantly slow down performance code that frequently modifies
     `volatile` variables or exits synchronized blocks.
+  id: totrans-268
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 虚假共享会显著减慢频繁修改`volatile`变量或退出同步块的性能代码。
 - en: False sharing is difficult to detect. When a loop seems to be taking too long
     to occur, inspect the code to see if it matches the pattern where false sharing
     can occur.
+  id: totrans-269
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 虚假共享很难检测。当一个循环似乎花费了太长时间时，请检查代码，看看是否符合虚假共享可能发生的模式。
 - en: False sharing is best avoided by moving the data to local variables and storing
     them later. Alternately, padding can sometimes be used to move the conflicting
     variables to different cache lines.
+  id: totrans-270
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 最好通过将数据移到局部变量并稍后存储来避免虚假共享。或者，填充有时可以用来将冲突变量移到不同的缓存行。
 - en: JVM Thread Tunings
+  id: totrans-271
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: JVM 线程调优
 - en: The JVM has a few miscellaneous tunings that affect the performance of threads
     and synchronization. These tunings will have a minor impact on the performance
     of applications.
+  id: totrans-272
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 有一些杂项调优选项，会影响线程和同步的性能。这些调优会对应用程序的性能产生较小的影响。
 - en: Tuning Thread Stack Sizes
+  id: totrans-273
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 调整线程堆栈大小
 - en: When space is at a premium, the memory used by threads can be adjusted. Each
     thread has a native stack, which is where the OS stores the call stack information
     of the thread (e.g., the fact that the `main()` method has called the `calculate()`
     method, which has called the `add()` method).
+  id: totrans-274
   prefs: []
   type: TYPE_NORMAL
+  zh: 当空间紧缺时，可以调整线程使用的内存。每个线程都有一个本地堆栈，操作系统在其中存储线程的调用堆栈信息（例如，`main()` 方法调用了 `calculate()`
+    方法，后者又调用了 `add()` 方法）。
 - en: The size of this native stack is 1 MB (except for 32-bit Windows JVMs, where
     it is 320 KB). In a 64-bit JVM, there is usually no reason to set this value unless
     the machine is quite strained for physical memory and the smaller stack size will
     prevent applications from running out of native memory. This is especially true
     when running inside a Docker container in which memory is limited.
+  id: totrans-275
   prefs: []
   type: TYPE_NORMAL
+  zh: 该本地堆栈的大小为1 MB（32位Windows JVM除外，其大小为320 KB）。在64位JVM中，通常没有理由设置此值，除非机器对物理内存非常紧张，并且较小的堆栈大小将防止应用程序耗尽本地内存。特别是在内存受限的Docker容器内部运行时更为如此。
 - en: As a practical rule, many programs can run with a stack size of 256 KB, and
     few need the full 1 MB. The potential downside to setting this value too small
     is that a thread with an extremely large call stack will throw a `StackOverflowError`.
+  id: totrans-276
   prefs: []
   type: TYPE_NORMAL
+  zh: 作为一个实用的规则，许多程序可以使用256 KB的堆栈大小运行，很少需要完整的1 MB。将此值设置得太小的潜在缺点是，具有极大调用堆栈的线程可能会抛出`StackOverflowError`。
 - en: To change the stack size for a thread, use the `-Xss=`*`N`* flag (e.g., `-Xss=256k`).
+  id: totrans-277
   prefs: []
   type: TYPE_NORMAL
+  zh: 要更改线程的堆栈大小，使用`-Xss=`*`N`* 标志（例如，`-Xss=256k`）。
 - en: Quick Summary
+  id: totrans-278
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Thread stack sizes can be reduced on machines where memory is scarce.
+  id: totrans-279
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 线程栈大小可以在内存稀缺的机器上进行减小。
 - en: Biased Locking
+  id: totrans-280
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 偏向锁定
 - en: When locks are contended, the JVM (and operating system) have choices about
     how the lock should be allocated. The lock can be granted fairly, meaning that
     each thread will be given the lock in a round-robin fashion. Alternately, the
     lock can be biased toward the thread that most recently accessed the lock.
+  id: totrans-281
   prefs: []
   type: TYPE_NORMAL
+  zh: 当锁定争用时，JVM（和操作系统）有关于如何分配锁定的选择。锁定可以公平授予，意味着每个线程将以轮询方式获得锁定。或者，锁定可以偏向最近访问锁定的线程。
 - en: The theory behind biased locking is that if a thread recently used a lock, the
     processor’s cache is more likely to still contain data the thread will need the
     next time it executes code protected by that same lock. If the thread is given
     priority for reobtaining the lock, the probability of cache hits increases. When
     this works out, performance is improved. But because biased locking requires bookkeeping,
     it can sometimes be worse for performance.
+  id: totrans-282
   prefs: []
   type: TYPE_NORMAL
+  zh: 偏向锁定背后的理论是，如果线程最近使用了锁定，处理器的缓存更有可能仍然包含线程在下次执行由同一锁定保护的代码时将需要的数据。如果线程被优先重新获取锁定，缓存命中的概率增加。当这种情况发生时，性能会得到改善。但由于偏向锁定需要簿记，有时它对性能的影响可能更为不利。
 - en: In particular, applications that use a thread pool—including some application
     and REST servers—often perform worse when biased locking is in effect. In that
     programming model, different threads are equally likely to access the contended
     locks. For these kinds of applications, a small performance improvement can be
     obtained by disabling biased locking via the `-XX:-UseBiasedLocking` option. Biased
     locking is enabled by default.
+  id: totrans-283
   prefs: []
   type: TYPE_NORMAL
+  zh: 特别是使用线程池的应用程序，包括一些应用程序和REST服务器，在启用偏向锁定时通常表现不佳。在这种编程模型中，不同的线程同样有可能访问争用的锁定。对于这些类型的应用程序，可以通过禁用`-XX:-UseBiasedLocking`选项来获得轻微的性能改进。默认情况下启用偏向锁定。
 - en: Thread Priorities
+  id: totrans-284
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 线程优先级
 - en: Each Java thread has a developer-defined *priority*, which is a hint to the
     operating system about how important the program thinks the particular thread
     is. If you have different threads doing different tasks, you might think you could
     use the thread priority to improve the performance of certain tasks at the expense
     of other tasks running on a lower-priority thread. Unfortunately, it doesn’t quite
     work like that.
+  id: totrans-285
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个Java线程都有一个开发者定义的*优先级*，这是一个关于程序认为特定线程重要性的提示给操作系统的信息。如果有不同的线程执行不同的任务，你可能会认为可以利用线程优先级来提高某些任务的性能，牺牲在低优先级线程上运行的其他任务。不幸的是，事实并非如此。
 - en: Operating systems calculate a *current priority* for every thread running on
     a machine. The current priority takes into account the Java-assigned priority
     but also includes many other factors, the most important of which is how long
     it has been since the thread last ran. This ensures that all threads will have
     an opportunity to run at some point. Regardless of its priority, no thread will
     “starve” waiting for access to the CPU.
+  id: totrans-286
   prefs: []
   type: TYPE_NORMAL
+  zh: 操作系统为机器上运行的每个线程计算一个*当前优先级*。当前优先级考虑了 Java 分配的优先级，但也包括许多其他因素，其中最重要的因素是线程上次运行时间。这确保了所有线程都有机会在某个时刻运行。无论其优先级如何，都不会有线程“饿死”等待访问
+    CPU。
 - en: The balance between these two factors varies among operating systems. On Unix-based
     systems, the calculation of the overall priority is dominated by the amount of
     time since the thread has last run—the Java-level priority of a thread has little
     effect. On Windows, threads with a higher Java priority tend to run more than
     threads with a lower priority, but even low-priority threads get a fair amount
     of CPU time.
+  id: totrans-287
   prefs: []
   type: TYPE_NORMAL
+  zh: 这两个因素之间的平衡在操作系统之间有所不同。在基于 Unix 的系统上，计算整体优先级主要受到线程上次运行时间的影响——线程的 Java 级别优先级影响较小。在
+    Windows 上，具有较高 Java 优先级的线程 tend to run more than 具有较低优先级的线程，但是甚至低优先级的线程也会获得相当数量的
+    CPU 时间。
 - en: In either case, you cannot depend on the priority of a thread to affect how
     frequently it runs. If some tasks are more important than other tasks, application
     logic must be used to prioritize them.
+  id: totrans-288
   prefs: []
   type: TYPE_NORMAL
+  zh: 在任何情况下，您都不能依赖线程的优先级来影响其运行频率。如果某些任务比其他任务更重要，则必须使用应用程序逻辑对它们进行优先级排序。
 - en: Monitoring Threads and Locks
+  id: totrans-289
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 监控线程和锁
 - en: 'When analyzing an application’s performance for the efficiency of threading
     and synchronization, we should look for two things: the overall number of threads
     (to make sure it is neither too high nor too low) and the amount of time threads
     spend waiting for a lock or other resource.'
+  id: totrans-290
   prefs: []
   type: TYPE_NORMAL
+  zh: 在分析应用程序的线程和同步效率时，我们应该注意两件事：线程的总数（确保既不太高也不太低）以及线程等待锁或其他资源的时间。
 - en: Thread Visibility
+  id: totrans-291
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 线程可见性
 - en: Virtually every JVM monitoring tool provides information about the number of
     threads (and what they are doing). Interactive tools like `jconsole` show the
     state of threads within the JVM. On the `jconsole` Threads panel, you can watch
     in real time as the number of threads increases and decreases during the execution
     of your program. [Figure 9-2](#FigureJConsoleThread) shows an example.
+  id: totrans-292
   prefs: []
   type: TYPE_NORMAL
+  zh: 几乎每个 JVM 监控工具都提供有关线程数量（以及它们正在做什么）的信息。像`jconsole`这样的交互式工具显示了 JVM 中线程的状态。在`jconsole`线程面板上，您可以实时查看程序执行期间线程数量的增加和减少。[图
+    9-2](#FigureJConsoleThread)显示了一个示例。
 - en: '![jp2e 0902](assets/jp2e_0902.png)'
+  id: totrans-293
   prefs: []
   type: TYPE_IMG
+  zh: '![jp2e 0902](assets/jp2e_0902.png)'
 - en: Figure 9-2\. View of live threads in `jconsole`
+  id: totrans-294
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 9-2\. 在`jconsole`中查看活动线程
 - en: At one point, the application (NetBeans) was using a maximum of 45 threads.
     At the beginning of the graph, we can see a burst where the application was using
     up to 38, but it settled on using between 30 and 31. `jconsole` can also print
     an individual thread stack; as the figure shows, the Java2D Disposer thread is
     presently waiting on a reference queue lock.
+  id: totrans-295
   prefs: []
   type: TYPE_NORMAL
+  zh: 有一段时间，应用程序（NetBeans）使用了最多 45 个线程。在图表的开头，我们可以看到应用程序最多使用了 38 个线程，但最终使用了 30 至 31
+    个线程。`jconsole`还可以打印单个线程堆栈；如图所示，Java2D Disposer 线程目前正在等待引用队列锁。
 - en: Blocked Thread Visibility
+  id: totrans-296
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 阻塞线程可见性
 - en: Real-time thread monitoring is useful for a very high-level picture of what
     threads are running in the application, but it doesn’t really provide any data
     on what those threads are doing. Determining where the threads are spending CPU
@@ -1666,8 +2310,11 @@
     Profilers provide great visibility into what threads are executing, and they are
     generally sophisticated enough to guide you to areas in the code where better
     algorithms and code choices can speed up overall execution.
+  id: totrans-297
   prefs: []
   type: TYPE_NORMAL
+  zh: 实时线程监控对于了解应用程序中运行的线程非常有用，但实际上并不提供这些线程正在做什么的任何数据。确定线程正在消耗 CPU 周期的位置需要使用分析器，如[第
+    3 章](ch03.html#Tools)中讨论的那样。分析器可以很好地显示正在执行的线程，通常还可以指导您找到可以加快整体执行速度的代码区域和更好的算法选择。
 - en: It is more difficult to diagnose threads that are blocked, although that information
     is often more important in the overall execution of an application—particularly
     if that code is running on a multi-CPU system and is not utilizing all the available
@@ -1675,12 +2322,17 @@
     to use a profiler, since most profiling tools will provide a timeline of thread
     execution that allows you to see the points when a thread was blocked. An example
     was given in [Chapter 3](ch03.html#Tools).
+  id: totrans-298
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管这些信息通常在应用程序的整体执行中更为重要，尤其是如果该代码在多 CPU 系统上运行且未利用所有可用 CPU 时，诊断被阻塞的线程更为困难。有三种方法可以用来进行此诊断。一种方法是再次使用分析器，因为大多数分析工具将提供线程执行时间线，允许您查看线程被阻塞时的点。在[第 3
+    章](ch03.html#Tools)中已经提供了一个示例。
 - en: Blocked threads and JFR
+  id: totrans-299
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 阻塞线程和 JFR
 - en: By far, the best way to know when threads are blocked is to use tools that can
     look into the JVM and know at a low level when the threads are blocked. One such
     tool is the Java Flight Recorder, introduced in [Chapter 3](ch03.html#Tools).
@@ -1688,51 +2340,73 @@
     a thread to block. The usual event to look for is threads that are waiting to
     acquire a monitor, but if we observe threads with long reads (and rarely, long
     writes) to a socket, they are likely blocked as well.
+  id: totrans-300
   prefs: []
   type: TYPE_NORMAL
+  zh: 迄今为止，了解线程何时被阻塞的最佳方法是使用能够查看 JVM 并在低级别知道线程何时被阻塞的工具。其中一种工具是 Java Flight Recorder，在[第 3
+    章](ch03.html#Tools)中介绍过。我们可以深入分析 JFR 捕获的事件，并寻找导致线程阻塞的事件。通常要查找的事件是等待获取监视器的线程，但如果观察到对套接字进行长时间读取（很少情况下是长时间写入），它们可能也被阻塞。
 - en: These events can be easily viewed on the Histogram panel of Java Mission Control,
     as shown in [Figure 9-3](#FigureJFRMonitor).
+  id: totrans-301
   prefs: []
   type: TYPE_NORMAL
+  zh: 可以在 Java Mission Control 的直方图面板上轻松查看这些事件，如[图 9-3](#FigureJFRMonitor)所示。
 - en: In this sample, the lock associated with the `HashMap` in the `sun.awt.AppCon⁠text.get()`
     method was contended 163 times (over 66 seconds), causing an average 31 ms increase
     in the response time of the request being measured. The stack trace points out
     that the contention stems from the way the JSP is writing a `java.util.Date` object.
     To improve the scalability of this code, a thread-local date formatter could be
     used instead of simply calling the date’s `toString()` method.
+  id: totrans-302
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此示例中，`sun.awt.AppCon⁠text.get()` 方法中与 `HashMap` 关联的锁被争用了 163 次（持续时间超过 66 秒），导致正在测量的请求响应时间平均增加了
+    31 毫秒。堆栈跟踪指出，争用是由 JSP 写入 `java.util.Date` 对象的方式引起的。为改善此代码的可伸缩性，可以使用线程本地日期格式化程序，而不仅仅是调用日期的
+    `toString()` 方法。
 - en: '![jp2e 0903](assets/jp2e_0903.png)'
+  id: totrans-303
   prefs: []
   type: TYPE_IMG
+  zh: '![jp2e 0903](assets/jp2e_0903.png)'
 - en: Figure 9-3\. Threads blocked by a monitor in JFR
+  id: totrans-304
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 9-3\. JFR 中由监视器阻塞的线程
 - en: This process—choosing the blocking event from the histogram and examining the
     calling code—works for any kind of blocking event; it is made possible by the
     tight integration of the tool with the JVM.
+  id: totrans-305
   prefs: []
   type: TYPE_NORMAL
+  zh: 此过程——从直方图中选择阻塞事件并检查调用代码——适用于任何类型的阻塞事件；这得益于工具与 JVM 的紧密集成。
 - en: Blocked threads and JStack
+  id: totrans-306
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 阻塞线程和 JStack
 - en: If a JFR recording of the program is not available, an alternative is to take
     a lot of thread stacks from the program and examine those. `jstack`, `jcmd`, and
     other tools can provide information about the state of every thread in a VM, including
     whether the thread is running, waiting for a lock, waiting for I/O, and so on.
     This can be quite useful for determining what’s going on in an application, as
     long as too much is not expected from the output.
+  id: totrans-307
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果程序没有 JFR 记录，另一种方法是从程序中获取大量线程堆栈并检查这些堆栈。`jstack`、`jcmd` 和其他工具可以提供有关 VM 中每个线程状态的信息，包括线程是否正在运行、等待锁、等待
+    I/O 等。这对于确定应用程序中正在发生的情况非常有用，只要不过多期望输出。
 - en: 'The first caveat in looking at thread stacks is that the JVM can dump a thread’s
     stack only at safepoints. Second, stacks are dumped for each thread one at a time,
     so it is possible to get conflicting information from them: two threads can show
     up holding the same lock, or a thread can show up waiting for a lock that no other
     thread holds.'
+  id: totrans-308
   prefs: []
   type: TYPE_NORMAL
+  zh: 查看线程堆栈的第一个注意事项是，JVM 只能在安全点转储线程堆栈。其次，堆栈是逐个线程转储的，因此可能从中获取冲突信息：两个线程可能显示持有同一把锁，或者一个线程显示在等待没有其他线程持有的锁。
 - en: Thread stacks can show how significantly threads are blocked (since a thread
     that is blocked is already at a safepoint). If successive thread dumps show many
     threads blocked on a lock, you can conclude that the lock in question has significant
@@ -1740,6 +2414,7 @@
     you can conclude that whatever I/O they are reading needs to be tuned (e.g., if
     they are making a database call, the SQL they are executing needs to be tuned,
     or the database itself needs to be tuned).
+  id: totrans-309
   prefs: []
   type: TYPE_NORMAL
 - en: The online examples for this book have a rudimentary parser for `jstack` output
@@ -1747,23 +2422,29 @@
     with `jstack` output is that it can change from release to release, so developing
     a robust parser can be difficult. There is no guarantee that the parser in the
     online examples won’t need to be tweaked for your particular JVM.
+  id: totrans-310
   prefs: []
   type: TYPE_NORMAL
 - en: 'The basic output of the `jstack` parser looks like this:'
+  id: totrans-311
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE13]'
+  id: totrans-312
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: The parser aggregates all the threads and shows how many are in various states.
     Eight threads are currently running (they happen to be doing a stack trace—an
     expensive operation that is better to avoid).
+  id: totrans-313
   prefs: []
   type: TYPE_NORMAL
 - en: Forty-one threads are blocked by a lock. The method reported is the first non-JDK
     method in the stack trace, which in this example is the GlassFish method `EJBClassLoader.getResourceAsStream()`.
     The next step would be to consult the stack trace, search for that method, and
     see what resource the thread is blocked on.
+  id: totrans-314
   prefs: []
   type: TYPE_NORMAL
 - en: In this example, all the threads were blocked waiting to read the same JAR file,
@@ -1777,11 +2458,13 @@
     up contending for the same lock, which is greatly hampering the application’s
     throughput. (To overcome this case, set the `-Djavax.xml``.parsers.SAXParserFactory`
     property to avoid those lookups.)
+  id: totrans-315
   prefs: []
   type: TYPE_NORMAL
 - en: The larger point is that having a lot of blocked threads diminishes performance.
     Whatever the cause of the blocking, changes need to be made to the configuration
     or application to avoid it.
+  id: totrans-316
   prefs: []
   type: TYPE_NORMAL
 - en: What about the threads that are waiting for notification? Those threads are
@@ -1791,58 +2474,81 @@
     or JMX monitoring—they appear in the `jstack` output as threads that have only
     JDK classes in their stack. These conditions do not necessarily indicate a performance
     problem; it is normal for them to be waiting for a notification.
+  id: totrans-317
   prefs: []
   type: TYPE_NORMAL
+  zh: 那些等待通知的线程怎么样？这些线程正在等待其他事件发生。通常它们在池中等待通知，以便某个任务已经就绪（例如，前述输出中的`getTask()`方法正在等待请求）。系统线程正在执行如
+    RMI 分布式 GC 或 JMX 监控等任务，它们在`jstack`输出中显示为只有 JDK 类的线程。这些情况并不一定表明性能问题；它们等待通知是正常的。
 - en: 'Another problem creeps up in the threads waiting for I/O read: these are doing
     a blocking I/O call (usually the `socketRead0()` method). This is also hampering
     throughput: the thread is waiting for a backend resource to answer its request.
     That’s the time to start looking into the performance of the database or other
     backend resource.'
+  id: totrans-318
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一个问题出现在等待 I/O 读取的线程中：这些线程正在进行阻塞的 I/O 调用（通常是`socketRead0()`方法）。这也限制了吞吐量：线程正在等待后端资源来响应其请求。这就是开始检查数据库或其他后端资源性能的时候了。
 - en: Quick Summary
+  id: totrans-319
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速摘要
 - en: Basic visibility into the threads of a system provides an overview of the number
     of threads running.
+  id: totrans-320
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 系统线程的基本可见性提供了运行线程数量的概述。
 - en: 'Thread visibility allows us to determine why threads are blocked: whether because
     they are waiting for a resource or for I/O.'
+  id: totrans-321
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 线程可见性使我们能够确定线程为何被阻塞：是因为它们在等待资源还是在等待 I/O。
 - en: Java Flight Recorder provides an easy way to examine the events that caused
     a thread to block.
+  id: totrans-322
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Java Flight Recorder 提供了检查导致线程阻塞的事件的简便方法。
 - en: '`jstack` provides a level of visibility into the resources threads are blocked
     on.'
+  id: totrans-323
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`jstack` 提供了查看线程阻塞在哪些资源上的可见性水平。'
 - en: Summary
+  id: totrans-324
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: Understanding how threads operate can yield important performance benefits.
     Thread performance, though, is not so much about tuning—there are relatively few
     JVM flags to tweak, and those few flags have limited effects.
+  id: totrans-325
   prefs: []
   type: TYPE_NORMAL
+  zh: 理解线程如何操作可以带来重要的性能收益。然而，线程性能并不仅仅是调整——相对较少的 JVM 标志可以调整，而这些标志的效果有限。
 - en: Instead, good thread performance is about following best-practice guidelines
     for managing the number of threads and for limiting the effects of synchronization.
     With the help of appropriate profiling and lock analysis tools, applications can
     be examined and modified so that threading and locking issues do not negatively
     affect performance.
+  id: totrans-326
   prefs: []
   type: TYPE_NORMAL
+  zh: 相反，良好的线程性能在于遵循管理线程数量和限制同步效果的最佳实践准则。通过适当的分析和锁定分析工具，可以检查和修改应用程序，以确保线程和锁定问题不会对性能产生负面影响。
 - en: ^([1](ch09.html#idm45775548329048-marker)) Although modern code would use a
     difference collection class, the example would be the same with a collection wrapped
     via the `synchronizedCollection()` method, or any other loop with excessive register
     flushing.
+  id: totrans-327
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch09.html#idm45775548329048-marker)) 虽然现代代码会使用不同的集合类，但通过`synchronizedCollection()`方法包装集合或者通过任何其他具有过多寄存器刷新的循环，示例相同。

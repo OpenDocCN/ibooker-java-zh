@@ -1,7 +1,9 @@
 - en: Chapter 8\. Native Memory Best Practices
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第8章 本地内存最佳实践
 - en: The heap is the largest consumer of memory in a Java application, but the JVM
     will allocate and use a large amount of native memory. And while [Chapter 7](ch07.html#Memory)
     discussed ways to efficiently manage the heap from a programmatic point of view,
@@ -11,25 +13,34 @@
     refer to portions of their native memory as the C heap. In keeping with a Java-centric
     worldview, we’ll continue to use *heap* to refer to the Java heap, and *native
     memory* to refer to the non-heap memory of the JVM, including the C heap.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 堆是Java应用程序中内存消耗最大的部分，但JVM将分配并使用大量本地内存。虽然[第7章](ch07.html#Memory)讨论了从程序设计角度有效管理堆的方法，但堆的配置以及它如何与操作系统的本地内存交互，是应用程序整体性能的另一个重要因素。这里存在术语冲突，因为C程序员倾向于将其本地内存的部分称为C堆。为了保持Java中心的世界观，我们将继续使用*堆*来指代Java堆，使用*本地内存*来指代JVM的非堆内存，包括C堆。
 - en: This chapter discusses these aspects of native (or operating system) memory.
     We start with a discussion of the entire memory use of the JVM, with a goal of
     understanding how to monitor that usage for performance issues. Then we’ll discuss
     various ways to tune the JVM and operating system for optimal memory use.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章讨论本地（或操作系统）内存的这些方面。我们首先讨论JVM的整体内存使用，目标是了解如何监视这种使用以解决性能问题。然后，我们将讨论调整JVM和操作系统以实现最佳内存使用的各种方法。
 - en: Footprint
+  id: totrans-3
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 占用空间
 - en: The heap (usually) accounts for the largest amount of memory used by the JVM,
     but the JVM also uses memory for its internal operations. This nonheap memory
     is native memory. Native memory can also be allocated in applications (via JNI
     calls to `malloc()` and similar methods, or when using New I/O, or NIO). The total
     of native and heap memory used by the JVM yields the total *footprint* of an application.
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 堆（通常）占据了JVM使用的内存量最大的部分，但JVM还使用内存进行其内部操作。这种非堆内存是本地内存。本地内存也可以通过应用程序分配（通过JNI调用`malloc()`和类似方法，或者在使用New
+    I/O或NIO时）。JVM使用的本地和堆内存总和构成了应用程序的总*占用空间*。
 - en: From the point of view of the operating system, this total footprint is the
     key to performance. If enough physical memory to contain the entire total footprint
     of an application is not available, performance may begin to suffer. The operative
@@ -41,52 +52,70 @@
     most part, though, for optimal performance you want to be sure that the total
     footprint of all Java processes does not exceed the physical memory of the machine
     (plus you want to leave some memory available for other applications).
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 从操作系统的角度来看，这个总占用空间是性能的关键。如果没有足够的物理内存来容纳一个应用程序的整个总占用空间，性能可能会开始受到影响。这里关键词是*可能*。部分本地内存仅在启动时使用（例如，加载类路径中的JAR文件相关的内存），如果该内存被交换出去，可能不会被注意到。一个Java进程使用的部分本地内存与系统上的其他Java进程共享，并且还有一小部分与系统上其他类型的进程共享。然而，为了达到最佳性能，你需要确保所有Java进程的总占用空间不超过机器的物理内存（并且还需要留一些内存供其他应用程序使用）。
 - en: Measuring Footprint
+  id: totrans-6
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 测量占用空间
 - en: To measure the total footprint of a process, you need to use an operating-system-specific
     tool. In Unix-based systems, programs like `top` and `ps` can show you that data
     at a basic level; on Windows, you can use `perfmon` or `VMMap`. No matter which
     tool and platform are used, you need to look at the actual allocated memory (as
     opposed to the reserved memory) of the process.
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 要测量进程的总占用空间，您需要使用特定于操作系统的工具。在基于Unix的系统中，像`top`和`ps`这样的程序可以在基本水平上显示这些数据；在Windows上，您可以使用`perfmon`或`VMMap`。无论使用哪种工具和平台，您都需要查看进程的实际分配内存（而不是保留内存）。
 - en: The distinction between allocated and reserved memory comes about as a result
     of the way the JVM (and all programs) manage memory. Consider a heap that is specified
     with the parameters `-Xms512m` `-Xmx2048m`. The heap starts by using 512 MB, and
     it will be resized as needed to meet the GC goals of the application.
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 分配和保留内存之间的区别是由 JVM（以及所有程序）管理内存的方式造成的。考虑一个使用参数 `-Xms512m` `-Xmx2048m` 指定的堆。堆从使用
+    512 MB 开始，并根据需要调整大小以满足应用程序的 GC 目标。
 - en: 'That concept is the essential difference between committed (or allocated) memory
     and reserved memory (sometimes called the *virtual size* of a process). The JVM
     must tell the operating system that it might need as much as 2 GB of memory for
     the heap, so that memory is *reserved*: the operating system promises that when
     the JVM attempts to allocate additional memory when it increases the size of the
     heap, that memory will be available.'
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个概念是已提交（或已分配）内存和保留内存（有时称为进程的*虚拟大小*）之间的基本区别。JVM 必须告诉操作系统，堆可能需要多达 2 GB 的内存，因此这段内存是*保留*的：操作系统承诺，当
+    JVM 尝试在增加堆的大小时分配额外的内存时，该内存将可用。
 - en: Still, only 512 MB of that memory is allocated initially, and that 512 MB is
     all of the memory that is being used (for the heap). That (actually *allocated*)
     memory is known as the *committed memory*. The amount of committed memory will
     fluctuate as the heap resizes; in particular, as the heap size increases, the
     committed memory correspondingly increases.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管如此，最初只分配了 512 MB 的内存，并且这 512 MB 是正在使用的所有内存（用于堆）。这个（实际上已分配的）内存被称为*已提交内存*。随着堆的重新调整，已提交内存的数量会波动；特别是随着堆大小的增加，已提交内存相应增加。
 - en: This difference applies to almost all significant memory that the JVM allocates.
     The code cache grows from an initial to a maximum value as more code gets compiled.
     Metaspace is allocated separately from the heap and grows between its initial
     (committed) size and its maximum (reserved) size.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种差异几乎适用于 JVM 分配的所有重要内存。随着更多代码被编译，代码缓存从初始值增长到最大值。元空间与堆分开分配，从其初始（提交）大小增长到其最大（保留）大小。
 - en: Thread stacks are an exception to this. Every time the JVM creates a thread,
     the OS allocates some native memory to hold that thread’s stack, committing more
     memory to the process (until the thread exits at least). Thread stacks, though,
     are fully allocated when they are created.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程堆栈是一个例外。每当 JVM 创建一个线程时，操作系统会分配一些本地内存来保存该线程的堆栈，向进程分配更多内存（至少直到线程退出）。线程堆栈在创建时就完全分配了。
 - en: In Unix systems, the footprint of an application can be estimated by the *resident
     set size (RSS)* of the process as reported by various OS tools. That value is
     a good estimate of the amount of committed memory a process is using, though it
@@ -96,181 +125,277 @@
     it paged in at any moment. Still, tracking the RSS of a process is a good first-pass
     way to monitor the total memory use. On more recent Linux kernels, the PSS is
     a refinement of the RSS that removes the data shared by other programs.
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 Unix 系统中，通过各种操作系统工具报告的进程的*常驻集大小 (RSS)*，可以估算应用程序的占用空间。这个值是进程正在使用的已提交内存量的良好估算，尽管有两种不精确之处。首先，在
+    JVM 和其他进程之间在操作系统级别共享的几页（即共享库的文本部分）被计入每个进程的 RSS 中。其次，进程可能分配了比任何时候都更多的内存。尽管如此，跟踪进程的
+    RSS 是监视总内存使用的一个很好的首次方法。在较新的 Linux 内核上，PSS 是对 RSS 的一种细化，去除了其他程序共享的数据。
 - en: On Windows systems, the equivalent idea is called the *working set* of an application,
     which is what is reported by the task manager.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 Windows 系统上，等效的概念称为应用程序的*工作集*，这是任务管理器报告的内容。
 - en: Minimizing Footprint
+  id: totrans-15
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 最小化占用空间
 - en: 'To minimize the footprint used by the JVM, limit the amount of memory used
     by the following:'
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 要减少 JVM 使用的占用空间，请限制以下内存的使用量：
 - en: Heap
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 堆
 - en: The heap is the biggest chunk of memory, though surprisingly it may take up
     only 50% to 60% of the total footprint. Using a smaller maximum heap (or setting
     the GC tuning parameters such that the heap never fully expands) limits the program’s
     footprint.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 堆是内存中占用最大的一部分，尽管令人惊讶的是它可能只占总占用空间的 50% 到 60%。使用较小的最大堆（或设置 GC 调优参数，使堆永远不会完全扩展）可以限制程序的占用空间。
 - en: Thread stacks
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程堆栈
 - en: Thread stacks are quite large, particularly for a 64-bit JVM. See [Chapter 9](ch09.html#ThreadPerformance)
     for ways to limit the amount of memory consumed by thread stacks.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程栈非常大，特别是对于 64 位的 JVM。详见[第 9 章](ch09.html#ThreadPerformance)了解限制线程栈消耗的方法。
 - en: Code cache
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 代码缓存
 - en: The code cache uses native memory to hold compiled code. As discussed in [Chapter 4](ch04.html#JustInTimeCompilation),
     this can be tuned (though performance will suffer if all the code cannot be compiled
     because of space limitations).
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 代码缓存使用本地内存来保存编译后的代码。如[第 4 章](ch04.html#JustInTimeCompilation)所述，可以对其进行调优（尽管由于空间限制而无法编译所有代码可能会导致性能下降）。
 - en: Native library allocations
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 本地库分配
 - en: Native libraries can allocate their own memory, which can sometimes be significant.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 本地库可以分配它们自己的内存，有时这可能是相当重要的。
 - en: The next few sections discuss how to monitor and reduce these areas.
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来的几节讨论如何监控和减少这些区域。
 - en: Quick Summary
+  id: totrans-26
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: The total footprint of the JVM has a significant effect on its performance,
     particularly if physical memory on the machine is constrained. Footprint is another
     aspect of performance tests that should be commonly monitored.
+  id: totrans-27
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: JVM 的总体占用内存对其性能有显著影响，特别是如果机器的物理内存受限。占用空间是性能测试的另一个方面，应经常进行监控。
 - en: Native Memory Tracking
+  id: totrans-28
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 本地内存追踪
 - en: The JVM provides bounded visibility into how it allocates native memory. It
     is important to realize that this tracking applies to the memory allocated by
     the code JVM itself, but it does not include any memory allocated by a native
     library used by the application. This includes both third-party native libraries
     and the native libraries (e.g., *libsocket.so*) that ship with the JDK itself.
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 提供有限的可见性，显示它如何分配本地内存。重要的是要意识到，此跟踪适用于 JVM 本身分配的内存，但不包括应用程序使用的任何本地库分配的内存。这包括第三方本地库和
+    JDK 自带的本地库（例如 *libsocket.so*）。
 - en: 'Using the option `-XX:NativeMemoryTracking=*off|summary|detail*` enables this
     visibility. By default, Native Memory Tracking (NMT) is off. If the summary or
     detail mode is enabled, you can get the native memory information at any time
     from `jcmd`:'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用选项 `-XX:NativeMemoryTracking=*off|summary|detail*` 可以启用这种可见性。默认情况下，本地内存追踪（NMT）是关闭的。如果启用了摘要或详细模式，则可以随时从
+    `jcmd` 获取本地内存信息：
 - en: '[PRE0]'
+  id: totrans-31
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: If the JVM is started with the argument `-XX:+PrintNMTStatistics` (by default,
     `false`), the JVM will print out information about the allocation when the program
     exits.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果 JVM 使用 `-XX:+PrintNMTStatistics` 参数启动（默认为 `false`），程序退出时 JVM 将打印出分配信息。
 - en: 'Here is the summary output from a JVM running with a 512 MB initial heap size
     and a 4 GB maximum heap size:'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是 JVM 运行的摘要输出，初始堆大小为 512 MB，最大堆大小为 4 GB：
 - en: '[PRE1]'
+  id: totrans-34
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'Although the JVM has made memory reservations totaling 5.9 GB, it has used
     much less than that: only 620 MB. This is fairly typical (and one reason not to
     pay particular attention to the virtual size of the process displayed in OS tools,
     since that reflects only the memory reservations).'
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然 JVM 分配了总计 5.9 GB 的内存，但实际使用的远远少于这个数值：只有 620 MB。这是相当典型的情况（也是不必特别关注 OS 工具中显示的进程虚拟大小的原因，因为那只反映了内存预留）。
 - en: 'This memory usage breaks down as follows. The heap itself is (unsurprisingly)
     the largest part of the reserved memory at 4 GB. But the dynamic sizing of the
     heap meant it grew only to 268 MB (in this case, the heap sizing was `-Xms256m
     -Xmx4g`, so the actual heap usage has expanded only a small amount):'
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 内存使用情况分解如下。堆本身（不出意外地）是保留内存中最大的部分，达到了 4 GB。但由于堆的动态调整，实际只增长到了 268 MB（在这种情况下，堆的大小设置为
+    `-Xms256m -Xmx4g`，因此堆的实际使用量仅略有增加）：
 - en: '[PRE2]'
+  id: totrans-37
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: 'Next is the native memory used to hold class metadata. Again, note that the
     JVM has reserved more memory than it used to hold the 24,316 classes in the program.
     The committed size here will start at the value of the `MetaspaceSize` flag and
     grow as needed until it reaches the value of the `MaxMetaspaceSize` flag:'
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来是用于保存类元数据的本地内存。同样需要注意的是，JVM 预留了比程序中 24,316 个类所需更多的内存。这里的已分配大小将从 `MetaspaceSize`
+    标志的值开始，并根据需要增长，直到达到 `MaxMetaspaceSize` 标志的值：
 - en: '[PRE3]'
+  id: totrans-39
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'Seventy-seven thread stacks were allocated at about 1 MB each:'
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 大约分配了 77 个线程栈，每个约为 1 MB：
 - en: '[PRE4]'
+  id: totrans-41
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Then comes the JIT code cache: 24,316 classes is not very many, so just a small
     section of the code cache is committed:'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 接着是 JIT 代码缓存：24,316 个类并不多，因此代码缓存的使用只占了很小的一部分：
 - en: '[PRE5]'
+  id: totrans-43
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: 'Next is the area outside the heap that GC algorithm uses for its processing.
     The size of this area depends on the GC algorithm in use: the (simple) serial
     collector will reserve far less than the more complex G1 GC algorithm (though,
     in general, the amount here will never be very large):'
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 下面是 GC 算法用于处理的堆外区域。这个区域的大小取决于所使用的 GC 算法：(简单的) 串行收集器会保留的远远少于更复杂的 G1 GC 算法（尽管通常这里的数量不会很大）：
 - en: '[PRE6]'
+  id: totrans-45
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'Similarly, this area is used by the compiler for its operations, apart from
     the resulting code placed in the code cache:'
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 同样，这个区域被编译器用于其操作，而不是放置在代码缓存中的结果代码：
 - en: '[PRE7]'
+  id: totrans-47
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'Internal operations of the JVM are represented here. Most of them tend to be
     small, but one important exception is direct byte buffers, which are allocated
     here:'
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 的内部操作在这里表示。它们中的大部分 tend to be small，但一个重要的例外是直接字节缓冲区，它们是在这里分配的：
 - en: '[PRE8]'
+  id: totrans-49
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'Symbol table references (constants from class files) are held here:'
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: 符号表引用（来自类文件的常量）保存在这里：
 - en: '[PRE9]'
+  id: totrans-51
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'NMT itself needs some space for its operation (which is one reason it is not
     enabled by default):'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: NMT 本身需要一些空间来进行操作（这也是它默认情况下不启用的原因之一）：
 - en: '[PRE10]'
+  id: totrans-53
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'Finally, here are some minor bookkeeping sections of the JVM:'
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，这里有一些 JVM 的小型簿记部分：
 - en: '[PRE11]'
+  id: totrans-55
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'Overall, NMT provides two key pieces of information:'
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
+  zh: 总体而言，NMT 提供了两个关键信息：
 - en: Total committed size
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 总已提交大小
 - en: The total committed size of the JVM is (ideally) close to the amount of physical
     memory that the process will consume. This, in turn, should be close to the RSS
     (or working set) of the application, but those OS-provided measurements don’t
@@ -278,125 +403,179 @@
     if the RSS of the process is less than the committed memory, that is often an
     indication that the OS is having difficulty fitting all of the JVM in physical
     memory.
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 的总已提交大小（理想情况下）接近进程将消耗的物理内存量。反过来，这应该接近应用程序的 RSS（或工作集），但是这些由操作系统提供的测量值不包括已提交但已从进程分页的任何内存。实际上，如果进程的
+    RSS 小于已提交内存，那通常表明操作系统难以将所有 JVM 放入物理内存中。
 - en: Individual committed sizes
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 各自的已提交大小
 - en: When it is time to tune maximum values—of the heap, the code cache, and the
     metaspace—it is helpful to know how much of that memory the JVM is using. Overallocating
     those areas usually leads only to harmless memory reservations, though when reserved
     memory is important, NMT can help track down where those maximum sizes can be
     trimmed.
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 当需要调整堆、代码缓存和元空间的最大值时，了解 JVM 使用了多少内存会很有帮助。在这些区域分配过多的情况下，通常只会导致无害的内存预留，但是当保留的内存很重要时，NMT
+    可以帮助确定这些最大大小可以被缩减的位置。
 - en: On the other hand, as I noted at the beginning of this section, NMT does not
     provide visibility into the native memory use of shared libraries, so in some
     cases the total process size will be larger than the committed size of the JVM
     data structures.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，正如我在本节开头指出的，NMT 不提供对共享库的本地内存使用情况的可见性，因此在某些情况下，总进程大小将大于 JVM 数据结构的已提交大小。
 - en: NMT over time
+  id: totrans-62
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: NMT 随时间的变化
 - en: 'NMT also allows you to track how memory allocations occur over time. After
     the JVM is started with NMT enabled, you can establish a baseline for memory usage
     with this command:'
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: NMT 还允许您跟踪内存分配随时间的发生。在使用 NMT 启动 JVM 后，您可以使用此命令为内存使用情况建立基线：
 - en: '[PRE12]'
+  id: totrans-64
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'That causes the JVM to mark its current memory allocations. Later, you can
     compare the current memory usage to that mark:'
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 这导致 JVM 标记其当前内存分配。稍后，您可以将当前内存使用情况与该标记进行比较：
 - en: '[PRE13]'
+  id: totrans-66
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: In this case, the JVM has reserved 5.8 GB of memory and is presently using 2.3
     GB. That committed size is 448 MB less than when the baseline was established.
     Similarly, the committed memory used by the heap has declined by 444 MB (and the
     rest of the output could be inspected to see where else the memory use declined
     to account for the remaining 4 MB).
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种情况下，JVM 已保留了 5.8 GB 的内存，目前使用了 2.3 GB。与建立基线时相比，该已提交大小减少了 448 MB。类似地，堆使用的已提交内存减少了
+    444 MB（剩余的输出可以检查以查看内存使用减少的其他地方）。
 - en: This is a useful technique to examine the footprint of the JVM over time.
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是一种随时间检查 JVM 占用空间的有用技术。
 - en: Quick Summary
+  id: totrans-69
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Native Memory Tracking (NMT) provides details about the native memory usage
     of the JVM. From an operating system perspective, that includes the JVM heap (which
     to the OS is just a section of native memory).
+  id: totrans-70
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 本地内存跟踪（NMT）提供了有关 JVM 的本地内存使用情况的详细信息。从操作系统的角度来看，这包括 JVM 堆（对于操作系统来说只是本地内存的一部分）。
 - en: The summary mode of NMT is sufficient for most analysis and allows you to determine
     how much memory the JVM has committed (and what that memory is used for).
+  id: totrans-71
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: NMT的总结模式对大多数分析已足够，并允许您确定JVM已经承诺使用多少内存（以及该内存用于什么）。
 - en: Shared Library Native Memory
+  id: totrans-72
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 共享库的本地内存
 - en: 'From an architectural perspective, NMT is part of HotSpot: the C++ engine that
     runs the Java bytecode of your application. That is underneath the JDK itself,
     so it does not track allocations by anything at the JDK level. Those allocations
     come from shared libraries (those loaded by the `System.loadLibrary()` call).'
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 从架构角度来看，NMT是HotSpot的一部分：这是运行您应用程序Java字节码的C++引擎。这位于JDK本身之下，因此它不追踪JDK级别的任何分配。这些分配来自共享库（由`System.loadLibrary()`调用加载）。
 - en: 'Shared libraries are often thought of as third-party extensions of Java: for
     instance, the Oracle WebLogic Server has several native libraries that it uses
     to handle I/O more efficiently than the JDK.^([1](ch08.html#idm45775549798408))
     But the JDK itself has several native libraries, and like all shared libraries,
     these are outside the view of NMT.'
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 共享库通常被视为Java的第三方扩展：例如，Oracle WebLogic Server有几个本地库用于比JDK更有效地处理I/O。^([1](ch08.html#idm45775549798408))
+    但JDK本身也有几个本地库，像所有共享库一样，这些库在NMT的视野之外。
 - en: Hence, native memory leaks—where the RSS or working set of an application continually
     grows overtime—are usually not detected by NMT. The memory pools that NMT monitors
     all generally have an upper bound (e.g., the maximum heap size). NMT is useful
     in telling us which of those pools is using a lot of memory (and hence which need
     to be tuned to use less memory), but an application that is leaking native memory
     without bound is typically doing so because of issues in a native library.
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，本地内存泄漏——即应用程序的RSS或工作集随时间不断增长——通常不会被NMT检测到。NMT监视的内存池通常都有一个上限（例如，最大堆大小）。NMT对于告诉我们哪些池使用了大量内存是很有用的（因此需要调整为使用更少内存），但一个无限制地泄漏本地内存的应用程序通常是由于本地库中的问题。
 - en: No Java-level tools can really help us detect where an application is using
     native memory from shared libraries. OS-level tools can tell us that the working
     set of the process is continually growing, and if a process grows to have a working
     set of 10 GB and NMT tells us that the JVM has committed only 6 GB of memory,
     we know that the other 4 GB of memory must come from native library allocations.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 没有Java级别的工具真正能帮助我们检测应用程序从共享库使用本地内存的位置。OS级别的工具可以告诉我们进程的工作集不断增长，如果一个进程的工作集增长到有10
+    GB，并且NMT告诉我们JVM只承诺了6 GB的内存，那么我们知道另外的4 GB内存必定来自本地库的分配。
 - en: Figuring out which native library is responsible requires OS-level tools rather
     than tools from the JDK. Various debugging versions of `malloc` can be used for
     this purpose. These are useful to a point, though often native memory is allocated
     via an `mmap` call, and most libraries to track `malloc` calls will miss those.
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 弄清楚哪个本地库负责需要OS级别的工具而不是来自JDK的工具。各种调试版本的`malloc`可以用于此目的。虽然这些在某种程度上很有用，但通常本地内存是通过`mmap`调用分配的，大多数跟踪`malloc`调用的库会错过这些。
 - en: A good alternative is a profiler that can profile native code as well as Java
     code. For example, in [Chapter 3](ch03.html#Tools) we discussed the Oracle Studio
     Profiler, which is a mixed-language profiler. That profiler has an option to trace
     memory allocations as well—one caveat is that it can track only the memory allocations
     of the native code and not the Java code, but that’s what we’re after in this
     case.
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个很好的选择是使用可以同时分析本地代码和Java代码的分析器。例如，在[第三章](ch03.html#Tools)中我们讨论了Oracle Studio
+    Profiler，这是一个混合语言的分析器。该分析器还有一个选项可以跟踪内存分配情况——唯一的限制是它只能跟踪本地代码的内存分配，而不能跟踪Java代码的内存分配，但在这种情况下这正是我们需要的。
 - en: '[Figure 8-1](#FigureNativeMemory) shows the native allocation view within the
     Studio Profiler.'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: '[图8-1](#FigureNativeMemory)显示了Studio Profiler中的本地分配视图。'
 - en: '![A profiler snapshot of native memory allocation.](assets/jp2e_0801.png)'
+  id: totrans-80
   prefs: []
   type: TYPE_IMG
+  zh: '![本地内存分配的分析器快照。](assets/jp2e_0801.png)'
 - en: Figure 8-1\. Profiling of native memory
+  id: totrans-81
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图8-1. 本地内存分析
 - en: 'This call graph shows us that the WebLogic native function `mapFile` has used
     `mmap` to allocate about 150 GB of native memory into our process. This is a little
     misleading: multiple mappings to that file exist, and the profiler isn’t quite
@@ -405,40 +584,55 @@
     15 GB. (And, to be frank, I purposely corrupted that file to make it that large;
     this is in no way reflective of actual usage.) Still, the native profiler has
     pointed to the location of the issue.'
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 此调用图显示我们，WebLogic 本地函数 `mapFile` 已使用 `mmap` 将约 150 GB 的本地内存分配到我们的进程中。这有点误导：该文件存在多个映射，分析器并不足够智能以意识到它们共享实际内存：例如，如果该
+    15 GB 文件有 100 个映射，则内存使用仅增加 15 GB。（坦率地说，我有意损坏了该文件使其变得如此巨大；这绝不反映实际用途。）尽管如此，本地分析器已指出了问题的位置。
 - en: 'Within the JDK itself, two common operations can lead to large amounts of native
     memory usage: the use of `Inflater` and `Deflater` objects, and the use of NIO
     buffers. Even without profiling, there are ways to detect if these operations
     are causing your native memory growth.'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDK 本身，有两种常见操作可能导致大量的本地内存使用：使用 `Inflater` 和 `Deflater` 对象，以及使用 NIO 缓冲区。即使没有进行分析，也有办法检测这些操作是否导致了本地内存的增长。
 - en: Native memory and inflaters/deflaters
+  id: totrans-84
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 本地内存和压缩/解压器
 - en: 'The `Inflater` and `Deflater` classes perform various kinds of compression:
     zip, gzip, and so on. They can be used directly or implicitly via various input
     streams. These various algorithms use platform-specific native libraries to carry
     out their operations. Those libraries can allocate a significant amount of native
     memory.'
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Inflater` 和 `Deflater` 类执行各种压缩操作：zip、gzip 等。它们可以直接使用，也可以通过各种输入流间接使用。这些算法使用平台特定的本地库执行操作。这些库可能会分配大量的本地内存。'
 - en: When you use one of these classes, you are supposed to—as the documentation
     says—call the `end()` method when the operation is complete. Among other things,
     that frees the native memory used by the object. If you are using a stream, you
     are supposed to close the stream (and the stream class will call the `end()` method
     on its internal object).
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 当使用这些类之一时，按照文档的说法，应在操作完成时调用 `end()` 方法。其中一件事是释放对象使用的本地内存。如果使用流，则应关闭流（流类将在其内部对象上调用
+    `end()` 方法）。
 - en: 'If you forget to call the `end()` method, all is not lost. Recall from [Chapter 7](ch07.html#Memory)
     that all objects have a cleanup mechanism exactly for this situation: the `finalize()`
     method (in JDK 8) or the `Cleaner` associated with the object (in JDK 11) can
     call the `end()` method when the `Inflater` object is collected. So you’re not
     going to leak native memory here; eventually, the objects will be collected and
     finalized, and the native memory will be freed.'
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果忘记调用 `end()` 方法，也不用担心。回想一下[第 7 章](ch07.html#Memory)中提到的情况：所有对象都有一个专门的清理机制来处理这种情况：`finalize()`
+    方法（在 JDK 8 中）或对象关联的 `Cleaner`（在 JDK 11 中）在收集 `Inflater` 对象时可以调用 `end()` 方法。因此，不会导致本地内存泄漏；最终对象将被收集和清理，本地内存将被释放。
 - en: Still, this can take a long time. The size of the `Inflater` object is relatively
     small, and in an application with a large heap that rarely performs a full GC,
     it’s easy enough for these objects to get promoted into the old generation and
@@ -446,28 +640,39 @@
     memory will eventually get freed when the application performs a full GC—failure
     to call the `end()` operation here can have all the appearances of a native memory
     leak.
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管如此，这可能需要很长时间。`Inflater` 对象的大小相对较小，在很少进行完整 GC 的大堆应用程序中，这些对象很容易晋升到老年代并保持数小时。因此，即使技术上没有泄漏——当应用程序执行完整
+    GC 时，本地内存最终会被释放——但在这里未调用 `end()` 操作可能表现出本地内存泄漏的所有迹象。
 - en: For that matter, if the `Inflater` object itself is leaking in the Java code,
     then the native memory will be actually leaking.
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 更重要的是，如果 `Inflater` 对象本身在 Java 代码中出现泄漏，则实际上会泄漏本地内存。
 - en: So when a lot of native memory is leaking, it can be helpful to take a heap
     dump of the application and look for these `Inflater` and `Deflater` objects.
     Those objects likely won’t be causing an issue in the heap itself (they are too
     small for that), but a large number of them will indicate that there is significant
     usage of native memory.
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，当大量本地内存泄漏时，有助于对应用程序进行堆转储，并查找这些`Inflater`和`Deflater`对象。这些对象可能不会在堆本身中引起问题（它们对于堆来说太小了），但它们的大量存在将表明存在大量使用本地内存。
 - en: Native NIO buffers
+  id: totrans-91
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 本地NIO缓冲区
 - en: NIO byte buffers allocate native (off-heap) memory if they are created via the
     `allocateDirect()` method of the `ByteBuffer` class or the `map()` method of the
     `FileChannel` class.
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果通过`ByteBuffer`类的`allocateDirect()`方法或`FileChannel`类的`map()`方法创建NIO字节缓冲区，则会分配本地（非堆）内存。
 - en: Native byte buffers are important from a performance perspective, since they
     allow native code and Java code to share data without copying it. Buffers used
     for filesystem and socket operations are the most common example. Writing data
@@ -475,8 +680,10 @@
     or socket) requires no copying of data between the JVM and the C library used
     to transmit the data. If a heap byte buffer is used instead, contents of the buffer
     must be copied by the JVM.
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 本地字节缓冲区从性能的角度来看非常重要，因为它们允许本地代码和Java代码在不复制数据的情况下共享数据。用于文件系统和套接字操作的缓冲区是最常见的示例。将数据写入本地NIO缓冲区，然后将数据发送到通道（例如文件或套接字）不需要在JVM和用于传输数据的C库之间复制数据。如果使用堆字节缓冲区，则JVM必须复制缓冲区的内容。
 - en: The `allocateDirect()` method call is expensive; direct byte buffers should
     be reused as much as possible. The ideal situation occurs when threads are independent
     and each can keep a direct byte buffer as a thread-local variable. That can sometimes
@@ -484,8 +691,10 @@
     eventually each thread will end up with a buffer at the maximum possible size.
     For that kind of situation—or when thread-local buffers don’t fit the application
     design—an object pool of direct byte buffers may be more useful.
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: '`allocateDirect()`方法调用是昂贵的；应尽可能重用直接字节缓冲区。理想情况是，当线程独立运行时，每个线程可以将直接字节缓冲区保留为线程本地变量。如果许多线程需要变量大小的缓冲区，这有时会使用太多本地内存，因为最终每个线程将以可能的最大大小拥有一个缓冲区。对于这种情况或当线程本地缓冲区不适合应用程序设计时，直接字节缓冲区的对象池可能更有用。'
 - en: 'Byte buffers can also be managed by slicing them. The application can allocate
     one very large direct byte buffer, and individual requests can allocate a portion
     out of that buffer by using the `slice()` method of the `ByteBuffer` class. This
@@ -494,8 +703,10 @@
     fragmented when allocating and freeing objects of different sizes. Unlike the
     heap, however, the individual slices of a byte buffer cannot be compacted, so
     this solution works well only when all the slices are a uniform size.'
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 字节缓冲区还可以通过切片进行管理。应用程序可以分配一个非常大的直接字节缓冲区，通过使用`ByteBuffer`类的`slice()`方法，可以从该缓冲区中分配部分数据。当切片大小不总是相同时，这种解决方案可能会变得难以管理：原始字节缓冲区可能会像分配和释放不同大小对象时堆一样变得碎片化。然而，与堆不同的是，字节缓冲区的各个切片无法压缩，因此此解决方案仅在所有切片大小均匀时才有效。
 - en: 'From a tuning perspective, one thing to realize with any of these programming
     models is that the amount of direct byte buffer space that an application can
     allocate can be limited by the JVM. The total amount of memory that can be allocated
@@ -506,8 +717,11 @@
     size: if the maximum heap size is 4 GB, you can also create 4 GB of off-heap memory
     in direct and/or mapped byte buffers. You can increase the value past the maximum
     heap value if you need to.'
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 从调优的角度来看，需要意识到的一件事是，任何这些编程模型中，应用程序可以分配的直接字节缓冲区空间可能会受到JVM的限制。可以通过设置`-XX:MaxDirectMemorySize`=*`N`*标志来指定可以分配给直接字节缓冲区的内存总量。当前JVM中此标志的默认值为0。该限制的含义已经经常发生变化，但在Java
+    8的后期版本（以及所有Java 11的版本）中，最大限制等于最大堆大小：如果最大堆大小为4 GB，则也可以创建4 GB的直接和/或映射字节缓冲区的非堆内存。如果需要，可以增加该值超过最大堆值。
 - en: The memory allocated for direct byte buffers is included in the `Internal` section
     of the NMT report; if that number is large, it is almost always because of these
     buffers. If you want to know exactly how much the buffers themselves are consuming,
@@ -515,52 +729,76 @@
     or `java.nio.BufferPool.mapped.Attributes` will show you the amount of memory
     each type has allocated. [Figure 8-2](#FigureNativeByteBuffer) shows a case where
     we’ve mapped 10 buffers totaling 10 MB of space.
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 直接字节缓冲区分配的内存包含在NMT报告的`Internal`部分中；如果这个数字很大，几乎总是因为这些缓冲区。如果你想确切地知道缓冲区本身消耗了多少，MBeans会跟踪这些信息。检查MBean
+    `java.nio.BufferPool.direct.Attributes`或`java.nio.BufferPool.mapped.Attributes`将显示每种类型已分配的内存量。[图 8-2](#FigureNativeByteBuffer)显示了一个情况，我们映射了10个缓冲区，总共占用了10
+    MB的空间。
 - en: '![Amount of native memory consumed by mmaped buffers.](assets/jp2e_0802.png)'
+  id: totrans-98
   prefs: []
   type: TYPE_IMG
+  zh: '![mmaped缓冲区消耗的本地内存量。](assets/jp2e_0802.png)'
 - en: Figure 8-2\. Inspecting byte buffer native memory
+  id: totrans-99
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 8-2\. 检查字节缓冲区本地内存
 - en: Quick Summary
+  id: totrans-100
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: If an application seems to be using too much native memory, it is likely from
     native libraries rather than the JVM itself.
+  id: totrans-101
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果一个应用程序似乎使用了太多本地内存，很可能是来自本地库而不是JVM本身。
 - en: Native profiles can be effective in pinpointing the source of these allocations.
+  id: totrans-102
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 本地配置文件可以有效地确定这些分配的来源。
 - en: A few common JDK classes can often contribute to native memory usage; make sure
     to use these classes correctly.
+  id: totrans-103
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 几个常见的JDK类通常会增加本地内存的使用量；确保正确使用这些类。
 - en: JVM Tunings for the Operating System
+  id: totrans-104
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: JVM对操作系统的调优
 - en: The JVM can use several tunings to improve the way it uses OS memory.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM可以使用几种调整来改善其使用操作系统内存的方式。
 - en: Large Pages
+  id: totrans-106
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 大页面
 - en: 'Discussions about memory allocation and swapping occur in terms of pages. A
     *page* is a unit of memory used by operating systems to manage physical memory.
     It is the minimum unit of allocation for the operating system: when 1 byte is
     allocated, the operating system must allocate an entire page. Further allocations
     for that program come from that same page until it is filled, at which point a
     new page is allocated.'
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 关于内存分配和交换的讨论是关于页面的术语。*页面*是操作系统用来管理物理内存的内存单位。这是操作系统的最小分配单位：当分配1字节时，操作系统必须分配整个页面。程序的进一步分配来自同一个页面，直到它填满为止，然后才会分配新的页面。
 - en: 'The operating system allocates many more pages than can fit in physical memory,
     which is why there is paging: pages of the address space are moved to and from
     swap space (or other storage depending on what the page contains). This means
@@ -570,8 +808,10 @@
     and the most frequently used mappings are held in translation lookaside buffers
     (TLBs). TLBs are held in a fast cache, so accessing pages through a TLB entry
     is much faster than accessing it through the page table.'
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 操作系统分配的页面比能够放入物理内存的页面多得多，这就是为什么有页面调度：地址空间的页面被移动到和从交换空间（或其他存储，具体取决于页面内容）中。这意味着这些页面和它们当前存储在计算机RAM中的位置之间必须有一些映射。这些映射通过两种方式处理。所有页面映射都保存在全局页表中（操作系统可以扫描以找到特定映射），并且最常用的映射保存在TLB（翻译后备缓冲区）中。TLB保存在快速缓存中，因此通过TLB条目访问页面比通过页表访问页面快得多。
 - en: Machines have a limited number of TLB entries, so it becomes important to maximize
     the hit rate on TLB entries (it functions as a least recently used cache). Since
     each entry represents a page of memory, increasing the page size used by an application
@@ -580,109 +820,157 @@
     will be found in the TLB when required. This is true in general for any program,
     and so is also true specifically for things like Java application servers or other
     Java programs with even a moderately sized heap.
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 计算机有限的TLB条目数，因此最大化TLB条目的命中率变得重要（它作为最近最少使用的缓存）。由于每个条目代表一个页面的内存，增加应用程序使用的页面大小通常是有利的。如果每个页面代表更多的内存，需要更少的TLB条目来包含整个程序，当需要时更可能在TLB中找到页面。这对于任何程序通常都是正确的，因此也适用于像Java应用服务器或其他具有适度大小堆的Java程序。
 - en: Large pages must be enabled at both the Java and OS levels. At the Java level,
     the `-XX:+UseLargePages` flag enables large page use; by default, this flag is
     `false`. Not all operating systems support large pages, and the way to enable
     them obviously varies.
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 大页面必须在 Java 和操作系统两个层面上启用。在 Java 层面，`-XX:+UseLargePages` 标志启用大页面使用；默认情况下，此标志为
+    `false`。并非所有操作系统都支持大页面，而且启用它们的方式显然各不相同。
 - en: If the `UseLargePages` flag is enabled on a system that does not support large
     pages, no warning is given, and the JVM uses regular pages. If the `UseLargePages`
     flag is enabled on a system that does support large pages, but for which no large
     pages are available (either because they are already all in use or because the
     operating system is misconfigured), the JVM will print a warning.
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果在不支持大页面的系统上启用了 `UseLargePages` 标志，则不会发出警告，并且 JVM 使用常规页面。如果在支持大页面但没有可用大页面的系统上启用了
+    `UseLargePages` 标志（因为它们已经全部在使用中或因为操作系统配置错误），则 JVM 将打印警告。
 - en: Linux huge (large) pages
+  id: totrans-112
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: Linux 大页面
 - en: 'Linux refers to large pages as *huge pages*. The configuration of huge pages
     on Linux varies somewhat from release to release; for the most accurate instructions,
     consult the documentation for your release. But the general procedure is this:'
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: Linux 将大页面称为 *大页面*。Linux 上的大页面配置在每个发行版中略有不同；要获得最准确的说明，请查阅您的发行版文档。但是一般的过程如下：
 - en: 'Determine which huge page sizes the kernel supports. The size is based on the
     computer’s processor and the boot parameters given when the kernel has started,
     but the most common value is 2 MB:'
+  id: totrans-114
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 确定内核支持哪些大页面大小。大小基于计算机的处理器和内核启动时给出的引导参数，但最常见的值是 2 MB：
 - en: '[PRE14]'
+  id: totrans-115
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: Figure out how many huge pages are needed. If a JVM will allocate a 4 GB heap
     and the system has 2 MB huge pages, 2,048 huge pages will be needed for that heap.
     The number of huge pages that can be used is defined globally in the Linux kernel,
     so repeat this process for all the JVMs that will run (plus any other programs
     that will use huge pages). You should overestimate this value by 10% to account
     for other nonheap uses of huge pages (so the example here uses 2,200 huge pages).
+  id: totrans-116
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 确定需要多少个大页面。如果 JVM 将分配 4 GB 堆，并且系统有 2 MB 大页面，则该堆需要 2,048 个大页面。可以在 Linux 内核中全局定义可使用的大页面数量，因此对将要运行的所有
+    JVM（以及将使用大页面的任何其他程序）重复此过程。您应该将此值高估 10%，以考虑大页面的其他非堆使用（因此此示例使用 2,200 个大页面）。
 - en: 'Write out that value to the operating system (so it takes effect immediately):'
+  id: totrans-117
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将该值写入操作系统（以便立即生效）：
 - en: '[PRE15]'
+  id: totrans-118
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: 'Save that value in */etc/sysctl.conf* so that it is preserved after rebooting:'
+  id: totrans-119
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将该值保存在 */etc/sysctl.conf* 中，以便在重新启动后保留该值：
 - en: '[PRE16]'
+  id: totrans-120
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: 'On many versions of Linux, the amount of huge page memory that a user can allocate
     is limited. Edit the */etc/security/limits.conf* file and add `memlock` entries
     for the user running your JVMs (e.g., in the example, the user `appuser`):'
+  id: totrans-121
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在许多 Linux 版本中，用户可以分配的大页面内存量是有限的。编辑 */etc/security/limits.conf* 文件，并为运行您的 JVM
+    的用户添加 `memlock` 条目（例如，在示例中，用户为 `appuser`）：
 - en: '[PRE17]'
+  id: totrans-122
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'If the *limits.conf* file is modified, the user must log in again for the value
     to take effect. At this point, the JVM should be able to allocate the necessary
     huge pages. To verify that it works, run the following command:'
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果修改了 *limits.conf* 文件，则用户必须重新登录才能使该值生效。此时，JVM 应该能够分配所需的大页面。要验证它是否有效，请运行以下命令：
 - en: '[PRE18]'
+  id: totrans-124
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: 'Successful completion of that command indicates that the huge pages are configured
     correctly. If the huge page memory configuration is not correct, a warning will
     be given:'
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 成功执行该命令表示大页面已正确配置。如果大页面内存配置不正确，则会收到警告：
 - en: '[PRE19]'
+  id: totrans-126
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: The program runs in that case; it just uses regular instead of large pages.
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种情况下程序会运行；只是使用常规页面而不是大页面。
 - en: Linux transparent huge pages
+  id: totrans-128
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: Linux 透明大页面
 - en: Linux kernels starting with version 2.6.32 support *transparent huge pages*.
     These offer (in theory) the same performance benefit as traditional huge pages,
     but they have some differences from traditional huge pages.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 从 Linux 内核版本 2.6.32 开始支持 *透明大页面*。这些在理论上提供与传统大页面相同的性能优势，但它们与传统大页面有一些区别。
 - en: First, traditional huge pages are locked into memory; they can never be swapped.
     For Java, this is an advantage, since as we’ve discussed, swapping portions of
     the heap is bad for GC performance. Transparent huge pages can be swapped to disk,
     which is bad for performance.
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，传统大页面被锁定在内存中；它们永远不会被交换。对于 Java 来说，这是一个优势，因为正如我们所讨论的，交换堆的部分对 GC 性能是有害的。透明大页面可以被交换到磁盘，这对性能是不利的。
 - en: 'Second, allocation of a transparent huge page is also significantly different
     from a traditional huge page. Traditional huge pages are set aside at kernel boot
     time; they are always available. Transparent huge pages are allocated on demand:
@@ -692,71 +980,107 @@
     the by-now-familiar compacting of memory in the Java heap. This means that the
     time to allocate a page may be significantly longer as it waits for the kernel
     to finish making room for the memory.'
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二，透明大页的分配与传统大页也有显著不同。传统大页在内核启动时设置；它们始终可用。透明大页则按需分配：当应用程序请求2 MB页面时，内核将尝试在物理内存中找到2
+    MB的连续空间来存放页面。如果物理内存碎片化，内核可能会决定花时间重新排列页面，这类似于Java堆中内存紧缩的过程。这意味着分配页面的时间可能会显著增长，因为它等待内核完成为内存腾出空间的工作。
 - en: This affects all programs, but for Java it can lead to very long GC pauses.
     During GC, the JVM may decide to expand the heap and request new pages. If that
     page allocation takes a few hundred milliseconds or even a second, the GC time
     is significantly affected.
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 这影响所有程序，但对于Java来说，可能导致GC暂停时间很长。在GC期间，JVM可能决定扩展堆并请求新页。如果页面分配需要几百毫秒甚至一秒钟，GC时间会受到显著影响。
 - en: Third, transparent huge pages are configured differently at both the OS and
     Java levels. The details of that follow.
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 第三，透明大页在操作系统和Java级别有不同的配置。接下来是详细内容。
 - en: 'At the operating system level, transparent huge pages are configured by changing
     the contents of */sys/kernel/mm/transparent_hugepage/enabled*:'
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 在操作系统级别，透明大页的配置是通过修改 */sys/kernel/mm/transparent_hugepage/enabled* 的内容：
 - en: '[PRE20]'
+  id: totrans-135
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: 'The three choices here are as follows:'
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里有三种选择：
 - en: '`always`'
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: '`always`'
 - en: All programs are given huge pages when possible.
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有可能的情况下，所有程序都会得到大页。
 - en: '`madvise`'
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: '`madvise`'
 - en: Programs that request huge pages are given them; other programs get regular
     (4 KB) pages.
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 请求大页的程序会得到它们；其他程序得到常规（4 KB）页。
 - en: '`never`'
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: '`never`'
 - en: No program gets huge pages, even when they request them.
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 没有程序会得到大页，即使它们请求了。
 - en: Different versions of Linux have a different default value for that setting
     (and it is subject to change in future releases). Ubuntu 18.04 LTS, for example,
     sets the default to `madvise`, but CentOS 7 (and vendor releases like Red Hat
     and Oracle Enterprise Linux based on that) sets it to `always`. Be aware also
     that on cloud machines, the supplier of the OS image may have changed that value;
     I’ve seen Ubuntu images that also set the value to `always`.
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 不同版本的Linux在该设置的默认值上有所不同（并且在未来版本中可能会更改）。例如，Ubuntu 18.04 LTS将默认值设置为 `madvise`，但CentOS
+    7（以及基于其的Red Hat和Oracle Enterprise Linux供应商版本）将其设置为 `always`。还要注意，在云机器上，OS镜像的供应商可能已更改该值；我曾看到将该值设置为
+    `always` 的Ubuntu镜像。
 - en: 'If the value is set to `always`, no configuration is needed at the Java level:
     the JVM will be given huge pages. In fact, all programs that run on the system
     will run in huge pages.'
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果值设置为 `always`，在Java级别不需要任何配置：JVM将获得大页。事实上，系统上运行的所有程序都将在大页上运行。
 - en: If the value is set to `madvise` and you want the JVM to use huge pages, specify
     the `UseTransparentHugePages` flag (by default, `false`). Then the JVM will make
     the appropriate request when it allocates pages and be given huge pages.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果值设置为 `madvise` 并且您希望JVM使用大页，请指定 `UseTransparentHugePages` 标志（默认情况下为 `false`）。然后，当JVM分配页面并且获得大页时，JVM会进行适当的请求。
 - en: Predictably, if the value is set to `never`, no Java-level argument will allow
     the JVM to get huge pages. Unlike traditional huge pages, though, no warning is
     given if you specify the `UseTransparentHugePages` flag and the system cannot
     provide them.
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 预测地，如果值设置为 `never`，则没有Java级别的参数允许JVM获取大页。不像传统的大页，如果您指定了 `UseTransparentHugePages`
+    标志但系统无法提供大页，则不会收到警告。
 - en: Because of the differences in swapping and allocation of transparent huge pages,
     they are often not recommended for use with Java; certainly their use can lead
     to unpredictable spikes in pause times. On the other hand, particularly on systems
@@ -765,102 +1089,151 @@
     performance with huge pages, though, you are better off setting the system to
     use transparent huge pages only when requested and configuring traditional huge
     pages for use by your JVM.
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于透明巨大页面在交换和分配方面的差异，通常不建议在 Java 中使用它们；然而，在默认启用它们的系统上，使用它们时通常会看到性能提升，就像广告中所宣传的那样。如果您希望确保使用大页面时获得最平稳的性能，那么最好只在需要时将系统设置为仅使用透明巨大页面，并为
+    JVM 配置传统大页面。
 - en: Windows large pages
+  id: totrans-148
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: Windows 大页面
 - en: 'Windows *large pages* can be enabled on only server-based Windows versions.
     Exact instructions for Windows 10 are given here; variations exist among releases:'
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 仅支持服务器版 Windows 版本的 *大页面*。这里提供了适用于 Windows 10 的详细说明；不同版本可能会有所不同：
 - en: Start the Microsoft Management Center. Click the Start button, and in the Search
     box, type **`mmc`**.
+  id: totrans-150
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 启动 Microsoft 管理中心。单击“开始”按钮，在搜索框中键入 **`mmc`**。
 - en: If the left panel does not display a Local Computer Policy icon, select Add/Remove
     Snap-in from the File menu and add the Group Policy Object Editor. If that option
     is not available, the version of Windows in use does not support large pages.
+  id: totrans-151
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 如果左侧面板未显示本地计算机策略图标，请从“文件”菜单中选择“添加/移除插件”，并添加组策略对象编辑器。如果不可用，则正在使用的 Windows 版本不支持大页面。
 - en: In the left panel, expand Local Computer Policy → Computer Configuration → Windows
     Settings → Security Settings → Local Policies and click the User Rights Assignment
     folder.
+  id: totrans-152
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在左侧面板中，展开本地计算机策略 → 计算机配置 → Windows 设置 → 安全设置 → 本地策略，并点击“用户权限分配”文件夹。
 - en: In the right panel, double-click “Lock pages in memory.”
+  id: totrans-153
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在右侧面板中，双击“锁定内存中的页面”。
 - en: In the pop-up, add the user or group.
+  id: totrans-154
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在弹出窗口中，添加用户或组。
 - en: Click OK.
+  id: totrans-155
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 点击“确定”。
 - en: Quit the MMC.
+  id: totrans-156
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 退出 MMC。
 - en: Reboot.
+  id: totrans-157
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 重新启动。
 - en: 'At this point, the JVM should be able to allocate the necessary large pages.
     To verify that it works, run the following command:'
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 此时，JVM 应能够分配所需的大页面。要验证其是否有效，请运行以下命令：
 - en: '[PRE21]'
+  id: totrans-159
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: 'If the command completes successfully like that, large pages are set up correctly.
     If the large memory configuration is incorrect, a warning is given:'
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果命令像这样成功完成，大页面已正确设置。如果大内存配置不正确，将会收到警告：
 - en: '[PRE22]'
+  id: totrans-161
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: 'Remember that the command will not print an error on a Windows system (such
     as “home” versions) that does not support large pages: once the JVM finds out
     that large pages are not supported on the OS, it sets the `UseLargePages` flag
     to `false`, regardless of the command-line setting.'
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 请记住，在不支持大页面的 Windows 系统（如“家庭版”）上，该命令不会显示错误：一旦 JVM 发现操作系统不支持大页面，它会将 `UseLargePages`
+    标志设置为 `false`，而不管命令行设置如何。
 - en: Quick Summary
+  id: totrans-163
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速摘要
 - en: Using large pages will usually measurably speed up applications.
+  id: totrans-164
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用大页面通常会显著加快应用程序的速度。
 - en: Large page support must be explicitly enabled in most operating systems.
+  id: totrans-165
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 大页面支持在大多数操作系统中必须显式启用。
 - en: Summary
+  id: totrans-166
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: Although the Java heap is the memory region that gets the most attention, the
     entire footprint of the JVM is crucial to its performance, particularly in relation
     to the operating system. The tools discussed in this chapter allow you to track
     that footprint over time (and, crucially, to focus on the committed memory of
     the JVM rather than the reserved memory).
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管 Java 堆是最受关注的内存区域，但 JVM 的整体占用对其性能至关重要，特别是与操作系统的关系。本章讨论的工具允许您随时间跟踪该占用量（并且至关重要的是，专注于
+    JVM 的已提交内存而不是保留内存）。
 - en: Certain ways that the JVM uses OS memory—particularly large pages—can also be
     tuned to improve performance. Long-running JVMs will almost always benefit from
     using large pages, particularly if they have large heaps.
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 使用操作系统内存的某些方式，特别是大页面，也可以进行调整以提高性能。长时间运行的 JVM 几乎总是会从使用大页面中受益，特别是如果它们具有大堆。
 - en: '^([1](ch08.html#idm45775549798408-marker)) This is mostly a historical artifact:
     these libraries were developed before NIO and largely duplicate its functionality.'
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch08.html#idm45775549798408-marker)) 这在很大程度上是历史文物：这些库在 NIO 之前开发，大部分功能与其重复。
