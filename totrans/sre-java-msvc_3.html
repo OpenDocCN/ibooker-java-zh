@@ -1,0 +1,1449 @@
+<html><head></head><body>
+<div id="sbo-rt-content" class="calibre2"><section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3"><div class="preface" id="ch_debug_observability">
+<h1 class="calibre17" id="7K4G4-2d714b853a094e9a910510217e0e3d73"><span class="keep-together">Chapter 3. </span>Debugging with Observability</h1>
+
+
+<p class="author1"><a data-type="indexterm" data-primary="observability" id="ix_ch03-asciidoc0" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="observability" data-secondary="debugging with" id="ix_ch03-asciidoc1" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>As mentioned at the beginning of <a data-type="xref" href="part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Chapter 2</a>, observability signals can be roughly broken down into two categories, based on the value they bring: availability and debuggability. Aggregated application metrics provide the best availability signal. In this chapter, we will discuss the other two main signals, distributed tracing and logs.</p>
+
+<p class="author1">We’ll show one approach to correlating metrics and traces using only open source tooling. Some commercial vendors also work to provide this unified experience. Like in <a data-type="xref" href="part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Chapter 2</a>, the purpose in showing a specific approach is to develop an expectation about the minimum level of sophistication you should be able to <em class="calibre12">expect</em> from your observability stack when it is fully assembled.</p>
+
+<p class="author1">Lastly, distributed tracing instrumentation, given that it needs to propagate context across a microservice hierarchy, can be an efficient place to govern behavior deeper in a system. We’ll discuss a hypothetical failure injection testing feature as an example of the possibilities.</p>
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="The Three Pillars of Observability…or Is It Two?" class="calibre3"><div class="preface" id="three_pillars">
+<h1 class="calibre19" id="7K4GG-2d714b853a094e9a910510217e0e3d73">The Three Pillars of Observability…or Is It Two?</h1>
+
+<p class="author1"><a data-type="indexterm" data-primary="observability" data-secondary="three pillars of" id="ix_ch03-asciidoc2" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="three pillars of observability" id="ix_ch03-asciidoc3" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>As discussed in <a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" href="https://learning.oreilly.com/library/view/distributed-systems-observability/9781492033431"><em class="calibre12">Distributed Systems Observability</em></a> by Cindy Sridharan (O’Reilly), three different types of telemetry form the “three pillars of observability”: logs, distributed traces, and metrics. This three pillars classification is common, to such an extent that it’s difficult to pinpoint its origin.</p>
+
+<p class="author1">While logs, distributed traces, and metrics are three distinct forms of telemetry with unique characteristics, they roughly serve two purposes: proving availability and debugging for root cause identification.</p>
+
+<p class="author1">The operational cost of maintaining all this telemetry data would be high unless the volume of data is reduced in some way. Clearly we can only maintain telemetry data for a certain amount of time, so there is a need for other reduction strategies.</p>
+<dl class="calibre20">
+<dt class="calibre21">Aggregation</dt>
+<dd class="calibre22">
+<p class="calibre23"><a data-type="indexterm" data-primary="aggregation, defined" id="idm45139272504888" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Precalculating statistics from every measurement. Data from timers (see <a data-type="xref" href="part0006_split_017.html#5N4J5-2d714b853a094e9a910510217e0e3d73" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">“Timers”</a>), for example, could be presented as a sum, a count, and some limited distribution statistics.</p>
+</dd>
+<dt class="calibre21">Sampling</dt>
+<dd class="calibre22">
+<p class="calibre23"><a data-type="indexterm" data-primary="sampling" data-secondary="defined" id="idm45139272485688" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Selecting only certain measurements for retention.</p>
+</dd>
+</dl>
+
+<p class="author1">Aggregation effectively compacts the representation at the expense of request-level granularity, where sampling retains request-level granularity at the expense of the holistic view of the system’s performance. Except in low-throughput systems, the cost of both full request-level granularity and a full representation of all requests is too expensive.</p>
+
+<p class="author1">Retaining some information at full granularity is essential to <em class="calibre12">debugging</em> with observability tools, the focus of this chapter. Availability signals derived from metrics will point to a problem. Dimensional exploration of this data may in some cases be enough to identify the root cause of the issue. For example, breaking a particular signal into individual signals by instance may reveal a particular instance that is failing. There could be a whole region failing or an application version. In the rare cases where a pattern isn’t obvious, representative failures in distributed traces or logs will be the key to root cause identification.</p>
+
+<p class="author1">Considering the characteristics of each of the “three pillars” shows that logging and tracing as event-level telemetry serve the purpose of debugging and metrics serve the purpose of proving availability.</p>
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="The Three Pillars of Observability…or Is It Two?" class="calibre3">
+<div class="preface" id="three_pillars">
+<section data-type="sect2" data-pdf-bookmark="Logs" class="calibre3"><div class="preface" id="idm45139272481384">
+<h2 class="calibre37" id="calibre_pb_2">Logs</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="logs" id="idm45139272479944" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="observability" data-secondary="logs" id="idm45139272479240" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="three pillars of observability" data-secondary="logs" id="idm45139272478296" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Logs are ubiquitous in the software stack. Regardless of their structure and where they are ultimately stored, logs have some defining characteristics.</p>
+
+<p class="author1">Logs grow proportionally to throughput through a system. The more times a log-instrumented code path is executed, the more log data is emitted. Even if log data is sampled, this proportional relationship in size still holds.</p>
+
+<p class="author1">The context of a log is scoped to an event. Log data provides context into the execution behavior of a particular interaction. When data from several independent log events is aggregated together to reason about the overall performance of a system, the aggregate is effectively a metric.</p>
+
+<p class="author1">Logs are obviously geared toward debugging. Sophisticated log analytics packages help to prove availability from logging data only through aggregation. There is a cost to performing this aggregation, to persisting the data subject to aggregation, and to allocating the payload that was persisted.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="The Three Pillars of Observability…or Is It Two?" class="calibre3">
+<div class="preface" id="three_pillars">
+<section data-type="sect2" data-pdf-bookmark="Distributed Tracing" class="calibre3"><div class="preface" id="idm45139272474792">
+<h2 class="calibre37" id="calibre_pb_3">Distributed Tracing</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="distributed tracing" id="idm45139272473512" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="observability" data-secondary="distributed tracing" id="idm45139272472808" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="tracing telemetry" id="idm45139272471864" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Tracing telemetry, like logs, is recorded per instrumented execution (i.e., it is event-driven) but links individual events across disparate parts of a system causally. A distributed tracing system can reason about a user interaction end to end across the whole system. So for a given request that was known to exhibit some degradation, this end-to-end view of the satisfaction of a user request shows which part of the distributed system was degraded.</p>
+
+<p class="author1">Tracing telemetry is even more commonly sampled than logs. Nevertheless, tracing data still grows proportionally to throughput through a system in much the same way that log data grows proportionally to throughput.</p>
+
+<p class="author1">Tracing can be difficult to retrofit into an existing system, as each collaborator in an end-to-end process must be configured to propagate trace context forward.</p>
+
+<p class="author1">Distributed tracing shines especially for a particular type of performance problem where the entire system is slower than it should be but there is no obvious hotspot to quickly optimize. Sometimes you simply have to see the contribution of many subsystems to the performance of a system as whole to recognize that systemic “death by a thousand cuts” that needs to be visualized in order to build the organizational will to address, and thus the attention of time and resources.</p>
+<blockquote class="pcalibre8 pcalibre9 pcalibre7">
+<p class="calibre16">“It’s slow” is the hardest problem you’ll ever debug. “It’s slow” might mean one or more of the number of systems involved in performing a user request is slow. It might mean one or more of the parts of a pipeline of transformations across many machines is slow. “It’s slow” is hard, in part, because the problem statement doesn’t provide many clues to the location of the flaw. Partial failures, ones that don’t show up on the graphs you usually look up, are lurking in a dark corner. And, until the degradation becomes very obvious, you won’t receive as many resources (time, money, and tooling) to solve it. Dapper and Zipkin were built for a reason.</p>
+<p data-type="attribution" class="pcalibre10 pcalibre11">Jeff Hodges</p>
+</blockquote>
+
+<p class="author1">In organizations with a large set of microservices, distributed tracing helps to understand the service graph (the dependencies between services themselves) involved in the processing of a certain type of request. This assumes, of course, that each service in the graph has tracing instrumentation in one form or another. In the narrowest sense, the last tier of services can be uninstrumented and still appear in the service graph if named by a span wrapping a call on the client side.</p>
+
+<p class="author1">Distributed tracing, like logging, is inherently event-driven and so is best suited to act as a debugging signal, but one that carries important interservice relational context in addition to its tags.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="The Three Pillars of Observability…or Is It Two?" class="calibre3">
+<div class="preface" id="three_pillars">
+<section data-type="sect2" data-pdf-bookmark="Metrics" class="calibre3"><div class="preface" id="idm45139272464536">
+<h2 class="calibre37" id="calibre_pb_4">Metrics</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="metrics" data-secondary="observability and" id="idm45139272463336" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="observability" data-secondary="metrics and" id="idm45139272462360" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="three pillars of observability" data-secondary="metrics" id="idm45139272461416" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Logs and distributed traces are more similar to each other than they are to metrics, which were discussed in detail in <a data-type="xref" href="part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Chapter 2</a>, since in some ways they are both sampled to control cost. Metrics are presented in aggregate and are used to understand some service level indicator (SLI) as a whole, rather than providing detail about the individual interactions that, taken together, are measured as an SLI.</p>
+
+<p class="author1">Retrofitting an existing codebase with metrics is partially a manual effort, and partially comes out of the box with improvements in common frameworks and libraries which are increasingly shipping with instrumentation.</p>
+
+<p class="author1">Metrics SLIs are purposefully collected to be tested against a service level objective, so they are geared toward proving availability.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="The Three Pillars of Observability…or Is It Two?" class="calibre3">
+<div class="preface" id="three_pillars">
+<section data-type="sect2" data-pdf-bookmark="Which Telemetry Is Appropriate?" class="calibre3"><div class="preface" id="idm45139272457720">
+<h2 class="calibre37" id="7K4IB-2d714b853a094e9a910510217e0e3d73">Which Telemetry Is Appropriate?</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="logging, tracing versus" id="ix_ch03-asciidoc4" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="metrics" data-secondary="tracing versus" id="ix_ch03-asciidoc5" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="observability" data-secondary="determining the appropriate telemetry" id="ix_ch03-asciidoc6" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="observability" data-secondary="tool selection" id="ix_ch03-asciidoc7" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="telemetry" data-secondary="determining appropriate" id="ix_ch03-asciidoc8" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="three pillars of observability" data-secondary="determining the appropriate telemetry" id="ix_ch03-asciidoc9" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="tracing" data-secondary="logging or metrics versus" id="ix_ch03-asciidoc10" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Given this context about what each form of observability is intended for, consider how they overlap. Where they overlap, which form do we emphasize over another?</p>
+
+<p class="author1">The idea that both tracing and logging are debugging signals implies that they can be redundant, though not equal. All things being equal about retrieving and searching for them, a trace with effective tags and metadata is superior to a log line when it also provides useful context about the chain of calls that led to it (and propagates this context further along as well).</p>
+
+<p class="author1">Tracing instrumentation exists at all the same logical places where metrics timers do. Note that distributed traces <em class="calibre12">only</em> measure executions, though. Where execution timing is concerned, metrics and tracing instrumentation may both be appropriate because they complement one another. Metrics provide an aggregated view of all executions of the instrumented piece of code (and without caller context), and distributed tracing provides sampled examples of individual executions. In addition to timing executions though, metrics also count and gauge things. There are no tracing equivalents for these kinds of signals.</p>
+
+<p class="author1">To make this more concrete, let’s take a look at excerpts from a typical application log in <a data-type="xref" href="part0008_split_005.html#log_showing_telemetry_choices" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-1</a>. Much of the beginning of this log excerpt contains one-time events about which components were configured and features were enabled. These pieces of information may be important in understanding why the application isn’t functioning as expected (for example, if a component was expected to be configured but wasn’t), but they don’t make sense as metrics because they aren’t recurring events that need to be aggregated over time to understand the overall performance of the system. They don’t make sense as distributed traces either, because these are events that are specific to the state of this service alone and have nothing to do with the coordinated satisfaction of an end-user request across multiple microservices.</p>
+
+<p class="author1">There are other log lines that could be replaced with tracing or metrics, as noted in the callouts following the example.</p>
+<div id="log_showing_telemetry_choices" data-type="example" class="calibre61">
+<h5 class="calibre62"><span class="keep-together">Example 3-1. </span>A typical application log demonstrating telemetry choices</h5>
+
+<pre data-type="programlisting" class="calibre63">.   ____          _            __ _ _
+/\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+\\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+'  |____| .__|_| |_|_| |_\__, | / / / /
+=========|_|==============|___/=/_/_/_/
+:: Spring Boot ::       (v...RELEASE)
+
+:56:56 main INFO c.m.MySampleService - Starting MySampleService on
+ HOST with PID 12624
+:56:56 main INFO c.m.MySampleService - The following profiles are active: logging
+:56:56 main INFO o.s.b.c.e.AnnotationConfigEmbeddedWebApplicationContext - Refresh
+  org.springframework.boot.context.embedded.AnnotationConfigEmbeddedWebApplication
+  Context@2a5c8d3f: startup date [Tue Sep 17 14:56:56 CDT]; root of context
+:56:57 background-preinit INFO o.h.v.i.util.Version - HV000001: Hibernate Validator
+  5.3.6.Final
+:57:02 main INFO o.s.b.c.e.t.TomcatEmbeddedServletContainer - Tomcat initialized
+  with port(s): 8080 (http)
+:57:03 localhost-startStop-1 INFO i.m.c.i.l.LoggingMeterRegistry - publishing
+  metrics to logs every 10s
+:57:07 localhost-startStop-1 INFO o.s.b.a.e.m.EndpointHandlerMapping - Mapped
+  "{[/env/{name:.*}],methods=[GET],produces=[application/
+  vnd.spring-boot.actuator.v1+json || application/json]}" onto public
+  java.lang.Object org.springframework.boot.actuate.endpoint.mvc.
+  EnvironmentMvcEndpoint.value(java.lang.String)
+:57:07 localhost-startStop-1 INFO o.s.b.w.s.FilterRegistrationBean - Mapping filter:
+ 'metricsFilter' to: [/*]
+:57:11 main INFO o.mongodb.driver.cluster - Cluster created with settings
+ {hosts=[localhost:27017], mode=SINGLE, requiredClusterType=UNKNOWN,
+ serverSelectionTimeout='30000 ms', maxWaitQueueSize=500}
+:57:12 main INFO o.s.b.a.e.j.EndpointMBeanExporter - Registering beans for JMX
+ exposure on startup
+:57:12 main INFO o.s.b.a.e.j.EndpointMBeanExporter - Located managed bean
+  'healthEndpoint': registering with JMX server as MBean
+  [org.springframework.boot:type=Endpoint,name=healthEndpoint]
+:57:12 main INFO o.s.b.c.e.t.TomcatEmbeddedServletContainer - Tomcat started on
+  port(s): 8080 (http)
+:57:13 cluster-ClusterId{value='5d813a970df1cb31507adbc2', description='null'}-
+  localhost:27017 INFO o.mongodb.driver.cluster - Exception in monitor thread
+  while connecting to server localhost:27017
+com.mongodb.MongoSocketOpenException: Exception opening socket <a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="co_debugging_with_observability_CO1-1" href="part0008_split_005.html#callout_debugging_with_observability_CO1-1"><img src="../images/00112.png" alt="1" class="calibre66"/></a>
+  at c.m.c.SocketStream.open(SocketStream.java:63)
+  at c.m.c.InternalStreamConnection.open(InternalStreamConnection.java:115)
+  at c.m.c.DefaultServerMonitor$ServerMonitorRunnable.run(
+    DefaultServerMonitor.java:113)
+  at java.lang.Thread.run(Thread.java:748)
+Caused by: j.n.ConnectException: Connection refused: connect
+  at j.n.DualStackPlainSocketImpl.waitForConnect(Native Method)
+  at j.n.DualStackPlainSocketImpl.socketConnect(
+    DualStackPlainSocketImpl.java:85)
+  at j.n.AbstractPlainSocketImpl.doConnect(AbstractPlainSocketImpl.java:350)
+  at j.n.AbstractPlainSocketImpl.connectToAddress(
+    AbstractPlainSocketImpl.java:206)
+  at j.n.AbstractPlainSocketImpl.connect(AbstractPlainSocketImpl.java:188)
+  at j.n.PlainSocketImpl.connect(PlainSocketImpl.java:172)
+  at j.n.SocksSocketImpl.connect(SocksSocketImpl.java:392)
+  at j.n.Socket.connect(Socket.java:589)
+  at c.m.c.SocketStreamHelper.initialize(SocketStreamHelper.java:57)
+  at c.m.c.SocketStream.open(SocketStream.java:58)
+  ... 3 common frames omitted
+:57:13 main INFO c.m.PaymentsController - [GET] Payment 123456 retrieved in 37ms. <a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="co_debugging_with_observability_CO1-2" href="part0008_split_005.html#callout_debugging_with_observability_CO1-2"><img src="../images/00059.png" alt="2" class="calibre66"/></a>
+:57:13 main INFO c.m.PaymentsController - [GET] Payment 789654 retrieved in 38ms
+... (hundreds of other payments retrieved in &lt;40ms)
+:57:13 main INFO c.m.PaymentsController - [GET] Payment 567533 retrieved in 342ms.
+:58.00 main INFO c.m.PaymentsController - Payment near cache contains 2 entries. <a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="co_debugging_with_observability_CO1-3" href="part0008_split_005.html#callout_debugging_with_observability_CO1-3"><img src="../images/00067.png" alt="3" class="calibre66"/></a></pre></div>
+<dl class="calibre20">
+<dt class="calibre21"><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="callout_debugging_with_observability_CO1-1" href="part0008_split_005.html#co_debugging_with_observability_CO1-1"><img src="../images/00112.png" alt="1" class="calibre66"/></a></dt>
+<dd class="calibre67"><p class="calibre68"><em class="calibre12">Both metrics and logging, no tracing.</em> Mongo socket connection attempts could easily be timed with metrics, with a tag indicating success/failure and a tag with a summarized exception tag like <code class="calibre24">exception=ConnectException</code>. This summarized tag may be enough to understand the problem without viewing the whole stack trace. In other cases, where the summarized exception tag is something like <code class="calibre24">exception=NullPointerException</code>, logging the stack trace helps identify the specific problem once the monitoring system alerts us to a grouping of exceptions that have failed an established service level objective.</p></dd>
+<dt class="calibre21"><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="callout_debugging_with_observability_CO1-2" href="part0008_split_005.html#co_debugging_with_observability_CO1-2"><img src="../images/00059.png" alt="2" class="calibre66"/></a></dt>
+<dd class="calibre67"><p class="calibre68"><em class="calibre12">Both traces and metrics, no logging.</em> The log statement in the code could be removed entirely. Metrics and distributed traces capture all the interesting information about this payment in a way that allows us to reason about the retrieval of all payments holistically, as well as representative retrievals of individual payments. The metrics, for example, will show us that while most payments are retrieved in less than 40 ms, some will take an order of magnitude longer to retrieve.</p></dd>
+<dt class="calibre21"><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="callout_debugging_with_observability_CO1-3" href="part0008_split_005.html#co_debugging_with_observability_CO1-3"><img src="../images/00067.png" alt="3" class="calibre66"/></a></dt>
+<dd class="calibre67"><p class="calibre68"><em class="calibre12">Metrics, no traces or logs.</em> A near cache of frequently retrieved payments could be monitored strictly with a gauge metric. There is no equivalent to a gauge in tracing instrumentation, and logging this is redundant.</p></dd>
+</dl>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="The Three Pillars of Observability…or Is It Two?" class="calibre3">
+<div class="preface" id="three_pillars">
+<section data-type="sect2" data-pdf-bookmark="Which Telemetry Is Appropriate?" class="calibre3">
+<div class="preface" id="idm45139272457720">
+<div data-type="tip" class="calibre28"><h1 class="calibre54" id="calibre_pb_6">Which Observability Tool Should You Choose?</h1>
+<p class="author1">Tracing is preferable to logging whenever possible because it can contain the same information but with richer context. Where tracing and metrics overlap, start with metrics because the first task should be <em class="calibre12">knowing</em> when some system is unavailable. Adding additional telemetry to help remediate problems can come later. When you do add tracing, start at places where timed metrics instrumentation exists, because it is likely also worth tracing with a superset of the same tags.<a data-type="indexterm" data-startref="ix_ch03-asciidoc10" id="idm45139272401128" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc9" id="idm45139272400424" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc8" id="idm45139272399752" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc7" id="idm45139272399080" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc6" id="idm45139272398408" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc5" id="idm45139272397736" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc4" id="idm45139272397064" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/></p>
+</div>
+
+<p class="author1">Supposing then that you are ready to add distributed tracing, let’s next consider what makes up a trace and how it might be visualized.<a data-type="indexterm" data-startref="ix_ch03-asciidoc3" id="idm45139272395720" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc2" id="idm45139272395016" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/></p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Components of a Distributed Trace" class="calibre3"><div class="preface" id="idm45139272512792">
+<h1 class="calibre19" id="calibre_pb_7">Components of a Distributed Trace</h1>
+
+<p class="author1"><a data-type="indexterm" data-primary="distributed tracing" data-secondary="components of a distributed trace" id="ix_ch03-asciidoc11" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="observability" data-secondary="components of a distributed trace" id="ix_ch03-asciidoc12" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="Zipkin" id="ix_ch03-asciidoc13" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>A full distributed trace is a collection of individual <em class="calibre12">spans</em>, which contain information about the performance of each touchpoint in the satisfaction of an end-user request. These spans can be assembled into an “icicle” graph that shows relatively how much time was spent in each service, as shown in <a data-type="xref" href="part0008_split_007.html#zipkin_trace_view" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Figure 3-1</a>.</p>
+
+<figure class="calibre32"><div id="zipkin_trace_view" class="figure">
+<img src="../images/00066.png" alt="srej 0301" class="calibre94"/>
+<h6 class="calibre34"><span class="keep-together">Figure 3-1. </span>Zipkin icicle graph</h6>
+</div></figure>
+
+<p class="author1">Spans contain a name and set of key-value tag pairs, much like metrics instrumentation does. Many of the principles we covered in <a data-type="xref" href="part0006_split_007.html#5N3ND-2d714b853a094e9a910510217e0e3d73" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">“Naming Metrics”</a> apply equally to distributed traces. So if a trace span is named <code class="calibre24">http.server.requests</code>, then tags may identify region (in the public cloud sense), API endpoint, HTTP method, response status code, etc. Keeping metric and trace naming consistent is the key to allowing for correlation of telemetry (see <a data-type="xref" href="part0008_split_023.html#telemetry_correlation" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">“Correlation of Telemetry”</a>).</p>
+
+<p class="author1">Unlike in metrics, the Zipkin span data model contains special fields for service name (used in the Zipkin Dependencies view, displaying a service graph). This is equivalent to tagging metrics with an application name, where most metrics backends don’t set aside a reserved tag name for this concept. Span name is also a defined field on the Zipkin data model. Both are indexed for lookup, so unbounded value set cardinality on span and service name should be avoided.</p>
+
+<p class="author1">Unlike metrics, it is not necessary to control tag cardinality of a trace in every circumstance. This has to do with the way traces are stored. <a data-type="xref" href="part0006_split_002.html#storage_dimensional_metric" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Table 2-1</a> showed how metrics are stored logically in rows by unique ID (combination of name and key/value tags). Additional measurements are stored as samples in an existing row. The cost of metrics is then the product of the total number of IDs and the amount of samples maintained per ID. Distributed trace spans are stored individually without any regard to whether another span had the same name and tags. The cost of distributed traces is then the product of the throughput through the system and the sampling rate (viewed as a percentage).</p>
+
+<p class="author1">While tag cardinality does not influence storage cost in a distributed tracing system, it does influence <em class="calibre12">lookup</em> cost. And in tracing systems, tags can be marked as indexable by the tracing backend (and autocompletable in the Zipkin UI). Clearly, these tag value sets should be bounded for index performance.</p>
+
+<p class="author1">It’s best to overlap as many tags as possible between metrics and traces so that they can later be correlated. You should also tag distributed traces with additional high-cardinality tags that can be used to locate a request from a particular user or interaction, as in <a data-type="xref" href="part0008_split_007.html#overlap_in_trace_metrics_tagging" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Table 3-1</a>. Strive for the value to match wherever tag keys match.</p>
+<table id="overlap_in_trace_metrics_tagging" class="calibre40">
+<caption class="calibre41"><span class="keep-together">Table 3-1. </span>Overlap of distributed trace and metrics tagging</caption>
+<thead class="calibre42">
+<tr class="calibre43">
+<th class="calibre44">Metric tag key</th>
+<th class="calibre44">Trace tag key</th>
+<th class="calibre44">Value</th>
+</tr>
+</thead>
+<tbody class="calibre45">
+<tr class="calibre46">
+<td class="calibre47"><p class="calibre48">application</p></td>
+<td class="calibre47"><p class="calibre48">application</p></td>
+<td class="calibre47"><p class="calibre48">payments</p></td>
+</tr>
+<tr class="calibre49">
+<td class="calibre47"><p class="calibre48">method</p></td>
+<td class="calibre47"><p class="calibre48">method</p></td>
+<td class="calibre47"><p class="calibre48">GET</p></td>
+</tr>
+<tr class="calibre46">
+<td class="calibre47"><p class="calibre48">status</p></td>
+<td class="calibre47"><p class="calibre48">status</p></td>
+<td class="calibre47"><p class="calibre48">200</p></td>
+</tr>
+<tr class="calibre49">
+<td class="calibre47"><p class="calibre48">uri</p></td>
+<td class="calibre47"><p class="calibre48">uri</p></td>
+<td class="calibre47"><p class="calibre48">/api/payment/{paymentId}</p></td>
+</tr>
+<tr class="calibre46">
+<td class="calibre47"/>
+<td class="calibre47"><p class="calibre48">detailedUri</p></td>
+<td class="calibre47"><p class="calibre48">/api/payment/abc123</p></td>
+</tr>
+<tr class="calibre50">
+<td class="calibre47"/>
+<td class="calibre47"><p class="calibre48">user</p></td>
+<td class="calibre47"><p class="calibre48">user123456</p></td>
+</tr>
+</tbody>
+</table>
+
+<p class="author1">It should be clear at this point that a trace is designed to give you insight into the end-to-end performance of a request. It shouldn’t be surprising then that the Zipkin UI is focused on searching for traces given a set of parameters, as shown in <a data-type="xref" href="part0008_split_007.html#zipkin_search" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Figure 3-2</a>. This kind of listing trades off an understanding of the overall distribution of end-to-end performance for a matching set of traces for a particular set of parameters. Building a correlation between the overall distribution and this view is the subject of <a data-type="xref" href="part0008_split_023.html#telemetry_correlation" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">“Correlation of Telemetry”</a>.<a data-type="indexterm" data-startref="ix_ch03-asciidoc13" id="idm45139272358424" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc12" id="idm45139272357720" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc11" id="idm45139272357048" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/></p>
+
+<figure class="calibre32"><div id="zipkin_search" class="figure">
+<img src="../images/00031.png" alt="srej 0302" class="calibre95"/>
+<h6 class="calibre34"><span class="keep-together">Figure 3-2. </span>Searching for traces in the Zipkin Lens UI</h6>
+</div></figure>
+
+<p class="author1">As with metrics, there are multiple ways of adding distributed tracing to your application. Let’s consider some of the advantages of each.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Types of Distributed Tracing Instrumentation" class="calibre3"><div class="preface" id="idm45139272393752">
+<h1 class="calibre19" id="7K4L6-2d714b853a094e9a910510217e0e3d73">Types of Distributed Tracing Instrumentation</h1>
+
+<p class="author1"><a data-type="indexterm" data-primary="distributed tracing" data-secondary="instrumentation types" id="ix_ch03-asciidoc14" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Everything discussed in <a data-type="xref" href="part0006_split_001.html#blackbox_whitebox" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">“Black Box Versus White Box Monitoring”</a> with respect to metrics also applies to distributed tracing instrumentation. Tracing instrumentation is available at various architectural levels (from infrastructure to individual components of an application).</p>
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Types of Distributed Tracing Instrumentation" class="calibre3">
+<div class="preface" id="idm45139272393752">
+<section data-type="sect2" data-pdf-bookmark="Manual Tracing" class="calibre3"><div class="preface" id="idm45139272349896">
+<h2 class="calibre37" id="calibre_pb_9">Manual Tracing</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="distributed tracing" data-secondary="manual tracing" id="idm45139272348728" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="manual tracing" id="idm45139272347752" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Libraries like Zipkin’s Brave or OpenTelemetry allow you to instrument your application explicitly in code. In an ideally traced distributed system, some level of manual tracing will certainly be present. Through it, key business-specific context can be added to traces that other forms of prepackaged instrumentation couldn’t possibly be aware of.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Types of Distributed Tracing Instrumentation" class="calibre3">
+<div class="preface" id="idm45139272393752">
+<section data-type="sect2" data-pdf-bookmark="Agent Tracing" class="calibre3"><div class="preface" id="idm45139272346328">
+<h2 class="calibre37" id="calibre_pb_10">Agent Tracing</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="agent tracing" id="idm45139272345160" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="distributed tracing" data-secondary="agent tracing" id="idm45139272344456" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Like with metrics, agents (typically vendor-provided) can automatically add tracing instrumentation without making code changes. Attaching an agent is a change to your application delivery pipeline, and this complexity cost shouldn’t be ignored.</p>
+
+<p class="author1">This cost is real no matter which level of abstraction your platform operates at:</p>
+
+<ul class="printings">
+<li class="calibre15">
+<p class="calibre18"><a data-type="indexterm" data-primary="infrastructure as a service (IaaS)" data-secondary="agent tracing" id="idm45139272341816" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>For an infrastructure-as-a-service platform like Amazon EC2, you will have to add the agent and its configuration to your base Amazon Machine Image.</p>
+</li>
+<li class="calibre15">
+<p class="calibre18"><a data-type="indexterm" data-primary="CaaS (container as a service)" id="idm45139272339784" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="container as a service (CaaS)" id="idm45139272339064" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>For a container-as-a-service (CaaS) platform, you will need another container level between a basic image like <code class="calibre24">openjdk:jre-alpine</code> and your application. This impact can leak into your build then. If you were using the Gradle <code class="calibre24">com.bmuschko.docker-spring-boot-application</code> plug-in to package Spring Boot applications for deployment to a CaaS, you now need to override the default container image with one including the agent. Also, any time the base image (which may very well be the default of <code class="calibre24">com.bmuschko.docker-spring-boot-application</code>) of the container image containing the agent is updated, you have to publish a new image.</p>
+</li>
+<li class="calibre15">
+<p class="calibre18"><a data-type="indexterm" data-primary="PaaS (platform as a service)" id="idm45139272335640" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="platform as a service (PaaS)" id="idm45139272334920" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>For a platform as a service (PaaS) like Cloud Foundry or Heroku, you have to use a custom base unless integration with the agent is specifically supported by the PaaS vendor already.</p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Types of Distributed Tracing Instrumentation" class="calibre3">
+<div class="preface" id="idm45139272393752">
+<section data-type="sect2" data-pdf-bookmark="Framework Tracing" class="calibre3"><div class="preface" id="idm45139272333400">
+<h2 class="calibre37" id="calibre_pb_11">Framework Tracing</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="distributed tracing" data-secondary="framework tracing" id="idm45139272331992" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="framework tracing" id="idm45139272331016" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Frameworks can also include telemetry out of the box. Because frameworks are included in an application as a binary dependency, this form of telemetry is technically a black box solution. Framework-level instrumentation can have a white box feel to it when it allows for user-provided customizations to its automatically instrumented touchpoints.</p>
+
+<p class="author1">Frameworks are aware of their own implementation idiosyncracies, so they can provide rich contextual information as tags.</p>
+
+<p class="author1">To give an example, framework instrumentation for an HTTP request handler can tag the span with a parameterized request URI (i.e., <code class="calibre24">/api/customers/(id)</code> versus <code class="calibre24">/api/customers/1</code>). Agent instrumentation would have to be aware of and switch over all supported frameworks to provide the same level of richness and keep up with changes to frameworks individually.</p>
+
+<p class="author1">Another complication comes from increasingly prevalent asynchronous workflows in modern programming paradigms like reactive. A proper tracing implementation requires in-process propagation, which can be tricky in reactive contexts where <span class="keep-together">you can’t just</span> stuff context into a <code class="calibre24">ThreadLocal</code>. Also, dealing with <a href="https://oreil.ly/h1p0-" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">mapped diagnostic contexts</a> to correlate logs and tracing can be tricky in those same contexts.</p>
+
+<p class="author1">Retrofitting an existing application with framework-level instrumentation can be relatively low touch. For example, Spring Cloud Sleuth adds tracing telemetry to an existing Spring Cloud—based application. You just need an additional dependency as in <a data-type="xref" href="part0008_split_011.html#sleuth_dependency" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-2</a> and a bit of configuration as in <a data-type="xref" href="part0008_split_011.html#sleuth_config" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-3</a>, the latter of which can be done cross-organizationally if you are already using a centralized dynamic configuration server like Spring Cloud Config Server.</p>
+<div id="sleuth_dependency" data-type="example" class="calibre61">
+<h5 class="calibre62"><span class="keep-together">Example 3-2. </span>Sleuth runtime dependency in Gradle build</h5>
+
+<pre data-type="programlisting" data-code-language="groovy" class="calibre63"><code class="n">dependencies</code><code class="calibre24"> </code><code class="o">{</code><code class="calibre24">
+</code><code class="calibre24">    </code><code class="n">runtimeOnly</code><code class="o">(</code><code class="s">"org.springframework.cloud:spring-cloud-starter-zipkin"</code><code class="o">)</code><code class="calibre24"> </code><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="co_debugging_with_observability_CO2-1" href="part0008_split_011.html#callout_debugging_with_observability_CO2-1"><img src="../images/00112.png" alt="1" class="calibre66"/></a><code class="calibre24">
+</code><code class="o">}</code></pre></div>
+<dl class="calibre20">
+<dt class="calibre21"><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="callout_debugging_with_observability_CO2-1" href="part0008_split_011.html#co_debugging_with_observability_CO2-1"><img src="../images/00112.png" alt="1" class="calibre66"/></a></dt>
+<dd class="calibre67"><p class="calibre68">Note that the <code class="calibre24">io.spring.dependency-management</code> plug-in is responsible for adding the version to this dependency specification.</p></dd>
+</dl>
+<div id="sleuth_config" data-type="example" class="calibre61">
+<h5 class="calibre62"><span class="keep-together">Example 3-3. </span>Sleuth configuration in Spring Boot’s application.yml</h5>
+
+<pre data-type="programlisting" data-code-language="yaml" class="calibre63"><code class="nt">spring.zipkin.baseUrl</code><code class="p">:</code> <code class="calibre24">http://YOUR_ZIPKIN_HOST:9411/</code></pre></div>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Types of Distributed Tracing Instrumentation" class="calibre3">
+<div class="preface" id="idm45139272393752">
+<section data-type="sect2" data-pdf-bookmark="Service Mesh Tracing" class="calibre3"><div class="preface" id="service_mesh_tracing">
+<h2 class="calibre37" id="calibre_pb_12">Service Mesh Tracing</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="distributed tracing" data-secondary="service mesh tracing" id="idm45139270332680" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="service mesh tracing" id="idm45139271412584" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>The service mesh is an infrastructure layer outside of application code that manages interaction between microservices. <a data-type="indexterm" data-primary="sidecars" id="idm45139270066232" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Many implementations accomplish this through sidecar proxies in some way associated with the application process.</p>
+
+<p class="author1">In some ways, this form of instrumentation isn’t much different from how the framework might accomplish it, but don’t be fooled into thinking they are equal. They are similar in the point of instrumentation (decorating an RPC call). The framework will certainly have <em class="calibre12">more</em> information than the service mesh. For example, for REST endpoint tracing, the framework has access to exception details that are mapped in a lossy way to one of a small set of HTTP status codes. The service mesh would only have access to the status code. The framework has access to the unsubstituted path of the endpoint (e.g., <code class="calibre24">/api/person/{id}</code> instead of <code class="calibre24">/api/person/1</code>).</p>
+
+<p class="author1">Agents also have more potential for richness than a sidecar because they can reach down into individual method invocations, a finer level of granularity than RPC calls.</p>
+
+<p class="author1">Adding service mesh not only changes your delivery pipeline, it also comes at an additional resource and complexity cost in managing sidecars and their control plane as well.</p>
+
+<p class="author1">Still, instrumenting at a service mesh layer means you don’t have to retrofit existing applications with framework instrumentation like Spring Cloud Sleuth, change your base images like with agent-based instrumentation, or perform manual instrumentation. Because of the lack of information available to the service mesh relative to frameworks, introducing a service mesh primarily to achieve telemetry instrumentation incurs the significant cost of maintaining the mesh for what ultimately will be less-rich telemetry. For example, a mesh will observe a request to <code class="calibre24">/api/customers/1</code> and not have the context that the framework does, that this is a request to <code class="calibre24">/api/customers/(id)</code>. As a result, telemetry streaming out of mesh-based instrumentation will be harder to group by parameterized URI. Adding the runtime dependency may very well be significantly easier in the end.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Types of Distributed Tracing Instrumentation" class="calibre3">
+<div class="preface" id="idm45139272393752">
+<section data-type="sect2" data-pdf-bookmark="Blended Tracing" class="calibre3"><div class="preface" id="idm45139269201464">
+<h2 class="calibre37" id="7K4O7-2d714b853a094e9a910510217e0e3d73">Blended Tracing</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="blended tracing" id="idm45139286704008" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="distributed tracing" data-secondary="blended tracing" id="idm45139269986936" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>White box (or framework telemetry that, because it is autoconfigured, <em class="calibre12">feels</em> like white box) and black box options aren’t mutually exclusive. They can in fact complement each other well. Consider the REST controller in <a data-type="xref" href="part0008_split_013.html#7K4OG-2d714b853a094e9a910510217e0e3d73" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-4</a>. Spring Cloud Sleuth is designed to automatically create a span around the request handler <code class="calibre24">findCustomerById</code>, tagging it with pertinent information. By injecting a <code class="calibre24">Tracer</code>, you can add a finer-grained span on just the database access. This breaks down the end-to-end user interaction into an even-finer-grained trace. Now we can identify where the database specifically is the cause of a service degradation in the satisfaction of the request in this particular microservice.</p>
+<div id="blended_tracing_black_white_box" data-type="example" class="calibre61">
+<h5 class="calibre62" id="7K4OG-2d714b853a094e9a910510217e0e3d73"><span class="keep-together">Example 3-4. </span>Blended black box and white box tracing instrumentation</h5>
+
+<pre data-type="programlisting" data-code-language="java" class="calibre63"><code class="nd">@RestController</code><code class="calibre24">
+</code><code class="k">public</code><code class="calibre24"> </code><code class="k">class</code><code class="calibre24"> </code><code class="nc">CustomerController</code><code class="calibre24"> </code><code class="o">{</code><code class="calibre24">
+</code><code class="calibre24">  </code><code class="k">private</code><code class="calibre24"> </code><code class="k">final</code><code class="calibre24"> </code><code class="n">Tracer</code><code class="calibre24"> </code><code class="n">tracer</code><code class="o">;</code><code class="calibre24">
+</code><code class="calibre24">
+</code><code class="calibre24">  </code><code class="k">public</code><code class="calibre24"> </code><code class="nf">CustomerController</code><code class="o">(</code><code class="n">Tracer</code><code class="calibre24"> </code><code class="n">tracer</code><code class="o">)</code><code class="calibre24"> </code><code class="o">{</code><code class="calibre24">
+</code><code class="calibre24">    </code><code class="k">this</code><code class="o">.</code><code class="na">tracer</code><code class="calibre24"> </code><code class="o">=</code><code class="calibre24"> </code><code class="n">tracer</code><code class="o">;</code><code class="calibre24">
+</code><code class="calibre24">  </code><code class="o">}</code><code class="calibre24">
+</code><code class="calibre24">
+</code><code class="calibre24">  </code><code class="nd">@GetMapping</code><code class="o">(</code><code class="s">"/customer/{id}"</code><code class="o">)</code><code class="calibre24"> </code><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="co_debugging_with_observability_CO3-1" href="part0008_split_013.html#callout_debugging_with_observability_CO3-1"><img src="../images/00112.png" alt="1" class="calibre66"/></a><code class="calibre24">
+</code><code class="calibre24">  </code><code class="k">public</code><code class="calibre24"> </code><code class="n">Customer</code><code class="calibre24"> </code><code class="nf">findCustomerById</code><code class="o">(</code><code class="nd">@PathVariable</code><code class="calibre24"> </code><code class="n">String</code><code class="calibre24"> </code><code class="n">id</code><code class="o">)</code><code class="calibre24"> </code><code class="o">{</code><code class="calibre24">
+</code><code class="calibre24">    </code><code class="n">Span</code><code class="calibre24"> </code><code class="n">span</code><code class="calibre24"> </code><code class="o">=</code><code class="calibre24"> </code><code class="n">tracer</code><code class="o">.</code><code class="na">nextSpan</code><code class="o">(</code><code class="o">)</code><code class="o">.</code><code class="na">name</code><code class="o">(</code><code class="s">"findCustomer"</code><code class="o">)</code><code class="o">;</code><code class="calibre24"> </code><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="co_debugging_with_observability_CO3-2" href="part0008_split_013.html#callout_debugging_with_observability_CO3-2"><img src="../images/00059.png" alt="2" class="calibre66"/></a><code class="calibre24">
+</code><code class="calibre24">    </code><code class="k">try</code><code class="calibre24"> </code><code class="o">(</code><code class="n">Tracer</code><code class="o">.</code><code class="na">SpanInScope</code><code class="calibre24"> </code><code class="n">ignored</code><code class="calibre24"> </code><code class="o">=</code><code class="calibre24"> </code><code class="n">tracer</code><code class="o">.</code><code class="na">withSpanInScope</code><code class="o">(</code><code class="n">span</code><code class="o">.</code><code class="na">start</code><code class="o">(</code><code class="o">)</code><code class="o">)</code><code class="o">)</code><code class="calibre24"> </code><code class="o">{</code><code class="calibre24">
+</code><code class="calibre24">        </code><code class="n">Customer</code><code class="calibre24"> </code><code class="n">customer</code><code class="calibre24"> </code><code class="o">=</code><code class="calibre24"> </code><code class="o">.</code><code class="o">.</code><code class="o">.</code><code class="calibre24"> </code><code class="c">// Database access to lookup customer
+</code><code class="calibre24">        </code><code class="n">span</code><code class="o">.</code><code class="na">tag</code><code class="o">(</code><code class="s">"country"</code><code class="o">,</code><code class="calibre24"> </code><code class="n">customer</code><code class="o">.</code><code class="na">getAddress</code><code class="o">(</code><code class="o">)</code><code class="o">.</code><code class="na">getCountry</code><code class="o">(</code><code class="o">)</code><code class="o">)</code><code class="o">;</code><code class="calibre24"> </code><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="co_debugging_with_observability_CO3-3" href="part0008_split_013.html#callout_debugging_with_observability_CO3-3"><img src="../images/00067.png" alt="3" class="calibre66"/></a><code class="calibre24">
+</code><code class="calibre24">        </code><code class="k">return</code><code class="calibre24"> </code><code class="n">customer</code><code class="o">;</code><code class="calibre24">
+</code><code class="calibre24">    </code><code class="o">}</code><code class="calibre24">
+</code><code class="calibre24">    </code><code class="k">finally</code><code class="calibre24"> </code><code class="o">{</code><code class="calibre24">
+</code><code class="calibre24">        </code><code class="n">span</code><code class="o">.</code><code class="na">finish</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code class="calibre24"> </code><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="co_debugging_with_observability_CO3-4" href="part0008_split_013.html#callout_debugging_with_observability_CO3-4"><img src="../images/00016.png" alt="4" class="calibre66"/></a><code class="calibre24">
+</code><code class="calibre24">    </code><code class="o">}</code><code class="calibre24">
+</code><code class="calibre24">  </code><code class="o">}</code><code class="calibre24">
+</code><code class="o">}</code></pre></div>
+<dl class="calibre20">
+<dt class="calibre21"><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="callout_debugging_with_observability_CO3-1" href="part0008_split_013.html#co_debugging_with_observability_CO3-1"><img src="../images/00112.png" alt="1" class="calibre66"/></a></dt>
+<dd class="calibre67"><p class="calibre68">Spring Cloud Sleuth will automatically instrument this endpoint, tagging the span with useful context like <code class="calibre24">http.uri</code>.</p></dd>
+<dt class="calibre21"><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="callout_debugging_with_observability_CO3-2" href="part0008_split_013.html#co_debugging_with_observability_CO3-2"><img src="../images/00059.png" alt="2" class="calibre66"/></a></dt>
+<dd class="calibre67"><p class="calibre68">Starting a new span adds another distinct element to the trace icicle graph. We can now reason about the cost of just this method <code class="calibre24">findCustomerById</code> in the context of an entire end-to-end user interaction.</p></dd>
+<dt class="calibre21"><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="callout_debugging_with_observability_CO3-3" href="part0008_split_013.html#co_debugging_with_observability_CO3-3"><img src="../images/00067.png" alt="3" class="calibre66"/></a></dt>
+<dd class="calibre67"><p class="calibre68">Adding business-specific context that black box instrumentation would lack. Maybe your company just launched a service recently in a new country as part of a global expansion, and because of its recency, customers in that country lack a long activity history with your product. Seeing a surprising difference in lookup times between older and newer customers might suggest a change to how activity history is loaded in this situation.</p></dd>
+<dt class="calibre21"><a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" id="callout_debugging_with_observability_CO3-4" href="part0008_split_013.html#co_debugging_with_observability_CO3-4"><img src="../images/00016.png" alt="4" class="calibre66"/></a></dt>
+<dd class="calibre67"><p class="calibre68">The whole data access operation is manually instrumented with white box <span class="keep-together">instrumentation.</span></p></dd>
+</dl>
+
+<p class="author1">Supposing database access was traced across the application stack (potentially by encapsulating the wrapping of database access with tracing instrumentation into a common library and sharing it across the organization), the database would be effectively traced without adding any form of white box or black box monitoring to the database layer itself. Instrumenting something like an IBM DB2 database running on a z/OS mainframe with Zipkin Brave seems like an impossible task initially, but it can be accomplished from the caller perspective.</p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Types of Distributed Tracing Instrumentation" class="calibre3">
+<div class="preface" id="idm45139272393752">
+<section data-type="sect2" data-pdf-bookmark="Blended Tracing" class="calibre3">
+<div class="preface" id="idm45139269201464">
+<div data-type="tip" class="calibre28"><h1 class="calibre54" id="calibre_pb_14">Tracing All Calls to a Subsystem Effectively Traces the Subsystem</h1>
+<p class="author1"><a data-type="indexterm" data-primary="tracing" data-secondary="of calls to subsystem" id="idm45139268597544" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>By tracing all <em class="calibre12">calls</em> to a subsystem, the subsystem is covered with tracing in the same way as if it were instrumented itself. Many component frameworks (database, cache, message queue) offer some sort of event system for you to hook into. In many cases, the task of coating all callers with instrumentation can be reduced to ensuring all calling applications have a binary dependency on their runtimes that’s capable of automatically injecting an event handler into the component framework you want to instrument.</p>
+</div>
+
+<p class="author1">The other ramification of tracing from a caller is that it includes latency (e.g., network overhead) between the two systems. In a scenario where a series of callers is executing requests to a downstream service that is serving requests at a fixed maximum concurrency level (e.g., a thread pool), the downstream service may not even be aware of a request until it starts to be processed. Instrumenting from the caller side includes the time a request sat in a queue waiting to be processed by the downstream.</p>
+
+<p class="author1">All this contextual information can get expensive. To control cost, at some point we have to sample tracing telemetry.<a data-type="indexterm" data-startref="ix_ch03-asciidoc14" id="idm45139268593896" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/></p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Sampling" class="calibre3"><div class="preface" id="idm45139268593064">
+<h1 class="calibre19" id="7K4V9-2d714b853a094e9a910510217e0e3d73">Sampling</h1>
+
+<p class="author1"><a data-type="indexterm" data-primary="observability" data-secondary="sampling" id="ix_ch03-asciidoc15" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="sampling" id="ix_ch03-asciidoc16" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>As mentioned in <a data-type="xref" href="part0008_split_001.html#7K4GG-2d714b853a094e9a910510217e0e3d73" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">“The Three Pillars of Observability…or Is It Two?”</a>, tracing data generally must be sampled to control cost, meaning some traces are published to the tracing backend and others are not.</p>
+
+<p class="author1">No matter how smart the sampling strategy, it is important to remember that data is being <em class="calibre12">discarded</em>. Whatever collection of traces you get as a result are going to be skewed in some way. This is perfectly fine when you are pairing distributed tracing data with metrics data. Metrics should alert you to anomalous conditions and traces used to do in-depth debugging when necessary.</p>
+
+<p class="author1">Sampling strategies fall into a few basic categories, ranging from not sampling at all to propagating sampling decisions down from the edge.</p>
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Sampling" class="calibre3">
+<div class="preface" id="idm45139268593064">
+<section data-type="sect2" data-pdf-bookmark="No Sampling" class="calibre3"><div class="preface" id="idm45139268586440">
+<h2 class="calibre37" id="calibre_pb_16">No Sampling</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="sampling" data-secondary="no sampling" id="idm45139268585240" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>It is possible to retain every tracing sample. Some organizations even do this at a large scale, often at extraordinary cost. For Spring Cloud Sleuth, configure the <code class="calibre24">Sampler</code> via a bean definition, as shown in <a data-type="xref" href="part0008_split_016.html#sleuth_no_sampling" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-5</a>.</p>
+<div id="sleuth_no_sampling" data-type="example" class="calibre61">
+<h5 class="calibre62"><span class="keep-together">Example 3-5. </span>Configuring Spring Cloud Sleuth to always sample</h5>
+
+<pre data-type="programlisting" data-code-language="java" class="calibre63"><code class="nd">@Bean</code>
+<code class="k">public</code> <code class="n">Sampler</code> <code class="nf">defaultSampler</code><code class="o">()</code> <code class="o">{</code>
+  <code class="k">return</code> <code class="n">Sampler</code><code class="o">.</code><code class="na">ALWAYS_SAMPLE</code><code class="o">;</code>
+<code class="o">}</code></pre></div>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Sampling" class="calibre3">
+<div class="preface" id="idm45139268593064">
+<section data-type="sect2" data-pdf-bookmark="Rate-Limiting Samplers" class="calibre3"><div class="preface" id="idm45139268564424">
+<h2 class="calibre37" id="calibre_pb_17">Rate-Limiting Samplers</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="rate-limiting samplers" id="idm45139268571176" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="sampling" data-secondary="rate-limiting samplers" id="idm45139268570472" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="Spring Cloud Sleuth" id="idm45139268564184" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>By default, Spring Cloud Sleuth retains the first 10 samples per second (a configurable rate limit threshold) and downsamples probabilistically thereafter. Since rate-limiting sampling is the default in Sleuth, the rate limit can be set by a property, as in <a data-type="xref" href="part0008_split_017.html#sleuth_rate_limit" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-6</a>.</p>
+<div id="sleuth_rate_limit" data-type="example" class="calibre61">
+<h5 class="calibre62"><span class="keep-together">Example 3-6. </span>Configuring Spring Cloud Sleuth to retain the first 2,000 samples per second</h5>
+
+<pre data-type="programlisting" data-code-language="yaml" class="calibre63"><code class="nt">spring.sleuth.sampler.rate</code><code class="p">:</code> <code class="calibre24">2000</code></pre></div>
+
+<p class="author1">The logic behind this is that there is some rate of throughput for which it is reasonably cost-effective to not discard anything. This is largely going to be dictated by the nature of your business and the throughput to your applications. One regional property and casualty insurer receives 5,000 requests per minute through its flagship app, generated from the interactions of approximately 3,500 insurance agents in the field. Since the pool of insurance agents is not going to suddenly grow by an order of magnitude overnight, a stable capacity plan for a tracing system that accepts 100% of traces for this system is determinable.</p>
+
+<p class="author1">Even if your organization is like this insurer, it’s important to keep in mind where further investments in application observability are made, often in open source at tech companies with significant scale and at monitoring system vendors that can’t assume their customers all have such a stable capacity plan. Considering something like the high-percentile calculation of the latency of a service endpoint, it can still make sense to leverage high-percentile approximations from bucketed histograms over trying to calculate an exact percentile from tracing data, even though this is mathematically possible with 100% data.</p>
+
+<p class="author1">The point is to avoid inventing new methods of calculating distribution statistics when similar methods are available from metrics telemetry designed to operate at scale.</p>
+
+<p class="author1"><a data-type="indexterm" data-primary="holes" data-secondary="rate-based samplers and" id="idm45139268553800" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>One challenge of rate-based sampling is holes. When you have several microservices in a call chain, each independently making a decision about whether to retain a trace, holes are going to develop in the end-to-end picture of a given request. Put another way, rate-based samplers don’t make a consistent sampling decision given a trace ID. The moment any individual subsystem exceeds the rate threshold, a hole develops in traces involving this subsystem.</p>
+
+<p class="author1">When making capacity planning decisions based off of rate-based samplers, be careful to recognize that these rates are on a <em class="calibre12">per-instance</em> basis. The rate of samples reaching the tracing system is the product of instances in the cluster times and the sampling rate in the worst case.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Sampling" class="calibre3">
+<div class="preface" id="idm45139268593064">
+<section data-type="sect2" data-pdf-bookmark="Probabilistic Samplers" class="calibre3"><div class="preface" id="idm45139268557320">
+<h2 class="calibre37" id="calibre_pb_18">Probabilistic Samplers</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="probabilistic samplers" id="idm45139268550248" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="sampling" data-secondary="probabilistic samplers" id="idm45139268549544" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Probabilistic samplers count to see how many out of 100 traces should be retained. They guarantee that if you select a 10% probability, 10 out of 100 traces will be retained, but it likely won’t be the first 10 or the last 10.</p>
+
+<p class="author1">In the presence of a probability property, Spring Cloud Sleuth configures a probabilistic sampler instead of a rate-limiting sampler, as in <a data-type="xref" href="part0008_split_018.html#sleuth_probabilistic" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-7</a>.</p>
+<div id="sleuth_probabilistic" data-type="example" class="calibre61">
+<h5 class="calibre62"><span class="keep-together">Example 3-7. </span>Configuring Spring Cloud Sleuth to retain 10% of traces</h5>
+
+<pre data-type="programlisting" data-code-language="yaml" class="calibre63"><code class="nt">spring.sleuth.sampler.probability</code><code class="p">:</code> <code class="calibre24">0.1</code></pre></div>
+
+<p class="author1">Probabilistic samplers are rarely the right choice for a couple of reasons:</p>
+<dl class="calibre20">
+<dt class="calibre21">Cost</dt>
+<dd class="calibre22">
+<p class="calibre23"><a data-type="indexterm" data-primary="cost, of metrics" data-secondary="probabilistic samplers" id="idm45139268519336" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>No matter what probability you choose, your tracing cost grows linearly in proportion to traffic. Maybe you never expect an API endpoint to receive more than 100 requests per second and you’ve sampled to 10%. If there is a sudden increase in traffic to 10,000 requests per second, you’ll suddenly be shipping 1,000 traces per second rather than 10. Rate-limiting samplers cap the cost in a way that places a fixed upper bound on cost, irrespective of throughput.</p>
+</dd>
+<dt class="calibre21">Holes</dt>
+<dd class="calibre22">
+<p class="calibre23"><a data-type="indexterm" data-primary="holes" data-secondary="probabilistic samplers and" id="idm45139268516600" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Like rate-based samplers, probabilistic samplers don’t look at trace IDs and headers to make their sampling decisions. Holes will develop in the end-to-end picture. In the case of relatively low throughput systems, a rate-based sampler may practically have no holes because no individual subsystem exceeded the rate threshold, but a probabilistic sampler has a uniform probability of holes per unit of throughput, so holes will likely exist even for low-throughput systems.</p>
+</dd>
+</dl>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Sampling" class="calibre3">
+<div class="preface" id="idm45139268593064">
+<section data-type="sect2" data-pdf-bookmark="Boundary Sampling" class="calibre3"><div class="preface" id="boundary_sampling">
+<h2 class="calibre37" id="calibre_pb_19">Boundary Sampling</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="boundary sampling" id="idm45139268495240" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="sampling" data-secondary="boundary sampling" id="idm45139268494648" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Boundary samplers are a variant of probabilistic sampler that solves the problem of holes by making the sampling decision only once at the edge (the first interaction with your system) and propagating the sampling decision downstream to other services and components. The trace context in each component contains a sampling decision that is added as an HTTP header and extracted into trace context by the downstream component, as shown in <a data-type="xref" href="part0008_split_019.html#trace_boundary_sampling" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Figure 3-3</a>.</p>
+
+<figure class="calibre32"><div id="trace_boundary_sampling" class="figure">
+<img src="../images/00054.png" alt="srej 0303" class="calibre96"/>
+<h6 class="calibre34"><span class="keep-together">Figure 3-3. </span>B3 trace headers propagate the sampling decision to downstream <span class="keep-together">components</span></h6>
+</div></figure>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Sampling" class="calibre3">
+<div class="preface" id="idm45139268593064">
+<section data-type="sect2" data-pdf-bookmark="Impact of Sampling on Anomaly Detection" class="calibre3"><div class="preface" id="idm45139268489576">
+<h2 class="calibre37" id="calibre_pb_20">Impact of Sampling on Anomaly Detection</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="anomaly detection, impact of sampling on" id="idm45139268488168" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="sampling" data-secondary="impact on anomaly detection" id="idm45139268487496" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Let’s consider specifically the impact probabilistic sampling would have on anomaly detection. A similar effect would occur for any sampling strategy really, but we’ll use probabilistic sampling to make this concrete.</p>
+
+<p class="author1">Anomaly detection systems built on sampled traces are generally misguided unless your organization assumes the cost of 100% sampling. To show why, let’s consider a hypothetical sampling strategy that makes an up-front decision about whether to preserve a trace based on a weighted random number at the beginning of each request (as Google’s Dapper did originally). If we are sampling 1% of requests, then an outlier above the 99th percentile, like all other requests, has a 1% chance of surviving the sampling. There’s a 0.01% chance of seeing any of these individual outliers. Even at 1,000 requests/second, you could have 10 outliers happening per second but only see 1 every 5 minutes, as shown in <a data-type="xref" href="part0008_split_020.html#chance_of_outlier_in_trace_sampling" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Figure 3-4</a> (a plot of <math alttext="left-parenthesis 1 minus 0.99 Superscript upper N Baseline right-parenthesis asterisk 100 percent-sign">
+  <mrow>
+    <mo>(</mo>
+    <mn>1</mn>
+    <mo>-</mo>
+    <mn>0</mn>
+    <mo>.</mo>
+    <msup><mn>99</mn> <mi>N</mi> </msup>
+    <mo>)</mo>
+    <mo>*</mo>
+    <mn>100</mn>
+    <mo>%</mo>
+  </mrow>
+</math>).</p>
+
+<figure class="calibre32"><div id="chance_of_outlier_in_trace_sampling" class="figure">
+<img src="../images/00026.png" alt="srej 0304" class="calibre97"/>
+<h6 class="calibre34"><span class="keep-together">Figure 3-4. </span>Chance of seeing an outlier in tracing data over time</h6>
+</div></figure>
+
+<p class="author1">There can be a significant range of outliers above the 99th percentile, as shown in <a data-type="xref" href="part0009_split_010.html#avg_vs_p99_latency" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Figure 4-20</a>. You could have a huge business-critical outlier (above P99.9) happening once per second and only see it <em class="calibre12">once</em> in tracing data in any given hour! For the purposes of debuggability, having one or a small set of outliers survive over a given period is fine—we still get to examine in detail the nature of what’s happening in the outlier case.<a data-type="indexterm" data-startref="ix_ch03-asciidoc16" id="idm45139268457304" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc15" id="idm45139268456600" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/></p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Distributed Tracing and Monoliths" class="calibre3"><div class="preface" id="idm45139268455800">
+<h1 class="calibre19" id="calibre_pb_21">Distributed Tracing and Monoliths</h1>
+
+<p class="author1"><a data-type="indexterm" data-primary="distributed tracing" data-secondary="monoliths and" id="idm45139268454584" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="monolithic applications" data-secondary="distributed tracing and" id="idm45139268453608" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="observability" data-secondary="distributed tracing and monoliths" id="idm45139268452664" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Don’t be fooled by the name <em class="calibre12">distributed</em> tracing. It is absolutely reasonable to use this form of observability in a monolith as well. In the purest microservices architecture, tracing around RPC calls could be implemented in a black box fashion at either the framework level (like Spring) or in a sidecar such as those we find in service mesh technologies. Given the single-responsibility nature of a microservices architecture, tracing RPC could actually give you quite a bit of information about what’s going on; i.e., microservice boundaries are effectively business logic functional boundaries as well.</p>
+
+<p class="author1">Inside a monolithic application that receives a single end-user request and performs many tasks to satisfy that request, framework-level instrumentation has a diminished value, of course, but you can still write tracing instrumentation at key functional boundaries inside the monolith in much the same way you write logging statements. In this way, you’ll be able to select specific tags that allow you to search for spans with business context that framework or service-mesh instrumentation will certainly lack.</p>
+
+<p class="author1"><a data-type="indexterm" data-primary="white box monitoring" data-secondary="monoliths and" id="idm45139268449368" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>In fact, white box instrumentation with business-specific tagging winds up being essential even in a pure microservices architecture. In many cases, our key pieces of business functionality aren’t <em class="calibre12">completely</em> broken in production, but rather broken along specific (often unusual) business-specific fault lines. Maybe an insurance company’s policy administration system is failing to rate classic cars in a particular county in Kentucky. Having vehicle class, county, and state on both metrics and tracing telemetry allows an engineer to drill down dimensionally on a metric and find the problem area and then hop to debugging signals like tracing and logs to see example failures once the failing dimension is known.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Distributed Tracing and Monoliths" class="calibre3">
+<div class="preface" id="idm45139268455800">
+<div data-type="tip" class="calibre28"><h1 class="calibre54" id="calibre_pb_22">Business Context Makes White Box Tracing as Important in Monoliths as in Distributed Systems</h1>
+<p class="author1">The density of white box distributed tracing instrumentation per bounded context of business functionality should roughly be the same in a microservices or monolithic architecture, because black box instrumentation will not tag spans with business-specific context that aids in later lookup.</p>
+</div>
+
+<p class="author1">So the only difference between microservices and monoliths is that you have more bounded contexts of business functionality packed into one process. And with each additional piece of business functionality comes all the trappings that support its existence. Observability is not an exception.</p>
+
+<p class="author1">Additionally, even a microservice with a single responsibility can do a handful of things, including data access, in the satisfaction of a user request.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Correlation of Telemetry" class="calibre3"><div class="preface" id="telemetry_correlation">
+<h1 class="calibre19" id="calibre_pb_23">Correlation of Telemetry</h1>
+
+<p class="author1"><a data-type="indexterm" data-primary="observability" data-secondary="correlation of telemetry" id="ix_ch03-asciidoc17" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="telemetry" data-secondary="correlation of observability to" id="ix_ch03-asciidoc18" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Since metrics data is a strong availability signal and tracing and logging data is useful for debugging, anything we can do to link them together makes the transition from an alert indicating a lack of availability to the debugging information that would best identify the underlying issue. In the case of latency, we will have a chart on a dashboard and an alert on a decaying max. Presenting a view of the latency distribution as a heatmap of the latency histogram is an interesting information-dense visualization but isn’t something we can plot an alert threshold on.</p>
+
+
+
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Correlation of Telemetry" class="calibre3">
+<div class="preface" id="telemetry_correlation">
+<section data-type="sect2" data-pdf-bookmark="Metric to Trace Correlation" class="calibre3"><div class="preface" id="idm45139268439064">
+<h2 class="calibre37" id="calibre_pb_24">Metric to Trace Correlation</h2>
+
+<p class="author1"><a data-type="indexterm" data-primary="heatmaps" id="ix_ch03-asciidoc19" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="telemetry" data-secondary="metric to trace correlation" id="ix_ch03-asciidoc20" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="tracing" data-secondary="metric to trace correlation" id="ix_ch03-asciidoc21" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>We can plot example traces (exemplars), as shown in <a data-type="xref" href="part0008_split_024.html#trace_exemplars" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Figure 3-5</a>, on the heatmap and make the heatmap more interactive by making heatmap cells into links that take us directly to the tracing UI, where we can see a set of traces that match these criteria. So an engineer responsible for a system receives an alert on a latency condition, looks at the set of latency charts for this application, and can immediately click through to the distributed tracing system.</p>
+
+<figure class="calibre32"><div id="trace_exemplars" class="figure">
+<img src="../images/00041.png" alt="srej 0305" class="calibre98"/>
+<h6 class="calibre34"><span class="keep-together">Figure 3-5. </span>Zipkin trace data plotted on top of a Prometheus histogram represented as a heatmap in Grafana</h6>
+</div></figure>
+
+<p class="author1">This sort of correlative plot makes metrics and tracing together more valuable. We’d normally lose through aggregation an understanding of what happened in particular cases when looking at metrics data. Traces, on the other hand, lack the understanding of the big picture that metrics provide.</p>
+
+<p class="author1">Also, since it is certainly possible that trace sampling (again, to control cost) has thrown away all the traces that would match a particular latency bucket, we still get to understand what latencies end users experienced even if we aren’t able to drill into the trace detail.</p>
+
+<p class="author1">This visualization is built through the combination of independent Prometheus and Zipkin queries, as shown in <a data-type="xref" href="part0008_split_024.html#prometheus_zipkin_queries_grafana" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Figure 3-6</a>. Notice that the tags don’t have to strictly line up between the metrics and tracing instrumentation. Micrometer <code class="calibre24">Timer</code> called <code class="calibre24">http.server.requests</code> (which yields a set of time series which are called <code class="calibre24">http_server_requests_second_bucket</code> in Prometheus when histograms—<a data-type="xref" href="part0007_split_007.html#6LKA8-2d714b853a094e9a910510217e0e3d73" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">“Histograms”</a>—are turned on) is collected with a tag called <code class="calibre24">uri</code>. Spring Cloud Sleuth instruments Spring in a similar way but tags traces with <code class="calibre24">http.uri</code>. These are of course logically equivalent.</p>
+
+<figure class="calibre32"><div id="prometheus_zipkin_queries_grafana" class="figure">
+<img src="../images/00019.png" alt="srej 0306" class="calibre99"/>
+<h6 class="calibre34"><span class="keep-together">Figure 3-6. </span>Independent Prometheus and Zipkin queries form the combined trace exemplar heatmap</h6>
+</div></figure>
+
+<p class="author1">It should be clear, however, that even though the tag keys (and even values) don’t have to be identical, if you want to filter the heatmap to a metrics tag that has no logical equivalent in the tracing data, then it won’t be possible to accurately find exemplars to match what is seen on the heatmap (there will be some false positives). For example, Spring Cloud Sleuth didn’t initially tag traces with HTTP status code or outcome, while Spring’s Micrometer instrumentation did. Often we want to limit a latency visualization to either successful or unsuccessful outcomes because their latency characteristics can be quite different (e.g., failures occur abnormally fast due to an external resource unavailability or abnormally slow due to a timeout).</p>
+
+<p class="author1">So far, our look at distributed tracing has strictly been related to observability, but it can serve other purposes that influence or govern the way traffic is handled<a data-type="indexterm" data-startref="ix_ch03-asciidoc21" id="idm45139268421144" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc20" id="idm45139268420440" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc19" id="idm45139268419768" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>.<a data-type="indexterm" data-startref="ix_ch03-asciidoc18" id="idm45139268418968" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc17" id="idm45139268418264" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/></p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Using Trace Context for Failure Injection and Experimentation" class="calibre3"><div class="preface" id="idm45139268417336">
+<h1 class="calibre19" id="7K54E-2d714b853a094e9a910510217e0e3d73">Using Trace Context for Failure Injection and Experimentation</h1>
+
+<p class="author1"><a data-type="indexterm" data-primary="distributed tracing" data-secondary="using trace context for failure injection and experimentation" id="ix_ch03-asciidoc22" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="observability" data-secondary="using trace context for failure injection and experimentation" id="ix_ch03-asciidoc23" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>Earlier, when discussing sampling methods for distributed tracing, we covered boundary sampling (see <a data-type="xref" href="part0008_split_019.html#boundary_sampling" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">“Boundary Sampling”</a>). In this method, a sampling decision is made up front (i.e., at the edge), and this decision is propagated downstream to the microservices that are involved in satisfying a request. There is an interesting opportunity to make other up-front decisions and leverage trace context to pass along other information unrelated to sampling decisions to downstream services as well.</p>
+
+<p class="author1"><a data-type="indexterm" data-primary="chaos engineering" id="ix_ch03-asciidoc24" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="failure injection testing (FIT)" id="ix_ch03-asciidoc25" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-primary="FIT (failure injection testing)" id="ix_ch03-asciidoc26" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>A well-known example of this is <em class="calibre12">failure injection testing</em> (FIT), a specific form of chaos engineering. The overall discipline of chaos engineering is broad and covered in detail in <a class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre" href="http://shop.oreilly.com/product/0636920203957.do"><em class="calibre12">Chaos Engineering</em></a>.</p>
+
+<p class="author1">Failure injection decisions can be added by the API gateway up front in coordination with rules provided by a central FIT service and propagated downstream as a trace tag. Later, a microservice in the execution path can use this information about a failure test to unnaturally fail a request in some way. <a data-type="xref" href="part0008_split_025.html#failure_injection_testing" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Figure 3-7</a> shows the whole process, end to end.</p>
+
+<figure class="calibre32"><div id="failure_injection_testing" class="figure">
+<img src="../images/00043.png" alt="srej 0307" class="calibre100"/>
+<h6 class="calibre34"><span class="keep-together">Figure 3-7. </span>Failure injection testing process from user request to failure</h6>
+</div></figure>
+
+<p class="author1">Attaching this kind of decision to telemetry has the added benefit that any sampled traces that also are part of a failure injection are tagged as such, so you can differentiate between real and intentional failures when looking at telemetry later. <a data-type="xref" href="part0008_split_025.html#gateway_adding_fit" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-8</a> shows a simplified example of a Spring Cloud Gateway application (that also has the Spring Cloud Sleuth starter applied) looking up and adding a FIT decision as “baggage” to the trace context, which can automatically be converted to a trace tag by setting the property <code class="calibre24">spring.sleuth.baggage.tag-fields=failure.injection</code>.</p>
+<div id="gateway_adding_fit" data-type="example" class="calibre61">
+<h5 class="calibre62"><span class="keep-together">Example 3-8. </span>Spring Cloud Gateway adding failure injection testing data to trace context</h5>
+
+<pre data-type="programlisting" data-code-language="java" class="calibre63"><code class="nd">@SpringBootApplication</code>
+<code class="k">public</code> <code class="k">class</code> <code class="nc">GatewayApplication</code> <code class="o">{</code>
+    <code class="k">public</code> <code class="k">static</code> <code class="kt">void</code> <code class="nf">main</code><code class="o">(</code><code class="n">String</code><code class="o">[]</code> <code class="n">args</code><code class="o">)</code> <code class="o">{</code>
+        <code class="n">SpringApplication</code><code class="o">.</code><code class="na">run</code><code class="o">(</code><code class="n">GatewayApplication</code><code class="o">.</code><code class="na">class</code><code class="o">,</code> <code class="n">args</code><code class="o">);</code>
+    <code class="o">}</code>
+<code class="o">}</code>
+
+<code class="nd">@RestController</code>
+<code class="k">class</code> <code class="nc">GatewayController</code> <code class="o">{</code>
+    <code class="k">private</code> <code class="k">static</code> <code class="k">final</code> <code class="n">String</code> <code class="n">FAILURE_INJECTION_BAGGAGE</code> <code class="o">=</code> <code class="s">"failure.injection"</code><code class="o">;</code>
+
+    <code class="nd">@Value</code><code class="o">(</code><code class="s">"${remote.home}"</code><code class="o">)</code>
+    <code class="k">private</code> <code class="n">URI</code> <code class="n">home</code><code class="o">;</code>
+
+    <code class="nd">@Bean</code>
+    <code class="n">BaggagePropagationCustomizer</code> <code class="nf">baggagePropagationCustomizer</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">builder</code> <code class="o">-&gt;</code> <code class="n">builder</code><code class="o">.</code><code class="na">add</code><code class="o">(</code><code class="n">BaggagePropagationConfig</code><code class="o">.</code><code class="na">SingleBaggageField</code>
+                <code class="o">.</code><code class="na">remote</code><code class="o">(</code><code class="n">BaggageField</code><code class="o">.</code><code class="na">create</code><code class="o">(</code><code class="n">FAILURE_INJECTION_BAGGAGE</code><code class="o">)));</code>
+    <code class="o">}</code>
+
+    <code class="nd">@GetMapping</code><code class="o">(</code><code class="s">"/proxy/path/**"</code><code class="o">)</code>
+    <code class="k">public</code> <code class="n">Mono</code><code class="o">&lt;</code><code class="n">ResponseEntity</code><code class="o">&lt;</code><code class="kt">byte</code><code class="o">[]&gt;&gt;</code> <code class="nf">proxyPath</code><code class="o">(</code><code class="n">ProxyExchange</code><code class="o">&lt;</code><code class="kt">byte</code><code class="o">[]&gt;</code> <code class="n">proxy</code><code class="o">)</code> <code class="o">{</code>
+        <code class="n">String</code> <code class="n">serviceToFail</code> <code class="o">=</code> <code class="s">""</code><code class="o">;</code>
+        <code class="k">if</code> <code class="o">(</code><code class="n">serviceToFail</code> <code class="o">!=</code> <code class="k">null</code><code class="o">)</code> <code class="o">{</code>
+            <code class="n">BaggageField</code><code class="o">.</code><code class="na">getByName</code><code class="o">(</code><code class="n">FAILURE_INJECTION_BAGGAGE</code><code class="o">)</code>
+              <code class="o">.</code><code class="na">updateValue</code><code class="o">(</code><code class="n">serviceToFail</code><code class="o">);</code>
+        <code class="o">}</code>
+
+        <code class="n">String</code> <code class="n">path</code> <code class="o">=</code> <code class="n">proxy</code><code class="o">.</code><code class="na">path</code><code class="o">(</code><code class="s">"/proxy/path/"</code><code class="o">);</code>
+        <code class="k">return</code> <code class="n">proxy</code><code class="o">.</code><code class="na">uri</code><code class="o">(</code><code class="n">home</code><code class="o">.</code><code class="na">toString</code><code class="o">()</code> <code class="o">+</code> <code class="s">"/foos/"</code> <code class="o">+</code> <code class="n">path</code><code class="o">).</code><code class="na">get</code><code class="o">();</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre></div>
+
+<p class="author1">Then, add an incoming request filter (in this case a WebFlux <code class="calibre24">WebFilter</code>) to all microservices that might participate in failure injection tests, as shown in <a data-type="xref" href="part0008_split_025.html#fit_web_filter" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-9</a>.</p>
+<div id="fit_web_filter" data-type="example" class="calibre61">
+<h5 class="calibre62"><span class="keep-together">Example 3-9. </span>WebFlux WebFilter for failure injection testing</h5>
+
+<pre data-type="programlisting" data-code-language="java" class="calibre63"><code class="nd">@Component</code>
+<code class="k">public</code> <code class="k">class</code> <code class="nc">FailureInjectionTestingHandlerFilterFunction</code> <code class="k">implements</code> <code class="n">WebFilter</code> <code class="o">{</code>
+    <code class="nd">@Value</code><code class="o">(</code><code class="s">"${spring.application.name}"</code><code class="o">)</code>
+    <code class="k">private</code> <code class="n">String</code> <code class="n">serviceName</code><code class="o">;</code>
+
+    <code class="nd">@Override</code>
+    <code class="k">public</code> <code class="n">Mono</code><code class="o">&lt;</code><code class="n">Void</code><code class="o">&gt;</code> <code class="nf">filter</code><code class="o">(</code><code class="n">ServerWebExchange</code> <code class="n">exchange</code><code class="o">,</code> <code class="n">WebFilterChain</code> <code class="n">chain</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">if</code> <code class="o">(</code><code class="n">serviceName</code><code class="o">.</code><code class="na">equals</code><code class="o">(</code><code class="n">BaggageField</code><code class="o">.</code><code class="na">getByName</code><code class="o">(</code><code class="s">"failure.injection"</code><code class="o">)</code>
+              <code class="o">.</code><code class="na">getValue</code><code class="o">()))</code> <code class="o">{</code>
+            <code class="n">exchange</code><code class="o">.</code><code class="na">getResponse</code><code class="o">().</code><code class="na">setStatusCode</code><code class="o">(</code><code class="n">HttpStatus</code><code class="o">.</code><code class="na">INTERNAL_SERVER_ERROR</code><code class="o">);</code>
+            <code class="k">return</code> <code class="n">Mono</code><code class="o">.</code><code class="na">empty</code><code class="o">();</code>
+        <code class="o">}</code>
+
+        <code class="k">return</code> <code class="n">chain</code><code class="o">.</code><code class="na">filter</code><code class="o">(</code><code class="n">exchange</code><code class="o">);</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre></div>
+
+<p class="author1">We can also add a failure injection test decision as a tag to HTTP client metrics, as shown in <a data-type="xref" href="part0008_split_025.html#micrometer_webflux_metrics_fit" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre">Example 3-10</a>. It may be useful to filter out failure injection tests from our notion of the error ratio of the HTTP client interaction with downstream services. Or perhaps they are left in to alert criteria to validate the engineering discipline of being alerted to and responding to unexpected failure, but the data will still be present so that the investigating engineer can dimensionally drill down to determine if the alert was caused by failure injection or by real issues.</p>
+<div id="micrometer_webflux_metrics_fit" data-type="example" class="calibre61">
+<h5 class="calibre62"><span class="keep-together">Example 3-10. </span>Adding the failure injection testing decision as a Micrometer tag</h5>
+
+<pre data-type="programlisting" data-code-language="java" class="calibre63"><code class="nd">@Component</code>
+<code class="k">public</code> <code class="k">class</code> <code class="nc">FailureInjectionWebfluxTags</code> <code class="k">extends</code> <code class="n">DefaultWebFluxTagsProvider</code> <code class="o">{</code>
+    <code class="nd">@Value</code><code class="o">(</code><code class="s">"${spring.application.name}"</code><code class="o">)</code>
+    <code class="k">private</code> <code class="n">String</code> <code class="n">serviceName</code><code class="o">;</code>
+
+    <code class="nd">@Override</code>
+    <code class="k">public</code> <code class="n">Iterable</code><code class="o">&lt;</code><code class="n">Tag</code><code class="o">&gt;</code> <code class="nf">httpRequestTags</code><code class="o">(</code><code class="n">ServerWebExchange</code> <code class="n">exchange</code><code class="o">,</code> <code class="n">Throwable</code> <code class="n">ex</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">Tags</code><code class="o">.</code><code class="na">concat</code><code class="o">(</code>
+                <code class="k">super</code><code class="o">.</code><code class="na">httpRequestTags</code><code class="o">(</code><code class="n">exchange</code><code class="o">,</code> <code class="n">ex</code><code class="o">),</code>
+                <code class="s">"failure.injection"</code><code class="o">,</code>
+                <code class="n">serviceName</code><code class="o">.</code><code class="na">equals</code><code class="o">(</code><code class="n">BaggageField</code>
+                  <code class="o">.</code><code class="na">getByName</code><code class="o">(</code><code class="s">"failure.injection"</code><code class="o">).</code><code class="na">getValue</code><code class="o">())</code> <code class="o">?</code> <code class="s">"true"</code> <code class="o">:</code> <code class="s">"false"</code>
+        <code class="o">);</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre></div>
+
+<p class="author1">This is just a sketch, of course. It is up to you how you would define a failure injection service, and under what conditions to select requests for failure injection. For a simple set of rules, this service could even be an integral part of your gateway application.</p>
+
+<p class="author1">In addition to failure injection, trace baggage could be used to propagate decisions about whether a request is participating in A/B experiments as well<a data-type="indexterm" data-startref="ix_ch03-asciidoc26" id="idm45139268216344" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc25" id="idm45139267989896" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc24" id="idm45139267989288" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/>.<a data-type="indexterm" data-startref="ix_ch03-asciidoc23" id="idm45139267988488" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc22" id="idm45139267987784" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  
+
+<div id="sbo-rt-content" class="calibre2">
+<section data-type="chapter" type="chapter" data-pdf-bookmark="Chapter 3. Debugging with Observability" class="calibre3">
+<div class="preface" id="ch_debug_observability">
+<section data-type="sect1" data-pdf-bookmark="Summary" class="calibre3"><div class="preface" id="idm45139268416744">
+<h1 class="calibre19" id="calibre_pb_26">Summary</h1>
+
+<p class="author1">In this chapter, we’ve shown the difference between monitoring for availability and monitoring for debugging. The event-based nature of debugging signals means they tend to want to grow proportionally with increased throughput through a system, a cost-limiting measure is necessary. Different methods of sampling to control cost were discussed. The fact that debugging signals are typically sampled should give us pause about trying to build aggregations around them, since every form of sampling discards some part of the distribution and thus skews the aggregation in one form or another.</p>
+
+<p class="author1">Lastly, we showed how in addition to its chief function in publishing debugging information, we can piggyback on trace context propagation to propagate behaviors down a deep microservice call chain.<a data-type="indexterm" data-startref="ix_ch03-asciidoc1" id="idm45139267984584" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/><a data-type="indexterm" data-startref="ix_ch03-asciidoc0" id="idm45139267983880" class="pcalibre2 pcalibre3 pcalibre1 pcalibre4 pcalibre"/></p>
+
+<p class="author1">In the next chapter, we return to metrics, showing which availability signals you should start with for basically every Java microservice.</p>
+</div></section>
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  </body></html>

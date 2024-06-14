@@ -1,0 +1,1013 @@
+<html><head></head><body><div id="sbo-rt-content"><section data-type="chapter" epub:type="chapter" data-pdf-bookmark="Chapter 8. Reactive Programming with Project Reactor and Spring WebFlux"><div class="chapter" id="sbur-08">
+<h1><span class="label">Chapter 8. </span>Reactive Programming with Project Reactor and Spring WebFlux</h1>
+
+
+<p><a data-type="indexterm" data-primary="reactive programming" id="ix_reactive_prog_ch8"/>This chapter introduces reactive programming, discusses its origins and reasons for being, and demonstrates how Spring is leading the development and advancement of numerous tools and technologies that make it one of the best possible solutions for numerous use cases. More specifically, I demonstrate how to use Spring Boot and Project Reactor to drive database access using SQL and NoSQL databases, integrate reactive types with view technologies like Thymeleaf, and take interprocess communication to unexpected new levels with RSocket.</p>
+<div data-type="tip"><h1>Code Checkout Checkup</h1>
+<p>Please check out branch <em>chapter8begin</em> from the code repository to begin.</p>
+</div>
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Introduction to Reactive Programming"><div class="sect1" id="idm45693951347512">
+<h1>Introduction to Reactive Programming</h1>
+
+<p>While a full treatise on reactive programming could—and has, and will—consume an entire book, it’s critical to understand why it’s such an important concept in the first place.</p>
+
+<p>In a typical service, a thread is created for each request to be handled. Each thread requires resources, and as such, the number of threads that an application can manage is limited. As a somewhat simplified example, if an app can service 200 threads, that application can accept requests from up to 200 discrete clients at once, but no more; any additional attempts to connect to the service must wait for a thread to become available.</p>
+
+<p>Performance for the 200 connected clients may or may not be satisfactory, depending on a number of factors. What is uncontestable is that for the client application making concurrent request number 201 and up, response time may be dramatically worse due to blocking by the service while it waits for an available thread. This hard stop in scalability can go from nonissue to crisis without warning and with no simple solution, and workarounds like the traditional “throw more instances at the problem” introduce both pressure relief and new problems to solve. Reactive programming was created to address this scalability crisis.</p>
+
+<p><a href="https://www.reactivemanifesto.org">The Reactive Manifesto</a> states that reactive systems are:</p>
+
+<ul>
+<li>
+<p>Responsive</p>
+</li>
+<li>
+<p>Resilient</p>
+</li>
+<li>
+<p>Elastic</p>
+</li>
+<li>
+<p>Message driven</p>
+</li>
+</ul>
+
+<p>In a nutshell, the four key points of reactive systems as listed combine to create (at the macro level) a maximally available, scalable, and performant system requiring the fewest resources possible to do the job effectively.</p>
+
+<p>Speaking at a systems level, i.e., several applications/services working together to fulfill various use cases, we might notice that most of the challenges involve communication between applications: one app responding to another, app/service availability when requests arrive, the ability of a service to scale out or in to adjust to demand, one service notifying other interested services of updated/available information, etc. Addressing the potential pitfalls of interapplication interactions can go a long way toward mitigating and/or solving the scalability issues referenced earlier.</p>
+
+<p><a data-type="indexterm" data-primary="Reactive Streams (RS)" id="ix_reactive_streams_ch8"/>This very observation of communication being the greatest potential source of issues and consequently the greatest opportunity for their resolution led to the <a href="http://www.reactive-streams.org">Reactive Streams initiative</a>. The Reactive Streams (RS) initiative focuses on the interactions among services—the Streams, if you will—and includes four key elements:</p>
+
+<ul>
+<li>
+<p>The Application Programming Interface (API)</p>
+</li>
+<li>
+<p>The specification</p>
+</li>
+<li>
+<p>Examples for implementations</p>
+</li>
+<li>
+<p>The Technology Compatibility Kit (TCK)</p>
+</li>
+</ul>
+
+<p>The API consists of only four interfaces:</p>
+
+<ul>
+<li>
+<p><code>Publisher</code>: Creator of things</p>
+</li>
+<li>
+<p><code>Subscriber</code>: Consumer of things</p>
+</li>
+<li>
+<p><code>Subscription</code>: Contract between Publisher and Subscriber</p>
+</li>
+<li>
+<p><code>Processor</code>: Incorporates both Subscriber and Publisher in order to receive, transform, and dispatch things</p>
+</li>
+</ul>
+
+<p>This lean simplicity is key, as is the fact that the API consists solely of <em>interfaces</em> and not <em>implementations</em>. This allows for various interoperable implementations across different platforms, languages, and programming models.</p>
+
+<p>The textual specification details expected and/or required behavior for API implementations. For example:</p>
+
+<pre data-type="programlisting">If a Publisher fails it MUST signal an onError.</pre>
+
+<p>Examples for implementations are useful aids for implementors, providing reference code for use when creating a particular RS implementation.</p>
+
+<p><a data-type="indexterm" data-primary="TCK (Technology Compatibility Kit)" id="idm45693951294904"/>Perhaps the most critical piece is the Technology Compatibility Kit. The TCK enables implementors to verify and demonstrate the level of compatibility—and any current shortcomings—with their RS implementation (or someone else’s). Knowledge is power, and identifying anything that doesn’t work in full compliance with the specification can speed resolution while providing a warning to current library consumers until the shortcoming is resolved.</p>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="idm45693951293416">
+<h5>Notes About Reactive Streams, Asynchronicity, and Backpressure</h5>
+<p><a data-type="indexterm" data-primary="asynchronous processing, Reactive Streams" id="ix_async_rs"/>Reactive Streams build on a foundation of asynchronous communication and processing, as stated clearly in the purpose statement located in the very first paragraph of the <a href="http://www.reactive-streams.org">Reactive Streams information site</a>:</p>
+
+<pre data-type="programlisting">Reactive Streams is an initiative to provide a standard for asynchronous
+stream processing with nonblocking back pressure. This encompasses efforts
+aimed at runtime environments (JVM and JavaScript) as well as network
+protocols.</pre>
+
+<p>At the risk of oversimplification, it may help to think in this way of the various concepts and components that compose Reactive Streams:</p>
+
+<p>Asynchronicity is achieved when the application doesn’t stop the world while one thing takes place. As an example, when Service A requests information from Service B, Service A doesn’t postpone processing all subsequent instructions until receiving a response, idling (and thus wasting) precious compute resources while awaiting its answer from B; instead, Service A continues with other tasks until notified that a response has arrived.</p>
+
+<p>As opposed to synchronous processing, in which tasks are executed sequentially, each one beginning only after the prior task completes, asynchronous processing can involve starting a task, then jumping to another if the original task can be performed in the background (or can await a notification of readiness/completion) and tasks can be performed concurrently. This enables fuller use of resources, since CPU time that would have been spent at idle or near-idle levels can be used for actual processing instead of just <em>waiting</em>. It also can—in some cases—improve performance.</p>
+
+<p>Performance gains are not universal when adopting an asynchronous model of any kind. It’s practically impossible to exceed the performance provided by a blocking, synchronous communication and processing model when only two services are interacting directly with only one exchange at a time. This is easily demonstrated: if Service B has only a single client, Service A, and Service A makes only a single request at a time and <em>blocks</em> all other activity, dedicating all resources to awaiting the response from Service B, this dedicated processing and connection results in the best possible performance for the two applications’ interactions, all other circumstances being equal. This scenario and other similar ones are exceedingly rare, but they are possible.</p>
+
+<p>Asynchronous processing adds minimal overhead due to implementation mechanisms like an event loop, in which a service “listens” for responses to pending requests. As a result, for scenarios involving very limited interapplication connections, performance may be slightly less than an exchange involving synchronous communications and processing. This outcome flips quickly as connections increase and thread exhaustion becomes a reality. Unlike with synchronous processing, resources aren’t simply obligated and idled with asynchronous processing; they’re repurposed and used, resulting in both increased resource utilization and application scalability.</p>
+
+<p><a data-type="indexterm" data-primary="non-blocking backpressure, Reactive Streams" id="idm45693951283112"/>Reactive Streams goes beyond asynchronous processing, adding nonblocking backpressure. This introduces flow control and robustness to interapplication communication.</p>
+
+<p>Without backpressure, Service A can request information from Service B with no means of protecting against an overwhelming response. For example, if Service B returns one million objects/records, Service A dutifully tries to ingest all of them, likely buckling under the load. If Service A doesn’t have sufficient compute and network resources to handle the staggering influx of information, the app can and will crash. At that point, asynchronicity isn’t a factor, as app resources are wholly consumed trying (and failing) to keep up with the deluge. This is where backpressure demonstrates its value.</p>
+
+<p>The concept of nonblocking backpressure simply means that Service A has a way to inform Service B of its capacity to handle response(s). Rather than just saying “give me everything,” Service A requests a number of objects from Service B, processes them, and requests more when it is ready and able to process them. Originating in the field of fluid dynamics, the term <em>backpressure</em> represents a way of controlling flow from the point of origin by applying pressure back through the conduit against the supplier’s flow of material(s). In Reactive Streams, backpressure provides Service A a way to manage the pace of incoming responses, setting and adjusting it in real time if circumstances change.</p>
+
+<p>Although various workarounds have been created (with varying degrees of complexity, scope, and success) to implement means of backpressure within nonreactive systems, the declarative programming model favored by Reactive Streams makes the integration of asynchronicity and backpressure largely transparent and seamless to the developer.<a data-type="indexterm" data-primary="" data-startref="ix_async_rs" id="idm45693951278680"/></p>
+</div></aside>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Project Reactor"><div class="sect1" id="idm45693951347016">
+<h1>Project Reactor</h1>
+
+<p><a data-type="indexterm" data-primary="reactive programming" data-secondary="Project Reactor" id="ix_reactive_prog_proj_reactor"/><a data-type="indexterm" data-primary="Project Reactor" id="ix_proj_reactor_ch8"/><a data-type="indexterm" data-primary="JVM (Java Virtual Machine)" data-secondary="Project Reactor" id="ix_jvm_proj_reactor"/>Although there are several available Reactive Streams implementations for the JVM, Project Reactor is among the most active, advanced, and performant. Reactor has been adopted by and provides the essential underpinnings for numerous mission-critical projects worldwide, including libraries, APIs, and applications developed and deployed by small organizations and global tech titans alike. Adding to this impressive momentum of development and adoption is the fact that Reactor provides the foundation for Spring’s WebFlux reactive web capabilities, Spring Data’s reactive database access for several open source and commercial databases, and interapplication communication, allowing for the creation of end-to-end reactive pipelines from top of stack to bottom and laterally as well. It’s a 100% solution.</p>
+
+<p>Why is this important?</p>
+
+<p><a data-type="indexterm" data-primary="blocking versus non-blocking code" id="idm45693951271320"/>From top of stack to bottom, from end user to lowest-tier computing resource, each interaction provides a potential sticking point. If interactions between the user’s browser and the backend application are nonblocking but the app has to wait for a blocking interaction with the database, the result is a blocking system. The same goes with interapplication communication; if the user’s browser communicates with backend Service A but Service A blocks waiting for a response from Service B, what has the user gained? Probably very little, and possibly nothing at all.</p>
+
+<p>Developers usually can see the vast potential a switch to Reactive Streams offers them and their systems. A counterweight to that is the change in mindset that, combined with the relative newness of reactive (vs. imperative) programming constructs and tooling, can require adjustment and a bit more work from developers to harness, at least in the short term. This is still an easy decision to make as long as the effort required is clearly exceeded by the scalability benefits and the breadth and depth of Reactive Stream’s application within overall systems. Having reactive pipelines throughout the entirety of a system’s applications is a force multiplier on both counts.</p>
+
+<p>Project Reactor’s implementation of Reactive Streams is clean and simple, building on concepts with which Java and Spring developers are already well acquainted. Resembling Java 8+’s Stream API, Reactor is best utilized via declarative, chained operators, often with lambdas. Compared to more procedural, imperative code, it first feels somewhat different and then fairly elegant. Familiarity with <code>Stream</code> speeds the acclimatization and appreciation.</p>
+
+<p><a data-type="indexterm" data-primary="Publisher" id="idm45693951267272"/>Reactor takes the concept of a Reactive Streams <code>Publisher</code> and specializes it, providing constructs similar to imperative Java in the process. Rather than using a common <code>Publisher</code> for everything in which a Reactive Stream—think of it as an on-demand, dynamic <code>Iterable</code>—is required, Project Reactor defines two types of <code>Publisher</code>:</p>
+
+<p><a data-type="indexterm" data-primary="Mono" id="idm45693951264232"/>
+<code>Mono</code>:: emits 0 or 1 element
+<a data-type="indexterm" data-primary="Flux" id="idm45693951262984"/>
+<code>Flux</code>:: emits 0 to <em>n</em> elements, a defined number or boundless</p>
+
+<p>This aligns brilliantly with imperative constructs. For example, in standard Java, a method may return an object of type T or an <code>Iterable&lt;T&gt;</code>. Using Reactor, that same method would return a <code>Mono&lt;T&gt;</code> or a <code>Flux&lt;T&gt;</code>—one object or potentially many, or in the case of the reactive code, a <code>Publisher</code> of those objects.</p>
+
+<p>Reactor also fits very naturally into Spring’s opinions. Depending on the use case, converting from blocking to nonblocking code can be as simple as changing a project dependency and a few method return values as shown previously. This chapter’s examples demonstrate how to do exactly that, along with extending outward—up, down, and laterally—to go from a single reactive application to a reactive system, including reactive database access, for maximum benefit.<a data-type="indexterm" data-primary="" data-startref="ix_jvm_proj_reactor" id="idm45693951257880"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Tomcat versus Netty"><div class="sect1" id="idm45693951277112">
+<h1>Tomcat versus Netty</h1>
+
+<p><a data-type="indexterm" data-primary="Tomcat" id="idm45693951255624"/><a data-type="indexterm" data-primary="Project Reactor" data-secondary="Tomcat versus Netty" id="idm45693951254920"/>In the imperative world of Spring Boot, Tomcat is the default servlet engine used for web applications, although even at that level, developers have options like Jetty and Undertow that can be used as drop-in replacements. Tomcat makes a great deal of sense as a default, though, as it is established, proven, and performant, and Spring team developers have contributed (and still do contribute) to refining and evolving Tomcat’s codebase. It’s a superb servlet engine for Boot applications.</p>
+
+<p><a data-type="indexterm" data-primary="I/O (input/output), blocking versus non-blocking" id="idm45693951253048"/>That said, numerous iterations of the servlet specification have been intrinsically synchronous with no async capabilities. Servlet 3.0 began to address this with asynchronous request processing but still only supported traditional blocking I/O. Version 3.1 of the spec added nonblocking I/O, making it suitable for asynchronous, and thus also reactive, applications.</p>
+
+<p><a data-type="indexterm" data-primary="Spring MVC (Model-View-Controller)" data-secondary="versus Spring WebFlux" id="idm45693951251480"/><a data-type="indexterm" data-primary="Spring WebFlux" id="idm45693951250488"/>Spring WebFlux is the name for Spring’s reactive counterpart to Spring WebMVC (package name), usually referred to simply as Spring MVC. Spring WebFlux is built on Reactor and uses Netty as the default network engine, just as Spring MVC uses Tomcat to listen for and service requests. <a data-type="indexterm" data-primary="Netty" id="idm45693951249384"/>Netty is a proven and performant asynchronous engine, and Spring team developers also contribute to Netty to tightly integrate Reactor and keep Netty on the cutting edge of features and performance.</p>
+
+<p>Just as with Tomcat, though, you have options. Any Servlet 3.1–compatible engine can be used with Spring WebFlux applications, should your mission or organization require it. Netty is the category leader for a reason, however, and for the vast majority of use cases, it is the best choice.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Reactive Data Access"><div class="sect1" id="idm45693951247560">
+<h1>Reactive Data Access</h1>
+
+<p><a data-type="indexterm" data-primary="Project Reactor" data-secondary="data access" id="idm45693951246184"/>As mentioned previously, the ultimate goal for ultimate scalability and optimal systemwide throughput is a fully end-to-end reactive implementation. At the lowest level, this rests on database access.</p>
+
+<p>Years of effort have gone into designing databases in ways to minimize contention and system performance blockages. Even with this impressive work, there are areas that remain problematic in many database engines and drivers, among them means for performing operations without blocking the requesting application(s) and sophisticated flow control/backpressure mechanisms.</p>
+
+<p>Paging constructs have been used to address both of these constraints, but they are imperfect solutions. Using an imperative model with paging typically requires a query to be issued for each page with a different range and/or constraints. This requires a new request and new response each time instead of the continuation that is possible with a <code>Flux</code>. An analogy is scooping up one cup of water at a time from a basin (imperative approach) versus simply turning on the tap to refill the cup. Rather than a “go get, bring back” imperative operation, the water is waiting to flow in the reactive scenario.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="R2DBC with H2"><div class="sect2" id="idm45693951242488">
+<h2>R2DBC with H2</h2>
+
+<p><a data-type="indexterm" data-primary="Project Reactor" data-secondary="R2DBC with H2" id="ix_proj_reactor_r2dbc"/><a data-type="indexterm" data-primary="R2DBC (Reactive Relational Database Connectivity)" id="ix_r2dbc_1"/><a data-type="indexterm" data-primary="JPA (Java Persistence API)" data-secondary="reactive data access" id="ix_jpa_reactive_access"/><a data-type="indexterm" data-primary="PlaneFinder" data-secondary="reactive data access" id="ix_planefinder_data_access"/><a data-type="indexterm" data-primary="H2 database driver" id="ix_h2_driver_1"/>In the existing version of PlaneFinder, I use the Java Persistence API (JPA) and the H2 database to store (in an in-memory instance of H2) aircraft positions retrieved from my local device that monitors in-range aircraft. JPA was built on an imperative specification and is thus inherently blocking. Seeing the need for a nonblocking reactive means of interacting with SQL databases, several industry leaders and luminaries joined forces to create and evolve the Reactive Relational Database Connectivity (R2DBC) project.</p>
+
+<p>Like JPA, R2DBC is an open specification that can be used, along with the Service Provider Interface (SPI) it provides, by vendors or other interested parties to create drivers for relational databases and client libraries for downstream developers. Unlike JPA, R2DBC builds on Project Reactor’s implementation of Reactive Streams and is fully reactive and nonblocking.</p>
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect3" data-pdf-bookmark="Updating PlaneFinder"><div class="sect3" id="idm45693951233960">
+<h3>Updating PlaneFinder</h3>
+
+<p>As with most complex systems, we don’t (currently) control all aspects and nodes of the entire distributed system. Also like most complex systems, the more completely a paradigm is embraced, the more can be gained from it. I start this “journey to 
+<span class="keep-together">reactive”</span> as close to the point of origin of the communication chain as possible: in the PlaneFinder service.</p>
+
+<p><a data-type="indexterm" data-primary="Publisher" id="idm45693951230616"/>Refactoring PlaneFinder to use Reactive Streams <code>Publisher</code> types, e.g., <code>Mono</code> and <code>Flux</code>, is the first step. I’ll stay with the existing H2 database, but in order to “reactiv-ate” it, I need to remove the JPA project dependency and replace it with R2DBC libraries. I update PlaneFinder’s <em>pom.xml</em> Maven build file as follows:</p>
+
+<pre data-type="programlisting" data-code-language="xml"><code class="c">&lt;!--	Comment out or remove this 	--&gt;</code>
+<code class="c">&lt;!--&lt;dependency&gt;--&gt;</code>
+<code class="c">&lt;!--    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;--&gt;</code>
+<code class="c">&lt;!--	&lt;artifactId&gt;spring-boot-starter-data-jpa&lt;/artifactId&gt;--&gt;</code>
+<code class="c">&lt;!--&lt;/dependency&gt;--&gt;</code>
+
+<code class="c">&lt;!--	Add this  	    		    --&gt;</code>
+<code class="nt">&lt;dependency&gt;</code>
+    <code class="nt">&lt;groupId&gt;</code>org.springframework.boot<code class="nt">&lt;/groupId&gt;</code>
+    <code class="nt">&lt;artifactId&gt;</code>spring-boot-starter-data-r2dbc<code class="nt">&lt;/artifactId&gt;</code>
+<code class="nt">&lt;/dependency&gt;</code>
+
+<code class="c">&lt;!--	Add this too  	    	    --&gt;</code>
+<code class="nt">&lt;dependency&gt;</code>
+    <code class="nt">&lt;groupId&gt;</code>io.r2dbc<code class="nt">&lt;/groupId&gt;</code>
+    <code class="nt">&lt;artifactId&gt;</code>r2dbc-h2<code class="nt">&lt;/artifactId&gt;</code>
+    <code class="nt">&lt;scope&gt;</code>runtime<code class="nt">&lt;/scope&gt;</code>
+<code class="nt">&lt;/dependency&gt;</code></pre>
+
+<p><a data-type="indexterm" data-primary="ReactiveCrudRepository" id="idm45693951205576"/>The <code>PlaneRepository</code> interface must be updated to extend the 
+<span class="keep-together"><code>ReactiveCrudRepository</code></span> interface instead of its blocking counterpart <code>CrudRepository</code>. This simple update is shown here:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">interface</code> <code class="nc">PlaneRepository</code>
+    <code class="kd">extends</code> <code class="n">ReactiveCrudRepository</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">,</code> <code class="n">String</code><code class="o">&gt;</code> <code class="o">{}</code></pre>
+
+<p>The change to <code>PlaneRepository</code> ripples outward, which leads naturally to the next stop, the <code>PlaneFinderService</code> class, where the <code>getAircraft()</code> method returns the result of <code>PlaneRepository::saveAll</code> when aircraft are found and of the <code>saveSamplePositions()</code> method otherwise. Replacing the value returned, a blocking <code>Iterable&lt;Aircraft&gt;</code>, with <code>Flux&lt;Aircraft&gt;</code> for the <code>getAircraft()</code> and <code>saveSamplePositions()</code> methods again correctly specifies the method return value.</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="n">Flux</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">&gt;</code> <code class="nf">getAircraft</code><code class="o">()</code> <code class="o">{</code>
+    <code class="o">...</code>
+<code class="o">}</code>
+
+<code class="kd">private</code> <code class="n">Flux</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">&gt;</code> <code class="nf">saveSamplePositions</code><code class="o">()</code> <code class="o">{</code>
+    <code class="o">...</code>
+<code class="o">}</code></pre>
+
+<p>Since the <code>PlaneController</code> class’s method <code>getCurrentAircraft()</code> calls 
+<span class="keep-together"><code>PlaneFinderService::getAircraft</code></span>, it now returns a <code>Flux&lt;Aircraft&gt;</code>. This necessitates a change to the signature for <code>PlaneController::getCurrentAircraft</code> as well:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="n">Flux</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">&gt;</code> <code class="nf">getCurrentAircraft</code><code class="o">()</code> <code class="kd">throws</code> <code class="n">IOException</code> <code class="o">{</code>
+    <code class="o">...</code>
+<code class="o">}</code></pre>
+
+<p>Using H2 with JPA is a fairly mature affair; the specifications involved, along with the relevant APIs and libraries, have been under development for roughly a decade. R2DBC is a relatively recent development, and while support is expanding apace, a few features present in the Spring Data JPA’s support for H2 have yet to be implemented. This doesn’t pose much of an increased burden but is something to keep in mind when choosing to use a relational database—in this case, H2—reactively.</p>
+
+<p><a data-type="indexterm" data-primary="ConnectionFactoryInitializer" id="idm45693951095704"/><a data-type="indexterm" data-primary="configuration" data-secondary="R2DBC with H2" id="idm45693951095208"/>Currently, to use H2 with R2DBC, it is necessary to create and configure a <code>ConnectionFactoryInitializer</code> bean for use by the application. Configuration requires only two steps in reality:</p>
+
+<ul>
+<li>
+<p>Setting the connection factory to the (already autoconfigured) <code>ConnectionFactory</code> bean, injected as a parameter</p>
+</li>
+<li>
+<p>Configuring the database “populator” to execute one or more scripts to initialize or reinitialize the database as desired/required</p>
+</li>
+</ul>
+
+<p><a data-type="indexterm" data-primary="DDL (Data Definition Language)" id="idm45693951064072"/>Recall that when using Spring Data JPA with H2, an associated <code>@Entity</code> class is used to create a corresponding table within the H2 database. This step is completed manually when using H2 with R2DBC using a standard SQL DDL (Data Definition Language) script.</p>
+
+<pre data-type="programlisting" data-code-language="sql"><code class="k">DROP</code> <code class="k">TABLE</code> <code class="n">IF</code> <code class="k">EXISTS</code> <code class="n">aircraft</code><code class="p">;</code>
+
+<code class="k">CREATE</code> <code class="k">TABLE</code> <code class="n">aircraft</code> <code class="p">(</code><code class="n">id</code> <code class="nb">BIGINT</code> <code class="n">auto_increment</code> <code class="k">primary</code> <code class="k">key</code><code class="p">,</code>
+<code class="n">callsign</code> <code class="nb">VARCHAR</code><code class="p">(</code><code class="mi">7</code><code class="p">),</code> <code class="n">squawk</code> <code class="nb">VARCHAR</code><code class="p">(</code><code class="mi">4</code><code class="p">),</code> <code class="n">reg</code> <code class="nb">VARCHAR</code><code class="p">(</code><code class="mi">8</code><code class="p">),</code> <code class="n">flightno</code> <code class="nb">VARCHAR</code><code class="p">(</code><code class="mi">10</code><code class="p">),</code>
+<code class="n">route</code> <code class="nb">VARCHAR</code><code class="p">(</code><code class="mi">30</code><code class="p">),</code> <code class="k">type</code> <code class="nb">VARCHAR</code><code class="p">(</code><code class="mi">4</code><code class="p">),</code> <code class="n">category</code> <code class="nb">VARCHAR</code><code class="p">(</code><code class="mi">2</code><code class="p">),</code>
+<code class="n">altitude</code> <code class="nb">INT</code><code class="p">,</code> <code class="n">heading</code> <code class="nb">INT</code><code class="p">,</code> <code class="n">speed</code> <code class="nb">INT</code><code class="p">,</code> <code class="n">vert_rate</code> <code class="nb">INT</code><code class="p">,</code> <code class="n">selected_altitude</code> <code class="nb">INT</code><code class="p">,</code>
+<code class="n">lat</code> <code class="n">DOUBLE</code><code class="p">,</code> <code class="n">lon</code> <code class="n">DOUBLE</code><code class="p">,</code> <code class="n">barometer</code> <code class="n">DOUBLE</code><code class="p">,</code> <code class="n">polar_distance</code> <code class="n">DOUBLE</code><code class="p">,</code>
+<code class="n">polar_bearing</code> <code class="n">DOUBLE</code><code class="p">,</code> <code class="n">is_adsb</code> <code class="nb">BOOLEAN</code><code class="p">,</code> <code class="n">is_on_ground</code> <code class="nb">BOOLEAN</code><code class="p">,</code>
+<code class="n">last_seen_time</code> <code class="k">TIMESTAMP</code><code class="p">,</code> <code class="n">pos_update_time</code> <code class="k">TIMESTAMP</code><code class="p">,</code> <code class="n">bds40_seen_time</code> <code class="k">TIMESTAMP</code><code class="p">);</code></pre>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>This is an additional step, but it isn’t without precedent. Many SQL databases require this step when used with Spring Data JPA as well; H2 was an exception to the rule.</p>
+</div>
+
+<p><a data-type="indexterm" data-primary="DbConxInit" id="idm45693951061784"/>Next up is the code for the <code>DbConxInit</code>, or Database Connection Initializer, class. The required bean-creation method is the first one—<code>initializer()</code>—that produces the needed <code>ConnectionFactoryInitializer</code> bean. <a data-type="indexterm" data-primary="CommandLineRunner" id="idm45693950941592"/>The second method produces a 
+<span class="keep-together"><code>CommandLineRunner</code></span> bean that is executed once the class is configured. <code>CommandLineRunner</code> is a functional interface with a single abstract method, <code>run()</code>. As such, I provide a lambda as its implementation, populating (and then listing) the contents of the 
+<span class="keep-together"><code>PlaneRepository</code></span> with a single <code>Aircraft</code>. Currently I have the <code>@Bean</code> annotation for the <code>init()</code> method commented out, so the method is never called, the <code>CommandLineRunner</code> bean is never produced, and the sample record is never stored:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kn">import</code> <code class="nn">io.r2dbc.spi.ConnectionFactory</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.beans.factory.annotation.Qualifier</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.boot.CommandLineRunner</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.context.annotation.Bean</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.context.annotation.Configuration</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.core.io.ClassPathResource</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.r2dbc.connection.init.ConnectionFactoryInitializer</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.r2dbc.connection.init.ResourceDatabasePopulator</code><code class="o">;</code>
+
+<code class="nd">@Configuration</code>
+<code class="kd">public</code> <code class="kd">class</code> <code class="nc">DbConxInit</code> <code class="o">{</code>
+    <code class="nd">@Bean</code>
+    <code class="kd">public</code> <code class="n">ConnectionFactoryInitializer</code>
+            <code class="nf">initializer</code><code class="o">(</code><code class="nd">@Qualifier</code><code class="o">(</code><code class="s">"connectionFactory"</code><code class="o">)</code>
+            <code class="n">ConnectionFactory</code> <code class="n">connectionFactory</code><code class="o">)</code> <code class="o">{</code>
+        <code class="n">ConnectionFactoryInitializer</code> <code class="n">initializer</code> <code class="o">=</code>
+            <code class="k">new</code> <code class="nf">ConnectionFactoryInitializer</code><code class="o">();</code>
+        <code class="n">initializer</code><code class="o">.</code><code class="na">setConnectionFactory</code><code class="o">(</code><code class="n">connectionFactory</code><code class="o">);</code>
+        <code class="n">initializer</code><code class="o">.</code><code class="na">setDatabasePopulator</code><code class="o">(</code>
+            <code class="k">new</code> <code class="nf">ResourceDatabasePopulator</code><code class="o">(</code><code class="k">new</code> <code class="n">ClassPathResource</code><code class="o">(</code><code class="s">"schema.sql"</code><code class="o">))</code>
+        <code class="o">);</code>
+        <code class="k">return</code> <code class="n">initializer</code><code class="o">;</code>
+    <code class="o">}</code>
+
+<code class="c1">//    @Bean // Uncomment @Bean annotation to add sample data</code>
+    <code class="kd">public</code> <code class="n">CommandLineRunner</code> <code class="nf">init</code><code class="o">(</code><code class="n">PlaneRepository</code> <code class="n">repo</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">args</code> <code class="o">-&gt;</code> <code class="o">{</code>
+            <code class="n">repo</code><code class="o">.</code><code class="na">save</code><code class="o">(</code><code class="k">new</code> <code class="n">Aircraft</code><code class="o">(</code><code class="s">"SAL001"</code><code class="o">,</code> <code class="s">"N12345"</code><code class="o">,</code> <code class="s">"SAL001"</code><code class="o">,</code> <code class="s">"LJ"</code><code class="o">,</code>
+                    <code class="mi">30000</code><code class="o">,</code> <code class="mi">30</code><code class="o">,</code> <code class="mi">300</code><code class="o">,</code>
+                    <code class="mf">38.7209228</code><code class="o">,</code> <code class="o">-</code><code class="mf">90.4107416</code><code class="o">))</code>
+                <code class="o">.</code><code class="na">thenMany</code><code class="o">(</code><code class="n">repo</code><code class="o">.</code><code class="na">findAll</code><code class="o">())</code>
+                    <code class="o">.</code><code class="na">subscribe</code><code class="o">(</code><code class="n">System</code><code class="o">.</code><code class="na">out</code><code class="o">::</code><code class="n">println</code><code class="o">);</code>
+        <code class="o">};</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre>
+
+<p>The <code>CommandLineRunner</code> lambda merits some explanation.</p>
+
+<p>The structure itself is a typical lambda of <code>x -&gt; { &lt;code to execute here&gt; }</code>, but the code contained within has a couple of interesting Reactive Streams–specific features.</p>
+
+<p><a data-type="indexterm" data-primary="Mono" id="idm45693950932024"/>The first declared operation is <code>repo::save</code>, which saves the content provided—in this case, a new <code>Aircraft</code> object—and returns a <code>Mono&lt;Aircraft&gt;</code>. It’s possible to simply <code>subscribe()</code> to this result and log/print it for verification. But a good habit to adopt is to save all desired sample data, then query the repository to produce all records. Doing so allows for full verification of the final state of the table at that point in time and should result in all records being displayed.</p>
+
+<p><a data-type="indexterm" data-primary="blocking versus non-blocking code" id="idm45693951522280"/>Recall, though, that reactive code doesn’t block, so how can one be certain that all previous operations have completed prior to proceeding? In this case, how can we be sure all records are saved before trying to retrieve all records? Within Project Reactor there are operators that await the completion signal, then proceed with the next function in the chain. <a data-type="indexterm" data-primary="Flux" id="idm45693950739416"/>The <code>then()</code> operator waits for a <code>Mono</code> as input, then accepts another <code>Mono</code> to play going forward. The <code>thenMany()</code> operator shown in the previous example awaits the completion of any upstream <code>Publisher</code> and plays a new <code>Flux</code> going forward. In the <code>init</code> method that produces the <code>CommandLineRunner</code> bean, 
+<span class="keep-together"><code>repo.findAll()</code></span> produces a <code>Flux&lt;Aircraft&gt;</code>, filling the bill as expected.</p>
+
+<p>Finally, I subscribe to the <code>Flux&lt;Aircraft&gt;</code> output from <code>repo.findAll()</code> and print the results to the console. It isn’t necessary to log the results, and in fact a plain 
+<span class="keep-together"><code>subscribe()</code></span> fulfills the requirement to start the flow of data. But why is it necessary to subscribe?</p>
+
+<p><a data-type="indexterm" data-primary="cold publishers" id="idm45693950731432"/>With few exceptions, <code><code>Reactive Streams Publisher</code></code>s are <em>cold publishers</em>, meaning they perform no work and consume no resources if they have no subscriber(s). This maximizes efficiency and thus scalability and makes perfect sense, but it also provides a common trap for those new to reactive programming. <a data-type="indexterm" data-primary="Publisher" id="idm45693950729224"/>If you aren’t returning a <code>Publisher</code> to calling code for subscription and use there, be sure to add a <code>subscribe()</code> to it to activate the <code>Publisher</code> or chain of operations that results in one.</p>
+<aside data-type="sidebar" epub:type="sidebar"><div class="sidebar" id="idm45693950727096">
+<h5>Going Declarative</h5>
+<p><a data-type="indexterm" data-primary="declarative approach with Reactive Streams" id="idm45693950725656"/>I often refer to nonreactive code as <em>blocking</em>, which makes sense in most cases, as code (with a few notable exceptions) executes sequentially; one line of code begins after the previous one finishes. Reactive code doesn’t block, though—unless it calls blocking code, which I address in an upcoming chapter—and as a result, sequential lines of code don’t provide any delineation between instructions whatsoever. This can be a bit jarring, especially for developers coming from a sequential execution background or who still work in one much or all of the time, which is most of us.</p>
+
+<p>Most blocking code is imperative code, in which we specify <em>how</em> to do something. Using a <em>for</em> loop as an example, we do the following:</p>
+
+<ul>
+<li>
+<p>Declare a variable and assign an initial value.</p>
+</li>
+<li>
+<p>Check against an outer boundary.</p>
+</li>
+<li>
+<p>Perform some instructions.</p>
+</li>
+<li>
+<p>Adjust the variable’s value.</p>
+</li>
+<li>
+<p>Repeat the loop beginning with the value check.</p>
+</li>
+</ul>
+
+<p>While there are very useful declarative constructs in blocking code—perhaps the best-known and -loved is the Java Stream API—these declarative morsels add zest to the meal but together still compose a relatively small portion of it. Not so with reactive programming.</p>
+
+<p>Because of the name Reactive Streams, you might form associations with Java’s <code>Stream</code>. Although the two are not connected, the declarative approach used in <code>java.util.Stream</code> fits perfectly with Reactive Streams as well: declaring outcomes via a chain of functions that operate by passing output from one to the next as immutable results. This adds structure, both visually and logically, to reactive code.</p>
+</div></aside>
+
+<p>Finally, some changes to the domain class <code>Aircraft</code> are required due to differences in JPA and R2DBC and their supporting H2 code. The <code>@Entity</code> notation used by JPA is no longer required, and the <code>@GeneratedValue</code> annotation for the primary key-associated member variable <code>id</code> is now similarly unnecessary. Removing both of these and their associated import statements are the only required changes when migrating from PlaneFinder from JPA to R2DBC using H2.</p>
+
+<p><a data-type="indexterm" data-primary="Lombok" data-secondary="reactive data access" id="idm45693950712312"/><a data-type="indexterm" data-primary="CommandLineRunner" id="idm45693950711112"/><a data-type="indexterm" data-primary="@AllArgsConstructor" id="idm45693950710440"/>To accommodate the <code>CommandLineRunner</code> bean shown earlier (should sample data be desired) and its field-limited constructor call, I create an additional constructor in <code>Aircraft</code> to match. Note that this is required only if you wish to create an <code>Aircraft</code> instance without providing all parameters as required by the constructor Lombok based on the <code>@AllArgsConstructor</code> annotation. Note that I call the all-args constructor from this limited-args constructor:</p>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="kd">public</code> <code class="nf">Aircraft</code><code class="o">(</code><code class="n">String</code> <code class="n">callsign</code><code class="o">,</code> <code class="n">String</code> <code class="n">reg</code><code class="o">,</code> <code class="n">String</code> <code class="n">flightno</code><code class="o">,</code> <code class="n">String</code> <code class="n">type</code><code class="o">,</code>
+                    <code class="kt">int</code> <code class="n">altitude</code><code class="o">,</code> <code class="kt">int</code> <code class="n">heading</code><code class="o">,</code> <code class="kt">int</code> <code class="n">speed</code><code class="o">,</code>
+                    <code class="kt">double</code> <code class="n">lat</code><code class="o">,</code> <code class="kt">double</code> <code class="n">lon</code><code class="o">)</code> <code class="o">{</code>
+
+        <code class="k">this</code><code class="o">(</code><code class="kc">null</code><code class="o">,</code> <code class="n">callsign</code><code class="o">,</code> <code class="s">"sqwk"</code><code class="o">,</code> <code class="n">reg</code><code class="o">,</code> <code class="n">flightno</code><code class="o">,</code> <code class="s">"route"</code><code class="o">,</code> <code class="n">type</code><code class="o">,</code> <code class="s">"ct"</code><code class="o">,</code>
+                <code class="n">altitude</code><code class="o">,</code> <code class="n">heading</code><code class="o">,</code> <code class="n">speed</code><code class="o">,</code> <code class="mi">0</code><code class="o">,</code> <code class="mi">0</code><code class="o">,</code>
+                <code class="n">lat</code><code class="o">,</code> <code class="n">lon</code><code class="o">,</code> <code class="mi">0</code><code class="n">D</code><code class="o">,</code> <code class="mi">0</code><code class="n">D</code><code class="o">,</code> <code class="mi">0</code><code class="n">D</code><code class="o">,</code>
+                <code class="kc">false</code><code class="o">,</code> <code class="kc">true</code><code class="o">,</code>
+                <code class="n">Instant</code><code class="o">.</code><code class="na">now</code><code class="o">(),</code> <code class="n">Instant</code><code class="o">.</code><code class="na">now</code><code class="o">(),</code> <code class="n">Instant</code><code class="o">.</code><code class="na">now</code><code class="o">());</code>
+    <code class="o">}</code></pre>
+
+<p>With that, it’s time to verify our work.</p>
+
+<p>After starting the PlaneFinder application from within the IDE, I return to HTTPie in a terminal window to test the updated code:</p>
+
+<pre data-type="programlisting">mheckler-a01 :: OReilly/code » http -b :7634/aircraft
+[
+    {
+        "altitude": 37000,
+        "barometer": 0.0,
+        "bds40_seen_time": null,
+        "callsign": "EDV5123",
+        "category": "A3",
+        "flightno": "DL5123",
+        "heading": 131,
+        "id": 1,
+        "is_adsb": true,
+        "is_on_ground": false,
+        "last_seen_time": "2020-09-19T21:40:56Z",
+        "lat": 38.461505,
+        "lon": -89.896606,
+        "polar_bearing": 156.187542,
+        "polar_distance": 32.208164,
+        "pos_update_time": "2020-09-19T21:40:56Z",
+        "reg": "N582CA",
+        "route": "DSM-ATL",
+        "selected_altitude": 0,
+        "speed": 474,
+        "squawk": "3644",
+        "type": "CRJ9",
+        "vert_rate": -64
+    },
+    {
+        "altitude": 38000,
+        "barometer": 0.0,
+        "bds40_seen_time": null,
+        "callsign": null,
+        "category": "A4",
+        "flightno": "FX3711",
+        "heading": 260,
+        "id": 2,
+        "is_adsb": true,
+        "is_on_ground": false,
+        "last_seen_time": "2020-09-19T21:40:57Z",
+        "lat": 39.348558,
+        "lon": -90.330383,
+        "polar_bearing": 342.006425,
+        "polar_distance": 24.839372,
+        "pos_update_time": "2020-09-19T21:39:50Z",
+        "reg": "N924FD",
+        "route": "IND-PHX",
+        "selected_altitude": 0,
+        "speed": 424,
+        "squawk": null,
+        "type": "B752",
+        "vert_rate": 0
+    },
+    {
+        "altitude": 35000,
+        "barometer": 1012.8,
+        "bds40_seen_time": "2020-09-19T21:41:11Z",
+        "callsign": "JIA5304",
+        "category": "A3",
+        "flightno": "AA5304",
+        "heading": 112,
+        "id": 3,
+        "is_adsb": true,
+        "is_on_ground": false,
+        "last_seen_time": "2020-09-19T21:41:12Z",
+        "lat": 38.759811,
+        "lon": -90.173632,
+        "polar_bearing": 179.833023,
+        "polar_distance": 11.568717,
+        "pos_update_time": "2020-09-19T21:41:11Z",
+        "reg": "N563NN",
+        "route": "CLT-RAP-CLT",
+        "selected_altitude": 35008,
+        "speed": 521,
+        "squawk": "6506",
+        "type": "CRJ9",
+        "vert_rate": 0
+    }
+]</pre>
+
+<p>Confirming that the refactored, reactive PlaneFinder works properly, we can now turn our attention to the Aircraft Positions application.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect3" data-pdf-bookmark="Updating the Aircraft Positions application"><div class="sect3" id="idm45693951233016">
+<h3>Updating the Aircraft Positions application</h3>
+
+<p>Currently the <em>aircraft-positions</em> project uses Spring Data JPA and H2, just as PlaneFinder did when it was a blocking application. While I could update Aircraft Positions to use R2DBC and H2 just as PlaneFinder now does, this required refactoring of the <em>aircraft-positions</em> project offers the perfect opportunity to explore other reactive database solutions.</p>
+
+<p>MongoDB is often at the forefront of database innovation, and indeed it was one of the first database providers of any kind to develop fully reactive drivers for use with its namesake database. Developing applications using Spring Data and MongoDB is nearly frictionless, reflecting the maturity of its reactive streams support. For the reactive refactoring of Aircraft Positions, MongoDB is a natural choice.</p>
+
+<p>Some changes to the build file, <em>pom.xml</em> in this case, are in order. First I remove the unnecessary dependencies for Spring MVC, Spring Data JPA, and H2:</p>
+
+<ul>
+<li>
+<p><code>spring-boot-starter-web</code></p>
+</li>
+<li>
+<p><code>spring-boot-starter-data-jpa</code></p>
+</li>
+<li>
+<p><code>h2</code></p>
+</li>
+</ul>
+
+<p>Next I add the following dependencies for the reactive version going forward:</p>
+
+<ul>
+<li>
+<p><code>spring-boot-starter-data-mongodb-reactive</code></p>
+</li>
+<li>
+<p><code>de.flapdoodle.embed.mongo</code></p>
+</li>
+<li>
+<p><code>reactor-test</code></p>
+</li>
+</ul>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p><code>spring-boot-starter-webflux</code> was already a dependency due to <code>WebClient</code>, so it wasn’t necessary to add it.</p>
+</div>
+
+<p><a data-type="indexterm" data-primary="MongoDB" id="ix_mongodb_2"/>As in <a data-type="xref" href="ch06.xhtml#sbur-06">Chapter 6</a>, I will make use of the embedded MongoDB for this example. Since the embedded MongoDB is typically used only for testing, it usually includes a scope of “test”; since I use this during application execution, I omit or remove that scoping qualifier from the build file. <a data-type="indexterm" data-primary="Apache Maven" id="ix_maven_ch8"/>The updated Maven <em>pom.xml</em> dependencies look like this:</p>
+
+<pre data-type="programlisting" data-code-language="xml"><code class="nt">&lt;dependencies&gt;</code>
+    <code class="nt">&lt;dependency&gt;</code>
+        <code class="nt">&lt;groupId&gt;</code>org.springframework.boot<code class="nt">&lt;/groupId&gt;</code>
+        <code class="nt">&lt;artifactId&gt;</code>spring-boot-starter-thymeleaf<code class="nt">&lt;/artifactId&gt;</code>
+    <code class="nt">&lt;/dependency&gt;</code>
+    <code class="nt">&lt;dependency&gt;</code>
+        <code class="nt">&lt;groupId&gt;</code>org.springframework.boot<code class="nt">&lt;/groupId&gt;</code>
+        <code class="nt">&lt;artifactId&gt;</code>spring-boot-starter-data-mongodb-reactive<code class="nt">&lt;/artifactId&gt;</code>
+    <code class="nt">&lt;/dependency&gt;</code>
+    <code class="nt">&lt;dependency&gt;</code>
+        <code class="nt">&lt;groupId&gt;</code>org.springframework.boot<code class="nt">&lt;/groupId&gt;</code>
+        <code class="nt">&lt;artifactId&gt;</code>spring-boot-starter-webflux<code class="nt">&lt;/artifactId&gt;</code>
+    <code class="nt">&lt;/dependency&gt;</code>
+
+    <code class="nt">&lt;dependency&gt;</code>
+        <code class="nt">&lt;groupId&gt;</code>org.projectlombok<code class="nt">&lt;/groupId&gt;</code>
+        <code class="nt">&lt;artifactId&gt;</code>lombok<code class="nt">&lt;/artifactId&gt;</code>
+        <code class="nt">&lt;optional&gt;</code>true<code class="nt">&lt;/optional&gt;</code>
+    <code class="nt">&lt;/dependency&gt;</code>
+    <code class="nt">&lt;dependency&gt;</code>
+        <code class="nt">&lt;groupId&gt;</code>org.springframework.boot<code class="nt">&lt;/groupId&gt;</code>
+        <code class="nt">&lt;artifactId&gt;</code>spring-boot-starter-test<code class="nt">&lt;/artifactId&gt;</code>
+        <code class="nt">&lt;scope&gt;</code>test<code class="nt">&lt;/scope&gt;</code>
+        <code class="nt">&lt;exclusions&gt;</code>
+            <code class="nt">&lt;exclusion&gt;</code>
+                <code class="nt">&lt;groupId&gt;</code>org.junit.vintage<code class="nt">&lt;/groupId&gt;</code>
+                <code class="nt">&lt;artifactId&gt;</code>junit-vintage-engine<code class="nt">&lt;/artifactId&gt;</code>
+            <code class="nt">&lt;/exclusion&gt;</code>
+        <code class="nt">&lt;/exclusions&gt;</code>
+    <code class="nt">&lt;/dependency&gt;</code>
+    <code class="nt">&lt;dependency&gt;</code>
+        <code class="nt">&lt;groupId&gt;</code>de.flapdoodle.embed<code class="nt">&lt;/groupId&gt;</code>
+        <code class="nt">&lt;artifactId&gt;</code>de.flapdoodle.embed.mongo<code class="nt">&lt;/artifactId&gt;</code>
+    <code class="nt">&lt;/dependency&gt;</code>
+    <code class="nt">&lt;dependency&gt;</code>
+        <code class="nt">&lt;groupId&gt;</code>io.projectreactor<code class="nt">&lt;/groupId&gt;</code>
+        <code class="nt">&lt;artifactId&gt;</code>reactor-test<code class="nt">&lt;/artifactId&gt;</code>
+        <code class="nt">&lt;scope&gt;</code>test<code class="nt">&lt;/scope&gt;</code>
+    <code class="nt">&lt;/dependency&gt;</code>
+<code class="nt">&lt;/dependencies&gt;</code></pre>
+
+<p>A quick refresh to the dependencies either via command line or the IDE and we’re ready to refactor.<a data-type="indexterm" data-primary="" data-startref="ix_maven_ch8" id="idm45693950483480"/></p>
+
+<p><a data-type="indexterm" data-primary="ReactiveCrudRepository" id="idm45693950482184"/>I begin again with the very simple change to the <code>AircraftRepository</code> interface, changing it to extend <code>ReactiveCrudRepository</code> instead of the blocking <code>CrudRepository</code>:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">interface</code> <code class="nc">AircraftRepository</code> <code class="kd">extends</code> <code class="n">ReactiveCrudRepository</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">,</code> <code class="n">Long</code><code class="o">&gt;</code> <code class="o">{}</code></pre>
+
+<p>Updating the <code>PositionController</code> class is a fairly small chore, since <code>WebClient</code> already converses using Reactive Streams <code>Publisher</code> types. I define a local variable <code>Flux&lt;Aircraft&gt; aircraftFlux</code>, then chain the requisite declarative operations to clear the repository of previously retrieved aircraft positions, retrieve new positions, convert them to instances of the <code>Aircraft</code> class, filter out positions without a listed aircraft registration number, and save them to the embedded MongoDB repository. <a data-type="indexterm" data-primary="Thymeleaf" id="ix_thymeleaf_3"/>I then add the <code>aircraftFlux</code> variable to the <code>Model</code> for use in the user-facing web UI and return the name of the Thymeleaf template for rendering:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@RequiredArgsConstructor</code>
+<code class="nd">@Controller</code>
+<code class="kd">public</code> <code class="kd">class</code> <code class="nc">PositionController</code> <code class="o">{</code>
+    <code class="nd">@NonNull</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="n">AircraftRepository</code> <code class="n">repository</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="n">WebClient</code> <code class="n">client</code>
+        <code class="o">=</code> <code class="n">WebClient</code><code class="o">.</code><code class="na">create</code><code class="o">(</code><code class="s">"http://localhost:7634/aircraft"</code><code class="o">);</code>
+
+    <code class="nd">@GetMapping</code><code class="o">(</code><code class="s">"/aircraft"</code><code class="o">)</code>
+    <code class="kd">public</code> <code class="n">String</code> <code class="nf">getCurrentAircraftPositions</code><code class="o">(</code><code class="n">Model</code> <code class="n">model</code><code class="o">)</code> <code class="o">{</code>
+        <code class="n">Flux</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">&gt;</code> <code class="n">aircraftFlux</code> <code class="o">=</code> <code class="n">repository</code><code class="o">.</code><code class="na">deleteAll</code><code class="o">()</code>
+                <code class="o">.</code><code class="na">thenMany</code><code class="o">(</code><code class="n">client</code><code class="o">.</code><code class="na">get</code><code class="o">()</code>
+                        <code class="o">.</code><code class="na">retrieve</code><code class="o">()</code>
+                        <code class="o">.</code><code class="na">bodyToFlux</code><code class="o">(</code><code class="n">Aircraft</code><code class="o">.</code><code class="na">class</code><code class="o">)</code>
+                        <code class="o">.</code><code class="na">filter</code><code class="o">(</code><code class="n">plane</code> <code class="o">-&gt;</code> <code class="o">!</code><code class="n">plane</code><code class="o">.</code><code class="na">getReg</code><code class="o">().</code><code class="na">isEmpty</code><code class="o">())</code>
+                        <code class="o">.</code><code class="na">flatMap</code><code class="o">(</code><code class="nl">repository:</code><code class="o">:</code><code class="n">save</code><code class="o">));</code>
+
+        <code class="n">model</code><code class="o">.</code><code class="na">addAttribute</code><code class="o">(</code><code class="s">"currentPositions"</code><code class="o">,</code> <code class="n">aircraftFlux</code><code class="o">);</code>
+        <code class="k">return</code> <code class="s">"positions"</code><code class="o">;</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre>
+
+<p><a data-type="indexterm" data-primary="@Document" id="idm45693950421480"/>Finally, a few small changes are required for the domain class <code>Aircraft</code> itself. The class-level <code>@Entity</code> annotation is JPA-specific; the corresponding annotation used by MongoDB is <code>@Document</code>, indicating that instances of a class are to be stored as documents within the database. <a data-type="indexterm" data-primary="@Id" id="idm45693950234472"/>Additionally, the <code>@Id</code> annotation used previously referenced <code>javax.persistence.Id</code>, which disappears without the JPA dependency. Replacing <code>import javax.persistence.Id;</code> with <code>import org.springframework.data.annotation.Id;</code> retains the table identifier context for use with MongoDB. The class file in its entirety is shown for reference:<a data-type="indexterm" data-primary="" data-startref="ix_mongodb_2" id="idm45693950231752"/></p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kn">import</code> <code class="nn">com.fasterxml.jackson.annotation.JsonProperty</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">lombok.AllArgsConstructor</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">lombok.Data</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">lombok.NoArgsConstructor</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.data.annotation.Id</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.data.mongodb.core.mapping.Document</code><code class="o">;</code>
+
+<code class="kn">import</code> <code class="nn">java.time.Instant</code><code class="o">;</code>
+
+<code class="nd">@Document</code>
+<code class="nd">@Data</code>
+<code class="nd">@NoArgsConstructor</code>
+<code class="nd">@AllArgsConstructor</code>
+<code class="kd">public</code> <code class="kd">class</code> <code class="nc">Aircraft</code> <code class="o">{</code>
+    <code class="nd">@Id</code>
+    <code class="kd">private</code> <code class="n">Long</code> <code class="n">id</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="n">String</code> <code class="n">callsign</code><code class="o">,</code> <code class="n">squawk</code><code class="o">,</code> <code class="n">reg</code><code class="o">,</code> <code class="n">flightno</code><code class="o">,</code> <code class="n">route</code><code class="o">,</code> <code class="n">type</code><code class="o">,</code> <code class="n">category</code><code class="o">;</code>
+
+    <code class="kd">private</code> <code class="kt">int</code> <code class="n">altitude</code><code class="o">,</code> <code class="n">heading</code><code class="o">,</code> <code class="n">speed</code><code class="o">;</code>
+    <code class="nd">@JsonProperty</code><code class="o">(</code><code class="s">"vert_rate"</code><code class="o">)</code>
+    <code class="kd">private</code> <code class="kt">int</code> <code class="n">vertRate</code><code class="o">;</code>
+    <code class="nd">@JsonProperty</code><code class="o">(</code><code class="s">"selected_altitude"</code><code class="o">)</code>
+    <code class="kd">private</code> <code class="kt">int</code> <code class="n">selectedAltitude</code><code class="o">;</code>
+
+    <code class="kd">private</code> <code class="kt">double</code> <code class="n">lat</code><code class="o">,</code> <code class="n">lon</code><code class="o">,</code> <code class="n">barometer</code><code class="o">;</code>
+    <code class="nd">@JsonProperty</code><code class="o">(</code><code class="s">"polar_distance"</code><code class="o">)</code>
+    <code class="kd">private</code> <code class="kt">double</code> <code class="n">polarDistance</code><code class="o">;</code>
+    <code class="nd">@JsonProperty</code><code class="o">(</code><code class="s">"polar_bearing"</code><code class="o">)</code>
+    <code class="kd">private</code> <code class="kt">double</code> <code class="n">polarBearing</code><code class="o">;</code>
+
+    <code class="nd">@JsonProperty</code><code class="o">(</code><code class="s">"is_adsb"</code><code class="o">)</code>
+    <code class="kd">private</code> <code class="kt">boolean</code> <code class="n">isADSB</code><code class="o">;</code>
+    <code class="nd">@JsonProperty</code><code class="o">(</code><code class="s">"is_on_ground"</code><code class="o">)</code>
+    <code class="kd">private</code> <code class="kt">boolean</code> <code class="n">isOnGround</code><code class="o">;</code>
+
+    <code class="nd">@JsonProperty</code><code class="o">(</code><code class="s">"last_seen_time"</code><code class="o">)</code>
+    <code class="kd">private</code> <code class="n">Instant</code> <code class="n">lastSeenTime</code><code class="o">;</code>
+    <code class="nd">@JsonProperty</code><code class="o">(</code><code class="s">"pos_update_time"</code><code class="o">)</code>
+    <code class="kd">private</code> <code class="n">Instant</code> <code class="n">posUpdateTime</code><code class="o">;</code>
+    <code class="nd">@JsonProperty</code><code class="o">(</code><code class="s">"bds40_seen_time"</code><code class="o">)</code>
+    <code class="kd">private</code> <code class="n">Instant</code> <code class="n">bds40SeenTime</code><code class="o">;</code>
+<code class="o">}</code></pre>
+
+<p>Running both the PlaneFinder and Aircraft Positions applications, I return to a browser tab and type <em>http://localhost:8080</em> into the address bar and load it, resulting in the page shown in <a data-type="xref" href="#the_aircraft_positions_applications_landing_page_index_html">Figure 8-1</a>.</p>
+
+<figure><div id="the_aircraft_positions_applications_landing_page_index_html" class="figure">
+<img src="Images/sbur_0801.png" alt="sbur 0801" width="600" height="165"/>
+<h6><span class="label">Figure 8-1. </span>The Aircraft Positions application landing page, <em>index.html</em></h6>
+</div></figure>
+
+<p>Clicking on the <em>Click here</em> link loads the <code>Aircraft Positions</code> report page, as shown in <a data-type="xref" href="#the_aircraft_position_report_page_8">Figure 8-2</a>.</p>
+
+<figure><div id="the_aircraft_position_report_page_8" class="figure">
+<img src="Images/sbur_0802.png" alt="sbur 0802" width="600" height="187"/>
+<h6><span class="label">Figure 8-2. </span>The Aircraft Positions report page</h6>
+</div></figure>
+
+<p>With each periodic refresh, the page will requery PlaneFinder and update the report with current data on demand as before, with one very key difference: the multiple aircraft positions that are supplied to the <em>positions.html</em> Thymeleaf template for display are no longer a fully formed, blocking <code>List</code> but rather a Reactive Streams <code>Publisher</code>, specifically of type <code>Flux</code>. The next section addresses this further, but for now, it’s important to realize that this content negotiation/accommodation occurs with no effort required from the developer.</p>
+</div></section>
+
+
+
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Reactive Thymeleaf"><div class="sect1" id="idm45693950552920">
+<h1>Reactive Thymeleaf</h1>
+
+<p><a data-type="indexterm" data-primary="reactive programming" data-secondary="Thymeleaf support for RS" id="idm45693950039064"/>As mentioned in <a data-type="xref" href="ch07.xhtml#sbur-07">Chapter 7</a>, the vast majority of frontend web applications are now being developed using HTML and JavaScript. This doesn’t alter the existence of a number of production applications that use view technologies/templating to fulfill their objectives; neither does it imply that said technologies don’t continue to satisfy a range of requirements simply and effectively. This being the case, it’s important for template engines and languages to adapt to circumstances in which Reactive Streams are also brought to bear on a problem.</p>
+
+<p><a data-type="indexterm" data-primary="Publisher" id="idm45693950036360"/>Thymeleaf approaches RS support at three different levels, allowing developers to settle on the one that best fits their requirements. As mentioned earlier, it’s possible to convert backend processing to leverage Reactive Streams and let Reactor feed Thymeleaf values supplied by a <code>Publisher</code>—like a <code>Mono</code> or <code>Flux</code>—instead of <code>Object&lt;T&gt;</code> and <code>Iterable&lt;T&gt;</code>. This doesn’t result in a reactive frontend, but if the concern is primarily conversion of backend logic to use Reactive Streams to eliminate blocking and implement flow control among services, this is a frictionless on-ramp to deploying a supporting user-facing application with the least possible effort.</p>
+
+<p><a data-type="indexterm" data-primary="Spring WebFlux" id="idm45693950032408"/>Thymeleaf also supports chunked and data-driven modes in support of Spring WebFlux, both involving the use of Server Sent Events and some JavaScript code to accomplish the feed of data to the browser. While both of these modalities are entirely valid, the increased amount of JavaScript required to achieve the desired outcome may tip the scales away from templating+HTML+JavaScript and toward 100% HTML+JavaScript frontend logic. This decision is heavily dependent on requirements, of course, and should be left to the developer(s) tasked with creating and supporting said functionality.</p>
+
+<p>In the preceding section, I demonstrated how to migrate the backend functionality to RS constructs and how Spring Boot uses Reactor+Thymeleaf to maintain functionality in the front end, helping ease conversions of blocking systems of applications while minimizing downtime. This is sufficient to satisfy the current use case, allowing us to examine ways to further improve backend functionality before returning (in an upcoming chapter) to expanding frontend capabilities.<a data-type="indexterm" data-primary="" data-startref="ix_reactive_streams_ch8" id="idm45693950030088"/><a data-type="indexterm" data-primary="" data-startref="ix_proj_reactor_ch8" id="idm45693950029112"/><a data-type="indexterm" data-primary="" data-startref="ix_reactive_prog_proj_reactor" id="idm45693950028168"/><a data-type="indexterm" data-primary="" data-startref="ix_h2_driver_1" id="idm45693950027256"/><a data-type="indexterm" data-primary="" data-startref="ix_jpa_reactive_access" id="idm45693950026312"/><a data-type="indexterm" data-primary="" data-startref="ix_planefinder_data_access" id="idm45693950025368"/><a data-type="indexterm" data-primary="" data-startref="ix_proj_reactor_r2dbc" id="idm45693950024456"/><a data-type="indexterm" data-primary="" data-startref="ix_r2dbc_1" id="idm45693950023512"/><a data-type="indexterm" data-primary="" data-startref="ix_thymeleaf_3" id="idm45693950022568"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="RSocket for Fully Reactive Interprocess Communication"><div class="sect1" id="idm45693950021496">
+<h1>RSocket for Fully Reactive Interprocess Communication</h1>
+
+<p><a data-type="indexterm" data-primary="RSocket" id="ix_rsocket_ch8"/><a data-type="indexterm" data-primary="reactive programming" data-secondary="RSocket" id="ix_reactive_prog_rsocket"/>Already in this chapter I’ve laid the groundwork for interprocess communication using Reactive Streams between separate applications. While the distributed system created does indeed use reactive constructs, the system has yet to reach its potential. <a data-type="indexterm" data-primary="request-response model" id="idm45693950017752"/>Crossing the network boundary using higher-level HTTP-based transports imposes limitations due to the request-response model, and even upgrading to WebSocket alone doesn’t address all of them. RSocket was created to eliminate interprocess communication shortfalls flexibly and powerfully.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="What Is RSocket?"><div class="sect2" id="idm45693950016520">
+<h2>What Is RSocket?</h2>
+
+<p><a data-type="indexterm" data-primary="Aeron" id="idm45693950015112"/>The result of a collaboration among several industry leaders and cutting-edge innovators, RSocket is a blazing-fast binary protocol that can be used over TCP, WebSocket, and Aeron transport mechanisms. <a data-type="indexterm" data-primary="asynchronous processing, Reactive Streams" id="idm45693950014056"/>RSocket supports four asynchronous interaction models:</p>
+
+<ul>
+<li>
+<p>Request-response</p>
+</li>
+<li>
+<p>Request-stream</p>
+</li>
+<li>
+<p>Fire &amp; forget</p>
+</li>
+<li>
+<p>Request channel (bidirectional stream)</p>
+</li>
+</ul>
+
+<p><a data-type="indexterm" data-primary="Project Reactor" data-secondary="RSocket" id="idm45693950008968"/>RSocket builds on the reactive streams paradigm and Project Reactor, enabling fully interconnected systems of applications while providing mechanisms that increase flexibility and resilience. Once a connection is made between two apps/services, distinctions of client versus server disappear and the two are effectively peers. Any of the four interaction models can be initiated by either party and accommodate all use cases:</p>
+
+<ul>
+<li>
+<p>A 1:1 interaction in which one party issues a request and receives a response from the other party</p>
+</li>
+<li>
+<p>A 1:N interaction in which one party issues a request and receives a stream of responses from the other party</p>
+</li>
+<li>
+<p>A 1:0 interaction in which one party issues a request</p>
+</li>
+<li>
+<p>A fully bidirectional channel in which both parties can send requests, responses, or data streams of any kind unbidden</p>
+</li>
+</ul>
+
+<p>As you can see, RSocket is incredibly flexible. Being a binary protocol with a performance focus, it is also fast. On top of that, RSocket is resilient, making it possible for a dropped connection to be reestablished and communications to automatically resume where they left off. And since RSocket is built on Reactor, developers who use RSocket can truly consider separate applications as a fully integrated system, since the network boundary no longer imposes any limitations on flow control.</p>
+
+<p>Spring Boot, with its legendary autoconfiguration, arguably provides the fastest, most developer-friendly way for Java and Kotlin developers to use RSocket.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Putting RSocket to Work"><div class="sect2" id="idm45693950001464">
+<h2>Putting RSocket to Work</h2>
+
+<p>Currently both the PlaneFinder and Aircraft Positions applications use HTTP-based transports to communicate. Converting both Spring Boot apps to use RSocket is the obvious next step forward.</p>
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect3" data-pdf-bookmark="Migrating PlaneFinder to RSocket"><div class="sect3" id="idm45693949999800">
+<h3>Migrating PlaneFinder to RSocket</h3>
+
+<p>First, I add the RSocket dependency to the PlaneFinder build file:</p>
+
+<pre data-type="programlisting" data-code-language="xml"><code class="nt">&lt;dependency&gt;</code>
+    <code class="nt">&lt;groupId&gt;</code>org.springframework.boot<code class="nt">&lt;/groupId&gt;</code>
+    <code class="nt">&lt;artifactId&gt;</code>spring-boot-starter-rsocket<code class="nt">&lt;/artifactId&gt;</code>
+<code class="nt">&lt;/dependency&gt;</code></pre>
+
+<p>After a quick Maven re-import, it’s off to refactor the code.</p>
+
+<p><a data-type="indexterm" data-primary="@RestController" id="idm45693949995352"/>For the time being, I’ll leave the existing endpoint of <em>/aircraft</em> intact and add an RSocket endpoint to <code>PlaneController</code>. In order to place both REST endpoints and RSocket endpoints in the same class, I decouple the functionality built into the <code>@RestController</code> annotation into its component parts: <code>@Controller</code> and <code>@ResponseBody</code>.</p>
+
+<p><a data-type="indexterm" data-primary="JSON (JavaScript Object Notation)" data-secondary="RSocket" id="idm45693949991080"/>Replacing the class-level <code>@RestController</code> annotation with <code>@Controller</code> means that for any REST endpoints from which we wish to return objects directly as JSON—such as the existing <em>/aircraft</em> endpoint associated with the <code>getCurrentAircraft()</code> method—it is necessary to add <code>@ResponseBody</code> to the method. <a data-type="indexterm" data-primary="@Controller" id="idm45693949987480"/>The advantage to this seeming step back is that RSocket endpoints can then be defined in the same <code>@Controller</code> class as REST endpoints, keeping points of ingress and egress for PlaneFinder in one, and only one, location:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kn">import</code> <code class="nn">org.springframework.messaging.handler.annotation.MessageMapping</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.stereotype.Controller</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.web.bind.annotation.GetMapping</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.web.bind.annotation.ResponseBody</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">reactor.core.publisher.Flux</code><code class="o">;</code>
+
+<code class="kn">import</code> <code class="nn">java.io.IOException</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">java.time.Duration</code><code class="o">;</code>
+
+<code class="nd">@Controller</code>
+<code class="kd">public</code> <code class="kd">class</code> <code class="nc">PlaneController</code> <code class="o">{</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="n">PlaneFinderService</code> <code class="n">pfService</code><code class="o">;</code>
+
+    <code class="kd">public</code> <code class="nf">PlaneController</code><code class="o">(</code><code class="n">PlaneFinderService</code> <code class="n">pfService</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">this</code><code class="o">.</code><code class="na">pfService</code> <code class="o">=</code> <code class="n">pfService</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="nd">@ResponseBody</code>
+    <code class="nd">@GetMapping</code><code class="o">(</code><code class="s">"/aircraft"</code><code class="o">)</code>
+    <code class="kd">public</code> <code class="n">Flux</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">&gt;</code> <code class="nf">getCurrentAircraft</code><code class="o">()</code> <code class="kd">throws</code> <code class="n">IOException</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">pfService</code><code class="o">.</code><code class="na">getAircraft</code><code class="o">();</code>
+    <code class="o">}</code>
+
+    <code class="nd">@MessageMapping</code><code class="o">(</code><code class="s">"acstream"</code><code class="o">)</code>
+    <code class="kd">public</code> <code class="n">Flux</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">&gt;</code> <code class="nf">getCurrentACStream</code><code class="o">()</code> <code class="kd">throws</code> <code class="n">IOException</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">pfService</code><code class="o">.</code><code class="na">getAircraft</code><code class="o">().</code><code class="na">concatWith</code><code class="o">(</code>
+                <code class="n">Flux</code><code class="o">.</code><code class="na">interval</code><code class="o">(</code><code class="n">Duration</code><code class="o">.</code><code class="na">ofSeconds</code><code class="o">(</code><code class="mi">1</code><code class="o">))</code>
+                        <code class="o">.</code><code class="na">flatMap</code><code class="o">(</code><code class="n">l</code> <code class="o">-&gt;</code> <code class="n">pfService</code><code class="o">.</code><code class="na">getAircraft</code><code class="o">()));</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre>
+
+<p><a data-type="indexterm" data-primary="@MessaageMapping" id="idm45693949979736"/>To create a repeating stream of aircraft positions sent initially and at subsequent one-second intervals, I create the <code>getCurrentACStream()</code> method and annotate it as an RSocket endpoint with <code>@MessageMapping</code>. Note that since RSocket mappings don’t build upon a root path as HTTP addresses/endpoints do, no forward slash (/) is required in the mapping.</p>
+
+<p>With the endpoint and servicing method defined, the next step is to designate a port for RSocket to listen for connection requests. I do so in PlaneFinder’s 
+<span class="keep-together"><em>application.properties</em></span> file, adding a property value for <code>spring.rsocket.server.port</code> to the existing one for the HTTP-based <code>server.port</code>:</p>
+
+<pre data-type="programlisting" data-code-language="text">server.port=7634
+spring.rsocket.server.port=7635</pre>
+
+<p>The presence of this single RSocket server port assignment is sufficient for Spring Boot to configure the containing application as an RSocket server, creating all necessary beans and performing all of the requisite configuration. Recall that while one of the two applications involved in an RSocket connection must act initially as a server, once the connection is established the distinction between client (the app that initiates a connection) and server (the app that listens for a connection) evaporates.</p>
+
+<p>With those few changes, PlaneFinder is now RSocket ready. Simply start the application to ready it for connection requests.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect3" data-pdf-bookmark="Migrating Aircraft Positions to RSocket"><div class="sect3" id="idm45693949999176">
+<h3>Migrating Aircraft Positions to RSocket</h3>
+
+<p><a data-type="indexterm" data-primary="Aircraft Positions" data-secondary="migrating to RSocket" id="ix_aircraftpos_rsocket"/>Once again, the first step in adding RSocket is to add the RSocket dependency to the build file—in this case, for the Aircraft Positions application:</p>
+
+<pre data-type="programlisting" data-code-language="xml"><code class="nt">&lt;dependency&gt;</code>
+    <code class="nt">&lt;groupId&gt;</code>org.springframework.boot<code class="nt">&lt;/groupId&gt;</code>
+    <code class="nt">&lt;artifactId&gt;</code>spring-boot-starter-rsocket<code class="nt">&lt;/artifactId&gt;</code>
+<code class="nt">&lt;/dependency&gt;</code></pre>
+
+<p>Don’t forget to re-import and thus activate changes with Maven for the project prior to continuing. Now, on to the code.</p>
+
+<p><a data-type="indexterm" data-primary="@Controller" id="idm45693949817016"/>Similarly to how I did with PlaneFinder, I refactor the <code>PositionController</code> class to create a single point for all ingress/egress. <a data-type="indexterm" data-primary="@RestController" id="idm45693949814840"/>Replacing the class-level <code>@RestController</code> annotation with <code>@Controller</code> allows for the inclusion of RSocket endpoints along with the HTTP-based (but template-driven, in this case) endpoint that activates the <em>positions.html</em> Thymeleaf template.</p>
+
+<p><a data-type="indexterm" data-primary="RSocketRequester" id="idm45693949812440"/> To enable Aircraft Positions to act as an RSocket client, I create an <code>RSocketRequester</code> by autowiring via constructor injection an <code>RSocketRequester.Builder</code> bean. The <code>RSocketRequester.Builder</code> bean is automatically created by Spring Boot as a result of adding the RSocket dependency to the project. Within the constructor, I use the builder to create a TCP connection (in this case) to PlaneFinder’s RSocket server via the builder’s <code>tcp()</code> method.<a data-type="indexterm" data-primary="Lombok" data-secondary="RSocket" id="idm45693949809528"/></p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Since I need to inject a bean (<code>RSocketRequester.Builder</code>) used to create an instance of a different object (<code>RSocketRequester</code>), I must create a constructor. Since I now have a constructor, I removed the class-level <code>@RequiredArgsConstructor</code> and member variable-level <code>@NonNull</code> Lombok annotations and simply add <code>AircraftRepository</code> to the constructor I wrote as well. Either way, Spring Boot autowires the bean, and it is assigned to the <code>repository</code> member variable.</p>
+</div>
+
+<p><a data-type="indexterm" data-primary="@ResponseBody" id="idm45693949746168"/><a data-type="indexterm" data-primary="JSON (JavaScript Object Notation)" data-secondary="RSocket" id="idm45693949745240"/>To verify the RSocket connection is working properly and data is flowing, I create an HTTP-based endpoint <em>/acstream</em>, specify it will return a stream of Server Sent Events (SSE) as a result, and with the <code>@ResponseBody</code> annotation indicate that the response will comprise JSON-formatted objects directly. Using the <code>RSocketRequester</code> member variable initialized in the constructor, I specify the <code>route</code> to match the RSocket endpoint defined in PlaneFinder, send some <code>data</code> (optional; I don’t pass any useful data in this particular request), and retrieve the <code>Flux</code> of <code>Aircraft</code> returned from PlaneFinder:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kn">import</code> <code class="nn">org.springframework.http.MediaType</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.messaging.rsocket.RSocketRequester</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.stereotype.Controller</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.ui.Model</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.web.bind.annotation.GetMapping</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.web.bind.annotation.ResponseBody</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">org.springframework.web.reactive.function.client.WebClient</code><code class="o">;</code>
+<code class="kn">import</code> <code class="nn">reactor.core.publisher.Flux</code><code class="o">;</code>
+
+<code class="nd">@Controller</code>
+<code class="kd">public</code> <code class="kd">class</code> <code class="nc">PositionController</code> <code class="o">{</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="n">AircraftRepository</code> <code class="n">repository</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="n">RSocketRequester</code> <code class="n">requester</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="n">WebClient</code> <code class="n">client</code> <code class="o">=</code>
+            <code class="n">WebClient</code><code class="o">.</code><code class="na">create</code><code class="o">(</code><code class="s">"http://localhost:7634/aircraft"</code><code class="o">);</code>
+
+    <code class="kd">public</code> <code class="nf">PositionController</code><code class="o">(</code><code class="n">AircraftRepository</code> <code class="n">repository</code><code class="o">,</code>
+                              <code class="n">RSocketRequester</code><code class="o">.</code><code class="na">Builder</code> <code class="n">builder</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">this</code><code class="o">.</code><code class="na">repository</code> <code class="o">=</code> <code class="n">repository</code><code class="o">;</code>
+        <code class="k">this</code><code class="o">.</code><code class="na">requester</code> <code class="o">=</code> <code class="n">builder</code><code class="o">.</code><code class="na">tcp</code><code class="o">(</code><code class="s">"localhost"</code><code class="o">,</code> <code class="mi">7635</code><code class="o">);</code>
+    <code class="o">}</code>
+
+    <code class="c1">// HTTP endpoint, HTTP requester (previously created)</code>
+    <code class="nd">@GetMapping</code><code class="o">(</code><code class="s">"/aircraft"</code><code class="o">)</code>
+    <code class="kd">public</code> <code class="n">String</code> <code class="nf">getCurrentAircraftPositions</code><code class="o">(</code><code class="n">Model</code> <code class="n">model</code><code class="o">)</code> <code class="o">{</code>
+        <code class="n">Flux</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">&gt;</code> <code class="n">aircraftFlux</code> <code class="o">=</code> <code class="n">repository</code><code class="o">.</code><code class="na">deleteAll</code><code class="o">()</code>
+                <code class="o">.</code><code class="na">thenMany</code><code class="o">(</code><code class="n">client</code><code class="o">.</code><code class="na">get</code><code class="o">()</code>
+                        <code class="o">.</code><code class="na">retrieve</code><code class="o">()</code>
+                        <code class="o">.</code><code class="na">bodyToFlux</code><code class="o">(</code><code class="n">Aircraft</code><code class="o">.</code><code class="na">class</code><code class="o">)</code>
+                        <code class="o">.</code><code class="na">filter</code><code class="o">(</code><code class="n">plane</code> <code class="o">-&gt;</code> <code class="o">!</code><code class="n">plane</code><code class="o">.</code><code class="na">getReg</code><code class="o">().</code><code class="na">isEmpty</code><code class="o">())</code>
+                        <code class="o">.</code><code class="na">flatMap</code><code class="o">(</code><code class="nl">repository:</code><code class="o">:</code><code class="n">save</code><code class="o">));</code>
+
+        <code class="n">model</code><code class="o">.</code><code class="na">addAttribute</code><code class="o">(</code><code class="s">"currentPositions"</code><code class="o">,</code> <code class="n">aircraftFlux</code><code class="o">);</code>
+        <code class="k">return</code> <code class="s">"positions"</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="c1">// HTTP endpoint, RSocket client endpoint</code>
+    <code class="nd">@ResponseBody</code>
+    <code class="nd">@GetMapping</code><code class="o">(</code><code class="n">value</code> <code class="o">=</code> <code class="s">"/acstream"</code><code class="o">,</code>
+            <code class="n">produces</code> <code class="o">=</code> <code class="n">MediaType</code><code class="o">.</code><code class="na">TEXT_EVENT_STREAM_VALUE</code><code class="o">)</code>
+    <code class="kd">public</code> <code class="n">Flux</code><code class="o">&lt;</code><code class="n">Aircraft</code><code class="o">&gt;</code> <code class="nf">getCurrentACPositionsStream</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">requester</code><code class="o">.</code><code class="na">route</code><code class="o">(</code><code class="s">"acstream"</code><code class="o">)</code>
+                <code class="o">.</code><code class="na">data</code><code class="o">(</code><code class="s">"Requesting aircraft positions"</code><code class="o">)</code>
+                <code class="o">.</code><code class="na">retrieveFlux</code><code class="o">(</code><code class="n">Aircraft</code><code class="o">.</code><code class="na">class</code><code class="o">);</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre>
+
+<p><a data-type="indexterm" data-primary="HTTPie" id="idm45693949781656"/>To verify the RSocket connection is viable and PlaneFinder is feeding data to the Aircraft Positions application, I start Aircraft Positions and return to the terminal and HTTPie, adding the <em>-S</em> flag to the command to process the data as a stream, as it arrives, rather than wait for a response body completion. An example of the results follows, edited for brevity:</p>
+
+<pre data-type="programlisting">mheckler-a01 :: ~ » http -S :8080/acstream
+HTTP/1.1 200 OK
+Content-Type: text/event-stream;charset=UTF-8
+transfer-encoding: chunked
+
+data:{"id":1,"callsign":"RPA3427","squawk":"0526","reg":"N723YX","flightno":
+"UA3427","route":"IAD-MCI","type":"E75L","category":"A3","altitude":36000,
+"heading":290,"speed":403,"lat":39.183929,"lon":-90.72259,"barometer":0.0,
+"vert_rate":64,"selected_altitude":0,"polar_distance":29.06486,
+"polar_bearing":297.519943,"is_adsb":true,"is_on_ground":false,
+"last_seen_time":"2020-09-20T23:58:51Z",
+"pos_update_time":"2020-09-20T23:58:49Z","bds40_seen_time":null}
+
+data:{"id":2,"callsign":"EDG76","squawk":"3354","reg":"N776RB","flightno":"",
+"route":"TEB-VNY","type":"GLF5","category":"A3","altitude":43000,"heading":256,
+"speed":419,"lat":38.884918,"lon":-90.363026,"barometer":0.0,"vert_rate":64,
+"selected_altitude":0,"polar_distance":9.699159,"polar_bearing":244.237695,
+"is_adsb":true,"is_on_ground":false,"last_seen_time":"2020-09-20T23:59:22Z",
+"pos_update_time":"2020-09-20T23:59:14Z","bds40_seen_time":null}
+
+data:{"id":3,"callsign":"EJM604","squawk":"3144","reg":"N604SD","flightno":"",
+"route":"ENW-HOU","type":"C56X","category":"A2","altitude":38000,"heading":201,
+"speed":387,"lat":38.627464,"lon":-90.01416,"barometer":0.0,"vert_rate":-64,
+"selected_altitude":0,"polar_distance":20.898095,"polar_bearing":158.9935,
+"is_adsb":true,"is_on_ground":false,"last_seen_time":"2020-09-20T23:59:19Z",
+"pos_update_time":"2020-09-20T23:59:19Z","bds40_seen_time":null}</pre>
+
+<p><a data-type="indexterm" data-primary="request-stream model" id="idm45693949779480"/>This confirms that data is flowing from PlaneFinder to Aircraft Positions via Reactive Streams over an RSocket connection using the <em>request-stream</em> model. All systems go.</p>
+<div data-type="tip"><h1>Code Checkout Checkup</h1>
+<p>For complete chapter code, please check out branch <em>chapter8end</em> from the code repository.<a data-type="indexterm" data-primary="" data-startref="ix_reactive_prog_ch8" id="idm45693949481064"/><a data-type="indexterm" data-primary="" data-startref="ix_reactive_prog_rsocket" id="idm45693949480088"/><a data-type="indexterm" data-primary="" data-startref="ix_rsocket_ch8" id="idm45693949479176"/><a data-type="indexterm" data-primary="" data-startref="ix_aircraftpos_rsocket" id="idm45693949478232"/></p>
+</div>
+</div></section>
+
+
+
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Summary"><div class="sect1" id="idm45693949476904">
+<h1>Summary</h1>
+
+<p>Reactive programming gives developers a way to make better use of resources, and in an increasingly distributed world of interconnected systems, the master key to scalability involves extending scaling mechanisms beyond application boundaries and into the communication channels. The Reactive Streams initiative, and in particular Project Reactor, serves as a powerful, performant, and flexible foundation for maximizing system-wide scalability.</p>
+
+<p>In this chapter, I introduced reactive programming and demonstrated how Spring is leading the development and advancement of numerous tools and technologies. I explained blocking and nonblocking communication and the engines that provide those capabilities, e.g., Tomcat, Netty, and others.</p>
+
+<p>Next, I demonstrated how to enable reactive database access to SQL and NoSQL databases by refactoring the PlaneFinder and Aircraft Positions applications to use Spring WebFlux/Project Reactor. Reactive Relational Database Connectivity (R2DBC) provides a reactive replacement for the Java Persistence API (JPA) and works with several SQL databases; MongoDB and other NoSQL databases provide drop-in reactive drivers that work seamlessly with Spring Data and Spring Boot.</p>
+
+<p>This chapter also discussed options for frontend integration of reactive types and demonstrated how Thymeleaf provides a limited migration path if your applications are still using generated view technologies. Additional options will be considered in future chapters.</p>
+
+<p>Finally, I demonstrated how to take interprocess communication to unexpected new levels with RSocket. Doing so via Spring Boot’s RSocket support and autoconfiguration provides the fast path to performance, scalability, resilience, and developer productivity.</p>
+
+<p>In the next chapter, I’ll dig into testing: how Spring Boot enables better, faster, and easier testing practices, how to create effective unit tests, and how to hone and focus testing to speed the build-and-test cycle.</p>
+</div></section>
+
+
+
+
+
+
+
+</div></section></div></body></html>

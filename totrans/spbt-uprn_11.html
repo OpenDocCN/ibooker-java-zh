@@ -1,0 +1,1091 @@
+<html><head></head><body><div id="sbo-rt-content"><section data-type="chapter" epub:type="chapter" data-pdf-bookmark="Chapter 11. Deploying Your Spring Boot Application"><div class="chapter" id="sbur-11">
+<h1><span class="label">Chapter 11. </span>Deploying Your Spring Boot Application</h1>
+
+
+<p><a data-type="indexterm" data-primary="deployment of Spring Boot applications" id="ix_deploy_sb"/>In software development, deployment is the on-ramp to production for an 
+<span class="keep-together">application.</span></p>
+
+<p>Regardless of any capabilities an application may promise its end users, until said users can actually use the application, it is effectively an academic what-if exercise. Figuratively and often very literally, deployment is the payoff.</p>
+
+<p><a data-type="indexterm" data-primary="JAR files" id="idm45693945113512"/><a data-type="indexterm" data-primary="WAR file" id="idm45693945112808"/>Referencing the Spring Initializr, many developers are aware that Spring Boot applications can be created as WAR files or JAR files. Most of those same developers also know that there are many good reasons (several of which were mentioned earlier in this book) to eschew the WAR option and create executable JAR files, and few good reasons to do the opposite. What many developers may not realize is that even when building a Spring Boot executable JAR, there are numerous options for deployment to fulfill various requirements and use cases.</p>
+
+<p>In this chapter, I examine ways to deploy your Spring Boot application with options useful for different target destinations and discuss their relative merits. I then demonstrate how to create these deployment artifacts, explain options for optimal execution, and show how to verify their components and provenance. You almost certainly have more and better tools for deploying your Spring Boot applications than you realized.</p>
+<div data-type="tip"><h1>Code Checkout Checkup</h1>
+<p>Please check out branch <em>chapter11begin</em> from the code repository to begin.</p>
+</div>
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Revisiting the Spring Boot Executable JAR"><div class="sect1" id="idm45693945108600">
+<h1>Revisiting the Spring Boot Executable JAR</h1>
+
+<p><a data-type="indexterm" data-primary="JAR files" id="ix_jar_files_2"/><a data-type="indexterm" data-primary="executable JAR files" id="ix_exec_JAR_ch11"/><a data-type="indexterm" data-primary="deployment of Spring Boot applications" data-secondary="executable JARs" id="ix_deploy_exec_jar"/>As discussed way back in <a data-type="xref" href="ch01.xhtml#sbur-01">Chapter 1</a>, Spring Boot’s executable JAR provides maximum utility and versatility in a single, self-contained, testable, and deployable unit. It’s fast to create and iterate, dynamically self-configurable to changes in its environment, and simple in the extreme to distribute and maintain.</p>
+
+<p>Every cloud provider offers an application hosting option that enjoys widespread use for prototyping through production deployments, and most of those application platforms expect a largely self-contained deployable application, offering only the barest of environmental essentials. A Spring Boot JAR fits quite naturally into these clean environments, requiring only the presence of a JDK for frictionless execution; some platforms even specify Spring Boot by name due to its seamless fit for app hosting. By bringing mechanisms with it for external interactions involving HTTP exchanges, messaging, and more, a Spring Boot application can eliminate installation, configuration, and maintenance of an application server or other externalities. This dramatically reduces developer workload and application platform overhead.</p>
+
+<p>Since a Spring Boot application possesses full control over dependent libraries, it eliminates fear of external dependency changes. Scheduled updates to an application server, servlet engine, database or messaging libraries, or any of a number of other critical components have crashed countless non-Boot applications over the years. In those applications that rely on external components maintained by the underlying app platform, developers must be hypervigilant for unplanned outages due to the world shifting under their feet, simply due to a dot-release change of a single dependent library. Exciting times.</p>
+
+<p>With a Spring Boot application, upgrades to any dependencies—whether core Spring libraries or second- (or third- , or fourth- , etc.) tier dependencies—are much less painful and stressful as well. <a data-type="indexterm" data-primary="blue-green deployment" id="idm45693945099848"/>The app developer upgrades and tests the application and deploys an update (typically using a <a href="https://en.wikipedia.org/wiki/Blue-green_deployment">blue-green deployment</a>) only when satisfied that everything is working as expected. Since dependencies are no longer external to the application but instead bundled with it, the developer has full control over dependency versions and upgrade timing.</p>
+
+<p><a data-type="indexterm" data-primary="Spring Boot Gradle plug-in" id="idm45693945097688"/><a data-type="indexterm" data-primary="Spring Boot Maven plug-in" id="ix_sb_maven_plugin"/>Spring Boot JARs have another useful trick up their sleeve, courtesy of the Spring Boot Maven and Gradle plug-ins: the ability to create what is sometimes called a “fully executable” JAR. <a data-type="indexterm" data-primary="JDK (Java Development Kit)" id="ix_jdk_2"/>The quotes are intentional and are present in official documentation as well because a JDK is still required for the application to function. So what is meant by a “fully executable” Spring Boot application, and how does one create it?</p>
+
+<p>Let’s begin with the how.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Building a “Fully Executable” Spring Boot JAR"><div class="sect2" id="idm45693945093768">
+<h2>Building a “Fully Executable” Spring Boot JAR</h2>
+
+<p><a data-type="indexterm" data-primary="executable JAR files" data-secondary="building" id="ix_exec_jar_build"/>I’ll use PlaneFinder for this example. For purposes of comparison, I build the project from the command line without changes using <code>mvn clean package</code>. This results in the following JAR being created in the project’s <em>target</em> directory (result trimmed to fit page):</p>
+
+<pre data-type="programlisting">» ls -lb target/*.jar
+
+-rw-r--r--  1 markheckler  staff  27085204 target/planefinder-0.0.1-SNAPSHOT.jar</pre>
+
+<p><a data-type="indexterm" data-primary="JVM (Java Virtual Machine)" data-secondary="executable JARs" id="idm45693945088776"/>This Spring Boot JAR is referred to as an <em>executable JAR</em> because it consists of the entire application without need for external downstream dependencies; all it requires to execute is a JVM provided by an installed JDK. Running the app in its current state looks something like this (results trimmed and edited to fit page):</p>
+
+<pre data-type="programlisting">» java -jar target/planefinder-0.0.1-SNAPSHOT.jar
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::                (v2.4.0)
+
+: Starting PlanefinderApplication v0.0.1-SNAPSHOT
+: No active profile set, falling back to default profiles: default
+: Bootstrapping Spring Data R2DBC repositories in DEFAULT mode.
+: Finished Spring Data repository scanning in 132 ms. Found 1 R2DBC
+  repository interfaces.
+: Netty started on port(s): 7634
+: Netty RSocket started on port(s): 7635
+: Started PlanefinderApplication in 2.75 seconds (JVM running for 3.106)</pre>
+
+<p>This works as expected, of course, and it serves as a baseline for what comes next. I now revisit PlaneFinder’s <em>pom.xml</em> to add the indicated XML snippet to the existing section for the <code>spring-boot-maven-plug-in</code>, as shown in <a data-type="xref" href="#plug-ins_section_of_planefinder_pom_xml_file">Figure 11-1</a>.</p>
+
+<figure><div id="plug-ins_section_of_planefinder_pom_xml_file" class="figure">
+<img src="Images/sbur_1101.png" alt="sbur 1101" width="600" height="309"/>
+<h6><span class="label">Figure 11-1. </span>Plugins section of PlaneFinder <em>pom.xml</em> file</h6>
+</div></figure>
+
+<p>Returning to the terminal, I again build the project from the command line using <code>mvn clean package</code>. This time, there is a notable difference in the resultant JAR created within the project’s <em>target</em> directory, as indicated in the following output (result trimmed to fit page):</p>
+
+<pre data-type="programlisting">» ls -lb target/*.jar
+
+-rwxr--r--  1 markheckler  staff  27094314 target/planefinder-0.0.1-SNAPSHOT.jar</pre>
+
+<p>It’s ever so slightly larger than Boot’s standard executable JAR, to the tune of 9,110 byte, or just under 9 KB. What does this gain you?</p>
+
+<p>Java JAR files are read from end to beginning—yes, you read that correctly—until an end-of-file marker is found. When creating a so-called “fully executable JAR,” the Spring Boot Maven plug-in ingeniously prepends a script to the beginning of the usual Spring Boot executable JAR that enables it to be run like any other executable binary (assuming the presence of a JDK) on a Unix- or Linux-based system, including registering it with <code>init.d</code> or <code>systemd</code>. Examining PlaneFinder’s JAR in an editor results in the following (only a portion of the script header is shown for brevity; it is quite extensive):<a data-type="indexterm" data-primary="" data-startref="ix_jdk_2" id="idm45693945075928"/></p>
+
+<pre data-type="programlisting">#!/bin/bash
+#
+#    .   ____          _            __ _ _
+#   /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+#  ( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+#   \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+#    '  |____| .__|_| |_|_| |_\__, | / / / /
+#   =========|_|==============|___/=/_/_/_/
+#   :: Spring Boot Startup Script ::
+#
+
+### BEGIN INIT INFO
+# Provides:          planefinder
+# Required-Start:    $remote_fs $syslog $network
+# Required-Stop:     $remote_fs $syslog $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: planefinder
+# Description:       Data feed for SBUR
+# chkconfig:         2345 99 01
+### END INIT INFO
+
+...
+
+# Action functions
+start() {
+  if [[ -f "$pid_file" ]]; then
+    pid=$(cat "$pid_file")
+    isRunning "$pid" &amp;&amp; { echoYellow "Already running [$pid]"; return 0; }
+  fi
+  do_start "$@"
+}
+
+do_start() {
+  working_dir=$(dirname "$jarfile")
+  pushd "$working_dir" &gt; /dev/null
+  if [[ ! -e "$PID_FOLDER" ]]; then
+    mkdir -p "$PID_FOLDER" &amp;&gt; /dev/null
+    if [[ -n "$run_user" ]]; then
+      chown "$run_user" "$PID_FOLDER"
+    fi
+  fi
+  if [[ ! -e "$log_file" ]]; then
+    touch "$log_file" &amp;&gt; /dev/null
+    if [[ -n "$run_user" ]]; then
+      chown "$run_user" "$log_file"
+    fi
+  fi
+  if [[ -n "$run_user" ]]; then
+    checkPermissions || return $?
+    if [ $USE_START_STOP_DAEMON = true ] &amp;&amp; type start-stop-daemon &gt;
+        /dev/null 2&gt;&amp;1; then
+      start-stop-daemon --start --quiet \
+        --chuid "$run_user" \
+        --name "$identity" \
+        --make-pidfile --pidfile "$pid_file" \
+        --background --no-close \
+        --startas "$javaexe" \
+        --chdir "$working_dir" \
+       —"${arguments[@]}" \
+        &gt;&gt; "$log_file" 2&gt;&amp;1
+      await_file "$pid_file"
+    else
+      su -s /bin/sh -c "$javaexe $(printf "\"%s\" " "${arguments[@]}") &gt;&gt;
+        \"$log_file\" 2&gt;&amp;1 &amp; echo \$!" "$run_user" &gt; "$pid_file"
+    fi
+    pid=$(cat "$pid_file")
+  else
+    checkPermissions || return $?
+    "$javaexe" "${arguments[@]}" &gt;&gt; "$log_file" 2&gt;&amp;1 &amp;
+    pid=$!
+    disown $pid
+    echo "$pid" &gt; "$pid_file"
+  fi
+  [[ -z $pid ]] &amp;&amp; { echoRed "Failed to start"; return 1; }
+  echoGreen "Started [$pid]"
+}
+
+stop() {
+  working_dir=$(dirname "$jarfile")
+  pushd "$working_dir" &gt; /dev/null
+  [[ -f $pid_file ]] ||
+    { echoYellow "Not running (pidfile not found)"; return 0; }
+  pid=$(cat "$pid_file")
+  isRunning "$pid" || { echoYellow "Not running (process ${pid}).
+    Removing stale pid file."; rm -f "$pid_file"; return 0; }
+  do_stop "$pid" "$pid_file"
+}
+
+do_stop() {
+  kill "$1" &amp;&gt; /dev/null || { echoRed "Unable to kill process $1"; return 1; }
+  for ((i = 1; i &lt;= STOP_WAIT_TIME; i++)); do
+    isRunning "$1" || { echoGreen "Stopped [$1]"; rm -f "$2"; return 0; }
+    [[ $i -eq STOP_WAIT_TIME/2 ]] &amp;&amp; kill "$1" &amp;&gt; /dev/null
+    sleep 1
+  done
+  echoRed "Unable to kill process $1";
+  return 1;
+}
+
+force_stop() {
+  [[ -f $pid_file ]] ||
+    { echoYellow "Not running (pidfile not found)"; return 0; }
+  pid=$(cat "$pid_file")
+  isRunning "$pid" ||
+    { echoYellow "Not running (process ${pid}). Removing stale pid file.";
+    rm -f "$pid_file"; return 0; }
+  do_force_stop "$pid" "$pid_file"
+}
+
+do_force_stop() {
+  kill -9 "$1" &amp;&gt; /dev/null ||
+      { echoRed "Unable to kill process $1"; return 1; }
+  for ((i = 1; i &lt;= STOP_WAIT_TIME; i++)); do
+    isRunning "$1" || { echoGreen "Stopped [$1]"; rm -f "$2"; return 0; }
+    [[ $i -eq STOP_WAIT_TIME/2 ]] &amp;&amp; kill -9 "$1" &amp;&gt; /dev/null
+    sleep 1
+  done
+  echoRed "Unable to kill process $1";
+  return 1;
+}
+
+restart() {
+  stop &amp;&amp; start
+}
+
+force_reload() {
+  working_dir=$(dirname "$jarfile")
+  pushd "$working_dir" &gt; /dev/null
+  [[ -f $pid_file ]] || { echoRed "Not running (pidfile not found)";
+      return 7; }
+  pid=$(cat "$pid_file")
+  rm -f "$pid_file"
+  isRunning "$pid" || { echoRed "Not running (process ${pid} not found)";
+      return 7; }
+  do_stop "$pid" "$pid_file"
+  do_start
+}
+
+status() {
+  working_dir=$(dirname "$jarfile")
+  pushd "$working_dir" &gt; /dev/null
+  [[ -f "$pid_file" ]] || { echoRed "Not running"; return 3; }
+  pid=$(cat "$pid_file")
+  isRunning "$pid" || { echoRed "Not running (process ${pid} not found)";
+      return 1; }
+  echoGreen "Running [$pid]"
+  return 0
+}
+
+run() {
+  pushd "$(dirname "$jarfile")" &gt; /dev/null
+  "$javaexe" "${arguments[@]}"
+  result=$?
+  popd &gt; /dev/null
+  return "$result"
+}
+
+# Call the appropriate action function
+case "$action" in
+start)
+  start "$@"; exit $?;;
+stop)
+  stop "$@"; exit $?;;
+force-stop)
+  force_stop "$@"; exit $?;;
+restart)
+  restart "$@"; exit $?;;
+force-reload)
+  force_reload "$@"; exit $?;;
+status)
+  status "$@"; exit $?;;
+run)
+  run "$@"; exit $?;;
+*)
+  echo "Usage: $0 {start|stop|force-stop|restart|force-reload|status|run}";
+    exit 1;
+esac
+
+exit 0
+&lt;binary portion omitted&gt;</pre>
+
+<p><a data-type="indexterm" data-primary="rwx (read, write, execute)" id="idm45693945074136"/>The Spring Boot Maven (or Gradle, if chosen as the build system) plug-in also sets file owner permissions to read, write, and execute (rwx) for the output JAR. Doing so enables it to be executed as indicated previously and allows the header script to locate the JDK, prepare the application for execution, and run it as demonstrated here (results trimmed and edited to fit page):</p>
+
+<pre data-type="programlisting">» target/planefinder-0.0.1-SNAPSHOT.jar
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::                (v2.4.0)
+
+: Starting PlanefinderApplication v0.0.1-SNAPSHOT
+: No active profile set, falling back to default profiles: default
+: Bootstrapping Spring Data R2DBC repositories in DEFAULT mode.
+: Finished Spring Data repository scanning in 185 ms.
+  Found 1 R2DBC repository interfaces.
+: Netty started on port(s): 7634
+: Netty RSocket started on port(s): 7635
+: Started PlanefinderApplication in 2.938 seconds (JVM running for 3.335)</pre>
+
+<p>Now that I’ve demonstrated how, it’s time to discuss what this option brings to the table.<a data-type="indexterm" data-primary="" data-startref="ix_exec_jar_build" id="idm45693945071704"/><a data-type="indexterm" data-primary="" data-startref="ix_exec_JAR_ch11" id="idm45693945007496"/><a data-type="indexterm" data-primary="" data-startref="ix_jar_files_2" id="idm45693945006648"/><a data-type="indexterm" data-primary="" data-startref="ix_sb_maven_plugin" id="idm45693945005800"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="What Does It Mean?"><div class="sect2" id="idm45693945093144">
+<h2>What Does It Mean?</h2>
+
+<p>The ability to create a Spring Boot “fully executable” JAR is not a solution to all problems, but it does provide a unique capability for deeper integration with underlying Unix- and Linux-based systems when necessary. Adding a Spring Boot application to supply startup functionality becomes trivial thanks to the embedded startup script and execute permissions.</p>
+
+<p>If you don’t need or can’t make use of that capability in your current application environments, you should continue to simply create typical Spring Boot executable JAR output that makes use of <code>java -jar</code>. This is simply another tool in your toolbox, included at no cost and requiring nearly no effort from you to implement, for when you find you need it.</p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Exploding JARs"><div class="sect1" id="idm45693945001784">
+<h1>Exploding JARs</h1>
+
+<p><a data-type="indexterm" data-primary="executable JAR files" data-secondary="extracting (rehydrating) dependencies" id="ix_exec_JAR_extract"/><a data-type="indexterm" data-primary="dependency management" data-secondary="extracting dependencies" id="ix_depend_extract"/>Spring Boot’s innovative approach of nesting dependent JAR files completely intact and unchanged within the Boot executable JAR lends itself brilliantly to subsequent actions like extraction. Reversing the process that was involved in adding them to the Spring Boot executable JAR produces the component artifacts in their original, unaltered state. It sounds simple because it <em>is</em> simple.</p>
+
+<p>There are many reasons you might want to rehydrate a Spring Boot executable JAR into its various, separate parts:</p>
+
+<ul>
+<li>
+<p>Extracted Boot applications offer slightly faster execution. This is rarely reason enough to rehydrate, but it is a nice bonus.</p>
+</li>
+<li>
+<p>Extracted dependencies are easily replaceable discrete units. App updates can be done more quickly and/or with lower bandwidth because only the changed files must be redeployed.
+<a data-type="indexterm" data-primary="Heroku" id="idm45693944994072"/></p>
+</li>
+<li>
+<p>Many cloud platforms, such as Heroku and any build or brand/derivative of Cloud Foundry, do this as part of the app deployment process. Mirroring local and remote environments to the maximum extent possible can aid in consistency and, when necessary, diagnosis of any issues.</p>
+</li>
+</ul>
+
+<p>Both standard Spring Boot executable JARs and “fully executable” JARs can be rehydrated in the following manner, using <code>jar -xvf &lt;spring_boot_jar&gt;</code> (most file entries removed for brevity):</p>
+
+<pre data-type="programlisting">» mkdir expanded
+» cd expanded
+» jar -xvf ../target/planefinder-0.0.1-SNAPSHOT.jar
+  created: META-INF/
+ inflated: META-INF/MANIFEST.MF
+  created: org/
+  created: org/springframework/
+  created: org/springframework/boot/
+  created: org/springframework/boot/loader/
+  created: org/springframework/boot/loader/archive/
+  created: org/springframework/boot/loader/data/
+  created: org/springframework/boot/loader/jar/
+  created: org/springframework/boot/loader/jarmode/
+  created: org/springframework/boot/loader/util/
+  created: BOOT-INF/
+  created: BOOT-INF/classes/
+  created: BOOT-INF/classes/com/
+  created: BOOT-INF/classes/com/thehecklers/
+  created: BOOT-INF/classes/com/thehecklers/planefinder/
+  created: META-INF/maven/
+  created: META-INF/maven/com.thehecklers/
+  created: META-INF/maven/com.thehecklers/planefinder/
+ inflated: BOOT-INF/classes/schema.sql
+ inflated: BOOT-INF/classes/application.properties
+ inflated: META-INF/maven/com.thehecklers/planefinder/pom.xml
+ inflated: META-INF/maven/com.thehecklers/planefinder/pom.properties
+  created: BOOT-INF/lib/
+ inflated: BOOT-INF/classpath.idx
+ inflated: BOOT-INF/layers.idx
+»</pre>
+
+<p>Once files are extracted, I find it useful to examine the structure a bit more visually using the *nix <code>tree</code> command:</p>
+
+<pre data-type="programlisting">» tree
+.
+├── BOOT-INF
+│   ├── classes
+│   │   ├── application.properties
+│   │   ├── com
+│   │   │   └── thehecklers
+│   │   │       └── planefinder
+│   │   │           ├── Aircraft.class
+│   │   │           ├── DbConxInit.class
+│   │   │           ├── PlaneController.class
+│   │   │           ├── PlaneFinderService.class
+│   │   │           ├── PlaneRepository.class
+│   │   │           ├── PlanefinderApplication.class
+│   │   │           └── User.class
+│   │   └── schema.sql
+│   ├── classpath.idx
+│   ├── layers.idx
+│   └── lib
+│       ├── h2-1.4.200.jar
+│       ├── jackson-annotations-2.11.3.jar
+│       ├── jackson-core-2.11.3.jar
+│       ├── jackson-databind-2.11.3.jar
+│       ├── jackson-dataformat-cbor-2.11.3.jar
+│       ├── jackson-datatype-jdk8-2.11.3.jar
+│       ├── jackson-datatype-jsr310-2.11.3.jar
+│       ├── jackson-module-parameter-names-2.11.3.jar
+│       ├── jakarta.annotation-api-1.3.5.jar
+│       ├── jul-to-slf4j-1.7.30.jar
+│       ├── log4j-api-2.13.3.jar
+│       ├── log4j-to-slf4j-2.13.3.jar
+│       ├── logback-classic-1.2.3.jar
+│       ├── logback-core-1.2.3.jar
+│       ├── lombok-1.18.16.jar
+│       ├── netty-buffer-4.1.54.Final.jar
+│       ├── netty-codec-4.1.54.Final.jar
+│       ├── netty-codec-dns-4.1.54.Final.jar
+│       ├── netty-codec-http-4.1.54.Final.jar
+│       ├── netty-codec-http2-4.1.54.Final.jar
+│       ├── netty-codec-socks-4.1.54.Final.jar
+│       ├── netty-common-4.1.54.Final.jar
+│       ├── netty-handler-4.1.54.Final.jar
+│       ├── netty-handler-proxy-4.1.54.Final.jar
+│       ├── netty-resolver-4.1.54.Final.jar
+│       ├── netty-resolver-dns-4.1.54.Final.jar
+│       ├── netty-transport-4.1.54.Final.jar
+│       ├── netty-transport-native-epoll-4.1.54.Final-linux-x86_64.jar
+│       ├── netty-transport-native-unix-common-4.1.54.Final.jar
+│       ├── r2dbc-h2-0.8.4.RELEASE.jar
+│       ├── r2dbc-pool-0.8.5.RELEASE.jar
+│       ├── r2dbc-spi-0.8.3.RELEASE.jar
+│       ├── reactive-streams-1.0.3.jar
+│       ├── reactor-core-3.4.0.jar
+│       ├── reactor-netty-core-1.0.1.jar
+│       ├── reactor-netty-http-1.0.1.jar
+│       ├── reactor-pool-0.2.0.jar
+│       ├── rsocket-core-1.1.0.jar
+│       ├── rsocket-transport-netty-1.1.0.jar
+│       ├── slf4j-api-1.7.30.jar
+│       ├── snakeyaml-1.27.jar
+│       ├── spring-aop-5.3.1.jar
+│       ├── spring-beans-5.3.1.jar
+│       ├── spring-boot-2.4.0.jar
+│       ├── spring-boot-autoconfigure-2.4.0.jar
+│       ├── spring-boot-jarmode-layertools-2.4.0.jar
+│       ├── spring-context-5.3.1.jar
+│       ├── spring-core-5.3.1.jar
+│       ├── spring-data-commons-2.4.1.jar
+│       ├── spring-data-r2dbc-1.2.1.jar
+│       ├── spring-data-relational-2.1.1.jar
+│       ├── spring-expression-5.3.1.jar
+│       ├── spring-jcl-5.3.1.jar
+│       ├── spring-messaging-5.3.1.jar
+│       ├── spring-r2dbc-5.3.1.jar
+│       ├── spring-tx-5.3.1.jar
+│       ├── spring-web-5.3.1.jar
+│       └── spring-webflux-5.3.1.jar
+├── META-INF
+│   ├── MANIFEST.MF
+│   └── maven
+│       └── com.thehecklers
+│           └── planefinder
+│               ├── pom.properties
+│               └── pom.xml
+└── org
+    └── springframework
+        └── boot
+            └── loader
+                ├── ClassPathIndexFile.class
+                ├── ExecutableArchiveLauncher.class
+                ├── JarLauncher.class
+                ├── LaunchedURLClassLoader$DefinePackageCallType.class
+                ├── LaunchedURLClassLoader
+                    $UseFastConnectionExceptionsEnumeration.class
+                ├── LaunchedURLClassLoader.class
+                ├── Launcher.class
+                ├── MainMethodRunner.class
+                ├── PropertiesLauncher$1.class
+                ├── PropertiesLauncher$ArchiveEntryFilter.class
+                ├── PropertiesLauncher$ClassPathArchives.class
+                ├── PropertiesLauncher$PrefixMatchingArchiveFilter.class
+                ├── PropertiesLauncher.class
+                ├── WarLauncher.class
+                ├── archive
+                │   ├── Archive$Entry.class
+                │   ├── Archive$EntryFilter.class
+                │   ├── Archive.class
+                │   ├── ExplodedArchive$AbstractIterator.class
+                │   ├── ExplodedArchive$ArchiveIterator.class
+                │   ├── ExplodedArchive$EntryIterator.class
+                │   ├── ExplodedArchive$FileEntry.class
+                │   ├── ExplodedArchive$SimpleJarFileArchive.class
+                │   ├── ExplodedArchive.class
+                │   ├── JarFileArchive$AbstractIterator.class
+                │   ├── JarFileArchive$EntryIterator.class
+                │   ├── JarFileArchive$JarFileEntry.class
+                │   ├── JarFileArchive$NestedArchiveIterator.class
+                │   └── JarFileArchive.class
+                ├── data
+                │   ├── RandomAccessData.class
+                │   ├── RandomAccessDataFile$1.class
+                │   ├── RandomAccessDataFile$DataInputStream.class
+                │   ├── RandomAccessDataFile$FileAccess.class
+                │   └── RandomAccessDataFile.class
+                ├── jar
+                │   ├── AbstractJarFile$JarFileType.class
+                │   ├── AbstractJarFile.class
+                │   ├── AsciiBytes.class
+                │   ├── Bytes.class
+                │   ├── CentralDirectoryEndRecord$1.class
+                │   ├── CentralDirectoryEndRecord$Zip64End.class
+                │   ├── CentralDirectoryEndRecord$Zip64Locator.class
+                │   ├── CentralDirectoryEndRecord.class
+                │   ├── CentralDirectoryFileHeader.class
+                │   ├── CentralDirectoryParser.class
+                │   ├── CentralDirectoryVisitor.class
+                │   ├── FileHeader.class
+                │   ├── Handler.class
+                │   ├── JarEntry.class
+                │   ├── JarEntryCertification.class
+                │   ├── JarEntryFilter.class
+                │   ├── JarFile$1.class
+                │   ├── JarFile$JarEntryEnumeration.class
+                │   ├── JarFile.class
+                │   ├── JarFileEntries$1.class
+                │   ├── JarFileEntries$EntryIterator.class
+                │   ├── JarFileEntries.class
+                │   ├── JarFileWrapper.class
+                │   ├── JarURLConnection$1.class
+                │   ├── JarURLConnection$JarEntryName.class
+                │   ├── JarURLConnection.class
+                │   ├── StringSequence.class
+                │   └── ZipInflaterInputStream.class
+                ├── jarmode
+                │   ├── JarMode.class
+                │   ├── JarModeLauncher.class
+                │   └── TestJarMode.class
+                └── util
+                    └── SystemPropertyUtils.class
+
+19 directories, 137 files
+»</pre>
+
+<p>Viewing the JAR contents using <code>tree</code> offers a nice hierarchical display of the application’s composition. It also calls out the numerous dependencies that combine to provide the capabilities chosen for this application. Listing the files under <em>BOOT-INF/lib</em> confirms that the component libraries remain unchanged through the building of the Spring Boot JAR and subsequent extraction of its contents, even down to original component JAR timestamps, as shown here (most entries removed for brevity):</p>
+
+<pre data-type="programlisting">» ls -l BOOT-INF/lib
+total 52880
+-rw-r--r--  1 markheckler  staff  2303679 Oct 14  2019 h2-1.4.200.jar
+-rw-r--r--  1 markheckler  staff    68215 Oct  1 22:20 jackson-annotations-
+ 2.11.3.jar
+-rw-r--r--  1 markheckler  staff   351495 Oct  1 22:25 jackson-core-
+ 2.11.3.jar
+-rw-r--r--  1 markheckler  staff  1421699 Oct  1 22:38 jackson-databind-
+ 2.11.3.jar
+-rw-r--r--  1 markheckler  staff    58679 Oct  2 00:17 jackson-dataformat-cbor-
+ 2.11.3.jar
+-rw-r--r--  1 markheckler  staff    34335 Oct  2 00:25 jackson-datatype-jdk8-
+ 2.11.3.jar
+-rw-r--r--  1 markheckler  staff   111008 Oct  2 00:25 jackson-datatype-jsr310-
+ 2.11.3.jar
+-rw-r--r--  1 markheckler  staff     9267 Oct  2 00:25 jackson-module-parameter-
+ names-2.11.3.jar
+ ...
+-rw-r--r--  1 markheckler  staff   374303 Nov 10 09:01 spring-aop-5.3.1.jar
+-rw-r--r--  1 markheckler  staff   695851 Nov 10 09:01 spring-beans-5.3.1.jar
+-rw-r--r--  1 markheckler  staff  1299025 Nov 12 13:56 spring-boot-2.4.0.jar
+-rw-r--r--  1 markheckler  staff  1537971 Nov 12 13:55 spring-boot-
+ autoconfigure-2.4.0.jar
+-rw-r--r--  1 markheckler  staff    32912 Feb  1  1980 spring-boot-jarmode-
+ layertools-2.4.0.jar
+-rw-r--r--  1 markheckler  staff  1241939 Nov 10 09:01 spring-context-5.3.1.jar
+-rw-r--r--  1 markheckler  staff  1464734 Feb  1  1980 spring-core-5.3.1.jar
+-rw-r--r--  1 markheckler  staff  1238966 Nov 11 12:03 spring-data-commons-
+ 2.4.1.jar
+-rw-r--r--  1 markheckler  staff   433079 Nov 11 12:08 spring-data-r2dbc-
+ 1.2.1.jar
+-rw-r--r--  1 markheckler  staff   339745 Nov 11 12:05 spring-data-relational-
+ 2.1.1.jar
+-rw-r--r--  1 markheckler  staff   282565 Nov 10 09:01 spring-expression-
+ 5.3.1.jar
+-rw-r--r--  1 markheckler  staff    23943 Nov 10 09:01 spring-jcl-5.3.1.jar
+-rw-r--r--  1 markheckler  staff   552895 Nov 10 09:01 spring-messaging-
+ 5.3.1.jar
+-rw-r--r--  1 markheckler  staff   133156 Nov 10 09:01 spring-r2dbc-5.3.1.jar
+-rw-r--r--  1 markheckler  staff   327956 Nov 10 09:01 spring-tx-5.3.1.jar
+-rw-r--r--  1 markheckler  staff  1546053 Nov 10 09:01 spring-web-5.3.1.jar
+-rw-r--r--  1 markheckler  staff   901591 Nov 10 09:01 spring-webflux-5.3.1.jar
+»</pre>
+
+<p>Once all files are extracted from the Spring Boot JAR, there are a few ways to run the application. <a data-type="indexterm" data-primary="JarLauncher" id="idm45693944974264"/>The recommended approach is to use <code>JarLauncher</code>, which maintains a consistent classloading order across executions, as shown below (results trimmed and edited to fit page):</p>
+
+<pre data-type="programlisting">» java org.springframework.boot.loader.JarLauncher
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::                (v2.4.0)
+
+: Starting PlanefinderApplication v0.0.1-SNAPSHOT
+: No active profile set, falling back to default profiles: default
+: Bootstrapping Spring Data R2DBC repositories in DEFAULT mode.
+: Finished Spring Data repository scanning in 95 ms. Found 1 R2DBC
+  repository interfaces.
+: Netty started on port(s): 7634
+: Netty RSocket started on port(s): 7635
+: Started PlanefinderApplication in 1.935 seconds (JVM running for 2.213)</pre>
+
+<p>In this case, PlaneFinder started just over a full second faster expanded than in the Spring Boot “fully executable” JAR. This positive alone may or may not outweigh the advantages of a single, fully self-contained deployable unit; it likely will not. But combined with the ability to only push deltas when a small number of files change and (if applicable) better alignment between local and remote environments, the ability to run exploded Spring Boot applications can be a very useful option.<a data-type="indexterm" data-primary="" data-startref="ix_deploy_exec_jar" id="idm45693944970424"/><a data-type="indexterm" data-primary="" data-startref="ix_depend_extract" id="idm45693944969448"/><a data-type="indexterm" data-primary="" data-startref="ix_exec_JAR_extract" id="idm45693944968504"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Deploying Spring Boot Applications to Containers"><div class="sect1" id="idm45693945001192">
+<h1>Deploying Spring Boot Applications to Containers</h1>
+
+<p><a data-type="indexterm" data-primary="container images" id="ix_contain_image"/><a data-type="indexterm" data-primary="deployment of Spring Boot applications" data-secondary="container images" id="ix_deploy_sb_contain"/><a data-type="indexterm" data-primary="executable JAR files" data-secondary="deployment to containers" id="ix_exec_JAR_container"/>As mentioned earlier, some cloud platforms—both on-premises/private and public cloud—take deployable applications and create a container image on a developer’s behalf using widely optimized defaults and settings provided by the app’s developer. These images are then used to create (and destroy) containers with the running application based on the application’s replication settings and utilization. <a data-type="indexterm" data-primary="Heroku" id="idm45693944962040"/>Platforms like Heroku and numerous versions of Cloud Foundry enable a developer to push a Spring Boot executable JAR, and provide any desired configuration settings (or simply accept the defaults), and the rest is handled by the platform. Other platforms like VMware’s Tanzu Application Service for Kubernetes incorporate this as well, and the feature list is increasing in both scope and fluid execution.</p>
+
+<p>There are many platforms and deployment targets that don’t support this level of frictionless developer enablement. Whether you or your organization has committed to one of those other offerings, or if you have other requirements that guide you in a different direction, Spring Boot has you covered.</p>
+
+<p>While you can handcraft your own container images for your Spring Boot applications, it isn’t optimal; doing so adds no value to the application itself and has usually been considered a necessary evil (at best) to go from dev to prod. No more.</p>
+
+<p><a data-type="indexterm" data-primary="OCI (Open Container Initiative)" id="idm45693944959160"/>Leveraging many of the same tools used by the previously mentioned platforms to intelligently containerize applications, <a data-type="indexterm" data-primary="Spring Boot Gradle plug-in" id="idm45693944957992"/><a data-type="indexterm" data-primary="Spring Boot Maven plug-in" id="idm45693944957304"/>Spring Boot incorporates within its  Maven and Gradle plug-ins the capability to build painlessly and frictionlessly fully compliant Open Container Initiative (OCI) images used by Docker, Kubernetes, and every major container engine/mechanism. <a data-type="indexterm" data-primary="Paketo buildpacks" id="ix_paketo"/><a data-type="indexterm" data-primary="Cloud Native (Paketo) Buildpacks" id="ix_cloud_native_build"/><a data-type="indexterm" data-primary="Docker" id="idm45693944954328"/>Built upon industry-leading <a href="https://buildpacks.io">Cloud Native Buildpacks</a> and the <a href="https://paketo.io">Paketo</a> buildpacks initiative, the Spring Boot build plug-ins provide the option to create an OCI image using a locally installed and locally running Docker daemon and push it to a local or designated remote image repository.</p>
+
+<p><a data-type="indexterm" data-primary="configuration" data-secondary="Spring Boot plug-in for" id="idm45693944951784"/>Using the Spring Boot plug-in to create an image from your application is opinionated in all the best ways as well, using a conceptual “autoconfiguration” to optimize image creation by layering image contents, separating code/libraries based on each code unit’s anticipated frequency of change. Staying true to the Spring Boot philosophy behind autoconfiguration and opinions, Boot also provides a way to override and guide the layering process should you need to customize your configuration. This is rarely necessary or even desirable, but it’s easily accomplished should your needs fall within one of those rare, exceptional cases.</p>
+
+<p>The default settings produce the following layers for all versions of Spring Boot from 2.4.0 Milestone 2 onward:</p>
+<dl>
+<dt><code>dependencies</code></dt>
+<dd>
+<p>Includes regularly released dependencies, i.e., GA versions</p>
+</dd>
+<dt><code>spring-boot-loader</code></dt>
+<dd>
+<p>Includes all files found under <em>org/springframework/boot/loader</em></p>
+</dd>
+<dt><code>snapshot-dependencies</code></dt>
+<dd>
+<p>Forward-looking releases not yet considered GA</p>
+</dd>
+<dt><code>application</code></dt>
+<dd>
+<p>Application classes and related resources (templates, properties files, scripts, etc.)</p>
+</dd>
+</dl>
+
+<p>Code volatility, or its propensity and frequency of change, typically increases as you move through this list of layers from top to bottom. By creating separate layers in which to place similarly volatile code, subsequent image creation is much more efficient and thus much faster to complete. This <em>drastically</em> reduces the time and resources required to rebuild the deployable artifact over the life of the application.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Creating a Container Image from an IDE"><div class="sect2" id="idm45693944941272">
+<h2>Creating a Container Image from an IDE</h2>
+
+<p><a data-type="indexterm" data-primary="IDE (Integrated Development Environment)" id="ix_ide_container"/><a data-type="indexterm" data-primary="container images" data-secondary="from IDE" data-secondary-sortas="IDE" id="ix_contain_image_ide"/>Creating a layered container image from a Spring Boot application can be done from within an IDE very easily. I use IntelliJ for this example, but nearly all major IDEs have similar capabilities.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>A local version of Docker—Docker Desktop for Mac in my case—must be running to create images.<a data-type="indexterm" data-primary="Docker" id="idm45693944935784"/></p>
+</div>
+
+<p>To create the image, I open the Maven panel by expanding the tab labeled <em>Maven</em> in IntelliJ’s right margin, then expand <em>Plugins</em>, choose and expand the <em>spring-boot</em> plug-in, and double-click the <em>spring-boot:build-image</em> option to execute the goal, as shown in <a data-type="xref" href="#building_a_spring_boot_application_container_image_from_intellijs_maven_panel">Figure 11-2</a>.</p>
+
+<figure><div id="building_a_spring_boot_application_container_image_from_intellijs_maven_panel" class="figure">
+<img src="Images/sbur_1102.png" alt="sbur 1102" width="600" height="438"/>
+<h6><span class="label">Figure 11-2. </span>Building a Spring Boot application container image from IntelliJ’s Maven panel</h6>
+</div></figure>
+
+<p>Creating the image produces a rather lengthy log of actions. Of particular interest are entries listed here:</p>
+
+<pre data-type="programlisting">[INFO]     [creator]     Paketo Executable JAR Buildpack 3.1.3
+[INFO]     [creator]       https://github.com/paketo-buildpacks/executable-jar
+[INFO]     [creator]         Writing env.launch/CLASSPATH.delim
+[INFO]     [creator]         Writing env.launch/CLASSPATH.prepend
+[INFO]     [creator]       Process types:
+[INFO]     [creator]         executable-jar: java org.springframework.boot.
+    loader.JarLauncher
+[INFO]     [creator]         task:           java org.springframework.boot.
+    loader.JarLauncher
+[INFO]     [creator]         web:            java org.springframework.boot.
+    loader.JarLauncher
+[INFO]     [creator]
+[INFO]     [creator]     Paketo Spring Boot Buildpack 3.5.0
+[INFO]     [creator]       https://github.com/paketo-buildpacks/spring-boot
+[INFO]     [creator]       Creating slices from layers index
+[INFO]     [creator]         dependencies
+[INFO]     [creator]         spring-boot-loader
+[INFO]     [creator]         snapshot-dependencies
+[INFO]     [creator]         application
+[INFO]     [creator]       Launch Helper: Contributing to layer
+[INFO]     [creator]         Creating /layers/paketo-buildpacks_spring-boot/
+    helper/exec.d/spring-cloud-bindings
+[INFO]     [creator]         Writing profile.d/helper
+[INFO]     [creator]       Web Application Type: Contributing to layer
+[INFO]     [creator]         Reactive web application detected
+[INFO]     [creator]         Writing env.launch/BPL_JVM_THREAD_COUNT.default
+[INFO]     [creator]       Spring Cloud Bindings 1.7.0: Contributing to layer
+[INFO]     [creator]         Downloading from
+    https://repo.spring.io/release/org/springframework/cloud/
+    spring-cloud-bindings/1.7.0/spring-cloud-bindings-1.7.0.jar
+[INFO]     [creator]         Verifying checksum
+[INFO]     [creator]         Copying to
+    /layers/paketo-buildpacks_spring-boot/spring-cloud-bindings
+[INFO]     [creator]       4 application slices</pre>
+
+<p><a data-type="indexterm" data-primary="slices (image layers)" id="idm45693944926264"/>As noted earlier, image layers (referred to as <em>slices</em> in the preceding listing) and their contents can be modified if necessary for unique circumstances.</p>
+
+<p>Once the image has been created, results like those that follow will complete the log.<a data-type="indexterm" data-primary="" data-startref="ix_contain_image_ide" id="idm45693944924328"/><a data-type="indexterm" data-primary="" data-startref="ix_ide_container" id="idm45693944923416"/></p>
+
+<pre data-type="programlisting">[INFO] Successfully built image 'docker.io/library/aircraft-positions:
+       0.0.1-SNAPSHOT'
+[INFO]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  25.851 s
+[INFO] Finished at: 2020-11-28T20:09:48-06:00
+[INFO] ------------------------------------------------------------------------</pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Creating a Container Image from the Command Line"><div class="sect2" id="idm45693944940648">
+<h2>Creating a Container Image from the Command Line</h2>
+
+<p><a data-type="indexterm" data-primary="command line, container images from" id="ix_cmdline_container"/><a data-type="indexterm" data-primary="container images" data-secondary="from command line" data-secondary-sortas="command line" id="ix_contain_image_cmdline"/>It’s of course also possible—and simple—to create the same container image from the command line. Prior to doing so, I do want to make a small change to the naming settings for the resultant image.</p>
+
+<p><a data-type="indexterm" data-primary="Aircraft Positions" data-secondary="container image from command line" id="ix_aircraftpos_contain"/>As a matter of convenience, I prefer to create images that align with my <a href="https://hub.docker.com">Docker Hub</a> account and naming conventions, and your choice of image repository likely has similar, specific conventions. Spring Boot’s build plug-ins accept <em>&lt;configuration&gt;</em> section details that smooth the step of pushing the image to repository/catalog. I add a single, properly tagged line to the <em>&lt;plug-ins&gt;</em> section of <code>Aircraft Position</code> ’s <em>pom.xml</em> file to match my requirements/preferences:</p>
+
+<pre data-type="programlisting" data-code-language="xml"><code class="nt">&lt;build&gt;</code>
+  <code class="nt">&lt;plug-ins&gt;</code>
+    <code class="nt">&lt;plug-in&gt;</code>
+      <code class="nt">&lt;groupId&gt;</code>org.springframework.boot<code class="nt">&lt;/groupId&gt;</code>
+      <code class="nt">&lt;artifactId&gt;</code>spring-boot-maven-plug-in<code class="nt">&lt;/artifactId&gt;</code>
+      <code class="nt">&lt;configuration&gt;</code>
+        <code class="nt">&lt;image&gt;</code>
+          <code class="nt">&lt;name&gt;</code>hecklerm/${project.artifactId}<code class="nt">&lt;/name&gt;</code>
+        <code class="nt">&lt;/image&gt;</code>
+      <code class="nt">&lt;/configuration&gt;</code>
+    <code class="nt">&lt;/plug-in&gt;</code>
+  <code class="nt">&lt;/plug-ins&gt;</code>
+<code class="nt">&lt;/build&gt;</code></pre>
+
+<p>Next, I issue the following command from the project directory in the terminal window to re-create the application container image and soon thereafter receive the results shown:</p>
+
+<pre data-type="programlisting">» mvn spring-boot:build-image
+
+
+... (Intermediate logged results omitted for brevity)
+
+
+[INFO] Successfully built image 'docker.io/hecklerm/aircraft-positions:latest'
+[INFO]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  13.257 s
+[INFO] Finished at: 2020-11-28T20:23:40-06:00
+[INFO] ------------------------------------------------------------------------</pre>
+
+<p>Notice that the image output is no longer <em>docker.io/library/aircraft-positions:0.0.1-SNAPSHOT</em> as it was when I built it using defaults from within the IDE. The new image coordinates match those I specified in the <em>pom.xml</em>: 
+<span class="keep-together"><em>docker.io/hecklerm/aircraft-positions:latest</em>.</span></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Verifying the Image Exists"><div class="sect2" id="idm45693944883304">
+<h2>Verifying the Image Exists</h2>
+
+<p><a data-type="indexterm" data-primary="container images" data-secondary="verifying the image" id="idm45693944881928"/>To verify that the images created in the prior two sections have been loaded into the local repository, I run the following command from the terminal window, filtering by name to get the following results (and trimmed to fit page):</p>
+
+<pre data-type="programlisting">» docker images | grep -in aircraft-positions
+aircraft-positions           0.0.1-SNAPSHOT   a7ed39a3d52e    277MB
+hecklerm/aircraft-positions  latest           924893a0f1a9    277MB</pre>
+
+<p><a data-type="indexterm" data-primary="Docker Hub" id="idm45693944879448"/>Pushing the image shown last in the preceding output—since it now aligns with expected and desired account and naming conventions—to Docker Hub is accomplished as follows, with the following results:</p>
+
+<pre data-type="programlisting">» docker push hecklerm/aircraft-positions
+The push refers to repository [docker.io/hecklerm/aircraft-positions]
+1dc94a70dbaa: Pushed
+4672559507f8: Pushed
+e3e9839150af: Pushed
+5f70bf18a086: Layer already exists
+a3abfb734aa5: Pushed
+3c14fe2f1177: Pushed
+4cc7b4eb8637: Pushed
+fcc507beb4cc: Pushed
+c2e9ddddd4ef: Pushed
+108b6855c4a6: Pushed
+ab39aa8fd003: Layer already exists
+0b18b1f120f4: Layer already exists
+cf6b3a71f979: Pushed
+ec0381c8f321: Layer already exists
+7b0fc1578394: Pushed
+eb0f7cd0acf8: Pushed
+1e5c1d306847: Mounted from paketobuildpacks/run
+23c4345364c2: Mounted from paketobuildpacks/run
+a1efa53a237c: Mounted from paketobuildpacks/run
+fe6d8881187d: Mounted from paketobuildpacks/run
+23135df75b44: Mounted from paketobuildpacks/run
+b43408d5f11b: Mounted from paketobuildpacks/run
+latest: digest:
+  sha256:a7e5d536a7426d6244401787b153ebf43277fbadc9f43a789f6c4f0aff6d5011
+    size: 5122
+»</pre>
+
+<p>Visiting the Docker Hub allows me to confirm successful public deployment of the image, as shown in <a data-type="xref" href="#spring_boot_application_container_image_in_docker_hub">Figure 11-3</a>.</p>
+
+<figure><div id="spring_boot_application_container_image_in_docker_hub" class="figure">
+<img src="Images/sbur_1103.png" alt="sbur 1103" width="600" height="82"/>
+<h6><span class="label">Figure 11-3. </span>Spring Boot application container image in Docker Hub</h6>
+</div></figure>
+
+<p>Deploying to Docker Hub or any other container image repository available from outside of your local machine is the last step prior to wider (and hopefully production) deployment of your Spring Boot containerized application.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Running the Containerized Application"><div class="sect2" id="idm45693944872648">
+<h2>Running the Containerized Application</h2>
+
+<p><a data-type="indexterm" data-primary="container images" data-secondary="running containerized application" id="idm45693944871240"/>To run the application, I use the <code>docker run</code> command. Your organization likely has a deployment pipeline that moves applications from container images (retrieved from image repositories) to running, containerized applications, but the steps performed are likely the same, albeit with more automation and less typing.</p>
+
+<p>Since I already have a local copy of the image, no remote retrieval will be necessary; otherwise, remote access to the image repository is required for the daemon to retrieve the remote image and/or layers to reconstruct it locally prior to starting a container based upon the image specified.</p>
+
+<p>To run the containerized Aircraft Positions application, I execute the following command and see the following results (trimmed and edited to fit page):<a data-type="indexterm" data-primary="" data-startref="ix_exec_JAR_container" id="idm45693944868184"/><a data-type="indexterm" data-primary="" data-startref="ix_aircraftpos_contain" id="idm45693944867208"/><a data-type="indexterm" data-primary="" data-startref="ix_contain_image_cmdline" id="idm45693944866264"/><a data-type="indexterm" data-primary="" data-startref="ix_cmdline_container" id="idm45693944865304"/></p>
+
+<pre data-type="programlisting">» docker run --name myaircraftpositions -p8080:8080
+  hecklerm/aircraft-positions:latest
+Setting Active Processor Count to 6
+WARNING: Container memory limit unset. Configuring JVM for 1G container.
+Calculated JVM Memory Configuration: -XX:MaxDirectMemorySize=10M -Xmx636688K
+  -XX:MaxMetaspaceSize=104687K -XX:ReservedCodeCacheSize=240M -Xss1M
+  (Total Memory: 1G, Thread Count: 50, Loaded Class Count: 16069, Headroom: 0%)
+Adding 138 container CA certificates to JVM truststore
+Spring Cloud Bindings Enabled
+Picked up JAVA_TOOL_OPTIONS:
+-Djava.security.properties=/layers/paketo-buildpacks_bellsoft-liberica/
+    java-security-properties/java-security.properties
+  -agentpath:/layers/paketo-buildpacks_bellsoft-liberica/jvmkill/
+    jvmkill-1.16.0-RELEASE.so=printHeapHistogram=1
+  -XX:ActiveProcessorCount=6
+  -XX:MaxDirectMemorySize=10M
+  -Xmx636688K
+  -XX:MaxMetaspaceSize=104687K
+  -XX:ReservedCodeCacheSize=240M
+  -Xss1M
+  -Dorg.springframework.cloud.bindings.boot.enable=true
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::                (v2.4.0)
+
+: Starting AircraftPositionsApplication v0.0.1-SNAPSHOT
+: Netty started on port(s): 8080
+: Started AircraftPositionsApplication in 10.7 seconds (JVM running for 11.202)</pre>
+
+<p>Now to take a quick look inside a Spring Boot plug-in-created image.</p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Utilities for Examining Spring Boot Application &#10;Container Images"><div class="sect1" id="idm45693944966968">
+<h1>Utilities for Examining Spring Boot Application 
+<span class="keep-together">Container Images</span></h1>
+
+<p><a data-type="indexterm" data-primary="container images" data-secondary="utilities for examining" id="ix_contain_image_utilit"/>Numerous utilities exist to work with container images, and much of the functionality provided by them falls well outside the scope of this book. I do want to briefly mention two that I’ve found useful in certain circumstances: <code>pack</code> and <code>dive</code>.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Pack"><div class="sect2" id="idm45693944839304">
+<h2>Pack</h2>
+
+<p><a data-type="indexterm" data-primary="pack utility" id="ix_pack_utilit"/>To examine the materials that go into the creation of a Spring Boot application container image using Cloud Native (Paketo) Buildpacks—and the buildpacks themselves—one can use the <code>pack</code> utility. <code>pack</code> is the designated CLI for building apps using Cloud Native Buildpacks and can be obtained by various means. I used <code>homebrew</code> to retrieve and install it with a simple <code>brew install pack</code> command on my Mac.</p>
+
+<p>Running <code>pack</code> against the image created previously results in the following:</p>
+
+<pre data-type="programlisting">» pack inspect-image hecklerm/aircraft-positions
+Inspecting image: hecklerm/aircraft-positions
+
+REMOTE:
+
+Stack: io.buildpacks.stacks.bionic
+
+Base Image:
+  Reference: f5caea10feb38ae882a9447b521fd1ea1ee93384438395c7ace2d8cfaf808e3d
+  Top Layer: sha256:1e5c1d306847275caa0d1d367382dfdcfd4d62b634b237f1d7a2e
+             746372922cd
+
+Run Images:
+  index.docker.io/paketobuildpacks/run:base-cnb
+  gcr.io/paketo-buildpacks/run:base-cnb
+
+Buildpacks:
+  ID                                         VERSION
+  paketo-buildpacks/ca-certificates          1.0.1
+  paketo-buildpacks/bellsoft-liberica        5.2.1
+  paketo-buildpacks/executable-jar           3.1.3
+  paketo-buildpacks/dist-zip                 2.2.2
+  paketo-buildpacks/spring-boot              3.5.0
+
+Processes:
+  TYPE           SHELL  COMMAND  ARGS
+  web (default)  bash   java     org.springframework.boot.loader.JarLauncher
+  executable-jar bash   java     org.springframework.boot.loader.JarLauncher
+  task           bash   java     org.springframework.boot.loader.JarLauncher
+
+
+LOCAL:
+
+Stack: io.buildpacks.stacks.bionic
+
+Base Image:
+  Reference: f5caea10feb38ae882a9447b521fd1ea1ee93384438395c7ace2d8cfaf808e3d
+  Top Layer: sha256:1e5c1d306847275caa0d1d367382dfdcfd4d62b634b237f1d7a2e
+             746372922cd
+
+Run Images:
+  index.docker.io/paketobuildpacks/run:base-cnb
+  gcr.io/paketo-buildpacks/run:base-cnb
+
+Buildpacks:
+  ID                                         VERSION
+  paketo-buildpacks/ca-certificates          1.0.1
+  paketo-buildpacks/bellsoft-liberica        5.2.1
+  paketo-buildpacks/executable-jar           3.1.3
+  paketo-buildpacks/dist-zip                 2.2.2
+  paketo-buildpacks/spring-boot              3.5.0
+
+Processes:
+  TYPE           SHELL  COMMAND  ARGS
+  web (default)  bash   java     org.springframework.boot.loader.JarLauncher
+  executable-jar bash   java     org.springframework.boot.loader.JarLauncher
+  task           bash   java     org.springframework.boot.loader.JarLauncher</pre>
+
+<p>Using the <code>pack</code> utility’s <code>inspect-image</code> command provides some key bits of information about the image, particularly the following:</p>
+
+<ul>
+<li>
+<p>Which Docker base image/Linux version (bionic) was used as the foundation for this image</p>
+</li>
+<li>
+<p>Which buildpacks were used to populate the image (five Paketo buildpacks 
+<span class="keep-together">listed)</span></p>
+</li>
+<li>
+<p>What processes will be run and by what means (Java commands executed by the shell)</p>
+</li>
+</ul>
+
+<p>Note that both local and remote connected repositories are polled for the specified image, and details are provided for both. This is particularly helpful in diagnosing issues caused by an out-of-date container image in one location or the other.<a data-type="indexterm" data-primary="" data-startref="ix_pack_utilit" id="idm45693944825720"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Dive"><div class="sect2" id="idm45693944824616">
+<h2>Dive</h2>
+
+<p><a data-type="indexterm" data-primary="dive utility" id="idm45693944823480"/><a data-type="indexterm" data-primary="Goodman, Alex" id="idm45693944822776"/>The <code>dive</code> utility was created by Alex Goodman as a way to “dive” into a container image, viewing the very granular OCI image layers and the tree structure of the entire image filesystem.</p>
+
+<p><code>dive</code> goes far beneath the application-level layers of the Spring Boot layering construct and into the operating system. I find it less useful than <code>pack</code> due to its focus on the OS versus the application, but it’s ideal for verifying the presence or absence of particular files, file permissions, and other essential low-level concerns. It’s a rarely used tool but essential when that level of detail and control is needed.<a data-type="indexterm" data-primary="" data-startref="ix_deploy_sb" id="idm45693944819800"/><a data-type="indexterm" data-primary="" data-startref="ix_cloud_native_build" id="idm45693944818824"/><a data-type="indexterm" data-primary="" data-startref="ix_contain_image" id="idm45693944817880"/><a data-type="indexterm" data-primary="" data-startref="ix_deploy_sb_contain" id="idm45693944816936"/><a data-type="indexterm" data-primary="" data-startref="ix_paketo" id="idm45693944815992"/><a data-type="indexterm" data-primary="" data-startref="ix_contain_image_utilit" id="idm45693944815048"/></p>
+<div data-type="tip"><h1>Code Checkout Checkup</h1>
+<p>For complete chapter code, please check out branch <em>chapter11end</em> from the code repository.</p>
+</div>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Summary"><div class="sect1" id="idm45693944811752">
+<h1>Summary</h1>
+
+<p>Until an application’s users can actually use that application, it is little more than a what-if exercise. Figuratively and often very literally, deployment is the payoff.</p>
+
+<p>Many developers are aware that Spring Boot applications can be created as WAR files or JAR files. Most of those developers also know that there are many good reasons to skip the WAR option and create executable JAR files and few good reasons to do the opposite. What many developers may not realize is that even when building a Spring Boot executable JAR, there are numerous options for deployment to fulfill various requirements and use cases.</p>
+
+<p>In this chapter, I examined several ways to deploy your Spring Boot application with options useful for different target destinations and discussed their relative merits. I then demonstrated how to create those deployment artifacts, explained options for optimal execution, and showed how to verify their components and provenance. Targets included the standard Spring Boot executable JARs, “fully executable” Spring Boot JARs, exploded/expanded JARs, and container images built using Cloud Native (Paketo) Buildpacks that run on Docker, Kubernetes, and every major container engine/mechanism. Spring Boot gives you numerous frictionless deployment options, extending your development superpowers into deployment superpowers as well.</p>
+
+<p>In the next and final chapter, I round out this book and journey by delving a bit further into two slightly deeper topics. If you’d like to know more about testing and debugging reactive applications, you won’t want to miss it.</p>
+</div></section>
+
+
+
+
+
+
+
+</div></section></div></body></html>

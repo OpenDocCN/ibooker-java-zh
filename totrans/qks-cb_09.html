@@ -1,0 +1,1519 @@
+<html><head></head><body><div id="sbo-rt-content"><section data-type="chapter" epub:type="chapter" data-pdf-bookmark="Chapter 9. Observability"><div class="chapter" id="idm45128513412616">
+<h1><span class="label">Chapter 9. </span>Observability</h1>
+
+
+<p><a data-type="indexterm" data-primary="observability" data-secondary="about" id="idm45128512462888"/><a data-type="indexterm" data-primary="observability" id="obs_ch"/>In this chapter, you’ll learn about observability and why it is important to have in the microservices architecture.
+Observability answers the question of how your system is behaving by observing some parameters like error codes, performance, or any kind of business metric.
+Quarkus integrates with several technologies used for observability natively.</p>
+
+<p>This chapter will include recipes for how to accomplish the following tasks:</p>
+
+<ul>
+<li>
+<p>Define health checks</p>
+</li>
+<li>
+<p>Provide metrics to the monitoring system</p>
+</li>
+<li>
+<p>Configure distributed tracing to have an overview of a request inside the mesh</p>
+</li>
+</ul>
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="9.1 Using Automatic Health Checks"><div class="sect1" id="using-automatic-health-checks">
+<h1>9.1 Using Automatic Health Checks</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128512456136">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="health checks" data-secondary="automatic" id="idm45128512455128"/><a data-type="indexterm" data-primary="observability" data-secondary="using automatic health checks" id="idm45128512454280"/>You want to check whether the service is up and running and able to handle requests correctly.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128512452936">
+<h2>Solution</h2>
+
+<p><a data-type="indexterm" data-primary="MicroProfile Health" id="idm45128512451688"/>The MicroProfile Health specification provides an API to probe the state of a service from another machine (e.g., Kubernetes Controller).</p>
+
+<p>To enable MicroProfile Health in a Quarkus application, you need to register only the <code>quarkus-smallrye-health</code> extension:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw quarkus:add-extension -Dextensions="quarkus-smallrye-health"</code></pre>
+
+<p>With the extension in the classpath, Quarkus automatically registers a default liveness and readiness probe, which both return <code>UP</code> when the service is up and running:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw compile quarkus:dev
+</code><code class="go">
+</code><code class="go">curl localhost:8080/health/live </code><a class="co" id="co_observability_CO1-1" href="#callout_observability_CO1-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code class="go">
+</code><code class="go">
+</code><code class="go">{
+</code><code class="go">    "status": "UP", </code><a class="co" id="co_observability_CO1-2" href="#callout_observability_CO1-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code class="go">
+</code><code class="go">    "checks": [ </code><a class="co" id="co_observability_CO1-3" href="#callout_observability_CO1-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a><code class="go">
+</code><code class="go">    ]
+</code><code class="go">}
+</code><code class="go">
+</code><code class="go">
+</code><code class="go">curl localhost:8080/health/ready </code><a class="co" id="co_observability_CO1-4" href="#callout_observability_CO1-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a><code class="go">
+</code><code class="go">
+</code><code class="go">{
+</code><code class="go">    "status": "UP",
+</code><code class="go">    "checks": [
+</code><code class="go">    ]
+</code><code class="go">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO1-1" href="#co_observability_CO1-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Liveness URL</p></dd>
+<dt><a class="co" id="callout_observability_CO1-2" href="#co_observability_CO1-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Status is <code>UP</code></p></dd>
+<dt><a class="co" id="callout_observability_CO1-3" href="#co_observability_CO1-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>No checks (just defaults)</p></dd>
+<dt><a class="co" id="callout_observability_CO1-4" href="#co_observability_CO1-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></dt>
+<dd><p>Readiness URL</p></dd>
+</dl>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Discussion"><div class="sect2" id="idm45128512363304">
+<h2>Discussion</h2>
+
+<p>The MicroProfile Health specification provides two kinds of health checks:</p>
+<dl>
+<dt><a data-type="indexterm" data-primary="liveness health check" id="idm45128512361256"/>Liveness</dt>
+<dd>
+<p>Returns a 200 OK with result UP if the service has been started, 503 Service Unavailable with result DOWN if the service is not live, and 500 Server Error if the health check couldn’t be calculated.
+The liveness probe endpoint is registered by default at the <em>/health/live</em> endpoint.</p>
+</dd>
+<dt><a data-type="indexterm" data-primary="readiness health check" id="idm45128512358456"/>Readiness</dt>
+<dd>
+<p>Returns a 200 OK with result UP if the service is ready to process requests.
+This is different from the liveness probe because liveness simply means that the service is up but might not be able to process any request yet (e.g., because it is executing a database migration). A 503 Service Unavailable with result DOWN is returned if the service cannot yet accept any request, and a 500 Server Error is returned if the health check couldn’t be calculated.
+The readiness probe endpoint is registered by default at the <em>/health/ready</em> endpoint.</p>
+</dd>
+</dl>
+
+<p>If you are configuring Quarkus to use an SQL database (JDBC), it will automatically register a readiness health check (in the <code>checks</code> section) that validates that the 
+<span class="keep-together">connection</span> to the database is possible.</p>
+
+<p><a data-type="indexterm" data-primary="Datasource extension" id="idm45128512353704"/><a data-type="indexterm" data-primary="Apache Kafka" data-secondary="extension" id="idm45128512353000"/><a data-type="indexterm" data-primary="MongoDB" data-secondary="extension" id="idm45128512352056"/><a data-type="indexterm" data-primary="Neo4j" id="idm45128512351176"/><a data-type="indexterm" data-primary="Artemis extension" id="idm45128512350568"/><a data-type="indexterm" data-primary="Kafka-Streams extension" id="idm45128512349960"/><a data-type="indexterm" data-primary="Vault" data-secondary="extension" id="idm45128512349352"/>The following extensions provide automatic readiness/liveness probes:</p>
+<dl>
+<dt>Datasource</dt>
+<dd>
+<p>A readiness probe to check database connection status.</p>
+</dd>
+<dt>Kafka</dt>
+<dd>
+<p>A readiness probe to check Kafka connection status. It is disabled by default and needs to be enabled by setting <code>quarkus.kafka.health.enabled</code> property to <code>true</code>.</p>
+</dd>
+<dt>MongoDB</dt>
+<dd>
+<p>A readiness probe to check MongoDB connection status.</p>
+</dd>
+<dt>Neo4j</dt>
+<dd>
+<p>A readiness probe to check Neo4j connection status.</p>
+</dd>
+<dt>Artemis</dt>
+<dd>
+<p>A readiness probe to check Artemis JMS connection status.</p>
+</dd>
+<dt>Kafka Streams</dt>
+<dd>
+<p>Liveness (for stream state) and readiness (topics created) probes.</p>
+</dd>
+<dt>Vault</dt>
+<dd>
+<p>A readiness probe to check Vault status.</p>
+</dd>
+</dl>
+
+<p>The automatic generation of the probes can be disabled by setting the <code>quarkus.<em>component</em>.health.enabled</code> to <code>false</code>:</p>
+
+<pre data-type="programlisting" data-code-language="properties"><code class="na">quarkus.kafka-streams.health.enabled</code><code class="o">=</code><code class="s">false</code>
+<code class="na">quarkus.mongodb.health.enabled</code><code class="o">=</code><code class="s">false</code>
+<code class="na">quarkus.neo4j.health.enabled</code><code class="o">=</code><code class="s">false</code></pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="See Also"><div class="sect2" id="idm45128512363000">
+<h2>See Also</h2>
+
+<p>To learn more about the MicroProfile Health specification, see the following page on GitHub:</p>
+
+<ul>
+<li>
+<p><a href="https://oreil.ly/wZjHC">MicroProfile Health</a></p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="9.2 Creating Custom Health Checks"><div class="sect1" id="idm45128512326392">
+<h1>9.2 Creating Custom Health Checks</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128512325144">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="health checks" data-secondary="creating custom" id="idm45128512323944"/><a data-type="indexterm" data-primary="observability" data-secondary="creating custom health checks" id="idm45128512317912"/>You want to customize how to check that a service is up and running and that it is able to handle requests correctly.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128512316488">
+<h2>Solution</h2>
+
+<p><a data-type="indexterm" data-primary="MicroProfile Health" id="idm45128512315080"/>The MicroProfile Health specification enables you to create custom liveness and readiness health checks.
+In some circumstances, a custom health-check logic might be needed for either liveness or readiness probes.</p>
+
+<p>The MicroProfile Health specification allows you to create custom health checks by creating a method annotated with  <code>@org.eclipse.microprofile.health.Liveness</code> and <code>@org.eclipse.microprofile.health.Readiness</code> and returning an implementation of <code>org.eclipse.microprofile.health.HealthCheck</code> interface.</p>
+
+<p>Create a new class at <code>org.acme.quickstart.LivenessCheck.java</code> to implement a custom liveness probe:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@ApplicationScoped</code><code> </code><a class="co" id="co_observability_CO2-1" href="#callout_observability_CO2-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="nd">@Liveness</code><code> </code><a class="co" id="co_observability_CO2-2" href="#callout_observability_CO2-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code class="kd">public</code><code> </code><code class="kd">class</code><code> </code><code class="nc">LivenessCheck</code><code> </code><code class="kd">implements</code><code> </code><code class="n">HealthCheck</code><code> </code><code class="o">{</code><code> </code><a class="co" id="co_observability_CO2-3" href="#callout_observability_CO2-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a><code>
+</code><code>
+</code><code>    </code><code class="nd">@Override</code><code>
+</code><code>    </code><code class="kd">public</code><code> </code><code class="n">HealthCheckResponse</code><code> </code><code class="nf">call</code><code class="o">(</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>        </code><code class="n">HealthCheckResponseBuilder</code><code> </code><code class="n">checkResponseBuilder</code><code> </code><code class="o">=</code><code> </code><code class="n">HealthCheckResponse</code><code>
+</code><code>        </code><code class="o">.</code><code class="na">named</code><code class="o">(</code><code class="s">"custom liveness"</code><code class="o">)</code><code class="o">;</code><code> </code><a class="co" id="co_observability_CO2-4" href="#callout_observability_CO2-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a><code>
+</code><code>
+</code><code>        </code><code class="k">if</code><code class="o">(</code><code class="n">isUpAndRunning</code><code class="o">(</code><code class="o">)</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>            </code><code class="k">return</code><code> </code><code class="n">checkResponseBuilder</code><code class="o">.</code><code class="na">up</code><code class="o">(</code><code class="o">)</code><code class="o">.</code><code class="na">build</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code> </code><a class="co" id="co_observability_CO2-5" href="#callout_observability_CO2-5"><img src="Images/5.png" alt="5" width="12" height="12"/></a><code>
+</code><code>        </code><code class="o">}</code><code> </code><code class="k">else</code><code> </code><code class="o">{</code><code>
+</code><code>            </code><code class="k">return</code><code> </code><code class="n">checkResponseBuilder</code><code class="o">.</code><code class="na">down</code><code class="o">(</code><code class="o">)</code><code>
+</code><code>                </code><code class="o">.</code><code class="na">withData</code><code class="o">(</code><code class="s">"reason"</code><code class="o">,</code><code> </code><code class="s">"Failed connection"</code><code class="o">)</code><code>
+</code><code>                </code><code class="o">.</code><code class="na">build</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code> </code><a class="co" id="co_observability_CO2-6" href="#callout_observability_CO2-6"><img src="Images/6.png" alt="6" width="12" height="12"/></a><code>
+</code><code>        </code><code class="o">}</code><code>
+</code><code>
+</code><code>    </code><code class="o">}</code><code>
+</code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO2-1" href="#co_observability_CO2-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Needs to be a CDI class</p></dd>
+<dt><a class="co" id="callout_observability_CO2-2" href="#co_observability_CO2-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Sets health check as liveness</p></dd>
+<dt><a class="co" id="callout_observability_CO2-3" href="#co_observability_CO2-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Implements <code>HealthCheck</code> as a requirement</p></dd>
+<dt><a class="co" id="callout_observability_CO2-4" href="#co_observability_CO2-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></dt>
+<dd><p>Sets health check name</p></dd>
+<dt><a class="co" id="callout_observability_CO2-5" href="#co_observability_CO2-5"><img src="Images/5.png" alt="5" width="12" height="12"/></a></dt>
+<dd><p>Sets result as up</p></dd>
+<dt><a class="co" id="callout_observability_CO2-6" href="#co_observability_CO2-6"><img src="Images/6.png" alt="6" width="12" height="12"/></a></dt>
+<dd><p>Sets result as down</p></dd>
+</dl>
+
+<p>Let’s check that this liveness probe works as expected:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw compile quarkus:dev</code>
+
+<code class="go">curl localhost:8080/health/live</code>
+
+<code class="go">{</code>
+<code class="go">    "status": "UP",</code>
+<code class="go">    "checks": [</code>
+<code class="go">        {</code>
+<code class="go">            "name": "custom liveness",</code>
+<code class="go">            "status": "UP"</code>
+<code class="go">        }</code>
+<code class="go">    ]</code>
+<code class="go">}</code></pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Discussion"><div class="sect2" id="idm45128512118888">
+<h2>Discussion</h2>
+
+<p><a data-type="indexterm" data-primary="factory class" id="idm45128512124152"/>Because health checks are registered as CDI beans, you can also produce health checks in factory objects, as explained in <a data-type="xref" href="ch05.xhtml#creating_factories">Recipe 5.7</a>.</p>
+
+<p>Create a new factory class to contain the new health check—in this case, a readiness check:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@ApplicationScoped</code><code> </code><a class="co" id="co_observability_CO3-1" href="#callout_observability_CO3-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="kd">public</code><code> </code><code class="kd">class</code><code> </code><code class="nc">CustomHealthCheck</code><code> </code><code class="o">{</code><code>
+</code><code>
+</code><code>    </code><code class="nd">@Produces</code><code> </code><a class="co" id="co_observability_CO3-2" href="#callout_observability_CO3-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code>    </code><code class="nd">@Readiness</code><code> </code><a class="co" id="co_observability_CO3-3" href="#callout_observability_CO3-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a><code>
+</code><code>    </code><code class="kd">public</code><code> </code><code class="n">HealthCheck</code><code> </code><code class="nf">ready</code><code class="o">(</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>        </code><code class="k">if</code><code> </code><code class="o">(</code><code class="n">isReady</code><code class="o">(</code><code class="o">)</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>            </code><code class="k">return</code><code> </code><code class="n">io</code><code class="o">.</code><code class="na">smallrye</code><code class="o">.</code><code class="na">health</code><code class="o">.</code><code class="na">HealthStatus</code><code class="o">.</code><code class="na">up</code><code class="o">(</code><code class="s">"Custom readiness"</code><code class="o">)</code><code class="o">;</code><code> </code><a class="co" id="co_observability_CO3-4" href="#callout_observability_CO3-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a><code>
+</code><code>        </code><code class="o">}</code><code> </code><code class="k">else</code><code> </code><code class="o">{</code><code>
+</code><code>            </code><code class="k">return</code><code> </code><code class="n">io</code><code class="o">.</code><code class="na">smallrye</code><code class="o">.</code><code class="na">health</code><code class="o">.</code><code class="na">HealthStatus</code><code class="o">.</code><code class="na">down</code><code class="o">(</code><code class="s">"Custom readiness"</code><code class="o">)</code><code class="o">;</code><code>
+</code><code>        </code><code class="o">}</code><code>
+</code><code>    </code><code class="o">}</code><code>
+</code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO3-1" href="#co_observability_CO3-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Needs to be a CDI class</p></dd>
+<dt><a class="co" id="callout_observability_CO3-2" href="#co_observability_CO3-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>The method produces a health check</p></dd>
+<dt><a class="co" id="callout_observability_CO3-3" href="#co_observability_CO3-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Readiness probe</p></dd>
+<dt><a class="co" id="callout_observability_CO3-4" href="#co_observability_CO3-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></dt>
+<dd><p><code>HealthStatus</code> is a utility class that implements the <code>HealthCheck</code> interface for you</p></dd>
+</dl>
+
+<p>Let’s check that this readiness probe works as expected:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw compile quarkus:dev</code>
+
+<code class="go">curl localhost:8080/health/ready</code>
+
+<code class="go">{</code>
+<code class="go">    "checks": [</code>
+<code class="go">        {</code>
+<code class="go">            "name": "Custom readiness",</code>
+<code class="go">            "status": "UP"</code>
+<code class="go">        }</code>
+<code class="go">    ],</code>
+<code class="go">    "status": "UP"</code>
+<code class="go">}</code></pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="See Also"><div class="sect2" id="idm45128511960072">
+<h2>See Also</h2>
+
+<p>The MicroProfile Health specification is perfect for defining Kubernetes liveness and readiness probes.
+You can learn about them at the following website:</p>
+
+<ul>
+<li>
+<p><a href="https://oreil.ly/nTaaa">Kubernetes: Configure Liveness, Readiness, and Startup Probes</a></p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="9.3 Exposing Metrics"><div class="sect1" id="idm45128511963048">
+<h1>9.3 Exposing Metrics</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128511961832">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="metrics" id="idm45128511960600"/><a data-type="indexterm" data-primary="observability" data-secondary="exposing metrics" id="idm45128511953912"/>You want to proactively check the current status of a service in production by exposing service metrics in order to detect any misbehavior as quickly as possible.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128511952408">
+<h2>Solution</h2>
+
+<p><a data-type="indexterm" data-primary="MicroProfile Metrics specification" id="idm45128511951000"/>The MicroProfile Metrics specification provides a way to build and expose metrics from your application to a monitoring tool (e.g., Prometheus).</p>
+
+<p>To enable MicroProfile Metrics in a Quarkus application, you need to register only the <code>quarkus-smallrye-metrics</code> extension:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw quarkus:add-extension -Dextensions="quarkus-smallrye-metrics"</code></pre>
+
+<p>With the extension in the classpath, Quarkus provides monitoring parameters by default, exposing them at the <code>/metrics</code> endpoint in Prometheus format:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw compile quarkus:dev</code>
+
+<code class="go">curl localhost:8080/metrics</code>
+
+<code class="go">base_cpu_processCpuLoad_percent 0.0</code>
+<code class="go">base_memory_maxHeap_bytes 4.294967296E9</code>
+<code class="go">base_cpu_systemLoadAverage 2.580078125</code>
+<code class="go">base_thread_daemon_count 6.0</code>
+<code class="go">...</code>
+<code class="go">vendor_memoryPool_usage_max_bytes{name="Compressed Class Space"} 3336768.0</code>
+<code class="go">vendor_memory_usedNonHeap_bytes 3.9182104E7</code></pre>
+
+<p>The output format can be changed to JSON by adding <code>application/json</code> type in the HTTP <code>Accept</code> header:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">curl --header "Accept:application/json" localhost:8080/metrics</code>
+
+<code class="go">{</code>
+<code class="go">    "base": {</code>
+<code class="go">        "cpu.systemLoadAverage": 4.06201171875,</code>
+<code class="go">        "thread.count": 20,</code>
+<code class="go">        "classloader.loadedClasses.count": 4914,</code>
+<code class="go">        ...</code>
+<code class="go">    },</code>
+<code class="go">    "vendor": {</code>
+<code class="go">        "memoryPool.usage.max;name=G1 Survivor Space": 7340032,</code>
+<code class="go">        "memory.freePhysicalSize": 814391296,</code>
+<code class="go">        "memoryPool.usage.max;name=CodeHeap 'non-profiled nmethods'": 5773056,</code>
+<code class="go">        ...</code>
+<code class="go">    }</code>
+<code class="go">}</code></pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Discussion"><div class="sect2" id="idm45128511876536">
+<h2>Discussion</h2>
+
+<p>Knowing how a service is behaving in microservices architectures is critical in anticipating any problem that might affect all your applications.</p>
+
+<p>With monolith applications, monitoring service behavior was fairly easy because you had only three or four elements to monitor; but now with (micro)services architectures, you might have hundreds of elements to monitor.</p>
+
+<p>There are many possible values to monitor, such as the following:</p>
+
+<ul>
+<li>
+<p>Memory</p>
+</li>
+<li>
+<p>Disk space</p>
+</li>
+<li>
+<p>Network</p>
+</li>
+<li>
+<p>JVM resources</p>
+</li>
+<li>
+<p>Performance of critical methods</p>
+</li>
+<li>
+<p>Business metrics (e.g., the number of payments per second)</p>
+</li>
+<li>
+<p>Overall health of your cluster</p>
+</li>
+</ul>
+
+<p>If you look closely at the output, you’ll see that the parameters are prefixed with either <code>base</code> or <code>vendor</code>.
+MicroProfile Metrics categorizes the metrics under three 
+<span class="keep-together">categories</span><a data-type="indexterm" data-primary="applications" data-secondary="categories for" id="idm45128511848776"/><a data-type="indexterm" data-primary="base category" id="idm45128511847800"/><a data-type="indexterm" data-primary="vendor category" id="idm45128511847128"/>:</p>
+<dl>
+<dt>base</dt>
+<dd>
+<p>The core information of the server.
+These metrics are always required because they are specified in the specification.
+Access them at <em>/metrics/base</em>.</p>
+</dd>
+<dt>vendor</dt>
+<dd>
+<p>Vendor-specific information.
+Each implementation might provide different ones.
+Access them at <em>/metrics/vendor</em>.</p>
+</dd>
+<dt>application</dt>
+<dd>
+<p>Custom information developed ad hoc for that service using the MicroProfile Metrics extension mechanism.
+Access them at <em>/metrics/application</em>.</p>
+</dd>
+</dl>
+
+<p>You can configure where metrics are exposed by setting the <code>quarkus.smallrye-metrics.path</code> property to the path where you want to expose them.
+By default, this property is set to <code>/metrics</code>.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="See Also"><div class="sect2" id="idm45128511838648">
+<h2>See Also</h2>
+
+<p>To learn more about MicroProfile Metrics, visit the following page on GitHub:</p>
+
+<ul>
+<li>
+<p><a href="https://oreil.ly/Q875g">Metrics for Eclipse MicroProfile</a></p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="9.4 Creating Metrics"><div class="sect1" id="idm45128511835192">
+<h1>9.4 Creating Metrics</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128511833976">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="metrics" id="met_ab"/><a data-type="indexterm" data-primary="observability" data-secondary="creating metrics" id="obv_met"/>You want to monitor some custom metrics, such as performance metrics or business metrics.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128511830056">
+<h2>Solution</h2>
+
+<p><a data-type="indexterm" data-primary="MicroProfile Metrics specification" id="idm45128511806728"/>The MicroProfile Metrics specification provides different annotations to register 
+<span class="keep-together">different</span> kinds of monitoring parameters like counters, durations, and gauges.
+With these annotations, you can create custom metrics that might be related to business or performance parameters instead of physical values like memory, and CPU.</p>
+
+<p>The following are the MicroProfile Metrics annotations:</p>
+<div style="page-break-after: always;"/>
+<table>
+
+<thead>
+<tr>
+<th>Annotation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div>
+<p><code>org.eclipse.microprofile.metrics.annotation.Counted</code></p></div></td>
+<td><p>Counts number of invocations.</p></td>
+</tr>
+<tr>
+<td><div>
+<p><code>org.eclipse.microprofile.metrics.annotation.Timed</code></p></div></td>
+<td><p>Tracks the duration of invocations.</p></td>
+</tr>
+<tr>
+<td><div>
+<p><code>org.eclipse.microprofile.metrics.annotation.SimplyTimed</code></p></div></td>
+<td><p>Tracks the duration of invocations without mean and distribution calculations. A simplified version of <code>Timed</code>.</p></td>
+</tr>
+<tr>
+<td><div>
+<p><code>org.eclipse.microprofile.metrics.annotation.Metered</code></p></div></td>
+<td><p>Tracks the frequency of invocations.</p></td>
+</tr>
+<tr>
+<td><div>
+<p><code>org.eclipse.microprofile.metrics.annotation.Gauge</code></p></div></td>
+<td><p>Samples a discrete value of an annotated field or method.</p></td>
+</tr>
+<tr>
+<td><div>
+<p><code>org.eclipse.microprofile.metrics.annotation.ConcurrentGauge</code></p></div></td>
+<td><p>Gauge to count parallel invocations.</p></td>
+</tr>
+<tr>
+<td><div>
+<p><code>org.eclipse.microprofile.metrics.annotation.Metric</code></p></div></td>
+<td><div>
+<p>Used to inject a metric. Valid types are <code>Meter</code>, <code>Timer</code>, <code>Counter</code> and <code>Histogram</code>. <code>Gauge</code> with <code>Metric</code> can only be used in a CDI producer.</p></div></td>
+</tr>
+</tbody>
+</table>
+
+<p>Let’s look at how to use metrics annotations and how to create an histogram metric.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Counter"><div class="sect2" id="idm45128511782904">
+<h2>Counter</h2>
+
+<p><a data-type="indexterm" data-primary="counter" id="idm45128511781592"/><a data-type="indexterm" data-primary="@Counted annotation" id="idm45128511780888"/>A <em>counter</em> increments invocations that are done to a method annotated with <code>@Counted</code> and can be used at method or class level.</p>
+
+<p>In the following example, the number of invocations of a method is counted:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@Counted</code><code class="o">(</code><code> </code><a class="co" id="co_observability_CO4-1" href="#callout_observability_CO4-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code>        </code><code class="n">name</code><code> </code><code class="o">=</code><code> </code><code class="s">"number-of-transactions"</code><code class="o">,</code><code> </code><a class="co" id="co_observability_CO4-2" href="#callout_observability_CO4-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code>        </code><code class="n">displayName</code><code> </code><code class="o">=</code><code> </code><code class="s">"Transactions"</code><code class="o">,</code><code> </code><a class="co" id="co_observability_CO4-3" href="#callout_observability_CO4-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a><code>
+</code><code>        </code><code class="n">description</code><code> </code><code class="o">=</code><code> </code><code class="s">"How many transactions have been processed"</code><code> </code><a class="co" id="co_observability_CO4-4" href="#callout_observability_CO4-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a><code>
+</code><code class="o">)</code><code>
+</code><code class="nd">@POST</code><code>
+</code><code class="nd">@Consumes</code><code class="o">(</code><code class="n">MediaType</code><code class="o">.</code><code class="na">APPLICATION_JSON</code><code class="o">)</code><code>
+</code><code class="kd">public</code><code> </code><code class="n">Response</code><code> </code><code class="nf">doTransaction</code><code class="o">(</code><code class="n">Transaction</code><code> </code><code class="n">transaction</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>    </code><code class="k">return</code><code> </code><code class="n">Response</code><code class="o">.</code><code class="na">ok</code><code class="o">(</code><code class="o">)</code><code class="o">.</code><code class="na">build</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code>
+</code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO4-1" href="#co_observability_CO4-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Registers the counter</p></dd>
+<dt><a class="co" id="callout_observability_CO4-2" href="#co_observability_CO4-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Name of the counter</p></dd>
+<dt><a class="co" id="callout_observability_CO4-3" href="#co_observability_CO4-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Sets a display name</p></dd>
+<dt><a class="co" id="callout_observability_CO4-4" href="#co_observability_CO4-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></dt>
+<dd><p>Description of the counter</p></dd>
+</dl>
+<div style="page-break-after: always;"/>
+
+<p>Let’s check the counter monitor:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw compile quarkus:dev</code>
+
+<code class="go">curl -d '{"from":"A", "to":"B", "amount":2000}' \</code>
+<code class="go">     -H "Content-Type: application/json" \</code>
+<code class="go">     -X POST http://localhost:8080/tx</code>
+
+<code class="go">curl localhost:8080/metrics/application</code>
+
+<code class="go">application_org_acme_TransactionResource_number_of_transactions_total 1.0</code></pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Gauge"><div class="sect2" id="idm45128511782600">
+<h2>Gauge</h2>
+
+<p><a data-type="indexterm" data-primary="gauge" id="idm45128511670920"/><a data-type="indexterm" data-primary="@Gauge annotation" id="idm45128511668600"/>A <em>gauge</em> is a simple value that you want to expose to be measured, similar to a gas gauge on a car.
+To register it, you need to annotate either a field or a method with <code>@Gauge</code>, and the value/return value will be exposed automatically:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">private</code><code> </code><code class="kt">long</code><code> </code><code class="n">highestTransaction</code><code> </code><code class="o">=</code><code> </code><code class="mi">0</code><code class="o">;</code><code> </code><a class="co" id="co_observability_CO5-1" href="#callout_observability_CO5-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code>
+</code><code class="nd">@POST</code><code>
+</code><code class="nd">@Consumes</code><code class="o">(</code><code class="n">MediaType</code><code class="o">.</code><code class="na">APPLICATION_JSON</code><code class="o">)</code><code>
+</code><code class="kd">public</code><code> </code><code class="n">Response</code><code> </code><code class="nf">doTransaction</code><code class="o">(</code><code class="n">Transaction</code><code> </code><code class="n">transaction</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>    </code><code class="k">if</code><code> </code><code class="o">(</code><code class="n">transaction</code><code class="o">.</code><code class="na">amount</code><code> </code><code class="o">&gt;</code><code> </code><code class="n">highestTransaction</code><code class="o">)</code><code> </code><code class="o">{</code><code> </code><a class="co" id="co_observability_CO5-2" href="#callout_observability_CO5-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code>        </code><code class="n">highestTransaction</code><code> </code><code class="o">=</code><code> </code><code class="n">transaction</code><code class="o">.</code><code class="na">amount</code><code class="o">;</code><code>
+</code><code>    </code><code class="o">}</code><code>
+</code><code>    </code><code class="k">return</code><code> </code><code class="n">Response</code><code class="o">.</code><code class="na">ok</code><code class="o">(</code><code class="o">)</code><code class="o">.</code><code class="na">build</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code>
+</code><code class="o">}</code><code>
+</code><code class="nd">@Gauge</code><code class="o">(</code><code> </code><a class="co" id="co_observability_CO5-3" href="#callout_observability_CO5-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a><code>
+</code><code>        </code><code class="n">name</code><code> </code><code class="o">=</code><code> </code><code class="s">"highest-gross-transaction"</code><code class="o">,</code><code> </code><a class="co" id="co_observability_CO5-4" href="#callout_observability_CO5-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a><code>
+</code><code>        </code><code class="n">description</code><code> </code><code class="o">=</code><code> </code><code class="s">"Highest transaction so far."</code><code class="o">,</code><code>
+</code><code>        </code><code class="n">unit</code><code class="o">=</code><code> </code><code class="n">MetricUnits</code><code class="o">.</code><code class="na">NONE</code><code> </code><a class="co" id="co_observability_CO5-5" href="#callout_observability_CO5-5"><img src="Images/5.png" alt="5" width="12" height="12"/></a><code>
+</code><code class="o">)</code><code>
+</code><code class="kd">public</code><code> </code><code class="kt">long</code><code> </code><code class="nf">highestTransaction</code><code class="o">(</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>    </code><code class="k">return</code><code> </code><code class="n">highestTransaction</code><code class="o">;</code><code>
+</code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO5-1" href="#co_observability_CO5-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Field to store the highest transaction</p></dd>
+<dt><a class="co" id="callout_observability_CO5-2" href="#co_observability_CO5-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Updates the field if the current transaction is higher</p></dd>
+<dt><a class="co" id="callout_observability_CO5-3" href="#co_observability_CO5-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Sets return value as a gauge</p></dd>
+<dt><a class="co" id="callout_observability_CO5-4" href="#co_observability_CO5-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></dt>
+<dd><p>Name of the gauge</p></dd>
+<dt><a class="co" id="callout_observability_CO5-5" href="#co_observability_CO5-5"><img src="Images/5.png" alt="5" width="12" height="12"/></a></dt>
+<dd><p>Metrics of this gauge (e.g., seconds, percentage, per second, bytes, etc.)</p></dd>
+</dl>
+
+<p>Execute the following commands to run the application, seed some metrics data, and view the output:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw compile quarkus:dev</code>
+
+<code class="go">curl -d '{"from":"A", "to":"B", "amount":2000}' \</code>
+<code class="go">     -H "Content-Type: application/json" \</code>
+<code class="go">     -X POST http://localhost:8080/tx</code>
+
+<code class="go">curl localhost:8080/metrics/application</code>
+
+<code class="go">application_org_acme_TransactionResource_highest_gross_transaction 2000.0</code></pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Metered"><div class="sect2" id="idm45128511671896">
+<h2>Metered</h2>
+
+<p><a data-type="indexterm" data-primary="@Metered annotation" id="idm45128511477336"/><a data-type="indexterm" data-primary="metered metric" id="idm45128511475864"/>A <em>metered</em> metric measures the rate at which a method is called.
+The <code>@Metered</code> annotation can be used at the method or class level:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@Metered</code><code class="o">(</code><code> </code><a class="co" id="co_observability_CO6-1" href="#callout_observability_CO6-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code>        </code><code class="n">name</code><code> </code><code class="o">=</code><code> </code><code class="s">"transactions"</code><code class="o">,</code><code>
+</code><code>        </code><code class="n">unit</code><code> </code><code class="o">=</code><code> </code><code class="n">MetricUnits</code><code class="o">.</code><code class="na">SECONDS</code><code class="o">,</code><code> </code><a class="co" id="co_observability_CO6-2" href="#callout_observability_CO6-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code>        </code><code class="n">description</code><code> </code><code class="o">=</code><code> </code><code class="s">"Rate of transactions"</code><code>
+</code><code class="o">)</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO6-1" href="#co_observability_CO6-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Registers the metered metric</p></dd>
+<dt><a class="co" id="callout_observability_CO6-2" href="#co_observability_CO6-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Sets units as seconds</p></dd>
+</dl>
+
+<p>Execute the following commands to run the application, seed some metrics data, and view the output:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw compile quarkus:dev</code>
+
+<code class="go">curl -d '{"from":"A", "to":"B", "amount":2000}' \</code>
+<code class="go">     -H "Content-Type: application/json" \</code>
+<code class="go">     -X POST http://localhost:8080/tx</code>
+
+<code class="go">curl localhost:8080/metrics/application</code>
+
+<code class="go">application_org_acme_TransactionResource_transactions \</code>
+<code class="go">  _rate_per_second  0.09766473618811813</code>
+<code class="go">application_org_acme_TransactionResource_transactions \</code>
+<code class="go">  _one_min_rate_per_second  0.015991117074135343</code>
+<code class="go">application_org_acme_TransactionResource_transactions \</code>
+<code class="go">  _five_min_rate_per_second  0.0033057092356765017</code>
+<code class="go">application_org_acme_TransactionResource_transactions \</code>
+<code class="go">  _fifteen_min_rate_per_second  0.0011080303990206543</code></pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Timed"><div class="sect2" id="idm45128511379960">
+<h2>Timed</h2>
+
+<p><a data-type="indexterm" data-primary="timed metric" id="idm45128511388904"/><a data-type="indexterm" data-primary="@Timed annotation" id="idm45128511388200"/>A <em>timed</em> metric measures the duration of a call.
+The <code>@Timed</code> annotation can be used at method or class level:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@Timed</code><code class="o">(</code><code> </code><a class="co" id="co_observability_CO7-1" href="#callout_observability_CO7-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code>    </code><code class="n">name</code><code> </code><code class="o">=</code><code> </code><code class="s">"average-transaction"</code><code class="o">,</code><code>
+</code><code>    </code><code class="n">unit</code><code> </code><code class="o">=</code><code> </code><code class="n">MetricUnits</code><code class="o">.</code><code class="na">SECONDS</code><code class="o">,</code><code>
+</code><code>    </code><code class="n">description</code><code> </code><code class="o">=</code><code> </code><code class="s">"Average duration of transaction"</code><code>
+</code><code class="o">)</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO7-1" href="#co_observability_CO7-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Registers the timed metric</p></dd>
+</dl>
+
+<p>Execute the following commands to run the application, seed some metrics data, and view the output:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw compile quarkus:dev</code>
+
+<code class="go">curl -d '{"from":"A", "to":"B", "amount":2000}' \</code>
+<code class="go">     -H "Content-Type: application/json" \</code>
+<code class="go">     -X POST http://localhost:8080/tx</code>
+
+<code class="go">curl localhost:8080/metrics/application</code>
+
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _rate_per_second 0.7080455375154214</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _one_min_rate_per_second 0.0</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _five_min_rate_per_second 0.0</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _fifteen_min_rate_per_second 0.0</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _min_seconds 1.0693E-5</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _max_seconds 4.9597E-5</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _mean_seconds 3.0145E-5</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _stddev_seconds 1.9452E-5</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _seconds_count 2.0</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _seconds{quantile="0.5"} 4.9597E-5</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _seconds{quantile="0.75"} 4.9597E-5</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _seconds{quantile="0.95"} 4.9597E-5</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _seconds{quantile="0.98"} 4.9597E-5</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _seconds{quantile="0.99"} 4.9597E-5</code>
+<code class="go">application_org_acme_TransactionResource_average_transaction \</code>
+<code class="go">  _seconds{quantile="0.999"} 4.9597E-5</code></pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Histogram"><div class="sect2" id="idm45128511271208">
+<h2>Histogram</h2>
+
+<p><a data-type="indexterm" data-primary="histogram" id="idm45128511254888"/>A <em>histogram</em> measures the distribution of values across time; it measures things like min, max, standard deviation, or quantiles like the median or 95th.
+Histograms do not have a proper annotation, but the <code>org.eclipse.microprofile.metrics.Histogram</code> class is used to update the metric:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@Metric</code><code class="o">(</code><code class="n">name</code><code> </code><code class="o">=</code><code> </code><code class="s">"transaction-evolution"</code><code class="o">)</code><code> </code><a class="co" id="co_observability_CO8-1" href="#callout_observability_CO8-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="n">Histogram</code><code> </code><code class="n">transactionHistogram</code><code class="o">;</code><code>
+</code><code>
+</code><code class="nd">@POST</code><code>
+</code><code class="nd">@Consumes</code><code class="o">(</code><code class="n">MediaType</code><code class="o">.</code><code class="na">APPLICATION_JSON</code><code class="o">)</code><code>
+</code><code class="kd">public</code><code> </code><code class="n">Response</code><code> </code><code class="nf">doTransaction</code><code class="o">(</code><code class="n">Transaction</code><code> </code><code class="n">transaction</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>    </code><code class="n">transactionHistogram</code><code class="o">.</code><code class="na">update</code><code class="o">(</code><code class="n">transaction</code><code class="o">.</code><code class="na">amount</code><code class="o">)</code><code class="o">;</code><code> </code><a class="co" id="co_observability_CO8-2" href="#callout_observability_CO8-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code>    </code><code class="k">return</code><code> </code><code class="n">Response</code><code class="o">.</code><code class="na">ok</code><code class="o">(</code><code class="o">)</code><code class="o">.</code><code class="na">build</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code>
+</code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO8-1" href="#co_observability_CO8-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Injects a histogram with given name</p></dd>
+<dt><a class="co" id="callout_observability_CO8-2" href="#co_observability_CO8-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Updates the histogram with a new value</p></dd>
+</dl>
+
+<p>Execute the following commands to run the application, seed some metrics data, and view the output:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw compile quarkus:dev</code>
+
+<code class="go">curl -d '{"from":"A", "to":"B", "amount":2000}' \</code>
+<code class="go">     -H "Content-Type: application/json" \</code>
+<code class="go">     -X POST http://localhost:8080/tx</code>
+
+<code class="go">curl localhost:8080/metrics/application</code>
+
+<code class="go">application_org_acme_TransactionResource_transaction_evolution_min 2000.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution_max 2000.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution_mean 2000.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution_stddev 0.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution_count 2.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution \</code>
+<code class="go">  {quantile="0.5"}  2000.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution \</code>
+<code class="go">  {quantile="0.75"}  2000.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution \</code>
+<code class="go">  {quantile="0.95"}  2000.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution \</code>
+<code class="go">  {quantile="0.98"}  2000.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution \</code>
+<code class="go">  {quantile="0.99"}  2000.0</code>
+<code class="go">application_org_acme_TransactionResource_transaction_evolution \</code>
+<code class="go">  {quantile="0.999"}  2000.0</code></pre>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Discussion"><div class="sect2" id="idm45128511165592">
+<h2>Discussion</h2>
+
+<p><a data-type="indexterm" data-primary="" data-startref="met_ab" id="idm45128511112264"/><a data-type="indexterm" data-primary="" data-startref="obv_met" id="idm45128511111064"/>You can get metadata information from any metric by querying into a specific endpoint using the <code>OPTION</code> HTTP method.
+The metadata is exposed at <code>/metrics/<em>scope</em>/<em>metric_name</em></code>, where the <em><code>scope</code></em> is <code>base</code>, <code>vendor</code>, or <code>application</code> and the <em><code>metric_name</code></em> is the name of the metric (in case of application one, the one set in <code>name</code> attribute).</p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="9.5 Using Distributed Tracing"><div class="sect1" id="using_distributed_tracing">
+<h1>9.5 Using Distributed Tracing</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128511103720">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="distributed tracing" id="dist_ab"/><a data-type="indexterm" data-primary="observability" data-secondary="distributed tracing" id="obv_dist"/>You want to profile and monitor the whole application.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128511099944">
+<h2>Solution</h2>
+
+<p><a data-type="indexterm" data-primary="MicroProfile OpenTracing specification" id="idm45128511098056"/><a data-type="indexterm" data-primary="OpenTracing" id="idm45128511097384"/>The MicroProfile OpenTracing specification uses the <a href="https://opentracing.io">OpenTracing standard API</a> for instrumenting microservices for distributed tracing.
+Quarkus integrates with the MicroProfile OpenTracing specification as a solution for 
+<span class="keep-together">distributed</span> tracing.</p>
+
+<p>Distributed tracing is a method used to profile and monitor your distributed systems.
+It can be used to detect failures in the communication between services, determine which points are performance problems, or perform a log record of all requests and responses that are happening within the network mesh.</p>
+
+<p><a data-type="indexterm" data-primary="span" id="idm45128511094056"/><a data-type="indexterm" data-primary="span context" id="idm45128511093352"/><a data-type="indexterm" data-primary="baggage items" id="idm45128511092680"/><a data-type="indexterm" data-primary="tags" id="idm45128511092008"/><a data-type="indexterm" data-primary="logs" id="idm45128511091336"/>There are five important concepts in OpenTracing that you must understand before proceeding with distributed tracing:</p>
+<dl>
+<dt>Span</dt>
+<dd>
+<p>A named operation representing a unit of work done (e.g., a service executed). A span can contain more spans in a child-parent form.</p>
+</dd>
+<dt>Span context</dt>
+<dd>
+<p>Trace information that is propagated from service to service (e.g., span ID).</p>
+</dd>
+<dt>Baggage items</dt>
+<dd>
+<p>Custom key/value pairs that are propagated from service to service.</p>
+</dd>
+<dt>Tags</dt>
+<dd>
+<p>Key/value pairs defined by the user that are set in spans so they can be queried and filtered (e.g., <code>http.status_code</code>).</p>
+</dd>
+<dt>Logs</dt>
+<dd>
+<p>Key/value pairs associated with a span that contains logging messages or other important information. Logs are used to identify a specific moment in the span; meanwhile, tags apply to the whole span independently of time.</p>
+</dd>
+</dl>
+
+<p><a data-type="indexterm" data-primary="Jaeger" id="idm45128511082104"/>For this example, the <a href="https://www.jaegertracing.io">Jaeger</a> server is used to collect all traces from your application and make them available to be consumed or queried. <a data-type="xref" href="#microjaeger">Figure 9-1</a> shows the interaction between services and Jaeger.</p>
+
+<figure><div id="microjaeger" class="figure">
+<img src="Images/qucb_0902.png" alt="qucb 0902" width="552" height="332"/>
+<h6><span class="label">Figure 9-1. </span>Microservices and Jaeger</h6>
+</div></figure>
+
+<p>The Jaeger concepts explained in the previous paragraph are illustrated in <a data-type="xref" href="#jaegerconcepts">Figure 9-2</a>.</p>
+
+<figure><div id="jaegerconcepts" class="figure">
+<img src="Images/qucb_0901.png" alt="qucb 0901" width="1088" height="371"/>
+<h6><span class="label">Figure 9-2. </span>Jaeger concepts</h6>
+</div></figure>
+
+<p>The <code>jaegertracing/all-in-one</code> container image is used because it contains all of the Jaeger backend components and the UI in a single image.
+This is not meant to be used in production, but, for the sake of simplicity, this is the image used in <a data-type="xref" href="#using_distributed_tracing">Recipe 9.5</a>:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">docker run -e COLLECTOR_ZIPKIN_HTTP_PORT=9411 -p 5775:5775/udp \</code>
+<code class="go">    -p 6831:6831/udp -p 6832:6832/udp -p 5778:5778 -p 16686:16686 \</code>
+<code class="go">    -p 14268:14268 -p 9411:9411 jaegertracing/all-in-one:1.15.1</code></pre>
+
+<p>To enable MicroProfile OpenTracing in a Quarkus application, you need to register only the <code>quarkus-smallrye-opentracing</code> extension.</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw quarkus:add-extension -Dextensions="quarkus-smallrye-opentracing"</code></pre>
+
+<p>With the extension in the classpath, Quarkus/MicroProfile OpenTracing sends default tracing information to the Jaeger server.
+The only thing you need to do is configure the Jaeger endpoint where all tracing information should be sent.</p>
+
+<p>The default tracing information collected includes the following:</p>
+
+<ul class="less-space-list">
+<li>
+<p>Hardware metrics like CPU, memory, and available processors.</p>
+</li>
+<li>
+<p>JVM metrics like memory heap and thread pool.</p>
+</li>
+</ul>
+
+<p>MicroProfile OpenTracing creates a new span for every inbound request.
+The default name of this new span is <code><em>HTTP method</em>:<em>package name</em>.<em>class name</em>.<em>method name</em></code>.</p>
+
+<p>Spans created for incoming requests will contain the following tags with correct 
+<span class="keep-together">values</span>:</p>
+
+<ul class="less-space-list-2">
+<li>
+<p><code>Tags.SPAN_KIND</code> = <code>Tags.SPAN_KIND_SERVER</code></p>
+</li>
+<li>
+<p><code>Tags.HTTP_METHOD</code> with the HTTP method used in the incoming request</p>
+</li>
+<li>
+<p><code>Tags.HTTP_URL</code> with the URL of incoming endpoints</p>
+</li>
+<li>
+<p><code>Tags.HTTP_STATUS</code> with the HTTP status result code</p>
+</li>
+<li>
+<p><code>Tags.COMPONENT</code> = <code>"jaxrs"</code></p>
+</li>
+<li>
+<p><code>Tags.ERROR</code> to <code>true</code> if a server error (5XX error code) occurred;
+if an exception has a provided object, two logs are added, one with <code>event=error</code> and another one with <code>error.object=&lt;error object instance&gt;</code></p>
+</li>
+</ul>
+
+<p>In cases of outbound requests, a new span is created that is a child of the current active span (if it exists).
+The default name of the new span is <code>&lt;HTTP method&gt;</code>.
+Spans created for outgoing requests will contain the following tags with correct 
+<span class="keep-together">values</span>:</p>
+
+<ul class="less-space-list-2">
+<li>
+<p><code>Tags.SPAN_KIND</code>=<code>Tags.SPAN_KIND_SCLIENT</code></p>
+</li>
+<li>
+<p><code>Tags.HTTP_METHOD</code> with the HTTP method used in outgoing request</p>
+</li>
+<li>
+<p><code>Tags.HTTP_URL</code> with the URL of the outgoing endpoint</p>
+</li>
+<li>
+<p><code>Tags.HTTP_STATUS</code> with the <em>HTTP</em> status result code</p>
+</li>
+<li>
+<p><code>Tags.COMPONENT</code> = <code>"jaxrs"</code></p>
+</li>
+<li>
+<p><code>Tags.ERROR</code> to <code>true</code> if a client error (4XX error code) occurred;
+if an exception has a provided object, two logs are added, one with <code>event=error</code> and another one with <code>error.object=&lt;error object instance&gt;</code></p>
+</li>
+</ul>
+
+<p>The last thing to do is configure the Jaeger parameters:</p>
+
+<pre data-type="programlisting" data-code-language="properties"><code class="na">quarkus.jaeger.service-name</code><code class="o">=</code><code class="s">shopping-cart </code><a class="co" id="co_observability_CO9-1" href="#callout_observability_CO9-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="na">quarkus.jaeger.sampler-type</code><code class="o">=</code><code class="s">const </code><a class="co" id="co_observability_CO9-2" href="#callout_observability_CO9-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code class="na">quarkus.jaeger.sampler-param</code><code class="o">=</code><code class="s">1 </code><a class="co" id="co_observability_CO9-3" href="#callout_observability_CO9-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a><code>
+</code><code class="na">quarkus.jaeger.endpoint</code><code class="o">=</code><code class="s">http://localhost:14268/api/traces </code><a class="co" id="co_observability_CO9-4" href="#callout_observability_CO9-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO9-1" href="#co_observability_CO9-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Service name to be identified inside Jaeger</p></dd>
+<dt><a class="co" id="callout_observability_CO9-2" href="#co_observability_CO9-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Set up a sampler</p></dd>
+<dt><a class="co" id="callout_observability_CO9-3" href="#co_observability_CO9-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Percentage of requests to sample in percentage (1 is sampling all)</p></dd>
+<dt><a class="co" id="callout_observability_CO9-4" href="#co_observability_CO9-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></dt>
+<dd><p>The Jaeger server location</p></dd>
+</dl>
+
+<p>Then start the application and send some requests to one of the endpoints defined in the service.
+After that, inspect all distributed tracings by accessing Jaeger UI.
+Open a browser, and visit 
+<span class="orm:hideurl"><a href="http://localhost:16686"><em class="hyperlink">http://localhost:16686</em></a></span> (the Jaeger UI) to see the tracing information.</p>
+
+<p>In the initial page, you can filter by several parameters, but one of them is used to select the service that will be used to view the completed requests.</p>
+
+<p>The home page of Jaeger is shown in <a data-type="xref" href="#jaegerinitial">Figure 9-3</a>.</p>
+
+<figure><div id="jaegerinitial" class="figure">
+<img src="Images/qucb_0903.png" alt="qucb 0903" width="1440" height="939"/>
+<h6><span class="label">Figure 9-3. </span>Jaeger’s home page</h6>
+</div></figure>
+
+<p>Push the Find Traces button to select all the traces that meet the given criteria, and you should see the image shown in <a data-type="xref" href="#jaegerfindtraces">Figure 9-4</a>.</p>
+
+<figure class="width-90"><div id="jaegerfindtraces" class="figure">
+<img src="Images/qucb_0904.png" alt="qucb 0904" width="1440" height="922"/>
+<h6><span class="label">Figure 9-4. </span>Find traces</h6>
+</div></figure>
+
+<p>You’ll see all the requests that meet the criteria.
+In this case, the requests are all traces that are involved in the <code>shopping-cart</code> service, as seen in <a data-type="xref" href="#jaegerviewtraces">Figure 9-5</a>.</p>
+
+<figure class="width-90"><div id="jaegerviewtraces" class="figure">
+<img src="Images/qucb_0903.png" alt="qucb 0903" width="1440" height="939"/>
+<h6><span class="label">Figure 9-5. </span>View traces</h6>
+</div></figure>
+
+<p>If you click on any of the requests, more detail of the specific request is shown, as shown in <a data-type="xref" href="#jaegerdetail">Figure 9-6</a>.</p>
+
+<figure><div id="jaegerdetail" class="figure">
+<img src="Images/qucb_0906.png" alt="qucb 0906" width="1440" height="520"/>
+<h6><span class="label">Figure 9-6. </span>Detail of a request</h6>
+</div></figure>
+
+<p>In case of errors, a new log entry is added that sets the error message, as shown in <a data-type="xref" href="#jaegererror">Figure 9-7</a>.</p>
+
+<figure><div id="jaegererror" class="figure">
+<img src="Images/qucb_0907.png" alt="qucb 0907" width="1440" height="618"/>
+<h6><span class="label">Figure 9-7. </span>Error log message</h6>
+</div></figure>
+<div data-type="tip"><h1>Disabling Tracing</h1>
+<p><a data-type="indexterm" data-primary="disabling" data-secondary="tracing" id="idm45128510897944"/>Any request (incoming or outgoing) is traced by default.
+Disable the tracing of a specific class or method by annotating it with <code>@org.eclipse.microprofile.opentracing.Traced</code>:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@Traced</code><code class="o">(</code><code class="kc">false</code><code class="o">)</code>
+<code class="kd">public</code> <code class="kd">class</code> <code class="nc">TransactionResource</code> <code class="o">{}</code></pre>
+</div>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Discussion"><div class="sect2" id="idm45128511099032">
+<h2>Discussion</h2>
+
+<p><a data-type="indexterm" data-primary="OpenTracing" id="idm45128510889384"/><a data-type="indexterm" data-primary="configuration" data-secondary="OpenTracing" id="idm45128510888712"/>Configure OpenTracing by setting options in the <em>src/main/resources/application.properties</em> file or by using any other method discussed in <a data-type="xref" href="#custom-distributed-tracing">Recipe 9.6</a>.
+Some of the most important configuration properties are listed in <a data-type="xref" href="#opentracing-config-properties-table">Table 9-1</a>.</p>
+<table id="opentracing-config-properties-table">
+<caption><span class="label">Table 9-1. </span>OpenTracing configuration properties</caption>
+<thead>
+<tr>
+<th>Property</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.enabled</code></p></div></td>
+<td><div>
+<p>Defines if the Jaeger extension is enabled (default: <code>true</code>). It is a build property and cannot be modified at runtime.</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.endpoint</code></p></div></td>
+<td><div>
+<p>Traces server endpoint.</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.auth-token</code></p></div></td>
+<td><div>
+<p>Authentication token to the endpoint.</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.user</code></p></div></td>
+<td><div>
+<p>Username to send as part of authentication to the endpoint.</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.password</code></p></div></td>
+<td><div>
+<p>Password to send as part of authentication to the endpoint.</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.sampler-type</code></p></div></td>
+<td><div>
+<p>The sampler type (<code>const</code>, <code>probabilistic</code>, <code>ratelimiting</code>. or <code>remote</code>).</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.sampler-param</code></p></div></td>
+<td><div>
+<p>Percentage of traffic sampled (0.0-1.0).</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.service-name</code></p></div></td>
+<td><div>
+<p>The service name.</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.tags</code></p></div></td>
+<td><div>
+<p>A comma-separated list of key/value tags that are added to all spans. Environment variables are supported by using <code>${environmentVar:default}</code>.</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.propagation</code></p></div></td>
+<td><div>
+<p>The format used to propagate the trace context (default is <code>jaeger</code>). Possible values are <code>jaeger</code> and <code>b3</code>.</p></div></td>
+</tr>
+<tr>
+<td><div>
+<p><code>quarkus.jaeger.sender-factory</code></p></div></td>
+<td><div>
+<p>The sender factory class name.</p></div></td>
+</tr>
+</tbody>
+</table>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="See Also"><div class="sect2" id="idm45128510828776">
+<h2>See Also</h2>
+
+<p><a data-type="indexterm" data-primary="" data-startref="dist_ab" id="idm45128510827672"/><a data-type="indexterm" data-primary="" data-startref="obv_dist" id="idm45128510826696"/>See <a href="https://oreil.ly/A2GJu">Quarkus’s guide to using OpenTracing</a> for the full list of supported properties.</p>
+
+<p>More information about MicroProfile OpenTracing specification can be found at the following page on GitHub:</p>
+
+<ul>
+<li>
+<p><a href="https://oreil.ly/v7kjr">MicroProfile OpenTracing</a></p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="9.6 Custom Distributed Tracing"><div class="sect1" id="custom-distributed-tracing">
+<h1>9.6 Custom Distributed Tracing</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128510820856">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="observability" data-secondary="custom distributed tracing" id="idm45128510819656"/>You want to add custom information in the current tracing span.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128510818232">
+<h2>Solution</h2>
+
+<p><a data-type="indexterm" data-primary="MicroProfile OpenTracing specification" id="idm45128510816808"/>The MicroProfile OpenTracing specification uses the <code>io.opentracing.Tracer</code> class to add new information in the current span.</p>
+
+<p>In some situations, it is required to create a new child span or add information in the current span, like a new tag, logging information, or a baggage item.
+To add this information, MicroProfile OpenTracing produces an instance of the <code>io.opentracing.Tracer</code> class to manipulate the current span.</p>
+
+<p>Suppose you want to tag all requests that are made by important customers.
+For this example, important customers are those whose ID starts with <code>1</code>:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@Inject</code><code> </code><a class="co" id="co_observability_CO10-1" href="#callout_observability_CO10-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="n">Tracer</code><code> </code><code class="n">tracer</code><code class="o">;</code><code>
+</code><code class="nd">@POST</code><code>
+</code><code class="nd">@Path</code><code class="o">(</code><code class="s">"/add/{customerId}"</code><code class="o">)</code><code>
+</code><code class="nd">@Transactional</code><code>
+</code><code class="nd">@Consumes</code><code class="o">(</code><code class="n">MediaType</code><code class="o">.</code><code class="na">APPLICATION_JSON</code><code class="o">)</code><code>
+</code><code class="kd">public</code><code> </code><code class="n">Response</code><code> </code><code class="nf">addItem</code><code class="o">(</code><code class="nd">@PathParam</code><code class="o">(</code><code class="s">"customerId"</code><code class="o">)</code><code> </code><code class="n">String</code><code> </code><code class="n">customerId</code><code class="o">,</code><code> </code><code class="n">Item</code><code> </code><code class="n">item</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>
+</code><code>    </code><code class="k">if</code><code> </code><code class="o">(</code><code class="n">customerId</code><code class="o">.</code><code class="na">startsWith</code><code class="o">(</code><code class="s">"1"</code><code class="o">)</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>        </code><code class="n">tracer</code><code class="o">.</code><code class="na">activeSpan</code><code class="o">(</code><code class="o">)</code><code class="o">.</code><code class="na">setTag</code><code class="o">(</code><code class="s">"important.customer"</code><code class="o">,</code><code> </code><code class="kc">true</code><code class="o">)</code><code class="o">;</code><code> </code><a class="co" id="co_observability_CO10-2" href="#callout_observability_CO10-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code>    </code><code class="o">}</code><code>
+</code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO10-1" href="#co_observability_CO10-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Injects a <code>Tracer</code> instance</p></dd>
+<dt><a class="co" id="callout_observability_CO10-2" href="#co_observability_CO10-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Creates a new tag in the current span</p></dd>
+</dl>
+
+<p>Then any request for an important customer is tagged accordingly.</p>
+
+<p>Custom tags are presented as shown in <a data-type="xref" href="#customtags">Figure 9-8</a>.</p>
+
+<figure><div id="customtags" class="figure">
+<img src="Images/qucb_0908.png" alt="qucb 0908" width="1440" height="697"/>
+<h6><span class="label">Figure 9-8. </span>Custom tags</h6>
+</div></figure>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Discussion"><div class="sect2" id="idm45128510794216">
+<h2>Discussion</h2>
+
+<p>Quarkus supports one of the OpenTracing customizations to instrument JDBC, so if you want to monitor SQL queries, you don’t need to customize the current span yourself; you can use the integration provided in the form of dependency.</p>
+
+<p>Register the <code>opentracing-jdbc</code> artifact into your build tool:</p>
+
+<pre data-type="programlisting" data-code-language="xml"><code class="nt">&lt;dependency&gt;</code>
+    <code class="nt">&lt;groupId&gt;</code>io.opentracing.contrib<code class="nt">&lt;/groupId&gt;</code>
+    <code class="nt">&lt;artifactId&gt;</code>opentracing-jdbc<code class="nt">&lt;/artifactId&gt;</code>
+<code class="nt">&lt;/dependency&gt;</code></pre>
+
+<p>Then activate tracing for JDBC connections.
+This is done by adding the word <code>tracing</code> in the JDBC URL.
+Because Quarkus uses JPA, you also need to configure the datasource and Hibernate to use the dedicated tracing driver:</p>
+
+<pre data-type="programlisting" data-code-language="properties"><code class="na">quarkus.datasource.url</code><code class="o">=</code><code class="s">jdbc:tracing:h2:mem:mydb </code><a class="co" id="co_observability_CO11-1" href="#callout_observability_CO11-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="na">quarkus.datasource.driver</code><code class="o">=</code><code class="s">io.opentracing.contrib.jdbc.TracingDriver </code><a class="co" id="co_observability_CO11-2" href="#callout_observability_CO11-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code class="na">quarkus.datasource.username</code><code class="o">=</code><code class="s">sa</code><code>
+</code><code class="na">quarkus.datasource.password</code><code class="o">=</code><code>
+</code><code class="na">quarkus.hibernate-orm.database.generation</code><code class="o">=</code><code class="s">update</code><code>
+</code><code class="na">quarkus.hibernate-orm.log.sql</code><code class="o">=</code><code class="s">true</code><code>
+</code><code class="na">quarkus.hibernate-orm.dialect</code><code class="o">=</code><code class="s">org.hibernate.dialect.H2Dialect </code><a class="co" id="co_observability_CO11-3" href="#callout_observability_CO11-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_observability_CO11-1" href="#co_observability_CO11-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Updates JDBC URL with <code>tracing</code></p></dd>
+<dt><a class="co" id="callout_observability_CO11-2" href="#co_observability_CO11-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Sets the <code>TracingDriver</code> instead of the database driver</p></dd>
+<dt><a class="co" id="callout_observability_CO11-3" href="#co_observability_CO11-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Configure dialect of the real database</p></dd>
+</dl>
+
+<p>All queries that are done in a request are also reflected in the Jaeger UI.</p>
+
+<p>JDBC traces are presented as shown in <a data-type="xref" href="#jdbctraces">Figure 9-9</a>.</p>
+
+<figure><div id="jdbctraces" class="figure">
+<img src="Images/qucb_0909.png" alt="qucb 0909" width="1282" height="609"/>
+<h6><span class="label">Figure 9-9. </span>JDBC traces</h6>
+</div></figure>
+
+<p>If you look closely at the screenshot, you’ll notice that there is a new tag, with the name <code>db.statement</code>, that reflects the query that has been traced.
+Also, notice that there is one <em>shopping-cart</em> span that at the same time contains six more spans, one for each query.</p>
+
+<p><a data-type="indexterm" data-primary="" data-startref="obs_ch" id="idm45128510605288"/>To ignore specific queries, you can set (multiple times) the <code>ignoreForTracing</code> property with the queries to ignore (e.g., <code>jdbc:tracing:h2:mem:test?ignoreForTracing=SELECT * FROM \"TEST\"</code>).</p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  </body></html>

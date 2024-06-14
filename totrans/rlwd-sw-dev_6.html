@@ -1,0 +1,1577 @@
+<html><head></head><body><div id="sbo-rt-content"><section data-type="chapter" epub:type="chapter" data-pdf-bookmark="Chapter 6. Twootr"><div class="chapter" id="chapter_06">
+<h1><span class="label">Chapter 6. </span>Twootr</h1>
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="The Challenge"><div class="sect1" id="idm45816821209128">
+<h1>The Challenge</h1>
+
+<p>Joe was an excited young chap, keen to tell me all about his new startup idea.
+He was on a mission to help people communicate better and faster.<a data-type="indexterm" data-primary="Twootr (example)" id="ix_Twoo"/> He enjoyed
+blogging but wondered about how to get people to blog more frequently in
+smaller amounts. He was calling it micro-blogging. The big idea was that if
+you restricted the size of the messages to 140 characters that people would
+post little and often rather than in big messages.</p>
+
+<p>We asked Joe if he felt that this restriction would encourage people to just
+post short, pithy statements that didn’t really mean anything. He said “Yolo!”
+We asked Joe how he was going to make money. He said “Yolo!” We asked Joe
+what he planned to call the product. He said “Twootr!” We thought it sounded
+like a cool and original idea, so we decided to help him build his product.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="The Goal"><div class="sect1" id="idm45816821205144">
+<h1>The Goal</h1>
+
+<p>In this chapter you will learn about the big picture of putting a software
+application together.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="goals" id="idm45816821203464"/> A lot of the previous apps in this book were smaller examples—batch jobs that would run on the command line. Twootr is a server-side Java application,
+similar to the kind of application that most Java developers write.</p>
+
+<p>In this chapter you’ll have the opportunity to learn about a number of different skills:</p>
+
+<ul>
+<li>
+<p>How to take a big picture description and break it down into different
+architectural concerns</p>
+</li>
+<li>
+<p>How to use test doubles to isolate and test interactions from
+different components within your codebase</p>
+</li>
+<li>
+<p>How to think outside-in—to go from requirements through to the core of your application
+domain</p>
+</li>
+</ul>
+
+<p>At several places in this chapter we will also talk not only about the final design of
+the software, but how we got there. There are a few places where we show how certain methods
+iteratively evolved over the development of the project in response to an expanding list
+of implemented features. This will give you a feel for how software projects can evolve
+in reality, rather than simply presenting an idealized final design abstract of its
+thought process.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Twootr Requirements"><div class="sect1" id="idm45816821197224">
+<h1>Twootr Requirements</h1>
+
+<p>The previous applications that you’ve seen in this book are all
+line-of-business applications that process data and documents.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="requirements" id="idm45816821195672"/> Twootr,
+on the other hand, is a user-facing application. When we talked to
+Joe about the requirements for his system, it became apparent that he had
+refined his ideas a bit. Each micro-blog from a user would be called a
+<em>twoot</em> and users would have a constant stream of twoots. In order to see
+what other users were twooting about, you would <em>follow</em> those users.</p>
+
+<p>Joe had brainstormed some different use cases—scenarios in which his users use the service.
+This is the functionality that we need to get working in order to help
+Joe achieve his goal of helping people communicate better:</p>
+
+<ul>
+<li>
+<p>Users log in to Twootr with a unique user ID and password.</p>
+</li>
+<li>
+<p>Each user has a set of other users that they follow.</p>
+</li>
+<li>
+<p>Users can send a twoot, and any followers who are logged in should
+immediately see the twoot.</p>
+</li>
+<li>
+<p>When users log in they should see all the twoots from their followers
+since they last logged in.</p>
+</li>
+<li>
+<p>Users should be able to delete twoots. Deleted twoots should no longer
+be visible to followers.</p>
+</li>
+<li>
+<p>Users should be able to log in from a mobile phone or a website.</p>
+</li>
+</ul>
+
+<p>The first step in explaining how we go about implementing a solution
+fit for Joe’s needs is to overview and outline the big-picture design
+choices that we face.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Design Overview"><div class="sect1" id="idm45816821185928">
+<h1>Design Overview</h1>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>If at any point you want to look at the source code for this
+chapter, you can<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="design overview" id="ix_Twoodes"/> look at the package <code>com.iteratrlearning.shu_book.chapter_06</code>
+in the book’s code repository.</p>
+
+<p>If you want to see the project in action, you should run the <code>TwootrServer</code> class
+from your IDE and then browser to <em>http://localhost:8000</em>.</p>
+</div>
+
+<p>If we pick out the last requirement and consider it first then it strikes us that,
+in contrast to many of the other systems in this book, we need to build a system that
+has many computers communicating together in some way. This is because our users
+may be running the software on different computers—for example, one user may load the
+Twootr website on their desktop at home and another may run Twootr on a mobile phone.
+How will these different user interfaces talk to each other?</p>
+
+<p>The most common approach taken by software developers trying to approach this kind of
+problem is to use the <em>client-server</em> model.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="design overview" data-tertiary="client-server model" id="idm45816821178504"/><a data-type="indexterm" data-primary="client-server model" id="idm45816821177224"/> In this approach to developing distributed
+applications we group our computers into two main groups. We have <em>clients</em> who request the use
+of some kind of service and <em>servers</em> who provide the service in question.<a data-type="indexterm" data-primary="servers" id="idm45816821175432"/> So in our
+case our clients would be something like a website or a mobile phone application that
+provides a UI through which we can communicate with the Twootr server. The server would
+process the majority of the business logic and send and receive twoots to different
+clients. This is shown in <a data-type="xref" href="#ch06_client_server_img">Figure 6-1</a>.</p>
+
+<figure><div id="ch06_client_server_img" class="figure">
+<img src="Images/rwsd_0601.png" alt="Client-server model" width="569" height="243"/>
+<h6><span class="label">Figure 6-1. </span>Client-server model</h6>
+</div></figure>
+
+<p>It was clear from the requirements and talking to Joe that a key part of this
+system working was the ability to immediately view twoots from users you follow.
+This means that the user interface would have to have
+the ability to receive twoots from the server as well as send them. There are,
+in big-picture terms, two different styles of communication that can be used
+to achieve this goal: pull-based or push-based.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" class="pagebreak-before less_space" data-pdf-bookmark="Pull-Based"><div class="sect2" id="idm45816821170648">
+<h2>Pull-Based</h2>
+
+<p>In a <em>pull-based communication</em> style the client makes a request to the server
+and queries it for information.<a data-type="indexterm" data-primary="pull-based communications" id="idm45816821168584"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="design overview" data-tertiary="pull-based communications" id="idm45816821167848"/> This style of communication is often called a point-to-point style or a
+request-response style of communication. This is a particularly common communication style,
+used by most of the web. When you load a website it will make an HTTP request
+to some server, pulling the page’s data. Pull-based communication styles
+are useful when the client controls what content to load. For example, if
+you’re browsing wikipedia you control which pages you’re interested in
+reading about or seeing next and the content responses are sent back to you.
+This is shown in <a data-type="xref" href="#ch06_pull_comms_img">Figure 6-2</a>.</p>
+
+<figure><div id="ch06_pull_comms_img" class="figure">
+<img src="Images/rwsd_0602.png" alt="Pull communications" width="811" height="153"/>
+<h6><span class="label">Figure 6-2. </span>Pull communications</h6>
+</div></figure>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Push-Based"><div class="sect2" id="idm45816821162792">
+<h2>Push-Based</h2>
+
+<p>Another approach is a <em>push-based communication</em> style.<a data-type="indexterm" data-primary="push-based communications" id="idm45816821160744"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="design overview" data-tertiary="push-based communications" id="idm45816821121160"/> This could be referred
+to as a reactive or event-driven communication approach. In this model, streams
+of events are emitted by a publisher and many subscribers listen to them. So instead of
+each communication being 1 to 1, they are 1 to many. This is a really useful
+model for systems where different components need to talk in
+terms of ongoing communication patterns of multiple events. For example, if
+you’re designing a stock market exchange then different companies want to see
+updated prices, or ticks, constantly rather than having to make a new request
+every time they want to see a new tick. This is shown in <a data-type="xref" href="#ch06_push_comms_img">Figure 6-3</a>.</p>
+
+<figure><div id="ch06_push_comms_img" class="figure">
+<img src="Images/rwsd_0603.png" alt="Push communications" width="811" height="153"/>
+<h6><span class="label">Figure 6-3. </span>Push communications</h6>
+</div></figure>
+
+<p>In the case of Twootr, an event-driven communication style seems most suitable
+for the application as it mainly consists of ongoing streams of twoots.<a data-type="indexterm" data-primary="events" data-secondary="event-driven communications" id="idm45816821116056"/> The events
+in this model would be the twoots themselves. We
+could definitely still design the application in terms of a request-response
+communication style. If we went down this route, however, the client would
+have to be regularly polling the server and asking with a request saying,
+“Hey, has anyone twooted since my last request?” In an event-driven style
+you simply subscribe to your events—i.e., follow another user—and the server
+pushes the twoots that you’re interested in to the client.</p>
+
+<p>This choice of an event-driven communication style influences the rest of
+the application design from here on in. When we write code that implements the
+main class of our application, we’ll be receiving events and sending them.
+How to receive and send events determines the patterns within our code and also
+how we write tests for our code.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="design overview" data-startref="ix_Twoodes" id="idm45816821113672"/></p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="From Events to Design"><div class="sect1" id="events_to_design">
+<h1>From Events to Design</h1>
+
+<p>Having said that, we’re building a client-server application—this
+chapter will focus on the server-side component rather than the client
+component.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="from events to design" id="ix_Twooevdes"/><a data-type="indexterm" data-primary="events" data-secondary="from events to design in Twootr (example)" id="ix_evntTw"/> In <a data-type="xref" href="ch07.xhtml#ch06_User_Interfaces">“User Interface”</a> you will see how a client can be developed
+for this codebase, and an example client is implemented in the code
+samples that go with this book. There are two reasons
+why we focus on the server-side component. First, this is a book on how to
+write software in Java, which is extensively used on the server side but not
+so widely on the client side. Second, the server side is where the business logic lies: the brains
+of the application. The client side is a very simple codebase that just needs to bind a UI to publishing and
+subscribing events.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Communication"><div class="sect2" id="idm45816821106248">
+<h2>Communication</h2>
+
+<p>Having established that we want to send and receive events, a common next
+step in our design would be to pick some kind of technology to send those
+messages to or from our client to our server.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="from events to design" data-tertiary="communication" id="idm45816821104568"/><a data-type="indexterm" data-primary="communication in Twootr (example)" id="idm45816821103320"/> There are lots of choices in this
+area, and here are a few routes that we could go down:</p>
+
+<ul>
+<li>
+<p>WebSockets are a modern, lightweight communications protocol to provide
+duplex (two-way) communication of events over a TCP stream. <a data-type="indexterm" data-primary="WebSockets" id="idm45816821101224"/>They are often used for event-driven communication between a web browser and a web server and is supported
+by recent browser releases.</p>
+</li>
+<li>
+<p>Hosted cloud-based message queues such as Amazon Simple Queue Service are an increasingly
+popular choice for broadcasting and receiving events.<a data-type="indexterm" data-primary="hosted cloud-based message queues" id="idm45816821099256"/><a data-type="indexterm" data-primary="message queues" data-secondary="hosted, cloud-based" id="idm45816821098536"/> A message queue is a way of
+performing inter-process communication by sending messages that can either be received
+by a single process of a group of processes.<a data-type="indexterm" data-primary="inter-process communication" id="idm45816821097288"/> The benefit of being
+a hosted service is that your company doesn’t have to expend effort on ensuring
+that they are reliably hosted.</p>
+</li>
+<li>
+<p>There are many good open source message transports or message queues, such as Aeron, ZeroMQ, and AMPQ
+implementations.<a data-type="indexterm" data-primary="open source message transports or message queues" id="idm45816821095368"/> Many of these open source projects avoid vendor lock-in, though
+they may limit your choice of client to something that can interact with a message
+queue.<a data-type="indexterm" data-primary="message queues" data-secondary="open source" id="idm45816821094424"/> For example, they wouldn’t be appropriate if your client is a web browser.</p>
+</li>
+</ul>
+
+<p>That’s far from an exhaustive list, and as you can see different technologies
+have different trade-offs and use cases. It might be the case that, for your own
+program, you pick one of these technologies. At a later date you decide that it’s not the right choice
+and want to pick another. It might be that you wish to choose different types of communications technologies for different types of connecting clients. Either way,
+making that decision at the beginning of your project and being forced to live
+with it forever isn’t a great architectural decision. Later in this chapter we
+will see how it’s possible to abstract away this architectural choice to avoid
+a big-mistake-up-front architectural decision.</p>
+
+<p>It’s even possibly the case that you may want to combine different communications
+approaches; for example, by using different communications approaches for different
+types of client. <a data-type="xref" href="#ch06_comms_styles">Figure 6-4</a> visualizes using WebSockets to communicate
+with a website <a data-type="indexterm" data-primary="Android push notifications" id="idm45816821090520"/>and Android push notifications for your Android mobile app.</p>
+
+<figure><div id="ch06_comms_styles" class="figure">
+<img src="Images/rwsd_0604.png" alt="Different communications approaches" width="812" height="344"/>
+<h6><span class="label">Figure 6-4. </span>Different communications approaches</h6>
+</div></figure>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="GUI"><div class="sect2" id="idm45816821087416">
+<h2>GUI</h2>
+
+<p>Coupling the choice of UI communications technology or your UI to your core
+server-side business logic <a data-type="indexterm" data-primary="user interfaces (UIs)" data-secondary="disadvantages of coupling to core server-side business logic" id="idm45816821085976"/><a data-type="indexterm" data-primary="coupling" data-secondary="of UI to core server-side business logic, disadvantages of" id="idm45816821084952"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="from events to design" data-tertiary="GUI" id="idm45816821083960"/><a data-type="indexterm" data-primary="GUI (graphical user interface) in Twootr (example)" id="idm45816821082744"/>also has several other disadvantages:</p>
+
+<ul>
+<li>
+<p>It is difficult and slow to test. Every test would have to test the system by
+publishing and subscribing to events running in parallel with the main server.</p>
+</li>
+<li>
+<p>It breaks the Single Responsibility Principle that we talked about in <a data-type="xref" href="ch02.xhtml#chapter_02">Chapter 2</a>.</p>
+</li>
+<li>
+<p>It assumes that we’re going to have a UI as our client. At first this might be
+a solid assumption for Twootr, but in the glorious future we might wish to have
+interactive artificially intelligent chat bots helping solve user problems. Or
+twooting cat GIFs at least!</p>
+</li>
+</ul>
+
+<p class="pagebreak-before">The takeaway from this is that we would be prudent to introduce some kind of
+abstraction to decouple the messaging for our UI from the core business logic.
+We need an interface through which we can send messages to the client and an
+interface through which we can receive messages from the client.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Persistence"><div class="sect2" id="idm45816821076072">
+<h2>Persistence</h2>
+
+<p>There are similar concerns at the other side of the application.<a data-type="indexterm" data-primary="persistence in Twootr (example)" id="idm45816821074744"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="from events to design" data-tertiary="persistence" id="idm45816821073896"/> How should we
+store the data for Twootr? We have many choices to pick from:</p>
+
+<ul>
+<li>
+<p>Plain-text files that we can index and search ourselves. It’s easy to see what has
+been logged and avoids a dependency on another application.</p>
+</li>
+<li>
+<p>A traditional SQL database. It’s well tested and understood, with strong querying support.</p>
+</li>
+<li>
+<p>A NoSQL database. There are a variety of different databases here with
+differing use cases, query languages, and data storage models.</p>
+</li>
+</ul>
+
+<p>We don’t really know which to pick at the beginning of our software project and our
+needs may evolve over time. We really want to decouple our choice of storage backend
+from the rest of our application. There’s a similarity between these different
+issues—both are about wanting to avoid coupling yourself to a specific technology.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="The Hexagonal Architecture"><div class="sect2" id="idm45816821068008">
+<h2>The Hexagonal Architecture</h2>
+
+<p>In fact, there’s a name for a more general architectural style here that helps us solve
+this problem.<a data-type="indexterm" data-primary="Hexagonal architecture" id="idm45816821066200"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="from events to design" data-tertiary="Hexagonal architecture" id="idm45816821065496"/> It’s called the <em>Ports and Adapters</em> or <em>Hexagonal</em> architecture and was
+<a href="https://oreil.ly/wJO17">originally introduced by Alister Cockburn</a>.
+The idea, shown in <a data-type="xref" href="#ch06_hexagonal">Figure 6-5</a>, is that the core of your application is the business
+logic that you’re writing, and you want to keep different implementation choices separate
+from this core logic.</p>
+
+<p>Whenever you have a technology-specific concern that you want to decouple from the core of your
+business logic, you introduce a <em>port</em>.<a data-type="indexterm" data-primary="ports and adapters" id="idm45816821060728"/> Events from the outside world arrive at and depart from
+your business logic core through a port.<a data-type="indexterm" data-primary="adapters" id="idm45816821059752"/> An <em>adapter</em> is the technology-specific implementation code that plugs into the port. For example, we may have a port for publishing and subscribing
+to UI events and a WebSocket adapter that talks to a web browser.</p>
+
+<figure><div id="ch06_hexagonal" class="figure">
+<img src="Images/rwsd_0605.png" alt="Hexagonal architecture" width="855" height="411"/>
+<h6><span class="label">Figure 6-5. </span>Hexagonal architecture</h6>
+</div></figure>
+
+<p>There are other components within a system for which you might want to create a port and adapter
+abstraction. One thing that might be relevant to an expanded Twootr implementation is a notification
+system. Informing users that they have a lot of twoots they might be interested in logging
+in and seeing would be a port. You may wish to implement this with an adapter for email or text messages.</p>
+
+<p>Another example port that comes to mind is authentication services.<a data-type="indexterm" data-primary="authentication" id="idm45816821055064"/> You may wish to start off with
+an adapter that just stores the usernames and passwords, later replacing it with an OAuth backend or
+tying it to some other system. In the Twootr implementation that this chapter describes we don’t
+go so far as to abstract out authentication. This is because our requirements and initial
+brainstorming session haven’t come up with a good reason why we might want different authentication
+adapters as of yet.</p>
+
+<p>You might be wondering how you separate what should be a port and what should be part of the core
+domain.<a data-type="indexterm" data-primary="ports and adapters" data-secondary="ports versus parts of core domain" id="idm45816821053176"/> At one extreme you could have hundreds or even thousands of ports in your application and nearly
+everything could be abstracted out of the core domain. At the other extreme you could have none at all.
+Where you decide your application should live on this sliding scale is a matter of personal judgment and
+circumstance: there are no rules.</p>
+
+<p>A good principle to help you decide might be to think of anything that
+is critical to the business problem that you’re solving as living inside the core of the application and
+anything that is technology specific or involves communicating with the outside world as living outside
+the core application.<a data-type="indexterm" data-primary="domains" data-secondary="ports versus parts of core domain" id="idm45816821051048"/> That is the principle that we’ve used in this application. So business logic is part
+of our core domain, but responsibility for persistence and event-driven communication with the UI are
+hidden behind ports.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="from events to design" data-startref="ix_Twooevdes" id="idm45816821049704"/><a data-type="indexterm" data-primary="events" data-secondary="from events to design in Twootr (example)" data-startref="ix_evntTw" id="idm45816821048488"/></p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Where to Begin"><div class="sect1" id="idm45816821047048">
+<h1>Where to Begin</h1>
+
+<p>We could proceed with outlining the design in more and more detail at this stage, designing more elaborate
+diagrams and deciding what functionality should live in what class.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="where to begin" id="ix_Twoobgn"/> We’ve never found that to be a terribly
+productive approach to writing software. It tends to result in lots of assumptions and design decisions
+being pushed down into little boxes in an architecture diagram that turn out to be not so little.
+Diving straight into coding with no thought to overall design is
+unlikely to result in the best software, either.<a data-type="indexterm" data-primary="software development" data-secondary="just enough upfront design" id="idm45816821043192"/><a data-type="indexterm" data-primary="design" data-secondary="just enough upfront design in software development" id="idm45816821042280"/> Software development needs <em>just enough upfront design</em> to
+avoid it collapsing into chaos, but architecture without coding enough bits to make it real can quickly
+become sterile and unrealistic.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>The approach of pushing all your design work before you start writing your code is called <em>Big Design Up
+Front</em>, or <em>BDUF</em>.<a data-type="indexterm" data-primary="design" data-secondary="big design up front (BDUF)" id="idm45816821038376"/><a data-type="indexterm" data-primary="big design up front (BDUF)" id="idm45816821037400"/> BDUF is often contrasted with the Agile, or iterative, development methodologies that have
+become more popular over the last 10–20 years.<a data-type="indexterm" data-primary="Agile, or iterative, development methodologies" id="idm45816821036424"/><a data-type="indexterm" data-primary="iterative development methodologies" id="idm45816821035720"/> Since we find iterative approaches to be more effective,
+we’ve described the design process over the next couple of sections in an iterative manner.</p>
+</div>
+
+<p>In the previous chapter you saw an introduction to TDD—test-driven development—so by now you should be<a data-type="indexterm" data-primary="test-driven development (TDD)" data-secondary="starting Twootr (example) with test class" id="idm45816821034008"/>
+familiar with the fact that it’s a good idea to start writing our project with a test class, <code>TwootrTest</code>.
+So let’s start with a test that our user can log in: <code>shouldBeAbleToAuthenticateUser()</code>.
+In this test a user will log in and be correctly authenticated.<a data-type="indexterm" data-primary="authentication" data-secondary="testing for Twootr (example)" id="idm45816821031912"/> A skeleton for this method can be seen in
+<a data-type="xref" href="#shouldBeAbleToAuthenticateUser_skeleton">Example 6-1</a>.</p>
+<div id="shouldBeAbleToAuthenticateUser_skeleton" data-type="example">
+<h5><span class="label">Example 6-1. </span>Skeleton for shouldBeAbleToAuthenticateUser()</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nd">@Test</code>
+<code class="kd">public</code> <code class="kt">void</code> <code class="nf">shouldBeAbleToAuthenticateUser</code><code class="o">()</code>
+<code class="o">{</code>
+    <code class="c1">// receive logon message for valid user</code>
+
+    <code class="c1">// logon method returns new endpoint.</code>
+
+    <code class="c1">// assert that endpoint is valid</code>
+<code class="o">}</code></pre></div>
+
+<p>In order to implement the test we need to create a <code>Twootr</code> class and have a way of modeling the login
+event.<a data-type="indexterm" data-primary="on prefix for methods" id="idm45816821023224"/><a data-type="indexterm" data-primary="events" data-secondary="methods corresponding to, beginning with on" id="idm45816821022472"/><a data-type="indexterm" data-primary="methods" data-secondary="corresponding to events, beginning with on" id="idm45816821021496"/> As a matter of convention in this module any method that corresponds to an event happening
+will have the prefix <code>on</code>. So, for example, we’re going to create a method here called <code>onLogon</code>. But
+what is the signature of this method—what information does it need to take as parameters and what
+should it reply with?</p>
+
+<p>We’ve already made the architectural decision to separate our UI communications layer with a
+port.<a data-type="indexterm" data-primary="ports and adapters" data-secondary="separating UI communication layer with a port" id="idm45816821018920"/> So here we need to make a decision as to how to define the API. We need a way of emitting events
+to a user—for example, that another user who the user is following has twooted.<a data-type="indexterm" data-primary="events" data-secondary="sending to and receiving from users in Twootr (example)" id="idm45816821017592"/> We also need a way
+of receiving events from a given user. In Java we can just use a method call to represent the events.
+So whenever a UI adapter wants to publish an event to <code>Twootr</code>, it will call a method on some object
+owned by the core of the system. Whenever <code>Twootr</code> wants to publish an event, it will call a method on some
+object owned by the adapter.</p>
+
+<p>But the goal of ports and adapters is that we decouple the core from a specific adapter implementation.<a data-type="indexterm" data-primary="adapters" data-secondary="decoupling core from specific adapter implementation" id="idm45816821005240"/>
+This means we need some way of abstracting over different adapters—an interface.<a data-type="indexterm" data-primary="classes" data-secondary="adapter" id="idm45816821004104"/><a data-type="indexterm" data-primary="interfaces" data-secondary="adapter" id="idm45816821003160"/> We could have chosen
+to use an abstract class at this point in time.<a data-type="indexterm" data-primary="abstract classes" id="idm45816821002088"/> It would have worked, but interfaces are more flexible
+because adapter classes can implement more than one interface. Also by using an interface we’re discouraging
+our future selves from the devilish temptation to add some state into the API. Introducing state in an
+API is bad because different adapter implementations may want to represent their internal state in a different
+way, so putting state into the API could result in coupling.</p>
+
+<p>We don’t need to use an interface for the object where user events are published as there will only be a single
+implementation in the core—we can just use a regular class.
+You can see what our approach looks like visually in <a data-type="xref" href="#ch06_events_out_in">Figure 6-6</a>.
+Of course we need a name, or indeed a pair of names,
+in order to represent this API for sending and receiving events. There are lots of choices here; in practice,
+anything that made it clear that these were APIs for sending and receiving events would do well.<a data-type="indexterm" data-primary="APIs" data-secondary="for sending and receiving events" id="idm45816820999096"/></p>
+
+<p>We’ve gone
+with <code>SenderEndPoint</code> for the class that sends events to the core and <code>ReceiverEndPoint</code> for the interface that
+receives events from the core.<a data-type="indexterm" data-primary="ReceiverEndPoint interface" id="idm45816820996872"/><a data-type="indexterm" data-primary="SenderEndPoint class" id="idm45816820996152"/> We could in fact flip the sender and receiver designations around to work from the
+perspective of the user or the adapter. This ordering has the advantage that we’re thinking core first, adapters
+second.</p>
+
+<figure><div id="ch06_events_out_in" class="figure">
+<img src="Images/rwsd_0606.png" alt="Events to code" width="1097" height="374"/>
+<h6><span class="label">Figure 6-6. </span>Events to code</h6>
+</div></figure>
+
+<p>Now that we know the route we’re going down we can write the <code>shouldBeAbleToAuthenticateUser()</code> test. This just needs
+to test that when we log on to the system with a valid username that the user logs on. What does logging on mean here?
+Well, we want to return a valid <code>SenderEndPoint</code> object, as that is the object returned to the UI in order to represent
+the user who has just logged on. We then need to add a method to our <code>Twootr</code> class in order to represent the
+logon event happening and allow the test to compile.<a data-type="indexterm" data-primary="logon" data-secondary="onLogon method" id="idm45816820990952"/><a data-type="indexterm" data-primary="onLogon method" id="idm45816820970648"/> The signature of our implementation is shown in
+<a data-type="xref" href="#onLogon_1_definition">Example 6-2</a>. Since TDD encourages us to do the minimal implementation work in order to get a test to pass
+and then evolve the implementation, we’ll just instantiate the <code>SenderEndPoint</code> object and return it from our method.</p>
+<div id="onLogon_1_definition" data-type="example">
+<h5><span class="label">Example 6-2. </span>First onLogon signature</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">SenderEndPoint</code> <code class="nf">onLogon</code><code class="o">(</code><code class="n">String</code> <code class="n">userId</code><code class="o">,</code> <code class="n">ReceiverEndPoint</code> <code class="n">receiver</code><code class="o">);</code></pre></div>
+
+<p>Now that we’ve got a nice green bar we need to write another test—<code>shouldNotAuthenticateUnknownUser()</code>. This
+will ensure that we don’t allow a user who we don’t know about to log on to the system.<a data-type="indexterm" data-primary="authentication" data-secondary="failing for unknown users" id="idm45816820962472"/> When writing this
+test, an interesting issue crops up. How do we model the failure scenario here? We don’t want to return a
+<code>SenderEndPoint</code> here, but we do need a way of indicating to our UI that the logon has failed. One approach
+would be to use exceptions, which we described in <a data-type="xref" href="ch03.xhtml#chapter_03">Chapter 3</a>.</p>
+
+<p>Exceptions could work here, but arguably it’s a bit of an abuse of the concept.<a data-type="indexterm" data-primary="logon" data-secondary="failing for unknown users" id="idm45816820958344"/> Failing to logon isn’t really
+an exceptional scenario—it’s a thing that happens all the time. People typo their username, they typo their
+passwords, and they can sometimes even go to the wrong website! An alternative, and common, approach would be to
+return the
+<code>SenderEndPoint</code> if the logon succeeds, and <a data-type="indexterm" data-primary="nulls" data-secondary="returning null for failed logon" id="idm45816820956600"/>return <code>null</code> if it fails. This is a flawed approach for several
+reasons:</p>
+
+<ul>
+<li>
+<p>If another developer uses the value without checking that it isn’t <code>null</code>, they get a <code>NullPointerException</code>.<a data-type="indexterm" data-primary="NullPointerException" id="idm45816820945528"/>
+These kinds of bugs are incredibly common mistakes for Java developers to make.</p>
+</li>
+<li>
+<p>There is no compile-time support in order to help avoid these kind of issues. They crop up at runtime.</p>
+</li>
+<li>
+<p>There is no way to tell from looking at the signature of a method whether it is deliberately returning
+a <code>null</code> value to model failure or whether there’s just a bug in the code.</p>
+</li>
+</ul>
+
+<p>A better approach that can help here is to use the <code>Optional</code> data type.<a data-type="indexterm" data-primary="Optional type" id="idm45816820941000"/> This was introduced in Java 8 and
+models values that may be present or absent. It’s a generic type and can be thought of a box where a value may or
+may not lurk inside—a collection with only one or no values inside. Using <code>Optional</code> as a return type
+makes it explicit what happens when the method fails to return its value—it returns the empty <code>Optional</code>.
+We’ll talk about how to create and use the <code>Optional</code> type throughout this chapter. <a data-type="indexterm" data-primary="onLogon method" data-secondary="refactoring with Optional return type" id="idm45816820938552"/>So we now refactor our
+<code>onLogon</code> method to have the signature in <a data-type="xref" href="#onLogon_2_definition">Example 6-3</a>.</p>
+<div id="onLogon_2_definition" data-type="example" class="pagebreak-before less_space">
+<h5><span class="label">Example 6-3. </span>Second onLogon signature</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">Optional</code><code class="o">&lt;</code><code class="n">SenderEndPoint</code><code class="o">&gt;</code> <code class="nf">onLogon</code><code class="o">(</code><code class="n">String</code> <code class="n">userId</code><code class="o">,</code> <code class="n">ReceiverEndPoint</code> <code class="n">receiver</code><code class="o">);</code></pre></div>
+
+<p>We also need to modify the <code>shouldBeAbleToAuthenticateUser()</code> test in order to ensure that it checks that the
+<code>Optional</code> value is present.<a data-type="indexterm" data-primary="passwords" id="idm45816820908808"/> Our next test is <code>shouldNotAuthenticateUserWithWrongPassword()</code> and is shown in
+<a data-type="xref" href="#shouldNotAuthenticateUserWithWrongPassword_definition">Example 6-4</a>. This test ensures that the user who is logging
+in has the correct password for their logon to work.<a data-type="indexterm" data-primary="onLogon method" data-secondary="storing user names and passwords in a Map" id="idm45816820906712"/><a data-type="indexterm" data-primary="maps" data-secondary="storing user names and passwords in a Map" id="idm45816820905736"/> That means our <code>onLogon()</code> method needs to not only
+store the names of our users, but also their passwords in a <code>Map</code>.</p>
+<div id="shouldNotAuthenticateUserWithWrongPassword_definition" data-type="example">
+<h5><span class="label">Example 6-4. </span>shouldNotAuthenticateUserWithWrongPassword</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="nd">@Test</code>
+    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">shouldNotAuthenticateUserWithWrongPassword</code><code class="o">()</code>
+    <code class="o">{</code>
+        <code class="kd">final</code> <code class="n">Optional</code><code class="o">&lt;</code><code class="n">SenderEndPoint</code><code class="o">&gt;</code> <code class="n">endPoint</code> <code class="o">=</code> <code class="n">twootr</code><code class="o">.</code><code class="na">onLogon</code><code class="o">(</code>
+            <code class="n">TestData</code><code class="o">.</code><code class="na">USER_ID</code><code class="o">,</code> <code class="s">"bad password"</code><code class="o">,</code> <code class="n">receiverEndPoint</code><code class="o">);</code>
+
+        <code class="n">assertFalse</code><code class="o">(</code><code class="n">endPoint</code><code class="o">.</code><code class="na">isPresent</code><code class="o">());</code>
+    <code class="o">}</code></pre></div>
+
+<p>A simple approach for storing the data in this case would have been to use a <code>Map&lt;String, String&gt;</code>, where
+the key is the user ID and the value is the password. In reality, though, the concept of a user is important to
+our domain. We’ve got stories that refer to users and a lot of the system’s functionality is related to users
+talking to each other.<a data-type="indexterm" data-primary="users" data-secondary="User domain class in Twootr (example)" id="idm45816820840152"/> It’s time for a <code>User</code> domain class to be added to our implementation. Our data
+structure will be modified to a <code>Map&lt;String, User&gt;</code>, where the key is the user’s ID and the value is the <code>User</code> object
+for the user in question.</p>
+
+<p>A common criticism about TDD is that it discourages the design of software.<a data-type="indexterm" data-primary="design" data-secondary="test-driven development discouraging" id="idm45816820837368"/> That it just leads you
+to write tests and you end up with an anaemic domain model and have to just rewrite your implementation at some point.<a data-type="indexterm" data-primary="test-driven development (TDD)" data-secondary="discouraging design and leading to anaemic domain model" id="idm45816820836136"/><a data-type="indexterm" data-primary="anaemic domain model" id="idm45816820835128"/><a data-type="indexterm" data-primary="domains" data-secondary="anaemic domain model" id="idm45816820834456"/>
+By an <em>anaemic domain model</em> we mean a model where the domain objects don’t have much business logic and it’s all scattered
+across different methods in a procedural style.
+That’s certainly a fair critique of the way that TDD can sometimes be practiced.<a data-type="indexterm" data-primary="domain classes" data-secondary="spotting the right time to add" id="idm45816820832728"/> Spotting the right point in time
+to add a domain class or make some concept real in code is a subtle thing. If the concept is something that your
+user stories are always referring to, though, you should really have something in your problem domain representing it.</p>
+
+<p>There are some clear anti-patterns that you can spot, however.<a data-type="indexterm" data-primary="anti-patterns" data-secondary="indicating need for a domain class" id="idm45816820831112"/> For example, if you’ve built different lookup structures
+with the same key, that you add to at the same time but relate to different values, then you’re missing a domain class.
+So if we track the set of followers and the password for our user and we have two <code>Map</code> objects
+from the user ID, one onto followers and one onto a password, then there’s a concept in the problem domain missing. We
+actually introduced our <code>User</code> class here with only a single value that we cared about—the password—but an
+understanding of the problem domain tells us that users are important so we weren’t being overly premature.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="where to begin" data-startref="ix_Twoobgn" id="idm45816820828520"/></p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>From this point onward in the chapter we’ll use the word “user” to represent the generic concept of a user,<a data-type="indexterm" data-primary="users" data-secondary="user and User representations" id="idm45816820826168"/> and
+the stylized <code>User</code> to represent the domain class. Similarly, we use Twootr to refer to the system as a whole, and
+<code>Twootr</code> to refer to the class that we’re developing.</p>
+</div>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Passwords and Security"><div class="sect1" id="idm45816821046136">
+<h1>Passwords and Security</h1>
+
+<p>So far we’ve avoid talking about security at all. <a data-type="indexterm" data-primary="Twootr (example)" data-secondary="passwords and security" id="ix_Twoopwdsec"/>In fact, not talking about security concerns and hoping
+that they will just go away is the technology industries’ favorite security strategy.<a data-type="indexterm" data-primary="security" id="idm45816820821016"/> Explaining how to
+write secure code isn’t a primary, or even secondary, objective of this book; however, Twootr does use and
+store passwords for authentication so it’s worth thinking a little about this topic.<a data-type="indexterm" data-primary="passwords" data-secondary="storing in Twootr (example)" id="idm45816820819992"/></p>
+
+<p>The simplest approach to storing passwords is to treat them like any other <code>String</code>, known as storing them
+<em>plain text</em>. <a data-type="indexterm" data-primary="plain text, passwords stored in" id="idm45816820817816"/>This is bad practice in general as it means anyone who has access to your database has access
+to the passwords of all your users. A malicious person or organization can, and in many cases has, used
+plain-text passwords in order to log in to your system and pretend to be the users. Additionally, many people
+use the same password for multiple different services. If you don’t believe us, ask any of your elderly
+relatives!</p>
+
+<p>In order to avoid anyone with access to your database just reading the passwords, you can apply a
+<em>cryptographic hash function</em> to the password.<a data-type="indexterm" data-primary="cryptographic hash functions" id="idm45816820815528"/><a data-type="indexterm" data-primary="security" data-secondary="applying cryptographic hash functions to passwords" id="idm45816820814760"/> This is a function that takes some arbitrarily sized input
+string and converts it to some output, called a <em>digest</em>.<a data-type="indexterm" data-primary="digests" id="idm45816820813080"/> Cryptographic hash functions are deterministic,
+so that if you want to hash the same input again you can get the same result. This is essential in order
+to be able to check the hashed password later. Another key property is that while it should be quick to
+go from input to digest, the reverse function should take so long or use so much memory that it is
+impractical for an attacker to reverse the digest.</p>
+
+<p>The design of cryptographic hash functions is an active research topic on which governments and companies spend
+a lot of money. <a data-type="indexterm" data-primary="cryptographic hash functions" data-secondary="Bouncy Castle Java library for" id="idm45816820811048"/>They are hard to implement correctly so you should never write your own—Twootr uses
+an established <a data-type="indexterm" data-primary="Bouncy Castle library" id="idm45816820809848"/>Java library called <a href="https://www.bouncycastle.org/">Bouncy Castle</a>.
+This is open source and has undergone heavy peer review. Twootr
+uses the <em>Scrypt</em> hashing function, which is a modern algorithm specifically designed for storing passwords.<a data-type="indexterm" data-primary="KeyGenerator class" id="idm45816820807816"/><a data-type="indexterm" data-primary="Scrypt hashing function" id="idm45816820807112"/>
+<a data-type="xref" href="#KeyGenerator_definition">Example 6-5</a> shows an example of the code.</p>
+<div id="KeyGenerator_definition" data-type="example" class="pagebreak-before less_space">
+<h5><span class="label">Example 6-5. </span>KeyGenerator</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">class</code> <code class="nc">KeyGenerator</code> <code class="o">{</code>
+    <code class="kd">private</code> <code class="kd">static</code> <code class="kd">final</code> <code class="kt">int</code> <code class="n">SCRYPT_COST</code> <code class="o">=</code> <code class="mi">16384</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="kd">static</code> <code class="kd">final</code> <code class="kt">int</code> <code class="n">SCRYPT_BLOCK_SIZE</code> <code class="o">=</code> <code class="mi">8</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="kd">static</code> <code class="kd">final</code> <code class="kt">int</code> <code class="n">SCRYPT_PARALLELISM</code> <code class="o">=</code> <code class="mi">1</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="kd">static</code> <code class="kd">final</code> <code class="kt">int</code> <code class="n">KEY_LENGTH</code> <code class="o">=</code> <code class="mi">20</code><code class="o">;</code>
+
+    <code class="kd">private</code> <code class="kd">static</code> <code class="kd">final</code> <code class="kt">int</code> <code class="n">SALT_LENGTH</code> <code class="o">=</code> <code class="mi">16</code><code class="o">;</code>
+
+    <code class="kd">private</code> <code class="kd">static</code> <code class="kd">final</code> <code class="n">SecureRandom</code> <code class="n">secureRandom</code> <code class="o">=</code> <code class="k">new</code> <code class="n">SecureRandom</code><code class="o">();</code>
+
+    <code class="kd">static</code> <code class="kt">byte</code><code class="o">[]</code> <code class="nf">hash</code><code class="o">(</code><code class="kd">final</code> <code class="n">String</code> <code class="n">password</code><code class="o">,</code> <code class="kd">final</code> <code class="kt">byte</code><code class="o">[]</code> <code class="n">salt</code><code class="o">)</code> <code class="o">{</code>
+        <code class="kd">final</code> <code class="kt">byte</code><code class="o">[]</code> <code class="n">passwordBytes</code> <code class="o">=</code> <code class="n">password</code><code class="o">.</code><code class="na">getBytes</code><code class="o">(</code><code class="n">UTF_16</code><code class="o">);</code>
+        <code class="k">return</code> <code class="n">SCrypt</code><code class="o">.</code><code class="na">generate</code><code class="o">(</code>
+            <code class="n">passwordBytes</code><code class="o">,</code>
+            <code class="n">salt</code><code class="o">,</code>
+            <code class="n">SCRYPT_COST</code><code class="o">,</code>
+            <code class="n">SCRYPT_BLOCK_SIZE</code><code class="o">,</code>
+            <code class="n">SCRYPT_PARALLELISM</code><code class="o">,</code>
+            <code class="n">KEY_LENGTH</code><code class="o">);</code>
+    <code class="o">}</code>
+
+    <code class="kd">static</code> <code class="kt">byte</code><code class="o">[]</code> <code class="nf">newSalt</code><code class="o">()</code> <code class="o">{</code>
+        <code class="kd">final</code> <code class="kt">byte</code><code class="o">[]</code> <code class="n">salt</code> <code class="o">=</code> <code class="k">new</code> <code class="kt">byte</code><code class="o">[</code><code class="n">SALT_LENGTH</code><code class="o">];</code>
+        <code class="n">secureRandom</code><code class="o">.</code><code class="na">nextBytes</code><code class="o">(</code><code class="n">salt</code><code class="o">);</code>
+        <code class="k">return</code> <code class="n">salt</code><code class="o">;</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre></div>
+
+<p>A problem that many hashing schemes have is that even though they are very computationally expensive to compute,
+it may be feasible<a data-type="indexterm" data-primary="cryptographic hash functions" data-secondary="brute forcing reversal of" id="idm45816820772504"/> to compute a reversal of the hashing function through brute forcing all the keys up to a
+certain length or through a <a href="https://oreil.ly/0y6Pc">rainbow table</a>. <a data-type="indexterm" data-primary="rainbow table" id="idm45816820770776"/>In order to guard
+against this possibility, we
+use a salt. <em>Salts</em> are extra randomly generated input that is added to a cryptographic hashing function.<a data-type="indexterm" data-primary="salts" id="idm45816820648008"/>
+By adding some extra input to each password that the user wouldn’t enter, but is randomly generated, we stop
+someone from being able to create a reverse lookup of the hashing function. They would need to know the
+hashing function and the salt.</p>
+
+<p>Now we’ve mentioned a few basic security concepts here around the idea of storing passwords. In reality,
+keeping a system secure is an ongoing effort. Not only do you need to worry about the security of data at
+rest, but also data in flight. When someone connects to your server from a client, it needs to transmit the
+user’s password over a network connection. If a malicious attacker intercepts this connection, they
+could take a copy of the password and use it to do the most dastardly thing possible in 140 characters!</p>
+
+<p>In the case of Twootr, we receive a login message via WebSockets.<a data-type="indexterm" data-primary="security" data-secondary="securing WebSocket connections" id="idm45816820645704"/> This means that for our application to
+be secure the WebSocket connection needs to be secure against a man-in-the-middle attack. <a data-type="indexterm" data-primary="man-in-the-middle attacks, securing WebSockets against" id="idm45816820644488"/><a data-type="indexterm" data-primary="WebSockets" data-secondary="securing against man-in-the-middle attacks" id="idm45816820643720"/>There are
+several ways to do this; the most common and simplest is to use <em>Transport Layer Security</em> (TLS), which<a data-type="indexterm" data-primary="Transport Layer Security (TLS)" id="idm45816820642232"/>
+is a cryptographic protocol that aims to provide privacy and data integrity to data sent out over its
+connection.</p>
+
+<p>Organizations with a mature understanding of security build regular reviews and analysis into the design of
+their software. <a data-type="indexterm" data-primary="security" data-secondary="building regular reviews into software design" id="idm45816820640680"/>For example, they might periodically bring in outside consultants or an internal team to
+attempt to penetrate a system’s security defenses by playing the role of a attacker.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="passwords and security" data-startref="ix_Twoopwdsec" id="idm45816820639352"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Followers and Twoots"><div class="sect1" id="idm45816820823720">
+<h1>Followers and Twoots</h1>
+
+<p>The next requirement that we need to address is following users. You can think about designing software in
+one of two different ways.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="followers and twoots" id="ix_TwooFT"/><a data-type="indexterm" data-primary="design" data-secondary="bottom-up approach" id="idm45816820635448"/><a data-type="indexterm" data-primary="software development" data-secondary="bottom-up approach" id="idm45816820634504"/><a data-type="indexterm" data-primary="bottom-up approach to software development" id="idm45816820633560"/> One of those approaches, called <em>bottom-up</em>, starts with designing
+the core of the application—data storage models or relationships between core domain objects—works its
+way up to building the functionality of the system. A bottom-up way of looking at following between users
+would be to decide how to model the relationship between users that following entails. It’s clearly a many-to-many relationship since each user can have many followers and a user can follow many other users. You would
+then proceed to layer on top of this data model the business functionality that is required to keep users
+happy.</p>
+
+<p>The other approach is a <em>top-down</em> approach to software development.<a data-type="indexterm" data-primary="design" data-secondary="top-down approach" id="idm45816820630936"/><a data-type="indexterm" data-primary="software development" data-secondary="top-down approach" id="idm45816820629960"/><a data-type="indexterm" data-primary="top-down approach to software development" id="idm45816820629016"/> This starts with user requirements
+or stories and tries to develop the behavior or functionality <span class="keep-together">needed to</span> implement these stories, slowly driving
+down to the concerns of storage or data modeling. For example, we would start with the API for receiving an
+event to follow another user and then design whatever storage mechanism is needed for this behavior, slowly
+working from API to business logic to persistence.</p>
+
+<p>It is hard to say that one approach is better in all
+circumstances and that the other should always be avoided; however, for the line-of-business type of applications
+that Java is very popular for writing our experience is that a top-down approach works best. <a data-type="indexterm" data-primary="top-down approach to software development" data-secondary="benefits and limitations of" id="idm45816820626408"/>This is because
+the temptation when you start with data modeling or designing the core domain of your software is that you
+can expend unncessary time on features that aren’t necessary for your software to work. The downside of a top-down
+approach is that sometimes as you build out more requirements and stories your initial design can be
+unsatisfactory. This means that you need to take a vigilant and iterative approach to software design, where you
+constantly improve it over time.</p>
+
+<p>In this chapter of the book we will show you a top-down approach. This means that we start with a test to
+prove out the<a data-type="indexterm" data-primary="users" data-secondary="following in Twootr (example)" id="idm45816820623976"/> functionality of following users, shown in <a data-type="xref" href="#shouldFollowValidUser_definition">Example 6-6</a>. In this case
+our UI will be sending us a event to indicate that a user wants to follow another user, so our test will call the
+<code>onFollow</code> method of our end point with the unique ID of the user to follow as an argument.<a data-type="indexterm" data-primary="onFollow method" id="idm45816820621560"/> Of course, this
+method doesn’t yet exist—so we need to declare it in the <code>Twootr</code> class in order to get the code to compile.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Modeling Errors"><div class="sect2" id="idm45816820620280">
+<h2>Modeling Errors</h2>
+
+<p>The test in <a data-type="xref" href="#shouldFollowValidUser_definition">Example 6-6</a> just covers the golden path of the following operation, so we need to ensure that the operation has
+succeeded.<a data-type="indexterm" data-primary="errors" data-secondary="modeling in following users in Twootr (example)" id="idm45816820617592"/><a data-type="indexterm" data-primary="test-driven development (TDD)" data-secondary="modeling errors in following users in Twootr" id="idm45816820616616"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="followers and twoots" data-tertiary="modeling errors" id="idm45816820615624"/></p>
+<div id="shouldFollowValidUser_definition" data-type="example">
+<h5><span class="label">Example 6-6. </span>shouldFollowValidUser</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="nd">@Test</code>
+    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">shouldFollowValidUser</code><code class="o">()</code>
+    <code class="o">{</code>
+        <code class="n">logon</code><code class="o">();</code>
+
+        <code class="kd">final</code> <code class="n">FollowStatus</code> <code class="n">followStatus</code> <code class="o">=</code> <code class="n">endPoint</code><code class="o">.</code><code class="na">onFollow</code><code class="o">(</code><code class="n">TestData</code><code class="o">.</code><code class="na">OTHER_USER_ID</code><code class="o">);</code>
+
+        <code class="n">assertEquals</code><code class="o">(</code><code class="n">SUCCESS</code><code class="o">,</code> <code class="n">followStatus</code><code class="o">);</code>
+    <code class="o">}</code></pre></div>
+
+<p>For now we only have a success scenario,
+but there are other potential scenarios to think about. What if the user ID passed as an argument doesn’t
+correspond to an actual user? What if the user is already following the user that they’ve asked to follow?
+We need a way of modeling the different results or statuses that this method can return.<a data-type="indexterm" data-primary="exceptions" data-secondary="throwing in failures to follow valid users in Twootr" id="idm45816820600520"/> As with everything
+in life, there’s a proliferation of different choices that we can make. Decisions, decisions, decisions…</p>
+
+<p>One approach would be to throw an exception when the operation returns and return void when it succeeds.
+This could be a completely reasonable choice. It may not fall foul of our idea that exceptions should only
+be used for exceptional control flow, in the sense that a well-designed UI would avoid these scenarios cropping
+up under normal circumstances. Let’s consider some alternatives, though, that treat the status like a value,
+rather than using exceptions at all.</p>
+
+<p>One simple approach would be using a <code>boolean</code> value—<code>true</code> to indicate success and <code>false</code> to indicate failure.<a data-type="indexterm" data-primary="boolean values indicating success or failure" id="idm45816820589352"/>
+That’s a fair choice in situations where an operation can either succeed or fail, and it would only fail for
+a single reason. The problem with the <code>boolean</code> approach in situations that have multiple failure scenarios is that
+you don’t know <em>why</em> it failed.</p>
+
+<p>Alternatively, we could use simple <code>int</code> constant values<a data-type="indexterm" data-primary="constants" data-secondary="in int-based status codes" id="idm45816820586376"/><a data-type="indexterm" data-primary="int-based status codes" id="idm45816820585400"/> to represent each of the different failure scenarios,
+but as discussed in <a data-type="xref" href="ch03.xhtml#chapter_03">Chapter 3</a> when introducing the concept of exceptions, this is an error prone, type unsafe,
+and poor readability + maintainability approach. <a data-type="indexterm" data-primary="enum types" id="idm45816820583656"/><a data-type="indexterm" data-primary="constants" data-secondary="in enum types" id="idm45816820582984"/>There is an alternative here for statuses that is type safe
+and offers better documentation: <em>enum</em> types. An <code>enum</code> is a list of predefined constant alternatives that
+constitutes a valid type. So anywhere that you can use an <code>interface</code> or a <code>class</code> you can use an <code>enum</code>.</p>
+
+<p>But enums are better than <code>int</code>-based status codes in several ways. If a method returns you an <code>int</code>
+you don’t necessarily know what values the <code>int</code> could contain. It’s possible to add javadoc to
+describe what values it can take, and it’s possible to define constants (static final fields), but these are
+really just lipstick on a pig. Enums can only contain the list of values that are defined by the <code>enum</code>
+declaration. Enums in Java can also have instance fields and methods defined on them in order to add useful
+functionality, though we won’t be using that feature in this case.<a data-type="indexterm" data-primary="enum types" data-secondary="FollowStatus in Twootr (example)" id="idm45816820577016"/> You can see the declaration of our follower
+status in <a data-type="xref" href="#FollowStatus_definition">Example 6-7</a>.</p>
+<div id="FollowStatus_definition" data-type="example">
+<h5><span class="label">Example 6-7. </span>FollowStatus</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">enum</code> <code class="n">FollowStatus</code> <code class="o">{</code>
+    <code class="n">SUCCESS</code><code class="o">,</code>
+    <code class="n">INVALID_USER</code><code class="o">,</code>
+    <code class="n">ALREADY_FOLLOWING</code>
+<code class="o">}</code></pre></div>
+
+<p>Since TDD drives us to write the simplest implementation to get a test passing, then <code>onFollow</code> method at this
+point should simply return the <code>SUCCESS</code> value.</p>
+
+<p>We’ve got a couple of other different scenarios to think about
+for our <code>following()</code> operation. <a data-type="xref" href="#shouldNotDuplicateFollowValidUser_definition">Example 6-8</a> shows the test that drives our
+thinking around duplicate users.<a data-type="indexterm" data-primary="test-driven development (TDD)" data-secondary="in Twootr (example)" data-tertiary="not following duplicate users" id="idm45816820562696"/> In order to implement it we need to add a set of user IDs to our <code>User</code>
+class to represent the set of users that this user is following and ensure that the addition of another user
+isn’t a duplicate.<a data-type="indexterm" data-primary="Set interface" id="idm45816820460584"/> This is really easy with the Java collections API. There’s already a <code>Set</code> interface
+that defines unique elements, and the <code>add</code> method will return <code>false</code> if the element that you’re trying to
+add is already a member of the <code>Set</code>.</p>
+<div id="shouldNotDuplicateFollowValidUser_definition" data-type="example">
+<h5><span class="label">Example 6-8. </span>shouldNotDuplicateFollowValidUser</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="nd">@Test</code>
+    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">shouldNotDuplicateFollowValidUser</code><code class="o">()</code>
+    <code class="o">{</code>
+        <code class="n">logon</code><code class="o">();</code>
+
+        <code class="n">endPoint</code><code class="o">.</code><code class="na">onFollow</code><code class="o">(</code><code class="n">TestData</code><code class="o">.</code><code class="na">OTHER_USER_ID</code><code class="o">);</code>
+
+        <code class="kd">final</code> <code class="n">FollowStatus</code> <code class="n">followStatus</code> <code class="o">=</code> <code class="n">endPoint</code><code class="o">.</code><code class="na">onFollow</code><code class="o">(</code><code class="n">TestData</code><code class="o">.</code><code class="na">OTHER_USER_ID</code><code class="o">);</code>
+        <code class="n">assertEquals</code><code class="o">(</code><code class="n">ALREADY_FOLLOWING</code><code class="o">,</code> <code class="n">followStatus</code><code class="o">);</code>
+    <code class="o">}</code></pre></div>
+
+<p>The test <code>shouldNotFollowInValidUser()</code> asserts that if the user isn’t valid, then the result status will indicate
+that. It follows a similar format to <code>shouldNotDuplicateFollowValidUser()</code>.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Twooting"><div class="sect2" id="idm45816820619656">
+<h2>Twooting</h2>
+
+<p>Now we’ve laid the foundations let’s get to the exciting bit of the product—twooting!<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="followers and twoots" data-tertiary="twooting" id="idm45816820396616"/> Our user story described
+how any user could send a twoot and that any followers who were logged in at that moment in time should
+immediately see the twoot. Now realistically we can’t see that users will see the twoot immediately. Perhaps
+they’re logged into their computer but getting a coffee, staring at another social network or, God forbid,
+doing some work.<a data-type="indexterm" data-primary="test-driven development (TDD)" data-secondary="in Twootr (example)" data-tertiary="logged in users receiving twoots" id="idm45816820394856"/></p>
+
+<p>By now you’re probably familiar with the overall approach. We want to write a test for a scenario where a user
+who has logged on receives a twoot from another user who sends the twoot—<code>shouldReceiveTwootsFromFollowedUser()</code>.
+In addition to logging on and following, this test requires a couple of other concepts.<a data-type="indexterm" data-primary="onSendTwoot method" id="idm45816820392312"/> First, we need to model
+the sending of a twoot, and thus add an <code>onSendTwoot()</code> method to the <code>SenderEndPoint</code>. This has parameters
+for the <code>id</code> of the twoot, so that we can refer back to it later, and also its content.</p>
+
+<p>Second, we need a way of notifying a follower that a user has twooted—something that we can check has happened
+in our test.<a data-type="indexterm" data-primary="followers, notifying of twoots in Twootr (example)" id="idm45816820389608"/> We earlier introduced the <code>ReceiverEndPoint</code> as <a data-type="indexterm" data-primary="ReceiverEndPoint interface" id="idm45816820388424"/><a data-type="indexterm" data-primary="onTwoot method" id="idm45816820387672"/>a way of publishing messages out to users, and now is
+the time to start using it. We’ll add an <code>onTwoot</code> method resulting in <a data-type="xref" href="#ReceiverEndPoint_definition">Example 6-9</a>.</p>
+<div id="ReceiverEndPoint_definition" data-type="example">
+<h5><span class="label">Example 6-9. </span>ReceiverEndPoint</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">interface</code> <code class="nc">ReceiverEndPoint</code> <code class="o">{</code>
+    <code class="kt">void</code> <code class="nf">onTwoot</code><code class="o">(</code><code class="n">Twoot</code> <code class="n">twoot</code><code class="o">);</code>
+<code class="o">}</code></pre></div>
+
+<p>Whatever
+our UI adapter is will have to send a message to the UI to tell it that a twoot has happened. But the
+question is how do write a test that checks that this <code>onTwoot</code> method has been called?<a data-type="indexterm" data-primary="test-driven development (TDD)" data-secondary="in Twootr (example)" data-tertiary="testing if onTwoot in ReceiverEndPoint has been called" id="idm45816820363864"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Creating Mocks"><div class="sect2" id="idm45816820378152">
+<h2>Creating Mocks</h2>
+
+<p>This is where the concept of a <em>mock</em> object comes in handy. A mock object is a type of object that pretends to
+be another object.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="followers and twoots" data-tertiary="creating mocks" id="idm45816820375960"/><a data-type="indexterm" data-primary="mocking" data-secondary="creating mock object to test calling of onTwoot in Twootr (example)" id="idm45816820374712"/> It has the same methods and public API as the object being mocked and looks to the Java type
+system as though it’s another object, but it’s not. <a data-type="indexterm" data-primary="verify method" id="idm45816820373512"/>Its purpose is to record any interactions, for example,
+method calls, and be able to <em>verify</em> that certain method calls happen. For example, here we want to be able
+to verify that the <code>onTwoot()</code> method of <code>ReceiverEndPoint</code> has been called.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>It might be confusing for people who have a computer science degree reading this book to hear the word “verify” being
+used in this way. The mathematics and formal methods communities tend to use it to mean situations where
+a property of a system has been proved for all inputs.<a data-type="indexterm" data-primary="mocking" data-secondary="use of word verify in" id="idm45816820327160"/> Mocking uses the word totally differently. It just means
+checking that a method has been invoked with certain arguments. It’s sometimes frustrating when different groups of
+people use the same word with overloaded meanings, but often we just need to be aware of the different contexts that
+terminology exists within.</p>
+</div>
+
+<p>Mock objects can be created in a number of ways. The first mock objects tended to be written by hand;
+we could in fact hand write a mock implementation of <code>ReceiverEndPoint</code> here, and <a data-type="xref" href="#MockReceiverEndPoint_definition">Example 6-10</a>
+is an example of one.<a data-type="indexterm" data-primary="mocking" data-secondary="writing mock objects by hand" id="idm45816820323560"/> Whenever the <code>onTwoot</code> method is called we record its invocation by storing the <code>Twoot</code>
+parameter in a <code>List</code>, and we can verify that it has been called with certain arguments by making an assertion that the <code>List</code> contains the <code>Twoot</code> object.</p>
+<div id="MockReceiverEndPoint_definition" data-type="example">
+<h5><span class="label">Example 6-10. </span>MockReceiverEndPoint</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">MockReceiverEndPoint</code> <code class="kd">implements</code> <code class="n">ReceiverEndPoint</code>
+<code class="o">{</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="n">List</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="n">receivedTwoots</code> <code class="o">=</code> <code class="k">new</code> <code class="n">ArrayList</code><code class="o">&lt;&gt;();</code>
+
+    <code class="nd">@Override</code>
+    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">onTwoot</code><code class="o">(</code><code class="kd">final</code> <code class="n">Twoot</code> <code class="n">twoot</code><code class="o">)</code>
+    <code class="o">{</code>
+        <code class="n">receivedTwoots</code><code class="o">.</code><code class="na">add</code><code class="o">(</code><code class="n">twoot</code><code class="o">);</code>
+    <code class="o">}</code>
+
+    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">verifyOnTwoot</code><code class="o">(</code><code class="kd">final</code> <code class="n">Twoot</code> <code class="n">twoot</code><code class="o">)</code>
+    <code class="o">{</code>
+        <code class="n">assertThat</code><code class="o">(</code>
+            <code class="n">receivedTwoots</code><code class="o">,</code>
+            <code class="n">contains</code><code class="o">(</code><code class="n">twoot</code><code class="o">));</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre></div>
+
+<p>In practice, writing mocks by hand can become tedious and error prone. What do good software engineers do to tedious
+and error-prone things? That’s right—they automate them. There are a number of libraries that can help us by
+providing ways of creating mock objects for us.<a data-type="indexterm" data-primary="mocking" data-secondary="using Mockito library instead of writing mocks by hand" id="idm45816820299432"/><a data-type="indexterm" data-primary="Mockito library" data-secondary="using to write mockReceiverEndPoint in Twootr (example)" id="idm45816820248568"/> The library that we will use in this project is called <em>Mockito</em>,
+is freely available, open source, and commonly used. Most of the operations relating to <em>Mockito</em> can be invoked
+using static methods on the <code>Mockito</code> class, which we use here as static imports. In order to create the mock
+object you need to use the <code>mock</code> method, as shown in <a data-type="xref" href="#mockReceiverEndPoint_definition">Example 6-11</a>.</p>
+<div id="mockReceiverEndPoint_definition" data-type="example">
+<h5><span class="label">Example 6-11. </span>mockReceiverEndPoint</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="kd">private</code> <code class="kd">final</code> <code class="n">ReceiverEndPoint</code> <code class="n">receiverEndPoint</code> <code class="o">=</code> <code class="n">mock</code><code class="o">(</code><code class="n">ReceiverEndPoint</code><code class="o">.</code><code class="na">class</code><code class="o">);</code></pre></div>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Verifying with Mocks"><div class="sect2" id="idm45816820377848">
+<h2>Verifying with Mocks</h2>
+
+<p>The mock object that has been created here can be used wherever a normal <code>ReceiverEndPoint</code> implementation is
+used.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="followers and twoots" data-tertiary="verifying with mocks" id="idm45816820237320"/><a data-type="indexterm" data-primary="mocking" data-secondary="verifying with mock objects" id="idm45816820236072"/><a data-type="indexterm" data-primary="Given-When-Then formula" id="idm45816820235160"/><a data-type="indexterm" data-primary="test-driven development (TDD)" data-secondary="in Twootr (example)" data-tertiary="verifying onTwoot using mocking" id="idm45816820234488"/> We can pass it as a parameter to the <code>onLogon()</code> method, for example, to wire up the UI adapter. Once the
+behavior under test—the <em>when</em> of the test—has happened our test needs to actually verify that the <code>onTwoot</code>
+method was invoked (the <em>then</em>). In order to do this we wrap the mock object using the <code>Mockito.verify()</code> method.<a data-type="indexterm" data-primary="onTwoot method" data-secondary="verifying calling of with mocks" id="idm45816820221768"/><a data-type="indexterm" data-primary="verify method" data-secondary="using to verify ReceiverEndPoint onTwoot method" id="idm45816820220696"/>
+This is a generic method that returns an object of the same type that it is passed; we simply call the method
+in question with the arguments that we expect in order to describe the expected interaction with the mock
+object, as shown in <a data-type="xref" href="#verifyReceiverEndPoint_definition">Example 6-12</a>.</p>
+<div id="verifyReceiverEndPoint_definition" data-type="example">
+<h5><span class="label">Example 6-12. </span>verifyReceiverEndPoint</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">verify</code><code class="o">(</code><code class="n">receiverEndPoint</code><code class="o">).</code><code class="na">onTwoot</code><code class="o">(</code><code class="n">aTwootObject</code><code class="o">);</code></pre></div>
+
+<p>Something you may have noticed in the last section is the introduction of the <code>Twoot</code> class that we used
+in the signature of the <code>onTwoot</code> method. <a data-type="indexterm" data-primary="Twoot class (example)" id="idm45816820210552"/>This is a value object that will be used to wrap up the values
+and represent a <code>Twoot</code>. Since this will be sent to the UI adapter it should just consist of fields of
+simple values, rather than exposing too much from the core domain. For example, in order to represent the
+sender of the twoot it contains the <code>id</code> of the sender rather than a reference to their <code>User</code> object.
+The <code>Twoot</code> also contains a <code>content</code> <code>String</code> and the <code>id</code> of the <code>Twoot</code> object itself.</p>
+
+<p>In this system <code>Twoot</code> objects are immutable. As mentioned previously, this style reduces the scope for bugs. This
+is especially important in something like a value object that is being passed to a UI adapter. You really
+just want to let your UI adapter display the <code>Twoot</code>, not to alter the state of another user’s <code>Twoot</code>.
+It’s also worth noting that we continue to follow domain language here in naming the class <code>Twoot</code>.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Mocking Libraries"><div class="sect2" id="idm45816820143320">
+<h2>Mocking Libraries</h2>
+
+<p>We’re using Mockito in this book because it has nice syntax and fits our preferred way of writing mocks,
+but it’s not the only Java mocking framework. Both Powermock and EasyMock are also popular.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="followers and twoots" data-tertiary="mocking libraries" id="idm45816820141736"/><a data-type="indexterm" data-primary="mocking" data-secondary="Java libraries for" id="idm45816820140488"/><a data-type="indexterm" data-primary="Powermock" id="idm45816820139544"/></p>
+
+<p>Powermock can emulate Mockito syntax but it allows you to mock things that Mockito doesn’t support; for
+example, final classes or static methods. There is some debate around whether it’s ever a good idea to mock
+things like final classes—if you can’t provide a different implementation of the class in production, then
+should you really really be doing so in tests? In general, Powermock usage isn’t encouraged but there can
+occasionally be break-glass situations where it is useful.</p>
+
+<p>EasyMock takes a different approach to writing mocks.<a data-type="indexterm" data-primary="EasyMock" id="idm45816820137496"/> This is a stylistic choice and may be preferred by
+some developers over others. The biggest conceptual difference is that EasyMock encourages strict mocking.<a data-type="indexterm" data-primary="strict mocking" id="idm45816820136488"/>
+Strict mocking is the idea that if you don’t explicitly state that an invocation should occur, then it’s an
+error to do so. This results in tests that are more specific about the behavior that a class performs, but
+that can sometimes become coupled to irrelevant interactions.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="SenderEndPoint"><div class="sect2" id="idm45816820135128">
+<h2>SenderEndPoint</h2>
+
+<p>Now these methods like <code>onFollow</code> and <code>onSendTwoot</code> are declared on the <code>SenderEndPoint</code> class.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="followers and twoots" data-tertiary="SenderEndPoint" id="idm45816820113848"/><a data-type="indexterm" data-primary="SenderEndPoint class" id="idm45816820112760"/> Each
+<code>SenderEndPoint</code> instance represents the end point from which a single user sends events into the core
+domain. Our design for <code>Twoot</code> keeps the <code>SenderEndPoint</code> simple—it just wraps up the main
+<code>Twootr</code> class and delegates to the methods passing in the <code>User</code> object for the user that it represents
+within the system. <a data-type="xref" href="#SenderEndPoint_definition">Example 6-13</a> shows the overall declaration of the class and an
+example of one method corresponding to one event—<code>onFollow</code>.</p>
+<div id="SenderEndPoint_definition" data-type="example">
+<h5><span class="label">Example 6-13. </span>SenderEndPoint</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">SenderEndPoint</code> <code class="o">{</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="n">User</code> <code class="n">user</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="n">Twootr</code> <code class="n">twootr</code><code class="o">;</code>
+
+    <code class="n">SenderEndPoint</code><code class="o">(</code><code class="kd">final</code> <code class="n">User</code> <code class="n">user</code><code class="o">,</code> <code class="kd">final</code> <code class="n">Twootr</code> <code class="n">twootr</code><code class="o">)</code> <code class="o">{</code>
+        <code class="n">Objects</code><code class="o">.</code><code class="na">requireNonNull</code><code class="o">(</code><code class="n">user</code><code class="o">,</code> <code class="s">"user"</code><code class="o">);</code>
+        <code class="n">Objects</code><code class="o">.</code><code class="na">requireNonNull</code><code class="o">(</code><code class="n">twootr</code><code class="o">,</code> <code class="s">"twootr"</code><code class="o">);</code>
+
+        <code class="k">this</code><code class="o">.</code><code class="na">user</code> <code class="o">=</code> <code class="n">user</code><code class="o">;</code>
+        <code class="k">this</code><code class="o">.</code><code class="na">twootr</code> <code class="o">=</code> <code class="n">twootr</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="kd">public</code> <code class="n">FollowStatus</code> <code class="nf">onFollow</code><code class="o">(</code><code class="kd">final</code> <code class="n">String</code> <code class="n">userIdToFollow</code><code class="o">)</code> <code class="o">{</code>
+        <code class="n">Objects</code><code class="o">.</code><code class="na">requireNonNull</code><code class="o">(</code><code class="n">userIdToFollow</code><code class="o">,</code> <code class="s">"userIdToFollow"</code><code class="o">);</code>
+
+        <code class="k">return</code> <code class="n">twootr</code><code class="o">.</code><code class="na">onFollow</code><code class="o">(</code><code class="n">user</code><code class="o">,</code> <code class="n">userIdToFollow</code><code class="o">);</code>
+    <code class="o">}</code></pre></div>
+
+<p>You might have noticed the <code>java.util.Objects</code> class in <a data-type="xref" href="#SenderEndPoint_definition">Example 6-13</a>. This is a utility class
+that ships with the JDK itself<a data-type="indexterm" data-primary="java.util.Objects class" id="idm45816820020936"/><a data-type="indexterm" data-primary="Objects class" id="idm45816820020296"/> and offers convenience methods for <code>null</code> reference checking and implementation
+of <code>hashCode()</code> and <code>equals()</code> methods.</p>
+
+<p>There are alternative designs that we could consider instead of introducing the <code>SenderEndPoint</code>. We could
+have received events relating to a user by just exposing the methods on the <code>Twootr</code> object directly,
+and expect to have any UI adapter call those methods directly. This is a subjective issue, like many
+parts of software development. Some people would consider creating the <code>SenderEndPoint</code> as adding unnecessary
+complexity.</p>
+
+<p>The biggest motivation here is that, as mentioned earlier, we don’t want to expose
+the <code>User</code> core domain object to a UI adapter—only talking to them in terms of simple events. <a data-type="indexterm" data-primary="users" data-secondary="not exposing User core domain object to UI adapter" id="idm45816820015304"/>It would
+have been possible to take a user ID as a parameter to all the <span class="keep-together"><code>Twootr</code></span> event methods, but then the first
+step for every event would have been looking up the <code>User</code> object from the ID, whereas here we already
+have it in the context of the <code>SenderEndPoint</code>. That design would have removed the concept of the
+<code>SenderEndPoint</code>, but added more work and complexity in exchange.</p>
+
+<p>In order to actually send the <code>Twoot</code> we need to evolve our core domain a little bit. The <code>User</code> object
+needs to have a set of followers added to it, who can be notified of the <code>Twoot</code> when it arrives.<a data-type="indexterm" data-primary="users" data-secondary="User object with set of followers added to notify of twoots" id="idm45816820010152"/>
+You can see code for our <code>onSendTwoot</code> method as <a data-type="indexterm" data-primary="onSendTwoot method" id="idm45816820008616"/>it is implemented at this stage in the design in
+<a data-type="xref" href="#onSendTwoot_definition_1">Example 6-14</a>. This finds the users the who are logged on and tells them
+to receive the twoot. If you’re not familiar with the <code>filter</code> and <code>forEach</code> methods or the <code>::</code> or <code>-&gt;</code> syntax, don’t worry—these will be covered in <a data-type="xref" href="ch07.xhtml#ch06_Functional_Programming">“Functional Programming”</a>.</p>
+<div id="onSendTwoot_definition_1" data-type="example">
+<h5><span class="label">Example 6-14. </span>onSendTwoot</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kt">void</code> <code class="nf">onSendTwoot</code><code class="o">(</code><code class="kd">final</code> <code class="n">String</code> <code class="n">id</code><code class="o">,</code> <code class="kd">final</code> <code class="n">User</code> <code class="n">user</code><code class="o">,</code> <code class="kd">final</code> <code class="n">String</code> <code class="n">content</code><code class="o">)</code>
+<code class="o">{</code>
+    <code class="kd">final</code> <code class="n">String</code> <code class="n">userId</code> <code class="o">=</code> <code class="n">user</code><code class="o">.</code><code class="na">getId</code><code class="o">();</code>
+    <code class="kd">final</code> <code class="n">Twoot</code> <code class="n">twoot</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Twoot</code><code class="o">(</code><code class="n">id</code><code class="o">,</code> <code class="n">userId</code><code class="o">,</code> <code class="n">content</code><code class="o">);</code>
+    <code class="n">user</code><code class="o">.</code><code class="na">followers</code><code class="o">()</code>
+        <code class="o">.</code><code class="na">filter</code><code class="o">(</code><code class="nl">User:</code><code class="o">:</code><code class="n">isLoggedOn</code><code class="o">)</code>
+        <code class="o">.</code><code class="na">forEach</code><code class="o">(</code><code class="n">follower</code> <code class="o">-&gt;</code> <code class="n">follower</code><code class="o">.</code><code class="na">receiveTwoot</code><code class="o">(</code><code class="n">twoot</code><code class="o">));</code>
+<code class="o">}</code></pre></div>
+
+<p>The <code>User</code> object also needs to implement the <code>receiveTwoot()</code> method. How does a <code>User</code> receive a twoot?<a data-type="indexterm" data-primary="users" data-secondary="User object receiving twoots" id="idm45816819889608"/> Well,
+it should notify the UI for the user that there’s a twoot ready to be displayed by emitting an event, which
+entails calling <code>receiverEndPoint.onTwoot(twoot)</code>. This is the method call that we’ve verified the invocation
+of using mocking code, and calling it here makes the test pass.</p>
+
+<p>You can see the<a data-type="indexterm" data-primary="test-driven development (TDD)" data-secondary="in Twootr (example)" data-tertiary="testing receipt of twoots from followed users" id="idm45816819887352"/> final iteration of our test in <a data-type="xref" href="#shouldReceiveTwootsFromFollowedUser_definition">Example 6-15</a>, and this is
+the code <span class="keep-together">that you</span> can see if you download the example project from GitHub. You might notice it looks a bit
+different than what we’ve so far described. First, as the tests for receiving twoots have been written, a
+few operations have been refactored out into common methods. An example of this is <code>logon()</code>, which logs
+our first user onto the system—part of the given section of many tests. Second, the test also creates a <code>Position</code>
+object and passes it to the <code>Twoot</code>, and also verifies the interaction with a <code>twootRepository</code>. What the heck
+is a repository? Both of these are concepts that we’ve not needed so far, but are part of the
+evolution of the design of the system and will be explained in the next two sections.</p>
+<div id="shouldReceiveTwootsFromFollowedUser_definition" data-type="example">
+<h5><span class="label">Example 6-15. </span>shouldReceiveTwootsFromFollowedUser</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="nd">@Test</code>
+    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">shouldReceiveTwootsFromFollowedUser</code><code class="o">()</code>
+    <code class="o">{</code>
+        <code class="kd">final</code> <code class="n">String</code> <code class="n">id</code> <code class="o">=</code> <code class="s">"1"</code><code class="o">;</code>
+
+        <code class="n">logon</code><code class="o">();</code>
+
+        <code class="n">endPoint</code><code class="o">.</code><code class="na">onFollow</code><code class="o">(</code><code class="n">TestData</code><code class="o">.</code><code class="na">OTHER_USER_ID</code><code class="o">);</code>
+
+        <code class="kd">final</code> <code class="n">SenderEndPoint</code> <code class="n">otherEndPoint</code> <code class="o">=</code> <code class="n">otherLogon</code><code class="o">();</code>
+        <code class="n">otherEndPoint</code><code class="o">.</code><code class="na">onSendTwoot</code><code class="o">(</code><code class="n">id</code><code class="o">,</code> <code class="n">TWOOT</code><code class="o">);</code>
+
+        <code class="n">verify</code><code class="o">(</code><code class="n">twootRepository</code><code class="o">).</code><code class="na">add</code><code class="o">(</code><code class="n">id</code><code class="o">,</code> <code class="n">TestData</code><code class="o">.</code><code class="na">OTHER_USER_ID</code><code class="o">,</code> <code class="n">TWOOT</code><code class="o">);</code>
+        <code class="n">verify</code><code class="o">(</code><code class="n">receiverEndPoint</code><code class="o">).</code><code class="na">onTwoot</code><code class="o">(</code><code class="k">new</code> <code class="n">Twoot</code><code class="o">(</code><code class="n">id</code><code class="o">,</code> <code class="n">TestData</code><code class="o">.</code><code class="na">OTHER_USER_ID</code><code class="o">,</code> <code class="n">TWOOT</code><code class="o">,</code> <code class="k">new</code> <code class="n">Position</code><code class="o">(</code><code class="mi">0</code><code class="o">)));</code>
+    <code class="o">}</code></pre></div>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Positions"><div class="sect1" id="idm45816820637672">
+<h1>Positions</h1>
+
+<p>You will learn about <code>Position</code> objects very soon, but<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="followers and twoots" data-startref="ix_TwooFT" id="idm45816819776088"/> before presenting their definition we should meet
+their motivation.<a data-type="indexterm" data-primary="positions (in Twootr example)" id="ix_posi"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="positions" id="ix_Twoopos"/>
+The next the requirement that we need to get working is that when a user logs in they should see all the
+twoots from their followers since they last logged in. This entails needing to be able to perform
+some kind of replay of the different twoots, and know what twoots haven’t been seen when a user logs on.
+<a data-type="xref" href="#shouldReceiveReplayOfTwootsAfterLogoff_definition">Example 6-16</a> shows<a data-type="indexterm" data-primary="test-driven development (TDD)" data-secondary="in Twootr (example)" data-tertiary="receiving replay of twoots after logoff" id="idm45816819771384"/> a test of that functionality.</p>
+<div id="shouldReceiveReplayOfTwootsAfterLogoff_definition" data-type="example" class="pagebreak-before less_space">
+<h5><span class="label">Example 6-16. </span>shouldReceiveReplayOfTwootsAfterLogoff</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="nd">@Test</code>
+    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">shouldReceiveReplayOfTwootsAfterLogoff</code><code class="o">()</code>
+    <code class="o">{</code>
+        <code class="kd">final</code> <code class="n">String</code> <code class="n">id</code> <code class="o">=</code> <code class="s">"1"</code><code class="o">;</code>
+
+        <code class="n">userFollowsOtherUser</code><code class="o">();</code>
+
+        <code class="kd">final</code> <code class="n">SenderEndPoint</code> <code class="n">otherEndPoint</code> <code class="o">=</code> <code class="n">otherLogon</code><code class="o">();</code>
+        <code class="n">otherEndPoint</code><code class="o">.</code><code class="na">onSendTwoot</code><code class="o">(</code><code class="n">id</code><code class="o">,</code> <code class="n">TWOOT</code><code class="o">);</code>
+
+        <code class="n">logon</code><code class="o">();</code>
+
+        <code class="n">verify</code><code class="o">(</code><code class="n">receiverEndPoint</code><code class="o">).</code><code class="na">onTwoot</code><code class="o">(</code><code class="n">twootAt</code><code class="o">(</code><code class="n">id</code><code class="o">,</code> <code class="n">POSITION_1</code><code class="o">));</code>
+    <code class="o">}</code></pre></div>
+
+<p>In order to implement this functionality, our system needs to know what twoots were sent while a user
+was logged off. There are lots of different ways that we could think about designing this feature.
+Different approaches may have different trade-offs in terms of implementation complexity, correctness,
+and performance/scalability. Since we’re just starting out building Twootr and not expecting many users
+to begin with, focusing on scalability issues isn’t our goal here:</p>
+
+<ul>
+<li>
+<p>We could track the time of every twoot and the time that a user logs off and search for twoots
+between those times.</p>
+</li>
+<li>
+<p>We could think of twoots as a contiguous stream where each twoot has a position within the stream and
+record the position when a user logs off.</p>
+</li>
+<li>
+<p>We could use positions and record the position of the last seen twoot.</p>
+</li>
+</ul>
+
+<p>When considering the different designs we would lean away from ordering messages by time. It’s the kind
+of decision that feels like a good idea. Let’s suppose we store the time unit in terms of milliseconds—what happens if we receive two twoots within the same time interval? We wouldn’t know the order between
+those twoots. What if a twoot is received on the same millisecond that a user logs off?</p>
+
+<p>Recording the times at which users log off is another problematic event as well. It might be OK if a
+user will only ever log off by explicitly clicking a button. In practice, however, that’s only one of
+several ways in which they can stop using our UI. Perhaps they’ll close the web browser without explicitly
+logging off, or perhaps their web browser will crash. What happens if they connect from two web browsers
+and then log off from one of them? What happens if their mobile phone runs out of battery or closes
+the app?</p>
+
+<p>We decided the safest approach to knowing from where to replay the twoots was to assign positions
+to twoots and then store the position up to which each user has seen.<a data-type="indexterm" data-primary="positions (in Twootr example)" data-secondary="defining positions for twoots in Position class" id="idm45816819766744"/> In order to define positions
+we introduce a small value object called <code>Position</code>, which is shown in <a data-type="xref" href="#Position_definition">Example 6-17</a>. This <code>class</code> also has
+a constant value for the initial position where streams will be before the stream starts. Since all of our
+position values will be positive, we could use any negative integer for the initial position: <code>-1</code> is chosen here.</p>
+<div id="Position_definition" data-type="example">
+<h5><span class="label">Example 6-17. </span>Position</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">Position</code> <code class="o">{</code>
+    <code class="cm">/**</code>
+<code class="cm">     * Position before any tweets have been seen</code>
+<code class="cm">     */</code>
+    <code class="kd">public</code> <code class="kd">static</code> <code class="kd">final</code> <code class="n">Position</code> <code class="n">INITIAL_POSITION</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Position</code><code class="o">(-</code><code class="mi">1</code><code class="o">);</code>
+
+    <code class="kd">private</code> <code class="kd">final</code> <code class="kt">int</code> <code class="n">value</code><code class="o">;</code>
+
+    <code class="kd">public</code> <code class="nf">Position</code><code class="o">(</code><code class="kd">final</code> <code class="kt">int</code> <code class="n">value</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">this</code><code class="o">.</code><code class="na">value</code> <code class="o">=</code> <code class="n">value</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="kd">public</code> <code class="kt">int</code> <code class="nf">getValue</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">value</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="nd">@Override</code>
+    <code class="kd">public</code> <code class="n">String</code> <code class="nf">toString</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="s">"Position{"</code> <code class="o">+</code>
+            <code class="s">"value="</code> <code class="o">+</code> <code class="n">value</code> <code class="o">+</code>
+            <code class="sc">'}'</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="nd">@Override</code>
+    <code class="kd">public</code> <code class="kt">boolean</code> <code class="nf">equals</code><code class="o">(</code><code class="kd">final</code> <code class="n">Object</code> <code class="n">o</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">if</code> <code class="o">(</code><code class="k">this</code> <code class="o">==</code> <code class="n">o</code><code class="o">)</code> <code class="k">return</code> <code class="kc">true</code><code class="o">;</code>
+        <code class="k">if</code> <code class="o">(</code><code class="n">o</code> <code class="o">==</code> <code class="kc">null</code> <code class="o">||</code> <code class="n">getClass</code><code class="o">()</code> <code class="o">!=</code> <code class="n">o</code><code class="o">.</code><code class="na">getClass</code><code class="o">())</code> <code class="k">return</code> <code class="kc">false</code><code class="o">;</code>
+
+        <code class="kd">final</code> <code class="n">Position</code> <code class="n">position</code> <code class="o">=</code> <code class="o">(</code><code class="n">Position</code><code class="o">)</code> <code class="n">o</code><code class="o">;</code>
+
+        <code class="k">return</code> <code class="n">value</code> <code class="o">==</code> <code class="n">position</code><code class="o">.</code><code class="na">value</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="nd">@Override</code>
+    <code class="kd">public</code> <code class="kt">int</code> <code class="nf">hashCode</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">value</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="kd">public</code> <code class="n">Position</code> <code class="nf">next</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="k">new</code> <code class="nf">Position</code><code class="o">(</code><code class="n">value</code> <code class="o">+</code> <code class="mi">1</code><code class="o">);</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre></div>
+
+<p>This class looks a little bit complex, doesn’t it? At this point in your programming you may ask yourself:
+Why do I have these <code>equals()</code> and <code>hashCode()</code> methods defined on
+it, rather than just let Java handle them for me?<a data-type="indexterm" data-primary="value objects" id="idm45816819645960"/> What is a <em>value object</em>? Why am I asking so many questions? Don’t
+worry, we have just introduced a new topic and will answer your questions soon. It is often very convenient to introduce
+small objects that represent values that are compounds of fields or give a relevant domain name to some numeric value.<a data-type="indexterm" data-primary="positions (in Twootr example)" data-secondary="Point class" id="idm45816819464104"/><a data-type="indexterm" data-primary="Point class" id="idm45816819463192"/>
+Our <code>Position</code> class is one example; another one might be the <code>Point</code> class that you see in <a data-type="xref" href="#Point_definition">Example 6-18</a>.</p>
+<div id="Point_definition" data-type="example">
+<h5><span class="label">Example 6-18. </span>Point</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">class</code> <code class="nc">Point</code> <code class="o">{</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="kt">int</code> <code class="n">x</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="kt">int</code> <code class="n">y</code><code class="o">;</code>
+
+    <code class="n">Point</code><code class="o">(</code><code class="kd">final</code> <code class="kt">int</code> <code class="n">x</code><code class="o">,</code> <code class="kd">final</code> <code class="kt">int</code> <code class="n">y</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">this</code><code class="o">.</code><code class="na">x</code> <code class="o">=</code> <code class="n">x</code><code class="o">;</code>
+        <code class="k">this</code><code class="o">.</code><code class="na">y</code> <code class="o">=</code> <code class="n">y</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="kt">int</code> <code class="nf">getX</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">x</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="kt">int</code> <code class="nf">getY</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">y</code><code class="o">;</code>
+    <code class="o">}</code></pre></div>
+
+<p>A <code>Point</code> has an <code>x</code> coordinate and a <code>y</code> coordinate, while a <code>Position</code> has just a value. We’ve defined the fields on
+the class and the getters for those fields.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="The equals and hashcode Methods"><div class="sect2" id="idm45816819403576">
+<h2>The equals and hashcode Methods</h2>
+
+<p>If we want to compare two objects defined like this with the same value,
+then we find that <a data-type="indexterm" data-primary="positions (in Twootr example)" data-secondary="equals and hashCode methods" id="idm45816819401704"/><a data-type="indexterm" data-primary="equals method" id="idm45816819400792"/><a data-type="indexterm" data-primary="hashCode method" id="idm45816819400120"/>they aren’t equal when we want them to be. <a data-type="xref" href="#Point_example">Example 6-19</a> shows an example of this; by default, the
+<code>equals()</code> and <code>hashCode()</code> methods that you inherit from <code>java.lang.Object</code> are defined to use a concept of reference
+equality.<a data-type="indexterm" data-primary="java.lang.Object" id="idm45816819397208"/><a data-type="indexterm" data-primary="object class, equals and hashCode methods" id="idm45816819396504"/><a data-type="indexterm" data-primary="Point class" data-secondary="Point objects not equal when they should be" id="idm45816819395736"/> This means that if you have two different objects located in different places in your computer’s memory, then
+they aren’t equal—even if all the field values are equal. This can lead to a lot of subtle bugs in your program.</p>
+<div id="Point_example" data-type="example">
+<h5><span class="label">Example 6-19. </span>Point objects aren’t equal when they should be</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">final</code> <code class="n">Point</code> <code class="n">p1</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Point</code><code class="o">(</code><code class="mi">1</code><code class="o">,</code> <code class="mi">2</code><code class="o">);</code>
+<code class="kd">final</code> <code class="n">Point</code> <code class="n">p2</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Point</code><code class="o">(</code><code class="mi">1</code><code class="o">,</code> <code class="mi">2</code><code class="o">);</code>
+<code class="n">System</code><code class="o">.</code><code class="na">out</code><code class="o">.</code><code class="na">println</code><code class="o">(</code><code class="n">p1</code> <code class="o">==</code> <code class="n">p2</code><code class="o">);</code> <code class="c1">// prints false</code></pre></div>
+
+<p>It’s often helpful to think in terms of two different types of objects—<em>reference objects</em> and <em>value objects</em>—based
+upon what their notion of equality is.<a data-type="indexterm" data-primary="reference objects" id="idm45816819367976"/><a data-type="indexterm" data-primary="value objects" id="idm45816819367368"/> In Java we can override the <code>equals()</code> method in order to define our own
+implementation that uses the fields deemed relevant to value equality. An example implementation is shown in
+<a data-type="xref" href="#Point_equals_hashcode">Example 6-20</a> for the <code>Point</code> class.<a data-type="indexterm" data-primary="Point class" data-secondary="equals method" id="idm45816819364776"/> We check that the object that we’re being given is the same
+type as this object, and then check each of the fields are equal.</p>
+<div id="Point_equals_hashcode" data-type="example">
+<h5><span class="label">Example 6-20. </span>Point equality definition</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="nd">@Override</code>
+    <code class="kd">public</code> <code class="kt">boolean</code> <code class="nf">equals</code><code class="o">(</code><code class="kd">final</code> <code class="n">Object</code> <code class="n">o</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">if</code> <code class="o">(</code><code class="k">this</code> <code class="o">==</code> <code class="n">o</code><code class="o">)</code> <code class="k">return</code> <code class="kc">true</code><code class="o">;</code>
+        <code class="k">if</code> <code class="o">(</code><code class="n">o</code> <code class="o">==</code> <code class="kc">null</code> <code class="o">||</code> <code class="n">getClass</code><code class="o">()</code> <code class="o">!=</code> <code class="n">o</code><code class="o">.</code><code class="na">getClass</code><code class="o">())</code> <code class="k">return</code> <code class="kc">false</code><code class="o">;</code>
+
+        <code class="kd">final</code> <code class="n">Point</code> <code class="n">point</code> <code class="o">=</code> <code class="o">(</code><code class="n">Point</code><code class="o">)</code> <code class="n">o</code><code class="o">;</code>
+
+        <code class="k">if</code> <code class="o">(</code><code class="n">x</code> <code class="o">!=</code> <code class="n">point</code><code class="o">.</code><code class="na">x</code><code class="o">)</code> <code class="k">return</code> <code class="kc">false</code><code class="o">;</code>
+        <code class="k">return</code> <code class="n">y</code> <code class="o">==</code> <code class="n">point</code><code class="o">.</code><code class="na">y</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="nd">@Override</code>
+    <code class="kd">public</code> <code class="kt">int</code> <code class="nf">hashCode</code><code class="o">()</code> <code class="o">{</code>
+        <code class="kt">int</code> <code class="n">result</code> <code class="o">=</code> <code class="n">x</code><code class="o">;</code>
+        <code class="n">result</code> <code class="o">=</code> <code class="mi">31</code> <code class="o">*</code> <code class="n">result</code> <code class="o">+</code> <code class="n">y</code><code class="o">;</code>
+        <code class="k">return</code> <code class="n">result</code><code class="o">;</code>
+    <code class="o">}</code>
+
+<code class="kd">final</code> <code class="n">Point</code> <code class="n">p1</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Point</code><code class="o">(</code><code class="mi">1</code><code class="o">,</code> <code class="mi">2</code><code class="o">);</code>
+<code class="kd">final</code> <code class="n">Point</code> <code class="n">p2</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Point</code><code class="o">(</code><code class="mi">1</code><code class="o">,</code> <code class="mi">2</code><code class="o">);</code>
+<code class="n">System</code><code class="o">.</code><code class="na">out</code><code class="o">.</code><code class="na">println</code><code class="o">(</code><code class="n">p1</code><code class="o">.</code><code class="na">equals</code><code class="o">(</code><code class="n">p2</code><code class="o">));</code> <code class="c1">// prints true</code></pre></div>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="The Contract Between equals and hashCode"><div class="sect2" id="idm45816819286840">
+<h2>The Contract Between equals and hashCode</h2>
+
+<p>In <a data-type="xref" href="#Point_equals_hashcode">Example 6-20</a> we not only override the <code>equals()</code> method, but also the <code>hashCode()</code> method.<a data-type="indexterm" data-primary="equals method" data-secondary="contract between hashCode method and" id="idm45816819092728"/><a data-type="indexterm" data-primary="hashCode method" data-secondary="contract between equals method and" id="idm45816819091864"/><a data-type="indexterm" data-primary="positions (in Twootr example)" data-secondary="contract between equals and hashCode methods" id="idm45816819090952"/> This is due
+to the Java <em>equals/hashcode contract</em>. This states that if we have two objects that are equal according to their
+<code>equals()</code> method, they also have to have the same <code>hashCode()</code> result. A number of core Java APIs make use of the
+<code>hashCode()</code> method—most notably collection implementations like <code>HashMap</code> and <code>HashSet</code>. They rely on this contract
+holding true, and you will find that they don’t behave as you would expect if it doesn’t. So how do you correctly implement
+the <code>hashCode()</code>?</p>
+
+<p>Good hashcode implementations not only follow the contract, but they also produce hashcode values that are evenly spread
+throughout the integers. This helps improve the efficiency of <code>HashMap</code> and <code>HashSet</code> implementations.
+In order to achieve both of those goals, the following is a simple series of rules that if you follow will result in a
+good <code>hashCode()</code> implementation:</p>
+<ol>
+<li>
+<p>Create a <code>result</code> variable and assign it a prime number.</p>
+</li>
+<li>
+<p>Take each field that is used by the <code>equals()</code> method and compute an <code>int</code> value to represent the hashcode of the field.</p>
+</li>
+<li>
+<p>Combine the hashcode from the field with the existing result by multiplying the previous result by a prime number;
+for example, <code>result = 41 * result + hashcodeOfField;</code></p>
+</li>
+
+</ol>
+
+<p>In order to calculate the hashcode for each field, you need to differentiate based upon the type of the field in question:</p>
+
+<ul>
+<li>
+<p>If the field is a primitive value, use the <code>hashCode()</code> method provided on its companion class. For example, if
+it’s a <code>double</code> then use <code>Double.hashCode()</code>.</p>
+</li>
+<li>
+<p>If it’s a nonnull object, just call its <code>hashCode()</code> method or use <code>0</code> otherwise. This can be abbreviated with
+the <code>java.lang.Objects.hashCode()</code> method.</p>
+</li>
+<li>
+<p>If it’s an array, you need to combine the <code>hashCode()</code> values of each of its elements using the same rules as
+we’ve described here. The <code>java.util.Arrays.hashCode()</code> methods can be used to do this for you.</p>
+</li>
+</ul>
+
+<p>In most cases you won’t need to actually write the <code>equals()</code> and <code>hashCode()</code> methods yourself. Modern Java IDEs will
+generate them for you.  It’s still helpful to understand the principles and reasons behind the code they generate, though.
+It’s especially important to be able to review a pair of <code>equals()</code> and <code>hashCode()</code> methods that you see in code and
+know whether they are well or poorly implemented.</p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>We’ve talked in this section a little bit about value objects, but a future version of Java is scheduled to include
+<em>inline classes</em>.<a data-type="indexterm" data-primary="inline classes" id="idm45816819068248"/><a data-type="indexterm" data-primary="classes" data-secondary="inline, in future Java version" id="idm45816819067512"/> These are being prototyped in <a href="https://oreil.ly/muvlT">Project Valhalla</a>.<a data-type="indexterm" data-primary="Project Valhalla" id="idm45816819065768"/> The idea
+behind inline classes is to provide a very efficient way to implement data structures that look like values. You will
+still be able to code against them like you can a normal class, but they will generate correct <code>hashCode()</code> and
+<code>equals()</code> methods, use up less memory, and for many use cases be faster to program with.</p>
+</div>
+
+<p class="pagebreak-before">When implementing this feature we need to associate a <code>Position</code> with every <code>Twoot</code>, so we add a
+field to the <code>Twoot</code> class. We also need to record each user’s last seen <code>Position</code>, so we add
+a <code>lastSeenPosition</code> to a <code>User</code>. When a <code>User</code> receives a <code>Twoot</code> they update their position,
+and when a <code>User</code> logs on they emit the twoots that the user hasn’t seen. So no new events
+need to be added to either the <code>SenderEndPoint</code> or the <code>ReceiverEndPoint</code>. Replaying twoots
+also requires that we store the <code>Twoot</code> objects somewhere—initially, we just use a JDK <code>List</code>.
+Now our users don’t have to be logged on to the system all the time in order to enjoy Twootr,
+which is awesome.<a data-type="indexterm" data-primary="positions (in Twootr example)" data-startref="ix_posi" id="idm45816819056632"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="positions" data-startref="ix_Twoopos" id="idm45816819055592"/></p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Takeaways"><div class="sect1" id="idm45816819878968">
+<h1>Takeaways</h1>
+
+<ul>
+<li>
+<p>You learned about bigger-picture architectural ideas like communication styles.</p>
+</li>
+<li>
+<p>You developed the ability to decouple domain logic from library and framework choices.</p>
+</li>
+<li>
+<p>You drove the development of code in this chapter with tests going outside-in.</p>
+</li>
+<li>
+<p>You applied object-oriented domain modeling skills to a larger project.</p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Iterating on You"><div class="sect1" id="idm45816819049288">
+<h1>Iterating on You</h1>
+
+<p>If you want to extend and solidify the knowledge from this section you could try one of these activities:</p>
+
+<ul>
+<li>
+<p>Try the word wrap <a href="https://oreil.ly/vH2Q5">Kata</a>.</p>
+</li>
+<li>
+<p>Without reading the next chapter write down a list of things that need to be implemented in order
+for Twootr to be complete.</p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Completing the Challenge"><div class="sect1" id="idm45816819044408">
+<h1>Completing the Challenge</h1>
+
+<p>We had a followup meeting with your client Joe and talked about the great progress that was made with the
+project. A lot of the core domain requirements have been covered and we’ve described how the system could
+be designed. Of course Twootr isn’t complete at this point. You’ve not heard about how
+you wire the application up together so that the different components can talk to each other. You’ve also
+not been exposed to our approach to persist the state of twoots into some kind of storage system that won’t
+disappear when Twootr is rebooted.</p>
+
+<p>Joe is really excited by both the progress made and he’s really
+looking forward to seeing the finished Twootr implementation. The final chapter will complete
+the design of Twootr and cover the remaining topics.<a data-type="indexterm" data-primary="Twootr (example)" data-startref="ix_Twoo" id="idm45816819041896"/></p>
+</div></section>
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  </body></html>

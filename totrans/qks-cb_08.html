@@ -1,0 +1,695 @@
+<html><head></head><body><div id="sbo-rt-content"><section data-type="chapter" epub:type="chapter" data-pdf-bookmark="Chapter 8. Fault Tolerance"><div class="chapter" id="idm45128518722664">
+<h1><span class="label">Chapter 8. </span>Fault Tolerance</h1>
+
+
+<p><a data-type="indexterm" data-primary="fault tolerance" data-secondary="about" id="idm45128513411640"/><a data-type="indexterm" data-primary="fault tolerance" id="ft_ch"/>In this chapter, you’ll learn why you need to embrace failures in microservice architectures because this is something that will happen more often than not.
+One of the reasons this happens is because microservices architecture heavily relies on the 
+<span class="keep-together">network</span> to function, and the network is a critical part that might not always be available (network down, saturation of the wire, change on the topology, update of the 
+<span class="keep-together">downstream</span> service, etc.).</p>
+
+<p>For this reason, it is important to build services that are fault-tolerant to any kind of problem and to provide graceful solutions instead of just propagating the error.</p>
+
+<p>This chapter will include recipes for the following tasks:</p>
+
+<ul>
+<li>
+<p>Implement different resilient strategies</p>
+</li>
+<li>
+<p>Provide some fallback logic in case there is an error</p>
+</li>
+<li>
+<p>Correctly configure fault-tolerance parameters</p>
+</li>
+</ul>
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="8.1 Implementing Automatic Retries"><div class="sect1" id="idm45128513403512">
+<h1>8.1 Implementing Automatic Retries</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128513402264">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="fault tolerance" data-secondary="implementing automatic retries" id="idm45128513401064"/><a data-type="indexterm" data-primary="automatic retries, implementing" id="idm45128513400120"/>If there are errors, you want to execute automatic retries in order to try to recover from the failure.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128513398984">
+<h2>Solution</h2>
+
+<p>MicroProfile Fault Tolerance specification provides a way to implement automatic retries on any CDI element, including CDI beans and the MicroProfile REST Client.</p>
+
+<p>One can implement several strategies to protect against failures and, in the worst cases, provide some default logic instead of a failure.
+Suppose you have a service that suggests books depending on reader preference.
+If this service is down, instead of failing, you could cache a list of best-selling books so that at least you could provide the list and not a failure.
+So one of the important parts to define as a fault-tolerance strategy is a fallback logic to execute in case there is no possible recovery.</p>
+
+<p>MicroProfile Fault Tolerance focuses on several strategies to make your code fault-tolerant.
+Let’s look at the first strategy, which is as simple as executing automatic retries.</p>
+
+<p>You need to add extensions for using a MicroProfile Fault Tolerance specification:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">./mvnw quarkus:add-extension -Dextensions="quarkus-smallrye-fault-tolerance"</code></pre>
+
+<p>One of the easiest and sometimes most effective ways to recover from a network failure is to do a retry of the same operation.
+If it was an intermittent error, then the error could be fixed with some retries.</p>
+
+<p>The classes or methods annotated with <code>@org.eclipse.microprofile.faulttolerance.Retry</code> execute automatic retries if an exception is thrown.
+You can set different <code>parameters</code>, like max retries, max duration, or jitter; or you can specify the kind of exceptions for which the retries should be executed.</p>
+
+<p>Moreover, you can implement fallback logic by annotating the methods with <code>@org.eclipse.microprofile.faulttolerance.Fallback</code>.
+The logic to execute as a fallback can be implemented as a class implementing the <code>org.eclipse.microprofile.faulttolerance.FallbackHandler</code> interface:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code>    </code><code class="nd">@Retry</code><code class="o">(</code><code class="n">maxRetries</code><code> </code><code class="o">=</code><code> </code><code class="mi">3</code><code class="o">,</code><code> </code><a class="co" id="co_fault_tolerance_CO1-1" href="#callout_fault_tolerance_CO1-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code>            </code><code class="n">delay</code><code> </code><code class="o">=</code><code> </code><code class="mi">1000</code><code class="o">)</code><code> </code><a class="co" id="co_fault_tolerance_CO1-2" href="#callout_fault_tolerance_CO1-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code>    </code><code class="nd">@Fallback</code><code class="o">(</code><code class="n">RecoverHelloMessageFallback</code><code class="o">.</code><code class="na">class</code><code class="o">)</code><code> </code><a class="co" id="co_fault_tolerance_CO1-3" href="#callout_fault_tolerance_CO1-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a><code>
+</code><code>    </code><code class="kd">public</code><code> </code><code class="n">String</code><code> </code><code class="nf">getHelloWithFallback</code><code class="o">(</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>        </code><code class="n">failureSimulator</code><code class="o">.</code><code class="na">failAlways</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code>
+</code><code>        </code><code class="k">return</code><code> </code><code class="s">"hello"</code><code class="o">;</code><code>
+</code><code>    </code><code class="o">}</code><code>
+</code><code>
+</code><code>    </code><code class="kd">public</code><code> </code><code class="kd">static</code><code> </code><code class="kd">class</code><code> </code><code class="nc">RecoverHelloMessageFallback</code><code>
+</code><code>        </code><code class="kd">implements</code><code> </code><code class="n">FallbackHandler</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code><code> </code><code class="o">{</code><code> </code><a class="co" id="co_fault_tolerance_CO1-4" href="#callout_fault_tolerance_CO1-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a><code>
+</code><code>
+</code><code>        </code><code class="nd">@Override</code><code>
+</code><code>        </code><code class="kd">public</code><code> </code><code class="n">String</code><code> </code><code class="nf">handle</code><code class="o">(</code><code class="n">ExecutionContext</code><code> </code><code class="n">executionContext</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>            </code><code class="k">return</code><code> </code><code class="s">"good bye"</code><code class="o">;</code><code>
+</code><code>        </code><code class="o">}</code><code>
+</code><code>
+</code><code>    </code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO1-1" href="#co_fault_tolerance_CO1-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Sets the maximum retries to 3</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO1-2" href="#co_fault_tolerance_CO1-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>There is a delay of 1 second between retries</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO1-3" href="#co_fault_tolerance_CO1-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Adds fallback logic if after 3 retries the problem still persists</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO1-4" href="#co_fault_tolerance_CO1-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></dt>
+<dd><p><code>FallbackHandler</code> template must be the same type as the return type of the recovering method</p></dd>
+</dl>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Discussion"><div class="sect2" id="idm45128513398392">
+<h2>Discussion</h2>
+
+<p>You can override any of these properties via the configuration file.
+The configuration key follows the followings format: <code><em>fully_qualified_class_name</em>/<em>method_name</em>/<em>fault_tolerant_annotation</em>/<em>parameter</em></code>.</p>
+
+<p>For example, you can set the parameters specific to a method or a class, or globally:</p>
+
+<pre data-type="programlisting" data-code-language="properties"><code class="na">org.acme.quickstart.ServiceInvoker/getHelloWithFallback/Retry/maxDuration</code><code class="o">=</code><code class="s">30 </code><a class="co" id="co_fault_tolerance_CO2-1" href="#callout_fault_tolerance_CO2-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="na">org.acme.quickstart.ServiceInvoker/Retry/maxDuration</code><code class="o">=</code><code class="s">3000 </code><a class="co" id="co_fault_tolerance_CO2-2" href="#callout_fault_tolerance_CO2-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code class="na">Retry/maxDuration</code><code class="o">=</code><code class="s">3000 </code><a class="co" id="co_fault_tolerance_CO2-3" href="#callout_fault_tolerance_CO2-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO2-1" href="#co_fault_tolerance_CO2-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Overrides at the method level</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO2-2" href="#co_fault_tolerance_CO2-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Overrides at the class level</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO2-3" href="#co_fault_tolerance_CO2-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Overrides globally</p></dd>
+</dl>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="See Also"><div class="sect2" id="idm45128513133048">
+<h2>See Also</h2>
+
+<p>For more information, visit the following pages on the Eclipse MicroProfile website:</p>
+
+<ul>
+<li>
+<p><a href="https://oreil.ly/WzhhA">Fault Tolerance</a></p>
+</li>
+<li>
+<p><a href="https://oreil.ly/Kjhzj">Fault Tolerance: Retry Policy</a></p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="8.2 Implementing Timeouts"><div class="sect1" id="idm45128513112264">
+<h1>8.2 Implementing Timeouts</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128513111384">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="fault tolerance" data-secondary="implementing timeouts" id="idm45128513110376"/><a data-type="indexterm" data-primary="timeouts, implementing" id="idm45128513109528"/>You want to prevent an execution from waiting forever.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128513108536">
+<h2>Solution</h2>
+
+<p>MicroProfile Fault Tolerance specification provides a way to implement timeouts to operations and prevent the execution from waiting forever.</p>
+
+<p>When there is an invocation to an external service, it is good practice to ensure that this operation has a timeout associated with it. This way, if there are network delays or failures, the process doesn’t wait for a long time and end up with a failure, but fails fast so you can react to the problem sooner than later.</p>
+
+<p>The classes or methods annotated with <code>@org.eclipse.microprofile.faulttolerance.Timeout</code> define a timeout.
+If there is a timeout, then the <code>org.eclipse.microprofile.faulttolerance.exceptions.TimeoutException</code> exception is thrown:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code>    </code><code class="nd">@Timeout</code><code class="o">(</code><code class="n">value</code><code> </code><code class="o">=</code><code> </code><code class="mi">2000</code><code class="o">)</code><code> </code><a class="co" id="co_fault_tolerance_CO3-1" href="#callout_fault_tolerance_CO3-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code>    </code><code class="kd">public</code><code> </code><code class="n">String</code><code> </code><code class="nf">getHelloWithTimeout</code><code class="o">(</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>        </code><code class="n">failureSimulator</code><code class="o">.</code><code class="na">longMethod</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code>
+</code><code>        </code><code class="k">return</code><code> </code><code class="s">"hello"</code><code class="o">;</code><code>
+</code><code>    </code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO3-1" href="#co_fault_tolerance_CO3-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Sets timeout to 2 seconds</p></dd>
+</dl>
+
+<p>You can override any of these properties via the configuration file, like so:</p>
+
+<pre data-type="programlisting" data-code-language="properties"><code class="na">org.acme.quickstart.ServiceInvoker/getHelloWithTimeout/Timeout/value</code><code class="o">=</code><code class="s">3000 </code><a class="co" id="co_fault_tolerance_CO4-1" href="#callout_fault_tolerance_CO4-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="na">org.acme.quickstart.ServiceInvoker/Timeout/value</code><code class="o">=</code><code class="s">3000 </code><a class="co" id="co_fault_tolerance_CO4-2" href="#callout_fault_tolerance_CO4-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code class="na">Timeout/value</code><code class="o">=</code><code class="s">3000 </code><a class="co" id="co_fault_tolerance_CO4-3" href="#callout_fault_tolerance_CO4-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO4-1" href="#co_fault_tolerance_CO4-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Overrides at the method level</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO4-2" href="#co_fault_tolerance_CO4-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Overrides at the class level</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO4-3" href="#co_fault_tolerance_CO4-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Overrides globally</p></dd>
+</dl>
+
+<p><a data-type="indexterm" data-primary="@Timeout annotation" id="idm45128513016168"/><a data-type="indexterm" data-primary="@Fallback annotation" id="idm45128512999304"/><a data-type="indexterm" data-primary="@Retry annotation" id="idm45128512998696"/>You can mix the <code>@Timeout</code> annotation with <code>@Fallback</code> to implement some recovery logic in case of a timeout or use <code>@Retry</code> to execute an automatic retry if a timeout exception occurs  (<code>@Retry(retryOn=TimeoutException.class)</code>).</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="See Also"><div class="sect2" id="idm45128513107944">
+<h2>See Also</h2>
+
+<p>To learn more about the timeout pattern in MicroProfile Fault Tolerance, see the 
+<span class="keep-together">following</span> page on GitHub:</p>
+
+<ul>
+<li>
+<p><a href="https://oreil.ly/af9DD">Timeout</a></p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="8.3 Avoiding Overloads with the Bulkhead Pattern"><div class="sect1" id="idm45128512992120">
+<h1>8.3 Avoiding Overloads with the Bulkhead Pattern</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128512990936">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="bulkhead pattern, avoiding overloads with" id="idm45128512989736"/><a data-type="indexterm" data-primary="fault tolerance" data-secondary="avoiding overloads with bulkhead pattern" id="idm45128512988936"/><a data-type="indexterm" data-primary="overloads, avoiding with bulkhead pattern" id="idm45128512987960"/>You want to limit the number of accepted requests to a service.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128512986872">
+<h2>Solution</h2>
+
+<p>The MicroProfile Fault Tolerance specification provides a <em>bulkhead</em> pattern 
+<span class="keep-together">implementation</span>.</p>
+
+<p>The bulkhead pattern limits the operations that can be executed at the same time, keeping the new requests waiting, until the current execution requests can finish.
+
+<span class="keep-together">If the</span> waiting requests cannot be executed after a certain amount of time, they are 
+<span class="keep-together">discarded</span> and an exception is thrown.</p>
+
+<p>The classes or methods annotated with <code>@org.eclipse.microprofile.faulttolerance.Bulkhead</code> apply a bulkhead limitation.
+If there are synchronous calls (you’ll learn how the bulkhead limitation works with asynchronous calls in <a data-type="xref" href="ch15.xhtml#working_with_a_reactive_programming_model_chapter">Chapter 15</a>), the <code>org.eclipse.microprofile.faulttolerance.exceptions.BulkheadException</code> exception is thrown when the limit of concurrent executions is reached, instead of queuing the requests:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code>    </code><code class="nd">@Bulkhead</code><code class="o">(</code><code class="mi">2</code><code class="o">)</code><code> </code><a class="co" id="co_fault_tolerance_CO5-1" href="#callout_fault_tolerance_CO5-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code>    </code><code class="kd">public</code><code> </code><code class="n">String</code><code> </code><code class="nf">getHelloBulkhead</code><code class="o">(</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>        </code><code class="n">failureSimulator</code><code class="o">.</code><code class="na">shortMethod</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code>
+</code><code>        </code><code class="k">return</code><code> </code><code class="s">"hello"</code><code class="o">;</code><code>
+</code><code>    </code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO5-1" href="#co_fault_tolerance_CO5-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Sets the limit to two concurrent executions</p></dd>
+</dl>
+
+<p><a data-type="indexterm" data-primary="siege tool" id="idm45128512937320"/>If you use the <code>siege</code> tool to simulate 4 concurrent requests, then the output will look like the following:</p>
+
+<pre data-type="programlisting" data-code-language="shell-session"><code class="go">siege -r 1 -c 4 -v http://localhost:8080/hello/bulkhead
+</code><code class="go">
+</code><code class="go">** SIEGE 4.0.4
+</code><code class="go">** Preparing 4 concurrent users for battle.
+</code><code class="go">The server is now under siege...
+</code><code class="go">HTTP/1.1 500     0.47 secs:    2954 bytes ==&gt; GET  /hello/bulkhead
+</code><code class="go">HTTP/1.1 500     0.47 secs:    2954 bytes ==&gt; GET  /hello/bulkhead
+</code><code class="go">HTTP/1.1 200     2.46 secs:       5 bytes ==&gt; GET  /hello/bulkhead
+</code><code class="go">HTTP/1.1 200     2.46 secs:       5 bytes ==&gt; GET  /hello/bulkhead
+</code><code class="go">
+</code><code class="go">Transactions:		       2 hits
+</code><code class="go">Availability:		       50.00 % </code><a class="co" id="co_fault_tolerance_CO6-1" href="#callout_fault_tolerance_CO6-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO6-1" href="#co_fault_tolerance_CO6-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Only 2 requests are processed</p></dd>
+</dl>
+
+<p>Moreover, you can override any of these properties via the configuration file:</p>
+
+<pre data-type="programlisting" data-code-language="properties"><code class="na">org.acme.quickstart.ServiceInvoker/getHelloBulkhead/Bulkhead/value</code><code class="o">=</code><code class="s">10 </code><a class="co" id="co_fault_tolerance_CO7-1" href="#callout_fault_tolerance_CO7-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="na">org.acme.quickstart.ServiceInvoker/Bulkhead/value</code><code class="o">=</code><code class="s">10 </code><a class="co" id="co_fault_tolerance_CO7-2" href="#callout_fault_tolerance_CO7-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code class="na">Bulkhead/value</code><code class="o">=</code><code class="s">10 </code><a class="co" id="co_fault_tolerance_CO7-3" href="#callout_fault_tolerance_CO7-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO7-1" href="#co_fault_tolerance_CO7-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Overrides at the method level</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO7-2" href="#co_fault_tolerance_CO7-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Overrides at the class level</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO7-3" href="#co_fault_tolerance_CO7-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Overrides globally</p></dd>
+</dl>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Discussion"><div class="sect2" id="idm45128512986280">
+<h2>Discussion</h2>
+
+<p>When you are dealing with (micro)services architecture, a problem can occur when another service is overloaded by more calls than it can consume at one time.
+If the overload continues, this service might be overwhelmed and stop processing requests in an acceptable amount of time.</p>
+
+<p><a data-type="indexterm" data-primary="@Bulkhead annotation" id="idm45128512835960"/>You can mix <code>@Bulkhead</code> annotation with any other previously demonstrated fault tolerance annotations to implement a more resilient strategy—for example, a <em>bulkhead</em> + <em>retry</em> with delays.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="See Also"><div class="sect2" id="idm45128512833416">
+<h2>See Also</h2>
+
+<p>To learn more about the bulkhead pattern in MicroProfile Fault Tolerance, see the following page on GitHub:</p>
+
+<ul>
+<li>
+<p><a href="https://oreil.ly/anYN5">Bulkhead</a></p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="8.4 Avoiding Unnecessary Calls with the Circuit Breaker Pattern"><div class="sect1" id="idm45128512829928">
+<h1>8.4 Avoiding Unnecessary Calls with the Circuit Breaker Pattern</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128512828744">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="circuit breaker pattern, avoiding unnecessary calls with" id="cbp_ab"/><a data-type="indexterm" data-primary="fault tolerance" data-secondary="avoiding unnecessary calls with circuit breaker pattern" id="ft_cbp"/>You want to prevent a service failure from propagating to other services and consuming several resources.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128512824840">
+<h2>Solution</h2>
+
+<p>MicroProfile Fault Tolerance specification provides the <em>circuit breaker</em> pattern to avoid making unnecessary calls if there are errors.</p>
+
+<p>Let’s define a circuit breaker that is tripped after 3 errors in a window of 4 requests:</p>
+
+<pre data-type="programlisting" data-code-language="java"><code>    </code><code class="nd">@CircuitBreaker</code><code class="o">(</code><code class="n">requestVolumeThreshold</code><code> </code><code class="o">=</code><code> </code><code class="mi">4</code><code class="o">,</code><code> </code><a class="co" id="co_fault_tolerance_CO8-1" href="#callout_fault_tolerance_CO8-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code>                    </code><code class="n">failureRatio</code><code> </code><code class="o">=</code><code> </code><code class="mf">0.75</code><code class="o">,</code><code>  </code><a class="co" id="co_fault_tolerance_CO8-2" href="#callout_fault_tolerance_CO8-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code>                    </code><code class="n">delay</code><code> </code><code class="o">=</code><code> </code><code class="mi">2000</code><code class="o">)</code><code> </code><a class="co" id="co_fault_tolerance_CO8-3" href="#callout_fault_tolerance_CO8-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a><code>
+</code><code>    </code><code class="kd">public</code><code> </code><code class="n">String</code><code> </code><code class="nf">getHelloCircuitBreaker</code><code class="o">(</code><code class="o">)</code><code> </code><code class="o">{</code><code>
+</code><code>        </code><code class="n">failureSimulator</code><code class="o">.</code><code class="na">fail4Consecutive</code><code class="o">(</code><code class="o">)</code><code class="o">;</code><code>
+</code><code>        </code><code class="k">return</code><code> </code><code class="s">"hello"</code><code class="o">;</code><code>
+</code><code>    </code><code class="o">}</code></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO8-1" href="#co_fault_tolerance_CO8-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Defines the rolling window</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO8-2" href="#co_fault_tolerance_CO8-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Threshold to trip the circuit (4 × 0.75 = 3)</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO8-3" href="#co_fault_tolerance_CO8-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Amount of time that the circuit is opened</p></dd>
+</dl>
+
+<p>You can override any of these properties via the configuration file:</p>
+
+<pre data-type="programlisting" data-code-language="properties"><code class="err">o</code><code class="err">r</code><code class="err">g</code><code class="err">.</code><code class="err">a</code><code class="err">c</code><code class="err">m</code><code class="err">e</code><code class="err">.</code><code class="err">q</code><code class="err">u</code><code class="err">i</code><code class="err">c</code><code class="err">k</code><code class="err">s</code><code class="err">t</code><code class="err">a</code><code class="err">r</code><code class="err">t</code><code class="err">.</code><code class="err">S</code><code class="err">e</code><code class="err">r</code><code class="err">v</code><code class="err">i</code><code class="err">c</code><code class="err">e</code><code class="err">I</code><code class="err">n</code><code class="err">v</code><code class="err">o</code><code class="err">k</code><code class="err">e</code><code class="err">r</code><code class="err">/</code><code class="err">g</code><code class="err">e</code><code class="err">t</code><code class="err">H</code><code class="err">e</code><code class="err">l</code><code class="err">l</code><code class="err">o</code><code class="err">C</code><code class="err">i</code><code class="err">r</code><code class="err">c</code><code class="err">u</code><code class="err">i</code><code class="err">t</code><code class="err">B</code><code class="err">r</code><code class="err">e</code><code class="err">a</code><code class="err">k</code><code class="err">e</code><code class="err">r</code><code> </code><code class="err">\</code><code>
+    </code><code class="na">/CircuitBreaker/failureRatio</code><code class="o">=</code><code class="s">0.75 </code><a class="co" id="co_fault_tolerance_CO9-1" href="#callout_fault_tolerance_CO9-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="na">org.acme.quickstart.ServiceInvoker/CircuitBreaker/failureRatio</code><code class="o">=</code><code class="s">3000 </code><a class="co" id="co_fault_tolerance_CO9-2" href="#callout_fault_tolerance_CO9-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code class="na">Timeout/value</code><code class="o">=</code><code class="s">3000 </code><a class="co" id="co_fault_tolerance_CO9-3" href="#callout_fault_tolerance_CO9-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO9-1" href="#co_fault_tolerance_CO9-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Overrides at method level; this should be on the same line</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO9-2" href="#co_fault_tolerance_CO9-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Overrides at class level</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO9-3" href="#co_fault_tolerance_CO9-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Overrides globally</p></dd>
+</dl>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Discussion"><div class="sect2" id="idm45128512654664">
+<h2>Discussion</h2>
+
+<p>When you are dealing with (micro)services architecture, a problem can occur when the communication to another service becomes impossible, either because the service is down or because of high latency.
+When this happens, expensive resources such as threads or file descriptors might be consumed on the caller while waiting for the other service to respond.
+If this continues, you could end up with resource exhaustion, which would mean that no more requests can be handled by this service, which would trigger a cascade of errors to other services throughout the application.</p>
+
+<p><a data-type="xref" href="#cascadefailures">Figure 8-1</a> <a data-type="indexterm" data-primary="cascading failure" id="idm45128512624152"/>illustrates how a failure happening in a service, in the middle of the mesh, is propagated through all its callers.
+This is an example of a cascading failure.</p>
+
+<figure><div id="cascadefailures" class="figure">
+<img src="Images/qucb_0801.png" alt="qucb 0801" width="843" height="479"/>
+<h6><span class="label">Figure 8-1. </span>Cascading failure</h6>
+</div></figure>
+<div style="page-break-after: always;"/>
+
+<p>The circuit breaker pattern fixes a cascading failure by detecting the number of 
+<span class="keep-together">consecutive</span> failures inside a detection window.
+If the defined error threshold is 
+<span class="keep-together">overtaken</span>, then the circuit is tripped, meaning that for a certain amount of time, all attempts to call this method will fail immediately without trying to execute it.
+<a data-type="xref" href="#circuitbreakercalls">Figure 8-2</a> illustrates the schema of circuit breaker calls.</p>
+
+<figure><div id="circuitbreakercalls" class="figure">
+<img src="Images/qucb_0802.png" alt="qucb 0802" width="681" height="1089"/>
+<h6><span class="label">Figure 8-2. </span>Circuit breaker calls</h6>
+</div></figure>
+
+<p>After some time, the circuit will become half-opened, which means that the next call will not fail immediately but will try again against the real system.
+If the call succeeds, then the circuit will be closed; otherwise, it will remain open.
+All possible states of a circuit breaker pattern are shown in <a data-type="xref" href="#circuitbreaker">Figure 8-3</a>.</p>
+
+<figure><div id="circuitbreaker" class="figure">
+<img src="Images/qucb_0803.png" alt="qucb 0803" width="1050" height="462"/>
+<h6><span class="label">Figure 8-3. </span>Circuit breaker life cycle</h6>
+</div></figure>
+
+<p>The classes or methods annotated with <code>@org.eclipse.microprofile.faulttolerance.CircuitBreaker</code> define a circuit breaker for that specific operation.
+If the 
+<span class="keep-together">circuit</span> is opened, then the <code>org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException</code> exception is thrown.</p>
+
+<p><a data-type="indexterm" data-primary="@Bulkhead annotation" id="idm45128512611352"/><a data-type="indexterm" data-primary="@Fallback annotation" id="idm45128512610424"/><a data-type="indexterm" data-primary="@Timeout annotation" id="idm45128512609752"/><a data-type="indexterm" data-primary="@Retry annotation" id="idm45128512609080"/>You can also mix <code>@CircuitBreaker</code> with <code>@Timeout</code>, <code>@Fallback</code>, <code>@Bulkhead</code>, or <code>@Retry</code>, but the following must be taken into consideration:</p>
+
+<ul>
+<li>
+<p>If <code>@Fallback</code> is used, the fallback logic is executed if a <code>CircuitBreakerOpenException</code> is thrown.</p>
+</li>
+<li>
+<p>If <code>@Retry</code> is used, each retry is processed by the circuit breaker and recorded as either a success or a failure.</p>
+</li>
+<li>
+<p>If <code>@Bulkhead</code> is used, the circuit breaker is checked before attempting to enter the bulkhead.</p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="See Also"><div class="sect2" id="idm45128512654040">
+<h2>See Also</h2>
+
+<p>To learn more about the circuit breaker pattern in MicroProfile Fault Tolerance, see the following page on GitHub<a data-type="indexterm" data-primary="" data-startref="cbp_ab" id="idm45128512599480"/><a data-type="indexterm" data-primary="" data-startref="ft_cbp" id="idm45128512598504"/>:</p>
+
+<ul>
+<li>
+<p><a href="https://oreil.ly/iOWuR">Circuit Breaker</a></p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="8.5 Disabling Fault Tolerance"><div class="sect1" id="idm45128512595240">
+<h1>8.5 Disabling Fault Tolerance</h1>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Problem"><div class="sect2" id="idm45128512594232">
+<h2>Problem</h2>
+
+<p><a data-type="indexterm" data-primary="fault tolerance" data-secondary="disabling" id="idm45128512593032"/><a data-type="indexterm" data-primary="disabling" data-secondary="fault tolerance" id="idm45128512592056"/>You want to disable fault tolerance in some environments.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Solution"><div class="sect2" id="idm45128512590728">
+<h2>Solution</h2>
+
+<p>The MicroProfile Fault Tolerance specification provides a special parameter to enable or disable fault-tolerance logic either globally or individually.</p>
+
+<p>There are some cases in which you might want to disable fault-tolerance logic. The
+MicroProfile Fault Tolerance specification defines a special parameter called <code>enabled</code> that can be used to enable or disable the logic from the configuration file either 
+<span class="keep-together">globally</span> or individually<a data-type="indexterm" data-primary="" data-startref="ft_ch" id="idm45128512587320"/>:</p>
+
+<pre data-type="programlisting" data-code-language="properties"><code class="err">o</code><code class="err">r</code><code class="err">g</code><code class="err">.</code><code class="err">a</code><code class="err">c</code><code class="err">m</code><code class="err">e</code><code class="err">.</code><code class="err">q</code><code class="err">u</code><code class="err">i</code><code class="err">c</code><code class="err">k</code><code class="err">s</code><code class="err">t</code><code class="err">a</code><code class="err">r</code><code class="err">t</code><code class="err">.</code><code class="err">S</code><code class="err">e</code><code class="err">r</code><code class="err">v</code><code class="err">i</code><code class="err">c</code><code class="err">e</code><code class="err">I</code><code class="err">n</code><code class="err">v</code><code class="err">o</code><code class="err">k</code><code class="err">e</code><code class="err">r</code><code class="err">/</code><code class="err">g</code><code class="err">e</code><code class="err">t</code><code class="err">H</code><code class="err">e</code><code class="err">l</code><code class="err">l</code><code class="err">o</code><code class="err">C</code><code class="err">i</code><code class="err">r</code><code class="err">c</code><code class="err">u</code><code class="err">i</code><code class="err">t</code><code class="err">B</code><code class="err">r</code><code class="err">e</code><code class="err">a</code><code class="err">k</code><code class="err">e</code><code class="err">r</code><code class="err">/</code><code class="err">\</code><code>
+    </code><code class="na">CircuitBreaker/enabled</code><code class="o">=</code><code class="s">false </code><a class="co" id="co_fault_tolerance_CO10-1" href="#callout_fault_tolerance_CO10-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a><code>
+</code><code class="na">org.acme.quickstart.ServiceInvoker/CircuitBreaker/enabled</code><code class="o">=</code><code class="s">false </code><a class="co" id="co_fault_tolerance_CO10-2" href="#callout_fault_tolerance_CO10-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a><code>
+</code><code class="na">CircuitBreaker/enabled</code><code class="o">=</code><code class="s">false </code><a class="co" id="co_fault_tolerance_CO10-3" href="#callout_fault_tolerance_CO10-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a><code>
+</code><code class="na">MP_Fault_Tolerance_NonFallback_Enabled</code><code class="o">=</code><code class="s">false </code><a class="co" id="co_fault_tolerance_CO10-4" href="#callout_fault_tolerance_CO10-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></pre>
+<dl class="calloutlist">
+<dt><a class="co" id="callout_fault_tolerance_CO10-1" href="#co_fault_tolerance_CO10-1"><img src="Images/1.png" alt="1" width="12" height="12"/></a></dt>
+<dd><p>Disable at the method level; this should be on the same line</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO10-2" href="#co_fault_tolerance_CO10-2"><img src="Images/2.png" alt="2" width="12" height="12"/></a></dt>
+<dd><p>Disable at the class level</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO10-3" href="#co_fault_tolerance_CO10-3"><img src="Images/3.png" alt="3" width="12" height="12"/></a></dt>
+<dd><p>Disable globally by type</p></dd>
+<dt><a class="co" id="callout_fault_tolerance_CO10-4" href="#co_fault_tolerance_CO10-4"><img src="Images/4.png" alt="4" width="12" height="12"/></a></dt>
+<dd><p>Disable all fault tolerance</p></dd>
+</dl>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  </body></html>

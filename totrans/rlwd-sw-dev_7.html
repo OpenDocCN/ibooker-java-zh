@@ -1,0 +1,1457 @@
+<html><head></head><body><div id="sbo-rt-content"><section data-type="chapter" epub:type="chapter" data-pdf-bookmark="Chapter 7. Extending Twootr"><div class="chapter" id="chapter_07">
+<h1><span class="label">Chapter 7. </span>Extending Twootr</h1>
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="The Challenge"><div class="sect1" id="idm45816819039144">
+<h1>The Challenge</h1>
+
+<p>Previously, on Twootr, Joe had wanted a modern online communication system to be implemented.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" id="ix_Twooext"/> The previous chapter presented a potential design for Twootr and <span class="keep-together">the implementation</span> of the core business domain was described, including driving out
+that design through tests. You learned about some of the design and data modeling decisions involved and how to
+break down the initial problem and structure your solution. That didn’t cover the whole of the Twootr project,
+so it’s up to this chapter to complete the narrative.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="The Goal"><div class="sect1" id="idm45816819035016">
+<h1>The Goal</h1>
+
+<p>This chapter extends and completes the progress made in the previous chapter by helping you understand<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="goal" id="idm45816819033576"/> about the
+following topics:</p>
+
+<ul>
+<li>
+<p>Avoiding coupling with the Dependency Inversion Principle and Dependency Injection</p>
+</li>
+<li>
+<p>Persistence with the Repository pattern and the Query Object pattern.</p>
+</li>
+<li>
+<p>A brief introduction to functional programming that will show you how you can make use of the ideas from
+this in a Java-specific context and a real application.</p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" class="pagebreak-before less_space" data-pdf-bookmark="Recap"><div class="sect1" id="idm45816819028760">
+<h1>Recap</h1>
+
+<p>Since we’re continuing the Twootr project from the previous chapter, it’s probably worth recapping the key concepts in
+our design at this point.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="recap of key concepts" id="idm45816819026936"/><a data-type="indexterm" data-primary="design" data-secondary="in Twootr (example), recap of key concepts" id="idm45816819025688"/> If you’re continuing from the previous chapter in a marathon reading session, then we’re glad
+you’re enjoying the book, but feel free to skip this section:</p>
+
+<ul>
+<li>
+<p><code>Twootr</code> is the parent class that instantiates the business logic and orchestrates the system.</p>
+</li>
+<li>
+<p>A <code>Twoot</code> is a single instance of a message broadcast by a user in our system.</p>
+</li>
+<li>
+<p>A <code>ReceiverEndPoint</code> is an interface that is implemented by a UI adapter and pushes <code>Twoot</code> objects out to the UI.</p>
+</li>
+<li>
+<p>The <code>SenderEndPoint</code> has methods that correspond to events being sent into the system from a user.</p>
+</li>
+<li>
+<p>Password management and hashing are performed by the <code>KeyGenerator</code> class.</p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Persistence and the Repository Pattern"><div class="sect1" id="idm45816819016632">
+<h1>Persistence and the Repository Pattern</h1>
+
+<p>So we’ve now got a system that can support much of the core twooting operations.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="persistence and the repository pattern" id="ix_TwooextPRP"/><a data-type="indexterm" data-primary="persistence in Twootr (example)" data-secondary="and repository pattern" id="ix_persrep"/> Unfortunately, if we restart the Java process in any way all the twoots and user information is lost. We need
+a way of persisting the information that we’re storing in order to survive a restart. Earlier
+in the discussion of software architecture we talked about ports and adapters and how we
+would like to keep the core of our application agnostic of the storage backend. <a data-type="indexterm" data-primary="repository pattern" id="ix_repos"/>There’s, in fact,
+a commonly used pattern that helps us do this: the <em>Repository</em> pattern.</p>
+
+<p>The Repository pattern defines an interface between the domain logic and storage backend. In addition to allowing us to use a different storage backend over time as our application evolves, this
+approach offers several advantages:</p>
+
+<ul>
+<li>
+<p>Centralizing logic for mapping data from our storage backend to the domain model.</p>
+</li>
+<li>
+<p>Enables unit testing of core business logic without having to spin up a database. This can speed
+up the execution of tests.</p>
+</li>
+<li>
+<p>Improves maintainability and readability by keeping each class single responsibility.</p>
+</li>
+</ul>
+
+<p>You can think of a repository as a being like a collection of objects, but instead of just storing
+the objects in memory, the repository persists them somewhere. When <span class="keep-together">evolving</span> the design of our application
+we drove the design of the repositories through tests; however, to save time here we will just
+describe the final implementation.<a data-type="indexterm" data-primary="repository pattern" data-secondary="repositories needed in Twootr (example)" id="idm45816818982216"/> Since a repository is a collection of objects we need two
+of them in Twootr: one to store <code>User</code> objects and one for <code>Twoot</code> objects. Most repositories
+have a series of common operations that <a data-type="indexterm" data-primary="add method in repositories" id="idm45816818980168"/><a data-type="indexterm" data-primary="get method in repositories" id="idm45816818979416"/><a data-type="indexterm" data-primary="delete method in repositories" id="idm45816818978776"/><a data-type="indexterm" data-primary="update method in repositories" id="idm45816818978088"/><a data-type="indexterm" data-primary="repository pattern" data-secondary="common operations implemented in repositories" id="idm45816818977400"/>are implemented:</p>
+<dl>
+<dt><code>add()</code></dt>
+<dd>
+<p>Stores a new instance of the object into the repository.</p>
+</dd>
+<dt><code>get()</code></dt>
+<dd>
+<p>Looks up a single object based on an identifier.</p>
+</dd>
+<dt><code>delete()</code></dt>
+<dd>
+<p>Deletes an instance from the persistence backend.</p>
+</dd>
+<dt><code>update()</code></dt>
+<dd>
+<p>Ensures that the values saved for this object are equal to the instance fields.</p>
+</dd>
+</dl>
+
+<p>Some people use the acronym CRUD to describe these kind of operations. This stands for
+Create, Read, Update, and Delete. We’ve used <code>add</code> and <code>get</code> instead of <code>create</code> and <code>read</code> as the
+naming is more inline with common Java usage, for example, in the collections framework.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Designing the Repositories"><div class="sect2" id="idm45816818967288">
+<h2>Designing the Repositories</h2>
+
+<p>In our case we’ve designed things top-down and driven the development of the repositories from tests.<a data-type="indexterm" data-primary="repository pattern" data-secondary="designing repositories for Twootr (example)" id="idm45816818965320"/><a data-type="indexterm" data-primary="persistence in Twootr (example)" data-secondary="and repository pattern" data-tertiary="designing the repositories" id="idm45816818964248"/><a data-type="indexterm" data-primary="users" data-secondary="designing UserRepository in Twootr (example)" id="idm45816818963096"/>
+The implication of this is that not all the operations are defined on both repositories. The <code>UserRepository</code>,
+shown in <a data-type="xref" href="#UserRepository_definition">Example 7-1</a>, doesn’t have an operation to delete a <code>User</code>. That’s because there’s
+no requirement that has actually driven an operation to delete a user. We asked our customer, Joe, about this
+and he said “once you Twoot, you can’t stop!”</p>
+
+<p>When working on your own, you might be tempted to add functionality just to have the “normal” operations in the
+repository, but we would strongly
+caution against going down that route.<a data-type="indexterm" data-primary="unused code (or dead code)" id="idm45816818959560"/><a data-type="indexterm" data-primary="dead code" id="idm45816818958856"/> Unused code, or <em>dead code</em> as it’s often known, is a liability. In some
+sense all code is a liability, but if the code is actually doing something useful then it has a benefit to your
+system, while if it unused it’s merely a liability. As your requirements evolve you need to refactor and improve
+your codebase and the more unused code that you have lying around, the more difficult this task is.</p>
+
+<p>There’s a guiding principle here that we’ve been alluding to throughout the chapter, but not mentioned until now: <em>YAGNI</em>.
+This <a data-type="indexterm" data-primary="YAGNI (You ain't gonna need it)" id="idm45816818956296"/>stands for <em>You ain’t gonna need it</em>. This doesn’t mean
+don’t introduce abstractions and different concepts like repositories.<a data-type="indexterm" data-primary="repository pattern" data-secondary="designing repositories for Twootr (example)" data-tertiary="UserRepository" id="idm45816818954888"/> It just means don’t write code that you think
+you’re going to need in the future—only write it when you actually need it.</p>
+<div id="UserRepository_definition" data-type="example">
+<h5><span class="label">Example 7-1. </span>UserRepository</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">interface</code> <code class="nc">UserRepository</code> <code class="kd">extends</code> <code class="n">AutoCloseable</code> <code class="o">{</code>
+    <code class="kt">boolean</code> <code class="nf">add</code><code class="o">(</code><code class="n">User</code> <code class="n">user</code><code class="o">);</code>
+
+    <code class="n">Optional</code><code class="o">&lt;</code><code class="n">User</code><code class="o">&gt;</code> <code class="nf">get</code><code class="o">(</code><code class="n">String</code> <code class="n">userId</code><code class="o">);</code>
+
+    <code class="kt">void</code> <code class="nf">update</code><code class="o">(</code><code class="n">User</code> <code class="n">user</code><code class="o">);</code>
+
+    <code class="kt">void</code> <code class="nf">clear</code><code class="o">();</code>
+
+    <code class="n">FollowStatus</code> <code class="nf">follow</code><code class="o">(</code><code class="n">User</code> <code class="n">follower</code><code class="o">,</code> <code class="n">User</code> <code class="n">userToFollow</code><code class="o">);</code>
+<code class="o">}</code></pre></div>
+
+<p>There are also differences between the design of our two repositories due to the nature of the objects that they
+are storing.<a data-type="indexterm" data-primary="repository pattern" data-secondary="designing repositories for Twootr (example)" data-tertiary="TwootRepository" id="idm45816818906360"/> Our <code>Twoot</code> objects are immutable, so the <code>TwootRepository</code> shown in <a data-type="xref" href="#TwootRepository_definition">Example 7-2</a>
+doesn’t need to implement an <code>update()</code> operation.</p>
+<div id="TwootRepository_definition" data-type="example">
+<h5><span class="label">Example 7-2. </span>TwootRepository</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">interface</code> <code class="nc">TwootRepository</code> <code class="o">{</code>
+    <code class="n">Twoot</code> <code class="nf">add</code><code class="o">(</code><code class="n">String</code> <code class="n">id</code><code class="o">,</code> <code class="n">String</code> <code class="n">userId</code><code class="o">,</code> <code class="n">String</code> <code class="n">content</code><code class="o">);</code>
+
+    <code class="n">Optional</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="nf">get</code><code class="o">(</code><code class="n">String</code> <code class="n">id</code><code class="o">);</code>
+
+    <code class="kt">void</code> <code class="nf">delete</code><code class="o">(</code><code class="n">Twoot</code> <code class="n">twoot</code><code class="o">);</code>
+
+    <code class="kt">void</code> <code class="nf">query</code><code class="o">(</code><code class="n">TwootQuery</code> <code class="n">twootQuery</code><code class="o">,</code> <code class="n">Consumer</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="n">callback</code><code class="o">);</code>
+
+    <code class="kt">void</code> <code class="nf">clear</code><code class="o">();</code>
+<code class="o">}</code></pre></div>
+
+<p>Normally the <code>add()</code> method in a repository simply takes the object in question and persists it to the database.<a data-type="indexterm" data-primary="add method in repositories" data-secondary="TwootRepository (example)" id="idm45816818827336"/>
+In the case of the <code>TwootRepository</code>, we have taken a different approach. This method takes some specific parameters
+and actually creates the object in question. The motivation behind this approach was that the data source
+would be the one to assign the next <code>Position</code> object to the <code>Twoot</code>. We’re delegating the responsibility of
+ensuring a unique and ordered object to the data layer that will have the appropriate tool for creating such a sequence.</p>
+
+<p>Another alternative might have been to take a <code>Twoot</code> object that doesn’t have a <code>position</code> assigned to it and then
+have the <code>position</code> field set when it is added.<a data-type="indexterm" data-primary="positions (in Twootr example)" id="idm45816818822968"/> Now one of the key goals of an object’s constructor should be to ensure
+that all the internal state is completely initialized, ideally checked with <code>final</code> fields. By not assigning the
+position at object creation time we would have created an object that wasn’t completely instantiated, breaking one
+of our principles around creating objects.</p>
+
+<p>Some implementations of the Repository pattern introduce a generic interface—for example, something like
+<a data-type="xref" href="#AbstractRepository">Example 7-3</a>. In our case this wouldn’t be appropriate as the <code>TwootRepository</code> doesn’t have an
+<code>update()</code> method and the <code>UserRepository</code> doesn’t have a <code>delete()</code> method. If you want to write code that abstracts
+over different repositories, then this might be useful.<a data-type="indexterm" data-primary="repository pattern" data-secondary="designing repositories for Twootr (example)" data-tertiary="AbstractRepository" id="idm45816818818024"/> Trying to avoid forcing different implementations into the
+same interface for the sake of it is a key part of designing a good abstraction.</p>
+<div id="AbstractRepository" data-type="example">
+<h5><span class="label">Example 7-3. </span>AbstractRepository</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">interface</code> <code class="nc">AbstractRepository</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code>
+<code class="o">{</code>
+    <code class="kt">void</code> <code class="nf">add</code><code class="o">(</code><code class="n">T</code> <code class="n">value</code><code class="o">);</code>
+
+    <code class="n">Optional</code><code class="o">&lt;</code><code class="n">T</code><code class="o">&gt;</code> <code class="nf">get</code><code class="o">(</code><code class="n">String</code> <code class="n">id</code><code class="o">);</code>
+
+    <code class="kt">void</code> <code class="nf">update</code><code class="o">(</code><code class="n">T</code> <code class="n">value</code><code class="o">);</code>
+
+    <code class="kt">void</code> <code class="nf">delete</code><code class="o">(</code><code class="n">T</code> <code class="n">value</code><code class="o">);</code>
+<code class="o">}</code></pre></div>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Query Objects"><div class="sect2" id="idm45816818966664">
+<h2>Query Objects</h2>
+
+<p>Another key distinction between different repositories is how they support querying.<a data-type="indexterm" data-primary="queries" data-secondary="support for querying in repositories" id="idm45816818788792"/><a data-type="indexterm" data-primary="repository pattern" data-secondary="support for querying in TwootRepository" id="idm45816818787912"/> In the case of Twootr our
+<code>UserRepository</code> doesn’t need any querying capability, but when it comes to <code>Twoot</code> objects we need to be able
+to look up the twoots to replay when a user logs on. What is the best way to implement this functionality?</p>
+
+<p>Well, there are several different choices that we could make here. The simplest is that we could simply try our
+repository like a pure <code>Java</code> <code>Collection</code> and have a way of iterating over the different <code>Twoot</code> objects. The logic
+to query/filter could then be written in normal Java code. This is lovely, but potentially quite slow as it requires
+us to retrieve all the rows from our data store into our Java application in order to do the querying, when in
+reality we may only want a few of them. Often data store backends such as SQL databases have highly optimized and
+efficient implementations of how to query and sort data, and it’s best to leave the querying to them.</p>
+
+<p>Having decided that the repository implementation needs to have the responsibility for querying the data store
+we need to decide how best to expose this through the <code>TwootRepository</code> interface. One choice would have been
+to add a method that is tied to our business logic that performs the querying operation. For example, we could
+have written something like the <code>twootsForLogon()</code> method from <a data-type="xref" href="#twootsForLogon">Example 7-4</a> that takes the user object
+and looks up twoots associated with it. The downside of this is that we’ve now coupled the specific business
+logic functionality to our repository implementation—something that the introduction of our repository
+abstraction was designed to avoid. This will make it harder for us to evolve our implementation in line with
+requirements as we’ll have to modify the repository as well as the core domain logic and also breaches the
+Single Responsibility Principle.</p>
+<div id="twootsForLogon" data-type="example">
+<h5><span class="label">Example 7-4. </span>twootsForLogon</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">List</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="nf">twootsForLogon</code><code class="o">(</code><code class="n">User</code> <code class="n">user</code><code class="o">);</code></pre></div>
+
+<p>What we want to design is something that enables us to harness the power of a data store’s querying capability
+without tying the business logic to the data store in question.<a data-type="indexterm" data-primary="data stores, separation from business logic" id="idm45816818736664"/><a data-type="indexterm" data-primary="business logic, separation from data stores" id="idm45816818735992"/> We could add a specific method to query the
+repository for a given business criteria, as shown by <a data-type="xref" href="#twootsFromUsersAfterPosition">Example 7-5</a>. This approach is much
+better than the first two, but can still be refined a little bit. The problem with hardcoding each query to
+a given method is that as your application evolves over time and adds more querying functionality, we add
+more and more methods to the Repository interface, bloating it and making it harder to understand.</p>
+<div id="twootsFromUsersAfterPosition" data-type="example">
+<h5><span class="label">Example 7-5. </span>twootsFromUsersAfterPosition</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">List</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="nf">twootsFromUsersAfterPosition</code><code class="o">(</code><code class="n">Set</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">inUsers</code><code class="o">,</code> <code class="n">Position</code> <code class="n">lastSeenPosition</code><code class="o">);</code></pre></div>
+
+<p>This brings us to the next querying iteration, shown in <a data-type="xref" href="#queryWithList">Example 7-6</a>. Here we’ve abstracted out the
+criteria that we query our <code>TwootRepository</code> on into its own object. Now we can add additional properties
+to this criteria to query on without having the number of query methods be a combinatorial explosion of
+different properties to query about.<a data-type="indexterm" data-primary="queries" data-secondary="TwootQuery object (example)" id="idm45816818647960"/> The definition of our <code>TwootQuery</code> object is shown in <a data-type="xref" href="#TwootQuery_definition">Example 7-7</a>.</p>
+<div id="queryWithList" data-type="example">
+<h5><span class="label">Example 7-6. </span>query</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">List</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="nf">query</code><code class="o">(</code><code class="n">TwootQuery</code> <code class="n">query</code><code class="o">);</code></pre></div>
+<div id="TwootQuery_definition" data-type="example">
+<h5><span class="label">Example 7-7. </span>TwootQuery</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">TwootQuery</code> <code class="o">{</code>
+    <code class="kd">private</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">inUsers</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="n">Position</code> <code class="n">lastSeenPosition</code><code class="o">;</code>
+
+    <code class="kd">public</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="nf">getInUsers</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">inUsers</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="kd">public</code> <code class="n">Position</code> <code class="nf">getLastSeenPosition</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">lastSeenPosition</code><code class="o">;</code>
+    <code class="o">}</code>
+
+
+    <code class="kd">public</code> <code class="n">TwootQuery</code> <code class="nf">inUsers</code><code class="o">(</code><code class="kd">final</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">inUsers</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">this</code><code class="o">.</code><code class="na">inUsers</code> <code class="o">=</code> <code class="n">inUsers</code><code class="o">;</code>
+
+        <code class="k">return</code> <code class="k">this</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="kd">public</code> <code class="n">TwootQuery</code> <code class="nf">inUsers</code><code class="o">(</code><code class="n">String</code><code class="o">...</code> <code class="n">inUsers</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="nf">inUsers</code><code class="o">(</code><code class="k">new</code> <code class="n">HashSet</code><code class="o">&lt;&gt;(</code><code class="n">Arrays</code><code class="o">.</code><code class="na">asList</code><code class="o">(</code><code class="n">inUsers</code><code class="o">)));</code>
+    <code class="o">}</code>
+
+    <code class="kd">public</code> <code class="n">TwootQuery</code> <code class="nf">lastSeenPosition</code><code class="o">(</code><code class="kd">final</code> <code class="n">Position</code> <code class="n">lastSeenPosition</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">this</code><code class="o">.</code><code class="na">lastSeenPosition</code> <code class="o">=</code> <code class="n">lastSeenPosition</code><code class="o">;</code>
+
+        <code class="k">return</code> <code class="k">this</code><code class="o">;</code>
+    <code class="o">}</code>
+
+    <code class="kd">public</code> <code class="kt">boolean</code> <code class="nf">hasUsers</code><code class="o">()</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">inUsers</code> <code class="o">!=</code> <code class="kc">null</code> <code class="o">&amp;&amp;</code> <code class="o">!</code><code class="n">inUsers</code><code class="o">.</code><code class="na">isEmpty</code><code class="o">();</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre></div>
+
+<p>This isn’t the final design approach taken for querying the twoots, though. By returning a <code>List</code> of objects it means
+that we need to load into memory all the <code>Twoot</code> objects that are going to be returned in one go. This isn’t a terribly
+good idea when this <code>List</code> may grow to be very large. We may not want to query all of the objects in one go either. That’s the
+case here—we want to push each of the <code>Twoot</code> objects out to our UI without needing to have them all in memory
+at one point in time. Some repository implementations create an object to model the set of results returned. These objects
+let you page or iterate through the values.</p>
+
+<p>In this case we’re going to do something simpler: just take a <code>Consumer&lt;Twoot&gt;</code> callback. That’s a function that the
+caller is going to pass in that takes a single argument—a <code>Twoot</code>—and returns void. We can implement this interface
+using either a lambda expression or a method reference. You can see our final approach in <a data-type="xref" href="#finalQuery">Example 7-8</a>.</p>
+<div id="finalQuery" data-type="example">
+<h5><span class="label">Example 7-8. </span>query</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kt">void</code> <code class="nf">query</code><code class="o">(</code><code class="n">TwootQuery</code> <code class="n">twootQuery</code><code class="o">,</code> <code class="n">Consumer</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="n">callback</code><code class="o">);</code></pre></div>
+
+<p>See <a data-type="xref" href="#twoot_query_example">Example 7-9</a> to see how you would use this query method.
+This is how our <span class="keep-together"><code>onLogon()</code></span> method calls the query. It takes the user who has logged on, and uses the set of users that
+this user is following as the user part of the query. It then uses the last seen position for that part of the query.
+The callback that receives the results of this query is <code>user::receiveTwoot</code>, a method reference to the function that
+we described earlier that publishes the <code>Twoot</code> object to the UI <code>ReceiverEndPoint</code>.</p>
+<div id="twoot_query_example" data-type="example">
+<h5><span class="label">Example 7-9. </span>An example of using the query method</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">twootRepository</code><code class="o">.</code><code class="na">query</code><code class="o">(</code>
+    <code class="k">new</code> <code class="nf">TwootQuery</code><code class="o">()</code>
+        <code class="o">.</code><code class="na">inUsers</code><code class="o">(</code><code class="n">user</code><code class="o">.</code><code class="na">getFollowing</code><code class="o">())</code>
+        <code class="o">.</code><code class="na">lastSeenPosition</code><code class="o">(</code><code class="n">user</code><code class="o">.</code><code class="na">getLastSeenPosition</code><code class="o">()),</code>
+    <code class="nl">user:</code><code class="o">:</code><code class="n">receiveTwoot</code><code class="o">);</code></pre></div>
+
+<p>That’s it—that’s our repository interface designed and usable in the core of the application logic.</p>
+
+<p>There is another
+feature that some repository implementations use that we haven’t described here, and that’s the <em>Unit of Work</em> pattern.<a data-type="indexterm" data-primary="repository pattern" data-secondary="unit of work pattern, using with" id="idm45816818405128"/><a data-type="indexterm" data-primary="unit of work pattern" id="idm45816818404280"/>
+We don’t use the Unit of Work pattern in Twootr, but it’s often used in conjunction with the Repository pattern so its
+worth mentioning it here. A common thing for line-of-business applications to do is to have a single operation that
+performs many interactions with the data store. For example, you might be transferring money between two bank accounts
+and want to remove money from one back account and add it to the other bank account in the same operation. You don’t want
+either of these operations to succeed without the other one succeeding—you don’t want to put money into the
+creditor’s account when there isn’t enough money in the debtor’s account. You also don’t want to reduce the debtor’s
+balance without ensuring that you can put money into the creditor account.</p>
+
+<p>Databases often implement transactions and ACID compliance in order to enable people to perform these kinds of operations.
+A transaction is essentially a group of different database operations that are logically performed as a single, atomic
+operation. A Unit of Work is a design pattern that helps you perform database transactions. Essentially, each operation
+that you perform on your repository gets registered with a unit of work object. Your unit of work object can then
+delegate to one of more repositories, wrapping these operations in a transaction.</p>
+
+<p>One thing we haven’t talked about so far is how we actually implement the repository interfaces that we’ve designed.<a data-type="indexterm" data-primary="repository pattern" data-secondary="implementing repositories, choices in" id="idm45816818401144"/>
+As with everything else in software development, there are often different routes we can go down.<a data-type="indexterm" data-primary="object-relational mappers (ORMs)" id="idm45816818399960"/><a data-type="indexterm" data-primary="ORMs (object-relational mappers)" id="idm45816818399320"/> The Java ecosystem
+contains many Object-Relational Mappers (ORMs) that try to automate the task of this implementation for you.
+The most popular ORM is <a href="http://hibernate.org/">Hibernate</a>.<a data-type="indexterm" data-primary="Hibernate" id="idm45816818397720"/> ORMs tend to be a simple approach that can automate some of the work
+for you; however, they often end up producing sub-optimal database querying code and can sometimes introduce more
+complexity than they help remove.</p>
+
+<p>In the example project we provide two implementations of each of the repositories. One of them is a very simple
+in-memory implementation suitable for testing that won’t persist the data over restarts. The other approach uses
+plain SQL and the JDBC API. We won’t go into much detail about the implementation as most of it <span class="keep-together">doesn’t illustrate</span> any particularly interesting Java programming ideas; however, in <a data-type="xref" href="#ch06_Functional_Programming">“Functional Programming”</a> we will talk about how
+we use some ideas from functional programming in the implementation.<a data-type="indexterm" data-primary="repository pattern" data-startref="ix_repos" id="idm45816818330088"/><a data-type="indexterm" data-primary="persistence in Twootr (example)" data-secondary="and repository pattern" data-startref="ix_persrep" id="idm45816818329144"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="persistence and the repository pattern" data-startref="ix_TwooextPRP" id="idm45816818327912"/></p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Functional Programming"><div class="sect1" id="ch06_Functional_Programming">
+<h1>Functional Programming</h1>
+
+<p>Functional programming is a style of computer programming that treats methods as operating like mathematical functions.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="functional programming" id="ix_TwooextFP"/><a data-type="indexterm" data-primary="functional programming" id="ix_fncpr"/>
+This means that it avoids mutable state and changing data. You can program in this style in any language, but some
+programming languages offer features to help make it easier and better—we call those <em>functional programming languages</em>.<a data-type="indexterm" data-primary="functional programming languages" id="idm45816818321256"/>
+Java isn’t a functional programming language, but in version 8, 20 years after it was first released, it started to add a
+number of features that helped make functional programming in Java a reality.<a data-type="indexterm" data-primary="Java" data-secondary="functional programming features added in Java 8" id="idm45816818320184"/><a data-type="indexterm" data-primary="functional programming" data-secondary="features added in Java 8" id="idm45816818319272"/><a data-type="indexterm" data-primary="lambda expressions" id="idm45816818318312"/><a data-type="indexterm" data-primary="Streams API" id="idm45816818317640"/><a data-type="indexterm" data-primary="Collectors API" id="idm45816818316968"/><a data-type="indexterm" data-primary="Optional type" id="idm45816818316296"/> Those features include lambda expressions,
+the Streams and Collectors API, and the <code>Optional</code> class. In this section we’ll talk a little bit about how those functional
+programming features can be used and how we use them in Twootr.</p>
+
+<p>There are limits to the level of abstractions that library writers could use in Java before Java 8. A
+good example of this was the lack of efficient parallel operations over large collections of
+data. Java from 8 onward allows you to write complex collection-processing algorithms, and simply
+by changing a single method call you can efficiently execute this code on multicore
+CPUs. In order to enable writing of these kinds of bulk data parallel libraries, however,
+Java needed a new language change: lambda expressions.</p>
+
+<p>Of course there’s a cost, in that you must learn to write and read lambda-enabled code,
+but it’s a good trade-off. It’s easier for programmers to learn a small amount of new
+syntax and a few new idioms than to have to handwrite a large quantity of complex
+thread-safe code. Good libraries and frameworks have significantly reduced the cost
+and time associated with developing enterprise business applications, and any barrier
+to developing easy-to-use and efficient libraries should be removed.</p>
+
+<p>Abstraction is a concept that is <a data-type="indexterm" data-primary="abstraction" id="idm45816818312776"/><a data-type="indexterm" data-primary="object-oriented programming" data-secondary="abstraction, functional programming vs." id="idm45816818299784"/>familiar to anyone who does object-oriented programming.
+The difference is that object-oriented programming is mostly about abstracting over
+data, while functional programming is mostly about abstracting over behavior. The real<a data-type="indexterm" data-primary="behavior" data-secondary="abstracting over behavior in functional programming" id="idm45816818298568"/>
+world has both of these things, and so do our programs, so we can and should learn
+from both influences.</p>
+
+<p>There are other benefits to this new abstraction as well.<a data-type="indexterm" data-primary="abstraction" data-secondary="in functional programming, benefits of" id="idm45816818297016"/> For many of us who aren’t writing
+performance-critical code all the time, these are more important wins. You can write
+easier-to-read code—code that spends time expressing the intent of its business logic
+rather than the mechanics of how it’s achieved. Easier-to-read code is also easier to
+maintain, more reliable, and less error-prone than code that is more difficult to read.</p>
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Lambda Expressions"><div class="sect2" id="idm45816818295368">
+<h2>Lambda Expressions</h2>
+
+<p>We will define a lambda expression as a concise way of describing an
+anonymous function.<a data-type="indexterm" data-primary="lambda expressions" data-secondary="examples of use in Twootr (example)" id="ix_lmbd"/><a data-type="indexterm" data-primary="functional programming" data-secondary="lambda expressions" id="ix_fncprlmb"/> We appreciate that’s quite a lot to take in at once,
+so we’re going to explain what lambda expressions are by working
+through an example of some existing Java code. Let’s start by taking a interface used to represent a callback in our
+codebase: <code>ReceiverEndPoint</code>, shown in <a data-type="xref" href="#ReceiverEndPoint_definition_2">Example 7-10</a>.</p>
+<div id="ReceiverEndPoint_definition_2" data-type="example">
+<h5><span class="label">Example 7-10. </span>ReceiverEndPoint</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">interface</code> <code class="nc">ReceiverEndPoint</code> <code class="o">{</code>
+    <code class="kt">void</code> <code class="nf">onTwoot</code><code class="o">(</code><code class="n">Twoot</code> <code class="n">twoot</code><code class="o">);</code>
+<code class="o">}</code></pre></div>
+
+<p>In this example, we’re creating a new object that provides an implementation of the
+<code>ReceiverEndPoint</code> interface. This interface has a single
+method, <code>onTwoot</code>, which is called by the Twootr object
+when it is sending a <code>Twoot</code> object to the UI adapter. The class listed in
+<a data-type="xref" href="#PrintingEndPoint_definition">Example 7-11</a> provides an implementation of this method. In this case to keep things simple we’re
+just printing it out on the command line rather than sending a serialized version to an actual UI.</p>
+<div id="PrintingEndPoint_definition" data-type="example">
+<h5><span class="label">Example 7-11. </span>Implementing ReceiverEndPoint with a class</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">PrintingEndPoint</code> <code class="kd">implements</code> <code class="n">ReceiverEndPoint</code> <code class="o">{</code>
+    <code class="nd">@Override</code>
+    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">onTwoot</code><code class="o">(</code><code class="kd">final</code> <code class="n">Twoot</code> <code class="n">twoot</code><code class="o">)</code> <code class="o">{</code>
+        <code class="n">System</code><code class="o">.</code><code class="na">out</code><code class="o">.</code><code class="na">println</code><code class="o">(</code><code class="n">twoot</code><code class="o">.</code><code class="na">getSenderId</code><code class="o">()</code> <code class="o">+</code> <code class="s">": "</code> <code class="o">+</code> <code class="n">twoot</code><code class="o">.</code><code class="na">getContent</code><code class="o">());</code>
+    <code class="o">}</code>
+<code class="o">}</code></pre></div>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>This is actually an example of behavior parameterization—we’re parameterizing over the different behaviors
+to send a message to the UI.</p>
+</div>
+
+<p>There are seven lines of boilerplate code required in order to call the single line of actual behavior here.
+Anonymous inner classes were designed to make it easier for Java programmers to represent and pass around behaviors.
+You can see an example in <a data-type="xref" href="#PrintingEndPoint_anonymous_definition">Example 7-12</a>, which reduces the boilerplate a bit but
+they still don’t make it easy enough if you want to make passing behavior around really easy.</p>
+<div id="PrintingEndPoint_anonymous_definition" data-type="example">
+<h5><span class="label">Example 7-12. </span>Implementing ReceiverEndPoint with an anonymous class</h5>
+
+<pre data-type="programlisting" data-code-language="java">        <code class="kd">final</code> <code class="n">ReceiverEndPoint</code> <code class="n">anonymousClass</code> <code class="o">=</code> <code class="k">new</code> <code class="n">ReceiverEndPoint</code><code class="o">()</code> <code class="o">{</code>
+            <code class="nd">@Override</code>
+            <code class="kd">public</code> <code class="kt">void</code> <code class="nf">onTwoot</code><code class="o">(</code><code class="kd">final</code> <code class="n">Twoot</code> <code class="n">twoot</code><code class="o">)</code> <code class="o">{</code>
+                <code class="n">System</code><code class="o">.</code><code class="na">out</code><code class="o">.</code><code class="na">println</code><code class="o">(</code><code class="n">twoot</code><code class="o">.</code><code class="na">getSenderId</code><code class="o">()</code> <code class="o">+</code> <code class="s">": "</code> <code class="o">+</code> <code class="n">twoot</code><code class="o">.</code><code class="na">getContent</code><code class="o">());</code>
+            <code class="o">}</code>
+        <code class="o">};</code></pre></div>
+
+<p>Boilerplate isn’t the only issue, though: this code is fairly hard to
+read because it obscures the programmer’s intent. We don’t want to
+pass in an object; what we really want to do is pass in some behavior.
+In Java 8 or later, we would write this code example as a lambda expression, as shown in
+<a data-type="xref" href="#PrintingEndPoint_lambda_definition">Example 7-13</a>.</p>
+<div id="PrintingEndPoint_lambda_definition" data-type="example">
+<h5><span class="label">Example 7-13. </span>Implementing ReceiverEndPoint with a lambda expression</h5>
+
+<pre data-type="programlisting" data-code-language="java">        <code class="kd">final</code> <code class="n">ReceiverEndPoint</code> <code class="n">lambda</code> <code class="o">=</code>
+            <code class="n">twoot</code> <code class="o">-&gt;</code> <code class="n">System</code><code class="o">.</code><code class="na">out</code><code class="o">.</code><code class="na">println</code><code class="o">(</code><code class="n">twoot</code><code class="o">.</code><code class="na">getSenderId</code><code class="o">()</code> <code class="o">+</code> <code class="s">": "</code> <code class="o">+</code> <code class="n">twoot</code><code class="o">.</code><code class="na">getContent</code><code class="o">());</code></pre></div>
+
+<p>Instead of passing in an object that implements an interface, we’re
+passing in a block of code—a function without a name. <code>twoot</code> is the
+name of a parameter, the same parameter as in the anonymous
+inner class example. <code>-&gt;</code> separates the parameter from the body of the
+lambda expression, which is just some code that is run when the twoot
+gets published.</p>
+
+<p>Another difference between this example and the anonymous inner
+class is how we declare the variable event. Previously, we needed to
+explicitly provide its type: <code>Twoot twoot</code>. In this example, we
+haven’t provided the type at all, yet this example still compiles. What
+is happening under the hood is that javac is inferring the type of the
+variable event from it’s context—here, from the signature of
+<code>onTwoot</code>. What this means is that you don’t need to
+explicitly write out the type when it’s obvious.<a data-type="indexterm" data-primary="lambda expressions" data-secondary="examples of use in Twootr (example)" data-startref="ix_lmbd" id="idm45816818071240"/></p>
+<div data-type="note" epub:type="note"><h6>Note</h6>
+<p>Although lambda method parameters require less
+boilerplate code than was needed previously, they are
+still statically typed.<a data-type="indexterm" data-primary="lambda expressions" data-secondary="static typing in lambda method parameters" id="idm45816818068936"/><a data-type="indexterm" data-primary="data types" data-secondary="static typing in lambda method parameters" id="idm45816818067928"/> For the sake of readability and
+familiarity, you have the option to include the type
+declarations, and sometimes the compiler just can’t
+work it out!<a data-type="indexterm" data-primary="functional programming" data-secondary="lambda expressions" data-startref="ix_fncprlmb" id="idm45816818066648"/></p>
+</div>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Method References"><div class="sect2" id="idm45816818294776">
+<h2>Method References</h2>
+
+<p>A common idiom you may have noticed is the creation of a lambda
+expression that calls a method on its parameter.<a data-type="indexterm" data-primary="functional programming" data-secondary="method references" id="ix_fncprMR"/><a data-type="indexterm" data-primary="method references" id="ix_mthref"/> If we want a lambda
+expression that gets the content of a <code>Twoot</code>, we would write something
+like <a data-type="xref" href="#method_references_eg_1">Example 7-14</a>.</p>
+<div id="method_references_eg_1" data-type="example">
+<h5><span class="label">Example 7-14. </span>Get the content of a twoot</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">twoot</code> <code class="o">-&gt;</code> <code class="n">twoot</code><code class="o">.</code><code class="na">getContent</code><code class="o">()</code></pre></div>
+
+<p>This is such a common idiom that there’s actually an abbreviated
+syntax for this that lets you reuse an existing method, called a
+method reference.<a data-type="indexterm" data-primary="lambda expressions" data-secondary="using method references" id="idm45816818112664"/> If we were to write the previous lambda expression
+using a method reference, it would look like <a data-type="xref" href="#method_references_eg_2">Example 7-15</a>.</p>
+<div id="method_references_eg_2" data-type="example">
+<h5><span class="label">Example 7-15. </span>A method reference</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nl">Twoot:</code><code class="o">:</code><code class="n">getContent</code></pre></div>
+
+<p>The standard form is <code>Classname::methodName</code>. Remember that even
+though it’s a method, you don’t need to use brackets because you’re
+not actually calling <span class="keep-together">the method.</span> You’re providing the equivalent of a
+lambda expression that can be called in order to call the method.
+You can use method references in the same places as lambda expressions.</p>
+
+<p>You can also call constructors using the same abbreviated syntax. If
+you were to use a lambda expression to create a <code>SenderEndPoint</code>, you might
+write <a data-type="xref" href="#method_references_eg_3">Example 7-16</a>.</p>
+<div id="method_references_eg_3" data-type="example">
+<h5><span class="label">Example 7-16. </span>Lambda to create a new SenderEndPoint</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="o">(</code><code class="n">user</code><code class="o">,</code> <code class="n">twootr</code><code class="o">)</code> <code class="o">-&gt;</code> <code class="k">new</code> <code class="n">SenderEndPoint</code><code class="o">(</code><code class="n">user</code><code class="o">,</code> <code class="n">twootr</code><code class="o">)</code></pre></div>
+
+<p>You can also write this using method references, as shown in <a data-type="xref" href="#method_references_eg_4">Example 7-17</a>.</p>
+<div id="method_references_eg_4" data-type="example">
+<h5><span class="label">Example 7-17. </span>Method reference to create a new SenderEndPoint</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="nl">SenderEndPoint:</code><code class="o">:</code><code class="k">new</code></pre></div>
+
+<p>This code is not only shorter, but also a lot easier to read.
+<code>SenderEndPoint::new</code> immediately tells you that you’re creating a new
+<code>SenderEndPoint</code> without your having to scan the whole line of code. Another
+thing to notice here is that method references automatically support
+multiple parameters, as long as you have the right functional interface.</p>
+
+<p>When we were first exploring the Java 8 changes, a friend of ours
+said that method references “feel like cheating.” What he meant was
+that, having looked at how we can use lambda expressions to pass
+code around as if it were data, it felt like cheating to be able to reference a method directly.</p>
+
+<p>In fact, method references are really making the concept of first-class
+functions explicit. This is the idea that we can pass behavior
+around and treat it like another value. For example, we can compose
+functions together.<a data-type="indexterm" data-primary="functional programming" data-secondary="method references" data-startref="ix_fncprMR" id="idm45816817962104"/><a data-type="indexterm" data-primary="method references" data-startref="ix_mthref" id="idm45816817961000"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Execute Around"><div class="sect2" id="idm45816818064840">
+<h2>Execute Around</h2>
+
+<p>The <em>Execute Around</em> pattern is a common functional design pattern.<a data-type="indexterm" data-primary="functional programming" data-secondary="execute around pattern" id="idm45816817958248"/><a data-type="indexterm" data-primary="execute around pattern" id="idm45816817957272"/> You
+may encounter a situation where you have common initialization and cleanup
+code that you always want to do, but parameterize different business logic that runs within
+the initialization and cleanup code. An example of the general pattern is shown in <a data-type="xref" href="#ch06_execute_around_img">Figure 7-1</a>.
+There are a number of example situations
+in which you can use execute around, for example:</p>
+<dl>
+<dt>Files</dt>
+<dd>
+<p>Open a file before you use it, and close it when you’ve finished
+using the file. You may also want to log an exception when something goes
+wrong. The parameterized code can read from or write to the file.</p>
+</dd>
+<dt>Locks</dt>
+<dd>
+<p>Acquire a lock before your critical section, release the lock after
+your critical section. The parameterized code is the critical section.</p>
+</dd>
+<dt>Database connections</dt>
+<dd>
+<p>Open a connection to a database upon initialization,
+close it when finished. This is often even more useful if you pool your database
+connections as it also allows your open logic to also retrieve the connection
+from your pool.</p>
+</dd>
+</dl>
+
+<figure><div id="ch06_execute_around_img" class="figure">
+<img src="Images/rwsd_0701.png" alt="Execute Around pattern" width="879" height="232"/>
+<h6><span class="label">Figure 7-1. </span>Execute Around pattern</h6>
+</div></figure>
+
+<p>Because the initialization and cleanup logic is being used in many places, it
+is possible to get into a situation where this logic is duplicated. This means
+that if you want to modify this common initialization or cleanup code, then you
+will have to modify multiple different parts of your application. It also exposes
+the risk that these different code snippets could become inconsistent, introducing
+potential bugs into your application.</p>
+
+<p>The Execute Around pattern solves this problem by extracting a common method that
+defines both the initialization and cleanup code. This method takes a parameter
+containing the behavior that differs between use cases of the same overall pattern.
+The parameter will use an interface to enable it to be implemented by different
+blocks of code, usually using lambda expressions.</p>
+
+<p><a data-type="xref" href="#extract_definition">Example 7-18</a> shows a concrete example of an <code>extract</code> method. This is
+used within Twootr in order to run SQL statements against the database. It creates
+a prepared statement object for a given SQL statement and and then runs our
+<code>extractor</code> behavior on the statement. The <code>extractor</code> is just a callback that
+extracts a result, i.e., reads some data from the database, using the <code>PreparedStatement</code>.</p>
+<div id="extract_definition" data-type="example">
+<h5><span class="label">Example 7-18. </span>Use of the Execute Around pattern in the extract method</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="o">&lt;</code><code class="n">R</code><code class="o">&gt;</code> <code class="n">R</code> <code class="n">extract</code><code class="o">(</code><code class="kd">final</code> <code class="n">String</code> <code class="n">sql</code><code class="o">,</code> <code class="kd">final</code> <code class="n">Extractor</code><code class="o">&lt;</code><code class="n">R</code><code class="o">&gt;</code> <code class="n">extractor</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">try</code> <code class="o">(</code><code class="n">var</code> <code class="n">stmt</code> <code class="o">=</code> <code class="n">conn</code><code class="o">.</code><code class="na">prepareStatement</code><code class="o">(</code><code class="n">sql</code><code class="o">,</code> <code class="n">Statement</code><code class="o">.</code><code class="na">RETURN_GENERATED_KEYS</code><code class="o">))</code> <code class="o">{</code>
+            <code class="n">stmt</code><code class="o">.</code><code class="na">clearParameters</code><code class="o">();</code>
+            <code class="k">return</code> <code class="n">extractor</code><code class="o">.</code><code class="na">run</code><code class="o">(</code><code class="n">stmt</code><code class="o">);</code>
+        <code class="o">}</code> <code class="k">catch</code> <code class="o">(</code><code class="n">SQLException</code> <code class="n">e</code><code class="o">)</code> <code class="o">{</code>
+            <code class="k">throw</code> <code class="k">new</code> <code class="nf">IllegalStateException</code><code class="o">(</code><code class="n">e</code><code class="o">);</code>
+        <code class="o">}</code>
+    <code class="o">}</code></pre></div>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Streams"><div class="sect2" id="idm45816817905512">
+<h2>Streams</h2>
+
+<p>The most important functional programming features in Java are focused around the Collections API and <em>Streams</em>.<a data-type="indexterm" data-primary="streams" id="ix_strm"/><a data-type="indexterm" data-primary="functional programming" data-secondary="streams" id="ix_fncprStr"/>
+Streams allow us to write collections-processing code at a higher level of abstraction than we would be able to do with
+loops. The <code>Stream</code> interface contains a series of functions that we’ll explore throughout this chapter, each of which
+corresponds to a common operation that you might perform on a <span class="keep-together"><code>Collection</code>.</span></p>
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect3" data-pdf-bookmark="map()"><div class="sect3" id="idm45816817841240">
+<h3>map()</h3>
+
+<p>If you’ve got a function that converts a value of one type into another, <code>map()</code> lets you apply this function
+to a stream of values, producing another stream of the new values.<a data-type="indexterm" data-primary="streams" data-secondary="map function" id="idm45816817839144"/><a data-type="indexterm" data-primary="map function" id="idm45816817838168"/></p>
+
+<p>You may very well have been doing some kind of map operations
+for years already with for loops.<a data-type="indexterm" data-primary="tuples" data-secondary="building user tuple with for loop" id="idm45816817836568"/><a data-type="indexterm" data-primary="for loops, map operations with" id="idm45816817835624"/> In our <code>DatabaseTwootRepository</code> we’ve built up a tuple to be used in a query <code>String</code>
+containing all the <code>id</code> values of the different users whom a user is following. Each <code>id</code> value is a quoted <code>String</code> and the
+whole tuple is surrounded by brackets. For example, if they followed users with
+IDs <code>"richardwarburto"</code> and <code>"raoulUK"</code> we would produce a tuple <code>String</code> of <code>"(<em>richardwarburto</em>,<em>raoulOK</em>)"</code>. In order
+to generate this tuple you would use a mapping pattern, transforming each <code>id</code> into <code>"<em>id</em>"</code> and then adding them into
+a <code>List</code>. The <code>String.join()</code> method can then be used to join them with commas between.
+<a data-type="xref" href="#map_example_1">Example 7-19</a> is code written in this style.</p>
+<div id="map_example_1" data-type="example">
+<h5><span class="label">Example 7-19. </span>Building a user tuple with a for loop</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="kd">private</code> <code class="n">String</code> <code class="nf">usersTupleLoop</code><code class="o">(</code><code class="kd">final</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">following</code><code class="o">)</code> <code class="o">{</code>
+        <code class="n">List</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">quotedIds</code> <code class="o">=</code> <code class="k">new</code> <code class="n">ArrayList</code><code class="o">&lt;&gt;();</code>
+        <code class="k">for</code> <code class="o">(</code><code class="n">String</code> <code class="n">id</code> <code class="o">:</code> <code class="n">following</code><code class="o">)</code> <code class="o">{</code>
+            <code class="n">quotedIds</code><code class="o">.</code><code class="na">add</code><code class="o">(</code><code class="s">"'"</code> <code class="o">+</code> <code class="n">id</code> <code class="o">+</code> <code class="s">"'"</code><code class="o">);</code>
+        <code class="o">}</code>
+        <code class="k">return</code> <code class="sc">'('</code> <code class="o">+</code> <code class="n">String</code><code class="o">.</code><code class="na">join</code><code class="o">(</code><code class="s">","</code><code class="o">,</code> <code class="n">quotedIds</code><code class="o">)</code> <code class="o">+</code> <code class="sc">')'</code><code class="o">;</code>
+    <code class="o">}</code></pre></div>
+
+<p><code>map()</code> is one of the most commonly used <code>Stream</code> operations. <a data-type="xref" href="#map_example_2">Example 7-20</a> is the same example of building up the
+user tuple but using <code>map()</code>. It also takes advantage of the <code>joining()</code> collector, which allows us to join the
+elements in the <code>Stream</code> together into a <code>String</code>.<a data-type="indexterm" data-primary="tuples" data-secondary="building user tuple with map function" id="idm45816817727240"/></p>
+<div id="map_example_2" data-type="example">
+<h5><span class="label">Example 7-20. </span>Building a user tuple using map</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="kd">private</code> <code class="n">String</code> <code class="nf">usersTuple</code><code class="o">(</code><code class="kd">final</code> <code class="n">Set</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">following</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">following</code>
+            <code class="o">.</code><code class="na">stream</code><code class="o">()</code>
+            <code class="o">.</code><code class="na">map</code><code class="o">(</code><code class="n">id</code> <code class="o">-&gt;</code> <code class="s">"'"</code> <code class="o">+</code> <code class="n">id</code> <code class="o">+</code> <code class="s">"'"</code><code class="o">)</code>
+            <code class="o">.</code><code class="na">collect</code><code class="o">(</code><code class="n">Collectors</code><code class="o">.</code><code class="na">joining</code><code class="o">(</code><code class="s">","</code><code class="o">,</code> <code class="s">"("</code><code class="o">,</code> <code class="s">")"</code><code class="o">));</code>
+    <code class="o">}</code></pre></div>
+
+<p>The lambda expression passed into <code>map()</code> both takes a <code>String</code> as its only argument and
+returns a <code>String</code>. It isn’t necessary for both the argument and the result to be the same
+type, but the lambda expression passed in must be an instance of <code>Function</code>.
+This is a generic functional interface with only one argument.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect3" data-pdf-bookmark="forEach()"><div class="sect3" id="idm45816817640504">
+<h3>forEach()</h3>
+
+<p>The <code>forEach()</code> operation is useful when you want to perform a side effect for each value in the <code>Stream</code>.<a data-type="indexterm" data-primary="streams" data-secondary="forEach function" id="idm45816817638120"/><a data-type="indexterm" data-primary="forEach function" id="idm45816817637112"/>
+For example, suppose you want to print out the name of a user or save each transaction in your stream to a
+database. <code>forEach()</code> takes a single argument—a <code>Consumer</code> callback executed that gets invoked with
+every element in the stream as an argument.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect3" data-pdf-bookmark="filter()"><div class="sect3" id="idm45816817635256">
+<h3>filter()</h3>
+
+<p>Any time you’re looping over some data and checking each element with an if statement,
+you might want to think about using the <code>Stream.filter()</code> method.<a data-type="indexterm" data-primary="streams" data-secondary="filter function" id="idm45816817633128"/><a data-type="indexterm" data-primary="filter function" id="idm45816817632120"/></p>
+
+<p>For example, the <code>InMemoryTwootRepository</code> needs to query the different <code>Twoot</code> objects in order to find twoots that meet
+its <code>TwootQuery</code>. Specifically, that the position is after the last seen position and that user is being followed. An
+example of this being written in for loop style is shown in <a data-type="xref" href="#filter_example_1">Example 7-21</a>.</p>
+<div id="filter_example_1" data-type="example">
+<h5><span class="label">Example 7-21. </span>Looping over twoots and using an if statement</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">queryLoop</code><code class="o">(</code><code class="kd">final</code> <code class="n">TwootQuery</code> <code class="n">twootQuery</code><code class="o">,</code> <code class="kd">final</code> <code class="n">Consumer</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="n">callback</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">if</code> <code class="o">(!</code><code class="n">twootQuery</code><code class="o">.</code><code class="na">hasUsers</code><code class="o">())</code> <code class="o">{</code>
+            <code class="k">return</code><code class="o">;</code>
+        <code class="o">}</code>
+
+        <code class="n">var</code> <code class="n">lastSeenPosition</code> <code class="o">=</code> <code class="n">twootQuery</code><code class="o">.</code><code class="na">getLastSeenPosition</code><code class="o">();</code>
+        <code class="n">var</code> <code class="n">inUsers</code> <code class="o">=</code> <code class="n">twootQuery</code><code class="o">.</code><code class="na">getInUsers</code><code class="o">();</code>
+
+        <code class="k">for</code> <code class="o">(</code><code class="n">Twoot</code> <code class="n">twoot</code> <code class="o">:</code> <code class="n">twoots</code><code class="o">)</code> <code class="o">{</code>
+            <code class="k">if</code> <code class="o">(</code><code class="n">inUsers</code><code class="o">.</code><code class="na">contains</code><code class="o">(</code><code class="n">twoot</code><code class="o">.</code><code class="na">getSenderId</code><code class="o">())</code> <code class="o">&amp;&amp;</code>
+                <code class="n">twoot</code><code class="o">.</code><code class="na">isAfter</code><code class="o">(</code><code class="n">lastSeenPosition</code><code class="o">))</code> <code class="o">{</code>
+                <code class="n">callback</code><code class="o">.</code><code class="na">accept</code><code class="o">(</code><code class="n">twoot</code><code class="o">);</code>
+            <code class="o">}</code>
+        <code class="o">}</code>
+    <code class="o">}</code></pre></div>
+
+<p>You have probably written some code that looks like this: it’s called the <code>filter</code> pattern. The
+central idea of filter is to retain some elements of the <code>Stream</code>, while throwing others
+out. <a data-type="xref" href="#filter_example_2">Example 7-22</a> shows how you would write the same code in a functional style.</p>
+<div id="filter_example_2" data-type="example">
+<h5><span class="label">Example 7-22. </span>Functional style</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="nd">@Override</code>
+    <code class="kd">public</code> <code class="kt">void</code> <code class="nf">query</code><code class="o">(</code><code class="kd">final</code> <code class="n">TwootQuery</code> <code class="n">twootQuery</code><code class="o">,</code> <code class="kd">final</code> <code class="n">Consumer</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="n">callback</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">if</code> <code class="o">(!</code><code class="n">twootQuery</code><code class="o">.</code><code class="na">hasUsers</code><code class="o">())</code> <code class="o">{</code>
+            <code class="k">return</code><code class="o">;</code>
+        <code class="o">}</code>
+
+        <code class="n">var</code> <code class="n">lastSeenPosition</code> <code class="o">=</code> <code class="n">twootQuery</code><code class="o">.</code><code class="na">getLastSeenPosition</code><code class="o">();</code>
+        <code class="n">var</code> <code class="n">inUsers</code> <code class="o">=</code> <code class="n">twootQuery</code><code class="o">.</code><code class="na">getInUsers</code><code class="o">();</code>
+
+        <code class="n">twoots</code>
+            <code class="o">.</code><code class="na">stream</code><code class="o">()</code>
+            <code class="o">.</code><code class="na">filter</code><code class="o">(</code><code class="n">twoot</code> <code class="o">-&gt;</code> <code class="n">inUsers</code><code class="o">.</code><code class="na">contains</code><code class="o">(</code><code class="n">twoot</code><code class="o">.</code><code class="na">getSenderId</code><code class="o">()))</code>
+            <code class="o">.</code><code class="na">filter</code><code class="o">(</code><code class="n">twoot</code> <code class="o">-&gt;</code> <code class="n">twoot</code><code class="o">.</code><code class="na">isAfter</code><code class="o">(</code><code class="n">lastSeenPosition</code><code class="o">))</code>
+            <code class="o">.</code><code class="na">forEach</code><code class="o">(</code><code class="n">callback</code><code class="o">);</code>
+    <code class="o">}</code></pre></div>
+
+<p>Much like <code>map()</code>, <code>filter()</code> is a method that takes just a single function as an argument—here we’re using a lambda expression. This function does the same job that the expression in the
+if statement did earlier. Here, it returns <code>true</code> if the <code>String</code> starts with a digit.
+If you’re refactoring legacy code, the presence of an if statement in the middle of a for
+loop is a pretty strong indicator that you really want to use filter.
+Because this function is doing the same job as the if statement, it must return either
+<code>true</code> or <code>false</code> for a given value. The <code>Stream</code> after the <code>filter</code> has the elements of the <code>Stream</code>
+beforehand, which evaluated to <code>true</code>.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect3" data-pdf-bookmark="reduce()"><div class="sect3" id="idm45816817500680">
+<h3>reduce()</h3>
+
+<p><code>reduce</code> is a pattern that will also be familiar to anyone who has used loops to operate on collections.<a data-type="indexterm" data-primary="streams" data-secondary="reduce function" id="idm45816817386280"/><a data-type="indexterm" data-primary="reduce function" id="idm45816817385304"/> It’s the kind of code
+that you write when you want to collapse down an entire list of values into a single value—for example, finding
+the sum of all the values of different transactions. The general pattern that you would see with reduction when writing
+a loop is shown in <a data-type="xref" href="#reduce_example_1">Example 7-23</a>. Use the <code>reduce</code> operation when you’ve got a collection of values and you want
+to generate a single result.</p>
+<div id="reduce_example_1" data-type="example">
+<h5><span class="label">Example 7-23. </span>The reduce pattern</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">Object</code> <code class="n">accumulator</code> <code class="o">=</code> <code class="n">initialValue</code><code class="o">;</code>
+<code class="k">for</code> <code class="o">(</code><code class="n">Object</code> <code class="n">element</code> <code class="o">:</code> <code class="n">collection</code><code class="o">)</code> <code class="o">{</code>
+ <code class="n">accumulator</code> <code class="o">=</code> <code class="n">combine</code><code class="o">(</code><code class="n">accumulator</code><code class="o">,</code> <code class="n">element</code><code class="o">);</code>
+<code class="o">}</code></pre></div>
+
+<p>An <code>accumulator</code> gets pushed through the body of the loop, with the final value of the
+<code>accumulator</code> being the value that we were trying to compute.<a data-type="indexterm" data-primary="accumulators" id="idm45816817355144"/> The <code>accumulator</code> starts
+with an <code>initialValue</code> and then gets combined together with each element of the list by
+calling the <code>combine</code> operation.<a data-type="indexterm" data-primary="combine operation" id="idm45816817353240"/></p>
+
+<p>The things that differ between implementations of this pattern are the <code>initialValue</code>
+and the combining function. In the original example, we used the first element in the list
+as our <code>initialValue</code>, but it doesn’t have to be. In order to find the shortest value in a
+list, our combine would return the shorter track of out of the current element and the <code>accumulator</code>.
+We’ll now take a look at how this general pattern can be codified by an operation in the
+Streams API itself.</p>
+
+<p>Let’s demonstrate the reduce operation by adding a feature that combines together different twoots into
+one large twoot. The operation will have a list of <code>Twoot</code> objects, the sender of the <code>Twoot</code>, and its
+<code>id</code> provided as arguments. It will need to combine together the different content value and return the
+highest position of the twoots being combined. The overall code is demonstrated in <a data-type="xref" href="#reduce_example_2">Example 7-24</a>.</p>
+
+<p>We start with a new <code>Twoot</code> object created using the <code>id</code>, <code>senderId</code> with empty content and the lowest
+possible position—the <code>INITIAL_POSITION</code>. The reduce then folds together each element with an <code>accumulator</code>,
+combining the element to the <code>accumulator</code> at every step. When we reach the final <code>Stream</code> element, our <code>accumulator</code>
+has the sum of all the elements.</p>
+
+<p>The lambda expression, known as a reducer, performs the combining and takes two arguments. <code>acc</code> is the <code>accumulator</code> and
+holds the previous twoots that have been combined. It is also passed in the current <code>Twoot</code> in the <code>Stream</code>. The reducer
+in our example creates a new <code>Twoot</code>, with the max of the two positions, the concatenation of their content, and the
+specified <code>id</code> and <code>senderId</code>.<a data-type="indexterm" data-primary="reduce function" data-secondary="implementing sum with" id="idm45816817339640"/></p>
+<div id="reduce_example_2" data-type="example">
+<h5><span class="label">Example 7-24. </span>Implementing sum using reduce</h5>
+
+<pre data-type="programlisting" data-code-language="java">    <code class="kd">private</code> <code class="kd">final</code> <code class="n">BinaryOperator</code><code class="o">&lt;</code><code class="n">Position</code><code class="o">&gt;</code> <code class="n">maxPosition</code> <code class="o">=</code> <code class="n">maxBy</code><code class="o">(</code><code class="n">comparingInt</code><code class="o">(</code><code class="nl">Position:</code><code class="o">:</code><code class="n">getValue</code><code class="o">));</code>
+
+    <code class="n">Twoot</code> <code class="nf">combineTwootsBy</code><code class="o">(</code><code class="kd">final</code> <code class="n">List</code><code class="o">&lt;</code><code class="n">Twoot</code><code class="o">&gt;</code> <code class="n">twoots</code><code class="o">,</code> <code class="kd">final</code> <code class="n">String</code> <code class="n">senderId</code><code class="o">,</code> <code class="kd">final</code> <code class="n">String</code> <code class="n">newId</code><code class="o">)</code> <code class="o">{</code>
+        <code class="k">return</code> <code class="n">twoots</code>
+            <code class="o">.</code><code class="na">stream</code><code class="o">()</code>
+            <code class="o">.</code><code class="na">reduce</code><code class="o">(</code>
+                <code class="k">new</code> <code class="nf">Twoot</code><code class="o">(</code><code class="n">newId</code><code class="o">,</code> <code class="n">senderId</code><code class="o">,</code> <code class="s">""</code><code class="o">,</code> <code class="n">INITIAL_POSITION</code><code class="o">),</code>
+                <code class="o">(</code><code class="n">acc</code><code class="o">,</code> <code class="n">twoot</code><code class="o">)</code> <code class="o">-&gt;</code> <code class="k">new</code> <code class="n">Twoot</code><code class="o">(</code>
+                    <code class="n">newId</code><code class="o">,</code>
+                    <code class="n">senderId</code><code class="o">,</code>
+                    <code class="n">twoot</code><code class="o">.</code><code class="na">getContent</code><code class="o">()</code> <code class="o">+</code> <code class="n">acc</code><code class="o">.</code><code class="na">getContent</code><code class="o">(),</code>
+                    <code class="n">maxPosition</code><code class="o">.</code><code class="na">apply</code><code class="o">(</code><code class="n">acc</code><code class="o">.</code><code class="na">getPosition</code><code class="o">(),</code> <code class="n">twoot</code><code class="o">.</code><code class="na">getPosition</code><code class="o">())));</code>
+    <code class="o">}</code></pre></div>
+
+<p>Of course these <code>Stream</code> operations aren’t that interesting on their own.<a data-type="indexterm" data-primary="streams" data-secondary="combining operations to form a pipeline" id="idm45816817334120"/> They become really powerful when you combine
+them together to form a pipeline. <a data-type="xref" href="#stream_onSendTwoot_definition">Example 7-25</a> shows some code from <code>Twootr.onSendTwoot()</code> where
+we send twoots to the followers of a user. The first step is to call the <code>followers()</code> method, which returns a
+<code>Stream&lt;User&gt;</code>. We then use the <code>filter</code> operation to find the users who are actually logged in who we want to send
+the twoot to. Then we use the <code>forEach</code> operation to produce the desired side effect: sending a twoot to a user and
+recording the result.</p>
+<div id="stream_onSendTwoot_definition" data-type="example">
+<h5><span class="label">Example 7-25. </span>Use of Stream within the onSendTwoot method</h5>
+
+<pre data-type="programlisting" data-code-language="java">        <code class="n">user</code><code class="o">.</code><code class="na">followers</code><code class="o">()</code>
+            <code class="o">.</code><code class="na">filter</code><code class="o">(</code><code class="nl">User:</code><code class="o">:</code><code class="n">isLoggedOn</code><code class="o">)</code>
+            <code class="o">.</code><code class="na">forEach</code><code class="o">(</code><code class="n">follower</code> <code class="o">-&gt;</code>
+            <code class="o">{</code>
+                <code class="n">follower</code><code class="o">.</code><code class="na">receiveTwoot</code><code class="o">(</code><code class="n">twoot</code><code class="o">);</code>
+                <code class="n">userRepository</code><code class="o">.</code><code class="na">update</code><code class="o">(</code><code class="n">follower</code><code class="o">);</code>
+            <code class="o">});</code></pre></div>
+</div></section>
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect2" data-pdf-bookmark="Optional"><div class="sect2" id="idm45816817115000">
+<h2>Optional</h2>
+
+<p><code>Optional</code> is a core Java library data type, introduced <a data-type="indexterm" data-primary="streams" data-startref="ix_strm" id="idm45816817154072"/><a data-type="indexterm" data-primary="functional programming" data-secondary="streams" data-startref="ix_fncprStr" id="idm45816817153096"/>in Java 8, that is designed to provide a better alternative
+to <code>null</code>.<a data-type="indexterm" data-primary="Optional type" id="ix_Opttyp"/><a data-type="indexterm" data-primary="functional programming" data-secondary="Optional type" id="ix_fncprOpt"/> There’s quite a lot of hatred for the old null value.<a data-type="indexterm" data-primary="nulls" data-secondary="Optional type as alternative to" id="idm45816817149016"/> Even the man who invented the concept, Tony Hoare, described it as
+<a href="https://oreil.ly/OaXWj">“my billion-dollar mistake”</a>.
+That’s the trouble with being an influential computer scientist—you can make a billion-dollar mistake
+without even seeing the billion dollars yourself!</p>
+
+<p><code>null</code> is often used to represent the absence of a value, and this is the use case that
+<code>Optional</code> is replacing. The problem with using <code>null</code> in order to represent absence is
+the dreaded <code>NullPointerException</code>. If you refer to a variable that is <code>null</code>, your code
+blows up. The goal of <code>Optional</code> is twofold. First, it encourages the coder to make ap‐
+propriate checks as to whether a variable is absent in order to avoid bugs. Second, it
+documents values that are expected to be absent in a class’s API. This makes it easier to
+see where the bodies are buried.</p>
+
+<p>Let’s take a look at the API for <code>Optional</code> in order to get a feel for how to use it.<a data-type="indexterm" data-primary="Optional type" data-secondary="creating Optional instance from a value" id="idm45816817142952"/> If you
+want to create an <code>Optional</code> instance from a value, there is a factory method called <code>of()</code>.
+The <code>Optional</code> is now a container for this value, which can be pulled out with <code>get</code>, as
+shown in <a data-type="xref" href="#optional_example_1">Example 7-26</a>.</p>
+<div id="optional_example_1" data-type="example">
+<h5><span class="label">Example 7-26. </span>Creating an Optional from a value</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">Optional</code><code class="o">&lt;</code><code class="n">String</code><code class="o">&gt;</code> <code class="n">a</code> <code class="o">=</code> <code class="n">Optional</code><code class="o">.</code><code class="na">of</code><code class="o">(</code><code class="s">"a"</code><code class="o">);</code>
+
+<code class="n">assertEquals</code><code class="o">(</code><code class="s">"a"</code><code class="o">,</code> <code class="n">a</code><code class="o">.</code><code class="na">get</code><code class="o">());</code></pre></div>
+
+<p>Because an <code>Optional</code> may also represent an absent value, there’s also a factory method
+called <code>empty()</code>, and you can convert a nullable value into an <code>Optional</code> using the
+<code>ofNullable()</code> method.<a data-type="indexterm" data-primary="Optional type" data-secondary="creating empty Optional and checking if it contains a value" id="idm45816817122232"/> You can see both of these methods in <a data-type="xref" href="#optional_example_2">Example 7-27</a>, along with the use of the
+<code>isPresent()</code> method, which indicates whether the <code>Optional</code> is holding a value.</p>
+<div id="optional_example_2" data-type="example">
+<h5><span class="label">Example 7-27. </span>Creating an empty Optional and checking whether it contains a value</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">Optional</code> <code class="n">emptyOptional</code> <code class="o">=</code> <code class="n">Optional</code><code class="o">.</code><code class="na">empty</code><code class="o">();</code>
+<code class="n">Optional</code> <code class="n">alsoEmpty</code> <code class="o">=</code> <code class="n">Optional</code><code class="o">.</code><code class="na">ofNullable</code><code class="o">(</code><code class="kc">null</code><code class="o">);</code>
+
+<code class="n">assertFalse</code><code class="o">(</code><code class="n">emptyOptional</code><code class="o">.</code><code class="na">isPresent</code><code class="o">());</code>
+
+<code class="c1">// a is defined above</code>
+<code class="n">assertTrue</code><code class="o">(</code><code class="n">a</code><code class="o">.</code><code class="na">isPresent</code><code class="o">());</code></pre></div>
+
+<p>One approach to using <code>Optional</code> is to guard any call to <code>get()</code> by checking
+<code>isPresent()</code>—this is needed because a call to <code>get()</code> can throw a <code>NoSuchElementException</code>. Unfortunately, this
+approach isn’t a very good coding pattern for using <code>Optional</code>. If you use it this way, all you’ve really done
+is to replicate the existing patterns for using <code>null</code>—where you would check if a value isn’t <code>null</code> as a guard.</p>
+
+<p class="pagebreak-before">A neater approach is to call the <code>orElse()</code> method, which provides an alternative
+value in case the <code>Optional</code> is empty.<a data-type="indexterm" data-primary="Optional type" data-secondary="using orElse and orElseGet methods" id="idm45816816994760"/> If creating an alternative value is computationally
+expensive, the <code>orElseGet()</code> method should be used. This allows you to pass in a <code>Supplier</code> function
+that is called only if the <code>Optional</code> is genuinely empty. Both of these methods are demonstrated in
+<a data-type="xref" href="#optional_example_3">Example 7-28</a>.</p>
+<div id="optional_example_3" data-type="example">
+<h5><span class="label">Example 7-28. </span>Using orElse() and orElseGet()</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="n">assertEquals</code><code class="o">(</code><code class="s">"b"</code><code class="o">,</code> <code class="n">emptyOptional</code><code class="o">.</code><code class="na">orElse</code><code class="o">(</code><code class="s">"b"</code><code class="o">));</code>
+<code class="n">assertEquals</code><code class="o">(</code><code class="s">"c"</code><code class="o">,</code> <code class="n">emptyOptional</code><code class="o">.</code><code class="na">orElseGet</code><code class="o">(()</code> <code class="o">-&gt;</code> <code class="s">"c"</code><code class="o">));</code></pre></div>
+
+<p><code>Optional</code> also has a series of methods <a data-type="indexterm" data-primary="Optional type" data-secondary="methods defined for use like Stream API" id="idm45816816975528"/>defined that can be used like the <code>Stream</code> API; for example, <code>filter()</code>,
+<code>map()</code>, and <code>ifPresent()</code>. You can think of these methods applying to the <code>Optional</code> API similarly to the <code>Stream</code> API,
+but in this case your <code>Stream</code> can only contain 1 or 0 elements. So <code>Optional.filter()</code> will retain an element in the
+<code>Optional</code> if it meets the criteria and return an empty <code>Optional</code> if the <code>Optional</code> was previously empty or if the
+predicate fails to apply. Similarly, <code>map()</code> transforms the value inside the <code>Optional</code>, but if it’s empty it doesn’t
+apply the function at all. That’s what makes these functions safer than using <code>null</code>—they only operate on the
+<code>Optional</code> if there’s really something inside of it. <code>ifPresent</code> is the <code>Optional</code> dual of <code>forEach</code>—it applies a
+<code>Consumer</code> callback if there’s a value there, but not otherwise.</p>
+
+<p>You can see an extract of the code from the <code>Twootr.onLogon()</code> method in <a data-type="xref" href="#optional_onLogon_definition">Example 7-29</a>. This is an example
+of how we can put together these different operations to perform a more complex operation. We start off by looking up
+the <code>User</code> from their ID by calling <code>UserRepository.get()</code>, which returns an <code>Optional</code>. We then validate the user’s
+password matchers using <code>filter</code>. We use <code>ifPresent</code> to notify the <code>User</code> of the twoots that they’ve missed. Finally,
+we <code>map</code> the <code>User</code> object into a new <code>SenderEndPoint</code> that is returned from the method.<a data-type="indexterm" data-primary="onLogon method" data-secondary="use of Optional in" id="idm45816816922696"/></p>
+<div id="optional_onLogon_definition" data-type="example">
+<h5><span class="label">Example 7-29. </span>Use of Optional within the onLogon method</h5>
+
+<pre data-type="programlisting" data-code-language="java">        <code class="n">var</code> <code class="n">authenticatedUser</code> <code class="o">=</code> <code class="n">userRepository</code>
+            <code class="o">.</code><code class="na">get</code><code class="o">(</code><code class="n">userId</code><code class="o">)</code>
+            <code class="o">.</code><code class="na">filter</code><code class="o">(</code><code class="n">userOfSameId</code> <code class="o">-&gt;</code>
+            <code class="o">{</code>
+                <code class="n">var</code> <code class="n">hashedPassword</code> <code class="o">=</code> <code class="n">KeyGenerator</code><code class="o">.</code><code class="na">hash</code><code class="o">(</code><code class="n">password</code><code class="o">,</code> <code class="n">userOfSameId</code><code class="o">.</code><code class="na">getSalt</code><code class="o">());</code>
+                <code class="k">return</code> <code class="n">Arrays</code><code class="o">.</code><code class="na">equals</code><code class="o">(</code><code class="n">hashedPassword</code><code class="o">,</code> <code class="n">userOfSameId</code><code class="o">.</code><code class="na">getPassword</code><code class="o">());</code>
+            <code class="o">});</code>
+
+        <code class="n">authenticatedUser</code><code class="o">.</code><code class="na">ifPresent</code><code class="o">(</code><code class="n">user</code> <code class="o">-&gt;</code>
+        <code class="o">{</code>
+            <code class="n">user</code><code class="o">.</code><code class="na">onLogon</code><code class="o">(</code><code class="n">receiverEndPoint</code><code class="o">);</code>
+            <code class="n">twootRepository</code><code class="o">.</code><code class="na">query</code><code class="o">(</code>
+                <code class="k">new</code> <code class="nf">TwootQuery</code><code class="o">()</code>
+                    <code class="o">.</code><code class="na">inUsers</code><code class="o">(</code><code class="n">user</code><code class="o">.</code><code class="na">getFollowing</code><code class="o">())</code>
+                    <code class="o">.</code><code class="na">lastSeenPosition</code><code class="o">(</code><code class="n">user</code><code class="o">.</code><code class="na">getLastSeenPosition</code><code class="o">()),</code>
+                <code class="nl">user:</code><code class="o">:</code><code class="n">receiveTwoot</code><code class="o">);</code>
+            <code class="n">userRepository</code><code class="o">.</code><code class="na">update</code><code class="o">(</code><code class="n">user</code><code class="o">);</code>
+        <code class="o">});</code>
+
+        <code class="k">return</code> <code class="n">authenticatedUser</code><code class="o">.</code><code class="na">map</code><code class="o">(</code><code class="n">user</code> <code class="o">-&gt;</code> <code class="k">new</code> <code class="n">SenderEndPoint</code><code class="o">(</code><code class="n">user</code><code class="o">,</code> <code class="k">this</code><code class="o">));</code></pre></div>
+
+<p>In this section we’ve really only scratched the surface of functional programming.<a data-type="indexterm" data-primary="Optional type" data-startref="ix_Opttyp" id="idm45816816884456"/><a data-type="indexterm" data-primary="functional programming" data-secondary="Optional type" data-startref="ix_fncprOpt" id="idm45816816795736"/><a data-type="indexterm" data-primary="functional programming" data-secondary="learning more about" id="idm45816816794584"/> If you are interested in learning
+about functional programming in greater depth, we recommend
+<a href="https://oreil.ly/wGImJ"><em>Java 8 In Action</em></a>
+and <a href="https://oreil.ly/hDrfH"><em>Java 8 Lambdas</em></a>.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="functional programming" data-startref="ix_TwooextFP" id="idm45816816791736"/><a data-type="indexterm" data-primary="functional programming" data-startref="ix_fncpr" id="idm45816816790216"/></p>
+</div></section>
+
+
+
+
+
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="User Interface"><div class="sect1" id="ch06_User_Interfaces">
+<h1>User Interface</h1>
+
+<p>Throughout this chapter we’ve avoided talking too much about the user interface to this system, because we’re focused
+on the design of the core problem domain.<a data-type="indexterm" data-primary="user interfaces (UIs)" data-secondary="in Twootr (example)" id="idm45816816787592"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="user interface" id="idm45816816786616"/> That said, it’s worth delving a little into what the example project delivers as part of
+its UI just in order to understand how the event modeling fits together. In our example project we ship a single-page
+website that uses JavaScript to implement its dynamic functionality. In order to keep things simple and not delve too
+much into the myriad framework wars, we’ve just used <code>jquery</code> to update the raw HTML page, but kept a simple
+separation of concerns in the code.</p>
+
+<p>When you browse to the Twootr web page it connects back to the host using WebSockets. These were one of the event
+communication choices discussed back in <a data-type="xref" href="ch06.xhtml#events_to_design">“From Events to Design”</a>. All the code for communicating with it lies in the
+<code>web_adapter</code> subpackage of <code>chapter_06</code>. The <code>WebSocketEndPoint</code> class implements the <code>ReceiverEndPoint</code> and
+also invokes any needed methods on the <code>SenderEndPoint</code>. For example, when the <code>ReceiverEndPoint</code> receives and parses
+a message to follow another user it invokes the <code>SenderEndPoint.onFollow()</code>, passing the username through. The returned
+<code>enum</code>—<code>FollowStatus</code> then gets converted into a wire format response and written down the WebSocket connection.</p>
+
+<p>All communication between the JavaScript frontend and the server is done using the <a href="http://www.json.org/"><em>JavaScript Object Notation</em> (JSON) standard</a>. JSON was chosen as it’s very easy for a JavaScript UI to deserialize or serialize.<a data-type="indexterm" data-primary="JSON" id="idm45816816778184"/></p>
+
+<p>Within the <code>WebSocketEndPoint</code> we need to map to and from JSON within Java code. There are many libraries that can
+be used for this purpose, here we’ve chosen the <a href="https://github.com/FasterXML/jackson">Jackson library</a>, which is commonly
+used and well maintained.<a data-type="indexterm" data-primary="Jackson library" id="idm45816816775720"/> JSON is often used in applications that take a request/response approach rather than an event-driven approach as well. In our case we manually extract the fields from the JSON object to keep things simple, but
+its also possible to use a higher-level JSON API, such as a binding API.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Dependency Inversion and Dependency Injection"><div class="sect1" id="idm45816816774456">
+<h1>Dependency Inversion and Dependency Injection</h1>
+
+<p>We’ve talked a lot about decoupling patterns in this chapter.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="dependency inversion and dependency injection" id="ix_Twooextdep"/> Our overall application uses the Ports and Adapters
+pattern and the Repository pattern to decouple business logic away from implementation details. There is in fact
+a large, unifying principle that we can think of when we see these patterns—<em>Dependency Inversion</em>. The Dependency
+Inversion Principle is the final of our five SOLID patterns that we’ve talked about in this book, and like the others
+was introduced by Robert Martin.<a data-type="indexterm" data-primary="SOLID principles" data-secondary="dependency inversion principle (DIP)" id="idm45816816770216"/><a data-type="indexterm" data-primary="dependency inversion principle (DIP)" id="idm45816816769272"/> It states that:</p>
+
+<ul>
+<li>
+<p>High-level modules should not depend upon low-level modules. Both should depend upon abstractions.</p>
+</li>
+<li>
+<p>Abstractions should not depend upon details. Details should depend upon abstractions.<a data-type="indexterm" data-primary="abstraction" data-secondary="details and" id="idm45816816766424"/></p>
+</li>
+</ul>
+
+<p>The principle is called an inversion because in traditional imperative, structured programming it is often the case
+that high-level modules compose down to produce low-level modules. It’s often a side effect of the top-down design
+that we talked about in this chapter. You split up a big problem into different subproblems, write a module to solve
+each of those subproblems, and then the main problem (the high-level module) depends on the subproblems (the low-level
+modules).</p>
+
+<p>In the design of Twootr we’ve avoided this problem through the introduction of abstractions. We have a high-level entry
+point class, called <code>Twootr</code>, and it doesn’t depend upon the low-level modules such as our <code>DataUserRepository</code>. It
+depends upon the abstraction—the <code>UserRepository</code> interface. We perform the same inversion at the UI port. <code>Twootr</code>
+doesn’t depend upon the <code>WebSocketEndPoint</code>—it depends upon the <code>ReceiverEndPoint</code>. We program to the interface,
+not the implementation.</p>
+
+<p>A related term is the concept of <em>Dependency Injection</em>, or <em>DI</em>. To understand what DI is and why we need it, let’s
+undertake a thought experiment on our design.<a data-type="indexterm" data-primary="dependency injection" id="idm45816816759096"/> Our architecture has determined that the main <code>Twootr</code> class needs to
+depend upon the <code>UserRepository</code> and <code>TwootRepository</code> in order to store <code>User</code> and <code>Twoot</code> objects. We have defined
+fields inside <code>Twootr</code> to store instances of these objects, as shown in <a data-type="xref" href="#Twootr_fields_definition">Example 7-30</a>. The question
+is, how do we instantiate them?</p>
+<div id="Twootr_fields_definition" data-type="example">
+<h5><span class="label">Example 7-30. </span>Dependencies within the Twootr class</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="kd">class</code> <code class="nc">Twootr</code>
+<code class="o">{</code>
+
+    <code class="kd">private</code> <code class="kd">final</code> <code class="n">TwootRepository</code> <code class="n">twootRepository</code><code class="o">;</code>
+    <code class="kd">private</code> <code class="kd">final</code> <code class="n">UserRepository</code> <code class="n">userRepository</code><code class="o">;</code></pre></div>
+
+<p>The first strategy that we could use for populating the fields is to try and call constructors using the <code>new</code> keyword, as shown in <a data-type="xref" href="#hardcoded_fields">Example 7-31</a>. Here we’ve hardcoded the use of the database-based repositories
+into the codebase. Now most of the code in the class still programs to the interface, so we could change the implementation
+here quite easily without having to replace all our code, but it’s a bit of a hack. We have to always use the database
+repositories, which means our tests for the <code>Twootr</code> class depend upon the database and run more slowly.</p>
+
+<p>Not only that, but if we want to ship different versions of Twootr to different customers—for example, an in-house Twootr for
+enterprise customers that uses SQL and a cloud-based version that uses a NoSQL backend—we would have to cut
+the builds from two different versions of the codebase. It’s not enough to just define interfaces and separate
+implementation—we also have to have a way of wiring up the right implementation in a way that doesn’t break
+our abstraction and decoupling approach.</p>
+<div id="hardcoded_fields" data-type="example">
+<h5><span class="label">Example 7-31. </span>Hardcoding the field instantiation</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="nf">Twootr</code><code class="o">()</code>
+<code class="o">{</code>
+    <code class="k">this</code><code class="o">.</code><code class="na">userRepository</code> <code class="o">=</code> <code class="k">new</code> <code class="n">DatabaseUserRepository</code><code class="o">();</code>
+    <code class="k">this</code><code class="o">.</code><code class="na">twootRepository</code> <code class="o">=</code> <code class="k">new</code> <code class="n">DatabaseTwootRepository</code><code class="o">();</code>
+<code class="o">}</code>
+
+<code class="c1">// How to start Twootr</code>
+<code class="n">Twootr</code> <code class="n">twootr</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Twootr</code><code class="o">();</code></pre></div>
+
+<p>A commonly used design pattern for instantiating different dependencies is the Abstract Factory Design pattern.<a data-type="indexterm" data-primary="abstract factory design pattern" id="idm45816816633080"/>
+<a data-type="xref" href="#factory_instantiation">Example 7-32</a> demonstrates this pattern, where we have a factory method that we can use to create
+an instance of our interface using the <code>getInstance()</code> method. When we want to set up the right implementations to
+use, we can call a <code>setInstance()</code>. So, for example, we could use <code>setInstance()</code> in tests to create an in-memory
+implementation, in an on-premise installation to use a SQL database, or in our cloud environment to use a NoSQL
+database. We’ve decoupled the implementation from the interface and can call this wiring code wherever we want.</p>
+<div id="factory_instantiation" data-type="example">
+<h5><span class="label">Example 7-32. </span>Creating the instances with factories</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="nf">Twootr</code><code class="o">()</code>
+<code class="o">{</code>
+    <code class="k">this</code><code class="o">.</code><code class="na">userRepository</code> <code class="o">=</code> <code class="n">UserRepository</code><code class="o">.</code><code class="na">getInstance</code><code class="o">();</code>
+    <code class="k">this</code><code class="o">.</code><code class="na">twootRepository</code> <code class="o">=</code> <code class="n">TwootRepository</code><code class="o">.</code><code class="na">getInstance</code><code class="o">();</code>
+<code class="o">}</code>
+
+<code class="c1">// How to start Twootr</code>
+<code class="n">UserRepository</code><code class="o">.</code><code class="na">setInstance</code><code class="o">(</code><code class="k">new</code> <code class="n">DatabaseUserRepository</code><code class="o">());</code>
+<code class="n">TwootRepository</code><code class="o">.</code><code class="na">setInstance</code><code class="o">(</code><code class="k">new</code> <code class="n">DatabaseTwootRepository</code><code class="o">());</code>
+<code class="n">Twootr</code> <code class="n">twootr</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Twootr</code><code class="o">();</code></pre></div>
+
+<p>Unfortunately this factory method approach has its downsides as well. For a start, we’ve now created a big ball of
+shared mutable state. Any situation where we want to run a single JVM with different <code>Twootr</code> instances with different
+dependencies isn’t possible.  We’ve also coupled together lifetimes—perhaps we sometimes want to instantiate a new
+<code>TwootRepository</code> when we start <code>Twootr</code>, or perhaps we sometimes want to reuse an existing one. The factory method
+approach won’t let us directly do this. It can also become rather complicated to have a factory for every dependency
+that we want to create in our application.</p>
+
+<p>This is where Dependency Injection comes in. DI can be thought of as an example of the Hollywood Agent approach—don’t call us, we’ll
+call you.<a data-type="indexterm" data-primary="dependency injection" data-secondary="creating Twootr class instances with" id="idm45816816561016"/> With DI instead of creating dependencies explicitly or using factories to create them, you simply take a
+parameter and whatever instantiates your object has the responsibiltiy for passing in the required dependencies. It
+might be a test class’s setup method passing in a mock. It might be the <code>main()</code> method of your application passing in
+a SQL database implementation.<a data-type="indexterm" data-primary="repository pattern" data-secondary="dependency injection and" id="idm45816816559272"/> An example of this in use with the <code>Twootr</code> class is shown in <a data-type="xref" href="#dependency_injection">Example 7-33</a>.
+Dependency Inversion is a strategy; Dependency Injection and the Repository pattern are tactics.</p>
+<div id="dependency_injection" data-type="example">
+<h5><span class="label">Example 7-33. </span>Creating the instances using Dependency Injection</h5>
+
+<pre data-type="programlisting" data-code-language="java"><code class="kd">public</code> <code class="nf">Twootr</code><code class="o">(</code><code class="kd">final</code> <code class="n">UserRepository</code> <code class="n">userRepository</code><code class="o">,</code> <code class="kd">final</code> <code class="n">TwootRepository</code> <code class="n">twootRepository</code><code class="o">)</code>
+<code class="o">{</code>
+    <code class="k">this</code><code class="o">.</code><code class="na">userRepository</code> <code class="o">=</code> <code class="n">userRepository</code><code class="o">;</code>
+    <code class="k">this</code><code class="o">.</code><code class="na">twootRepository</code> <code class="o">=</code> <code class="n">twootRepository</code><code class="o">;</code>
+<code class="o">}</code>
+
+<code class="c1">// How to start Twootr</code>
+<code class="n">Twootr</code> <code class="n">twootr</code> <code class="o">=</code> <code class="k">new</code> <code class="n">Twootr</code><code class="o">(</code><code class="k">new</code> <code class="n">DatabaseUserRepository</code><code class="o">(),</code> <code class="k">new</code> <code class="n">DatabaseTwootRepository</code><code class="o">());</code></pre></div>
+
+<p>Taking objects this way not only makes it easier to write tests for your objects, but it has the advantage of
+externalizing the creation of the objects themselves. This allows your application code or a framework to
+control when the <code>UserRepository</code> is created and what dependencies are wired into it.<a data-type="indexterm" data-primary="dependency injection" data-secondary="frameworks for" id="idm45816816479160"/> Many developers find
+it convenient to use DI frameworks, such as Spring and Guice, that offer many features on top of basic DI.<a data-type="indexterm" data-primary="Spring framework" id="idm45816816478040"/><a data-type="indexterm" data-primary="Guice framework" id="idm45816816477400"/> For
+example, they define lifecycles for beans that standardize hooks to be called after the objects are instantiated
+or before they are destroyed if required. They can also offer scopes for objects, such as Singleton objects that
+are only instantiated once during the lifetime of a process or per-request objects. Furthermore, these DI <span class="keep-together">frameworks</span>
+often hook nicely into web development frameworks such as Dropwizard or Spring Boot and provide a productive out-of-the-box experience.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="dependency inversion and dependency injection" data-startref="ix_Twooextdep" id="idm45816816475432"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Packages and Build Systems"><div class="sect1" id="idm45816816773992">
+<h1>Packages and Build Systems</h1>
+
+<p>Java allows you to split your codebase into different packages.<a data-type="indexterm" data-primary="packages" id="ix_pkg"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="packages and build systems" id="ix_TwooextPkg"/> Throughout this book we’ve put the code for each
+chapter into its own package and Twootr is the first project where we’ve split out multiple subpackages within
+the project itself.</p>
+
+<p>Here are the packages can you look at for the different components within the project:</p>
+
+<ul>
+<li>
+<p><code>com.iteratrlearning.shu_book.chapter_06</code> is the top-level package for the project.</p>
+</li>
+<li>
+<p><code>com.iteratrlearning.shu_book.chapter_06.database</code> contains the adapter for SQL database persistence.</p>
+</li>
+<li>
+<p><code>com.iteratrlearning.shu_book.chapter_06.in_memory</code> contains the adapter for in-memory persistence.</p>
+</li>
+<li>
+<p><code>com.iteratrlearning.shu_book.chapter_06.web_adapter</code> contains the adapter for the WebSockets-based UI.</p>
+</li>
+</ul>
+
+<p>Splitting out large projects into different packages can be helpful to structure code and make it easier for
+developers to find. Just in the same way that classes group together related methods and state, packages group
+together related classes. Packages should follow similar coupling and cohesion rules to your classes. Put classes
+in the same package when they’re likely to change at the same time and are related to <span class="keep-together">the same</span> structure. For
+example, in the Twootr project if we want to alter the SQL database persistence code we know we go to the
+<code>database</code> subpackage.</p>
+
+<p>Packages also enable information hiding. We discussed the idea of having a package-scoped constructor method
+back in <a data-type="xref" href="ch04.xhtml#document_definition">Example 4-3</a> in order to prevent objects from being instantiated outside of the package. We can
+also have package scoping for classes and methods. This prevents objects outside of the package from accessing the
+details of the class and helps us achieve loose coupling. For example, <code>WebSocketEndPoint</code> is package-scoped
+implementation of the <code>ReceiverEndPoint</code> interface that lives in the <code>web_adapter</code> package. No other code in the project
+should talk to this class directly—only through the <code>ReceiverEndPoint</code> interface that acts as the port.</p>
+
+<p>Our approach of having a package per adapter in Twootr fits nicely with the hexagonal architectural pattern that we’ve
+used throughout this module. Not every application is hexagonal, however, and there are two common package structures
+that you may well encounter in other projects.</p>
+
+<p>One very common approach to structuring packages is to structure them by layer—for example, grouping together all code that
+generates HTML views in a website into a <code>views</code> package, and all the code that relates to handling web requests into a
+<code>controller</code> package. Despite being popular, this can be a poor choice of structure as it results in poor coupling and
+cohesion. If you want to modify an existing web page to add an additional parameter and display a value based upon
+that parameter, you would end up touching the <code>controller</code> and the <code>view</code> packages, and probably several others as well.</p>
+
+<p>An alternative way of structuring code is to group code by feature. So, for example, if you were writing an ecommerce
+site you might have a <code>cart</code> package for your shopping cart, a <code>product</code> package for code related to product
+listings, a <code>payment</code> package code related to taking card payments, etc. This can often be more cohesive. If you want
+to add support for receiving payment by Mastercard as well as Visa, then you would only need to modify the <code>payment</code>
+package.</p>
+
+<p>In <a data-type="xref" href="ch03.xhtml#using_maven">“Using Maven”</a> we talked about how to set up a basic build structure using the Maven build tool.<a data-type="indexterm" data-primary="build tools" id="idm45816816451048"/><a data-type="indexterm" data-primary="Maven" data-secondary="packages and" id="idm45816816450376"/> In the project
+structure for this book we have one Maven project and the different chapters of the book are different Java packages
+within that one project. That’s a nice and simple project structure that will work for a wide range of different
+software projects, but it’s not the only one. Both Maven and Gradle offer project structures that build and output
+many build artifacts from a single top-level project.<a data-type="indexterm" data-primary="Gradle" data-secondary="packages and" id="idm45816816448872"/></p>
+
+<p>This can make sense if you want to deploy different build artifacts. For example, suppose you’ve got a client/server
+project where you want to have a single build that builds both the client and the server, but the client and the server
+are different binaries running on different machines. It’s best not to overthink or over-modularize build scripts, though.</p>
+
+<p>They’re something that you and your team will be running on your machines regularly and the highest priority is for
+them to be simple, fast, and easy to use. That’s why we went down the route of having one single project for the entire
+book, rather than submodule per project.<a data-type="indexterm" data-primary="packages" data-startref="ix_pkg" id="idm45816816446440"/><a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="packages and build systems" data-startref="ix_TwooextPkg" id="idm45816816445464"/></p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Limitations and Simplifications"><div class="sect1" id="idm45816816473352">
+<h1>Limitations and Simplifications</h1>
+
+<p>You’ve seen how we implement Twootr and learned about our design decisions along<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-tertiary="limitations and simplifications" id="idm45816816442408"/> the way, but
+does that mean that the Twootr codebase that we’ve seen so far is the only or the best way
+to write it? Of course not! In fact, there are a number of limitations to our approach and simplifications that
+we’ve deliberately taken in order to make the codebase explainable in a single chapter.</p>
+
+<p>For a start we’ve written Twootr as though it will be run on a single thread and completely ignored the issue
+of concurrency. In practice we may want to have multiple threads responding to and emitting events in our Twootr
+implementation. That way we can make use of modern multicore CPUs and serve a larger number customers on one
+box.</p>
+
+<p>In a bigger-picture sense, we’ve also ignored any kind of failover that would allow our service to continue to run if
+the server that it was hosted on fell over. We’ve also ignored scalability. For example, requiring all our twoots have
+a single defined order is something that is easy and efficient to implement on a single server but would present a
+serious scalability/contention bottleneck. Similarly, seeing all the twoots when you log on would cause a bottleneck as well. What if you go on holiday
+for a week and when you log back on you get 20,000 twoots!</p>
+
+<p>Addressing these issues in detail goes beyond the scope of this chapter. However, these are important topics if you
+wish to go further with Java, and we plan to address them in greater detail in future books in this series.</p>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Takeaways"><div class="sect1" id="idm45816816443672">
+<h1>Takeaways</h1>
+
+<ul>
+<li>
+<p>You can now decouple data storage from business logic using the Repository <span class="keep-together">pattern</span>.</p>
+</li>
+<li>
+<p>You have seen implementations of two different types of repositories within this approach.</p>
+</li>
+<li>
+<p>You were introduced to the ideas of functional programming, including Java 8 Streams.</p>
+</li>
+<li>
+<p>You’ve seen how to structure a larger project with different packages.</p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Iterating on You"><div class="sect1" id="idm45816816404696">
+<h1>Iterating on You</h1>
+
+<p>If you want to extend and solidify the knowledge from this section you could try one of the following activities.</p>
+
+<p>Suppose that we had taken a pull model for Twootr. Instead of having messages continuously pushed out to a
+browser-based client over WebSockets, we had used HTTP to poll for the latest messages since a position.</p>
+
+<ul>
+<li>
+<p>Brainstorm how our design would have changed. Try drawing a diagram of the different classes and how data
+would flow between them.</p>
+</li>
+<li>
+<p>Implement, using TDD, this alternative model for Twootr. You don’t need to implement the HTTP parts, just
+the underlying classes following this model.</p>
+</li>
+</ul>
+</div></section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<section data-type="sect1" data-pdf-bookmark="Completing the Challenge"><div class="sect1" id="idm45816816399752">
+<h1>Completing the Challenge</h1>
+
+<p>We built the product and it worked. Unfortunately, Joe realized when he launched
+that someone called Jack had released a similar product, with a similar name,
+taking billions in VC funding and with hundreds of millions of users. Jack only
+got there first by 11 years; it was bad luck for Joe, really.<a data-type="indexterm" data-primary="Twootr (example)" data-secondary="extending" data-startref="ix_Twooext" id="idm45816816398136"/></p>
+</div></section>
+
+
+
+
+
+
+
+</div></section></div>
+
+
+
+  </body></html>
