@@ -1,14 +1,18 @@
 - en: Chapter 6\. Source Code Observability
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第六章 源代码可观察性
 - en: Achieving safe delivery via pipelines or some other repeatable process is a
     step forward. It helps, though, to look forward to how you can observe the state
     of the running system beginning with deployed assets. Too much of a focus on just
     the pipeline itself could leave you without a means to inventory your suite of
     deployed assets later.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过管道或其他可重复的过程实现安全交付是向前迈出的一步。然而，更重要的是展望如何从部署的资产状态开始观察运行系统。过多关注管道本身可能会导致您后来无法对部署的资产进行清单。
 - en: Source code is just as important to monitor as live processes. In an organization’s
     source code, dependencies between internal components and third-party libraries
     are specified. Small changes in dependencies can render an application unusable.
@@ -17,14 +21,19 @@
     organization are emulated until an awareness of a vulnerability is developed.
     In codebases of a significant enough size, even the smallest API change can seem
     like an insurmountable task.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 源代码与实时进程一样重要。在组织的源代码中，会指定内部组件与第三方库之间的依赖关系。依赖关系的微小变化可能导致应用程序无法使用。在开发者模仿他们在其他地方看到的工作时，会发现某些模式在整个组织中重复出现。即使是揭示攻击向量的模式，在意识到漏洞之前也会被模仿。在足够大的代码库中，即使是最小的
+    API 更改也可能显得难以克服。
 - en: In the Netflix codebase, we found Guava version drift across deep dependency
     trees to be almost crippling at times. An attempt to make a shift from one logging
     library to another across the whole codebase had taken years and was still not
     achieved until an organization-wide refactoring solution was developed.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 Netflix 的代码库中，我们发现 Guava 版本在深层依赖树中的漂移有时几乎是致命的。试图在整个代码库中从一种日志记录库转换到另一种的尝试花费了多年时间，直到开发了一种组织范围的重构解决方案才得以实现。
 - en: Another significant challenge is identifying what code is actually deployed
     where across a myriad of environments. As your organization makes advances in
     continuous delivery, for example, the possibility of rollbacks means that the
@@ -32,14 +41,18 @@
     may not be the version that is running in production. Or in the case of a canary
     test, or a blue/green deployment with greater than one active cluster, you won’t
     even have one particular version running exclusively in production!
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一个重要挑战是确定代码实际部署在多少不同环境中。例如，随着组织在持续交付方面取得进展，回滚的可能性意味着给定微服务在构件存储库中的最新发布版本可能与在生产环境中运行的版本不同。或者在金丝雀测试或蓝绿部署中，如果有超过一个活跃集群，你甚至不会只在生产中独占一个特定版本！
 - en: The need to map deployed assets to source code is particularly important for
     organizations that aren’t monorepo-based (and most aren’t). Any pressures present
     that limit the adoption of new internal dependencies in your organization effectively
     place a ceiling on how effectively you *continuously integrate* as well.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 将部署资产映射到源代码对于非单体库（大多数情况）的组织尤为重要。限制内部依赖采纳的任何压力都有效地限制了您的*持续集成*的效果。
 - en: This chapter is all about build tools. Examples given here are for the [Gradle](https://gradle.org)
     build tool. The patterns described here could be implemented in Maven or any other
     Java build tool, but the Gradle ecosystem provides the most readily available
@@ -49,8 +62,12 @@
     for microservices, along with any core platform dependencies that they include,
     are published to a Maven-style artifact repository like [JFrog Artifactory](https://oreil.ly/3l06u)
     or [Sonatype Nexus](https://oreil.ly/R7wOr).
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章讨论的是构建工具。这里给出的例子是[Gradle](https://gradle.org)构建工具。这里描述的模式可以在 Maven 或任何其他 Java
+    构建工具中实现，但是Gradle生态系统提供了最丰富的可用具体例子，特别是在其最近在二进制依赖管理和Netflix Nebula插件生态系统方面的进展方面。我们还假设微服务的二进制构件以及它们包含的任何核心平台依赖项都发布到像[JFrog
+    Artifactory](https://oreil.ly/3l06u)或[Sonatype Nexus](https://oreil.ly/R7wOr)这样的Maven风格的构件存储库。
 - en: The focus on build tools may seem strange, given that in the software delivery
     life cycle, build tools come much earlier than continuous delivery, which has
     just been covered in [Chapter 5](part0010_split_000.html#9H5K4-2d714b853a094e9a910510217e0e3d73).
@@ -64,15 +81,21 @@
     back to the source code that is running in them, as shown in [Figure 6-1](part0011_split_000.html#from_change_to_production).
     The provenance chain should lead at least down to an immutable artifact version
     and commit hash, and possibly all the way down to source code method-level references.
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然在软件交付生命周期中，构建工具出现在持续交付之前可能看起来有些奇怪，但是对于你在版本策略和需要包含的元数据种类的考虑来说，理解有状态持续交付工具为您做的生产资产清单是一个重要的前提条件。在给定正确数据的情况下，交付解决方案呈现的生产资产清单应该是溯源链的第一步。我们将涵盖一些需要在传统软件交付生命周期中注入的组成部分，以便您最终能够将部署的资产映射回运行在其中的源代码，如[图6-1](part0011_split_000.html#from_change_to_production)所示。溯源链至少应该引导到一个不可变的工件版本和提交哈希，可能还包括源代码方法级别的引用。
 - en: '![srej 0601](../images/00057.png)'
+  id: totrans-8
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0601](../images/00057.png)'
 - en: Figure 6-1\. The provenance chain leading from a code change to production
+  id: totrans-9
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图6-1。从代码变更到生产的溯源链
 - en: Suppose we start with a continuous delivery tool like Spinnaker (introduced
     in [Chapter 5](part0010_split_000.html#9H5K4-2d714b853a094e9a910510217e0e3d73))
     telling us that an application representing a microservice is spread over multiple
@@ -80,28 +103,40 @@
     If the deployed resources are tagged with the artifact information that went into
     them, we consider what we can do to ensure that this artifact information leads
     us to a uniquely identifiable place in the history of this microservice’s code.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设我们从像Spinnaker这样的持续交付工具（介绍见[第5章](part0010_split_000.html#9H5K4-2d714b853a094e9a910510217e0e3d73)）开始，告诉我们一个代表微服务的应用程序分布在多个云平台上，不同集群中运行着多个版本的代码。如果部署的资源标记了进入它们的工件信息，我们考虑如何确保这些工件信息能够指向微服务代码历史上的唯一可识别位置。
 - en: It begins with the characteristics we need from our delivery system.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 它始于我们从交付系统中需要的特性。
 - en: Meaning of Terms Used in This Chapter
+  id: totrans-12
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 本章中使用的术语的含义
 - en: This chapter will use terms like *instance*, *server group*, and *cluster* as
     defined in [“Resource Types”](part0010_split_002.html#resource_types) at the start
     of [Chapter 5](part0010_split_000.html#9H5K4-2d714b853a094e9a910510217e0e3d73).
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章将使用类似*实例*、*服务器组*和*集群*的术语，这些术语在[“资源类型”](part0010_split_002.html#resource_types)中已定义，在[第5章](part0010_split_000.html#9H5K4-2d714b853a094e9a910510217e0e3d73)的开始部分有介绍。
 - en: The Stateful Asset Inventory
+  id: totrans-14
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 有状态资产清单
 - en: A queryable stateful asset inventory of code all the way to deployed assets
     allows you to answer questions about the current state of your systems.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 从代码变更到部署资产的可追溯性资产清单，使您能够回答有关系统当前状态的问题。
 - en: The first objective in building this inventory is to have some system of record
     that we can query to itemize our deployed resources (in both production and lower-level
     nonproduction testing environments). How difficult this is depends on how many
@@ -112,12 +147,16 @@
     application names and the virtual machines that host them. In an IaaS or CaaS
     where resources are provisioned more elastically, we really need to query the
     cloud provider for the list of currently deployed assets.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 建立此清单的第一个目标是有一些记录系统，我们可以查询以列出我们的已部署资源（在生产和较低级别的非生产测试环境中）。这有多困难取决于您的代码可以部署到多少个以及哪些类型的地方。一些组织即使在数据中心中使用虚拟化硬件，也有一组固定的几乎不会改变的虚拟机名称（编号为几十个或几百个），每个虚拟机专用于特定的应用程序。您可以合理地维护一个静态列表，其中包含应用程序名称和托管它们的虚拟机。在资源更加弹性地提供的IaaS或CaaS中，我们确实需要查询云提供商以获取当前部署的资产列表。
 - en: GitOps Doesn’t Achieve a Deployed Asset Inventory
+  id: totrans-17
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: GitOps无法实现已部署资产清单
 - en: With GitOps, you store the state of what you *want* to happen in Git. What materializes
     in the environment can be something very different. The easiest example of this
     divergence comes from Kubernetes. When you commit a manifest in Git, and this
@@ -129,19 +168,26 @@
     one Kubernetes cluster to another! The point is, even if you successfully gate
     all *intention actions* through Git, you still don’t really have a true picture
     of the deployed environment in Git.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用GitOps，您将想要发生的事情的状态存储在Git中。在环境中实现的可能是非常不同的事情。这种分歧的最简单示例来自Kubernetes。当您在Git中提交清单并引发部署操作时，Kubernetes控制器会在目标集群中将该清单变异为可能不同的内容。随着供应商和项目在Kubernetes上添加了越来越多的CRD，变异的范围和数量也在不断增加。通过`kubectl
+    get pod -o yaml`得到的内容与您在Git中提交的清单不同。实际上，它甚至可能与另一个Kubernetes集群中的内容不同！关键是，即使您成功地将所有*意向操作*通过Git进行了限制，您在Git中仍然没有对已部署环境的真实图像。
 - en: 'A key benefit of a system like Spinnaker is its model of polling live environments
     for the state of deployed infrastructure, spanning every cloud provider that Spinnaker
     supports. In other words, you can retrieve in one API call a consistent representation
     (in terms of application/cluster/server group/instance) of deployed infrastructure
     across many cloud platforms. It is a single-pane-of-glass experience for asset
     inventorying. There are two levels to this benefit:'
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: Spinnaker等系统的一个关键优点是其模型会对已部署基础设施的状态进行实时轮询，跨越Spinnaker支持的每个云提供商。换句话说，您可以在一个API调用中检索到一致的表示（以应用程序/集群/服务器组/实例为单位）跨越许多云平台的已部署基础设施。这是一个单一的窗格体验用于资产清查。这一优点有两个层面：
 - en: No need to coordinate through one system
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 无需通过一个系统进行协调
 - en: By actively polling, we don’t need to centralize all possible mutations of the
     state of the deployed environment through one system that can maintain state separately.
     In theory you could require this, for example, by enforcing “gitops,” i.e., a
@@ -149,11 +195,15 @@
     there can be no rollback, load balancer changes, manual launching of server groups,
     or any other mutation that would result in Git not having a full picture of the
     state of the deployed environment.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过主动轮询，我们不需要通过一个系统将已部署环境的所有可能变异集中起来，这个系统可以分开维护状态。理论上，您可以要求这样做，例如，通过强制执行“gitops”，即管理更新应用程序需要在Git中进行更新。在这种设置中，不能进行回滚、负载均衡器更改、手动启动服务器组或导致Git无法完全了解已部署环境状态的任何其他变异。
 - en: Real-time instance-level status
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 实时实例级状态
 - en: What a GitOps or similar system cannot do is track the state of individual instances
     in a server group. AWS EC2, for example, makes no guarantees about an individual
     virtual machine’s survivability, just that the Auto Scaling Group will do its
@@ -167,8 +217,11 @@
     load balancer, allowing the “server group” mechanism to launch another instance
     and addressing immediate user impact while allowing you time to investigate root
     cause on the failing instance before eventually terminating it.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: GitOps或类似系统无法追踪服务器组中各个实例的状态。例如，AWS EC2并不保证单个虚拟机的生存能力，只是自动扩展组将尽力在任何给定时间保持指定数量的实例。在Kubernetes中也是如此，单个Pod的生存能力也不受保证。如果度量遥测被标记为实例ID、实例序数或Pod
+    ID，则可以方便地在违反某些服务级别目标时接收警报，能够深入到特定失败实例，并导航到实例级别的实时视图以采取一些补救措施。例如，您可以将一个失败的实例从负载均衡器中移出，允许“服务器组”机制启动另一个实例，并在最终终止之前调查失败实例的根本原因，从而解决立即的用户影响问题。
 - en: As beneficial as it is to operations, real-time instance-level status is not
     immediately relevant to our discussion of artifact provenance. We really just
     need *some* source we can interrogate to list running server groups, clusters,
@@ -180,60 +233,88 @@
     were given earlier. The implementation of the methods, like `getApplications()`,
     is dependent on the deployment automation you use. For example, `getApplications()`
     is an API call to Spinnaker’s Gate service to the endpoint `/applications`.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管实时实例级状态对操作非常有益，但它并不立即与我们讨论的工件来源的相关性高。我们真正需要的只是*某些*我们可以询问以列出运行中的服务器组、集群和应用程序的来源（参见[示例 6-1](part0011_split_003.html#mapping_deployed_resources_1)）。在本章的其余部分，我们将使用一个Java伪代码来描述通过达到一定的来源信息水平应该能够得出的洞察。模型的第一部分封装了资源类型（参见[“资源类型”](part0010_split_002.html#resource_types)），其定义在之前已经给出。方法的实现，例如`getApplications()`，取决于您使用的部署自动化。例如，`getApplications()`是对Spinnaker的Gate服务到端点`/applications`的API调用。
 - en: Example 6-1\. Listing running deployed assets
+  id: totrans-25
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-1\. 列出正在运行的部署资产
 - en: '[PRE0]'
+  id: totrans-26
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: '[![1](../images/00112.png)](part0011_split_003.html#co_source_code_observability_CO1-1)'
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](../images/00112.png)](part0011_split_003.html#co_source_code_observability_CO1-1)'
 - en: For example, `us-east-1` in AWS or namespace in K8S.
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，在AWS中的`us-east-1`或者Kubernetes中的命名空间。
 - en: '[![2](../images/00059.png)](part0011_split_003.html#co_source_code_observability_CO1-2)'
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![2](../images/00059.png)](part0011_split_003.html#co_source_code_observability_CO1-2)'
 - en: The promotion level of the environment, like `test` or `production`.
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 环境的推广级别，如`test`或`production`。
 - en: For a GitOps system, `getApplications()` would interrogate the status of one
     or more Git repositories. For the private datacenter with a set of named virtual
     machines that rarely changes, this could be a manually maintained static list.
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于GitOps系统，`getApplications()`将询问一个或多个Git存储库的状态。对于具有一组命名的几乎不会更改的虚拟机的私有数据中心，这可能是一个手动维护的静态列表。
 - en: 'Notice how at various stages, you should be able to drill down on various characteristics
     of the data in a stateful delivery system. For example, see [Example 6-2](part0011_split_003.html#mapping_deployed_resources_2)
     to get a list of teams that have applications that have some running footprint
     in Kubernetes:'
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，在各个阶段，您应该能够深入研究状态交付系统中数据的各种特征。例如，参见[示例 6-2](part0011_split_003.html#mapping_deployed_resources_2)以获取在Kubernetes中具有一些运行足迹的应用程序的团队列表。
 - en: Example 6-2\. Discovering teams that have applications running in Kubernetes
+  id: totrans-33
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-2\. 发现在Kubernetes中运行应用程序的团队
 - en: '[PRE1]'
+  id: totrans-34
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: This ability to drill down leads to better actionability. When a full provenance
     chain is established, we should be able to, for example, look for a recently revealed
     method-level security vulnerability. For a critical vulnerability, it might be
     desirable to first address the production stack and later follow up on the lower-level
     environments that contain code on a path to production eventually.
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种深入了解的能力导致更好的可操作性。建立完整的溯源链后，例如，我们应该能够查找最近揭示的方法级安全漏洞。对于关键漏洞，可能希望首先解决生产堆栈，然后再跟进包含最终进入生产路径的低级环境。
 - en: In order to be able to determine which `Artifact` a server group contains, we
     need proper immutable release versioning.
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了能够确定服务器组包含哪个`Artifact`，我们需要适当的不可变发布版本。
 - en: Release Versioning
+  id: totrans-37
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 发布版本控制
 - en: Since the artifact repository is the part of the software delivery life cycle
     immediately preceding continuous delivery, a unique binary artifact version is
     the first step in the artifact provenance chain. For a given pipeline run, Spinnaker
@@ -241,27 +322,38 @@
     will also be tagged with this provenance information. [Figure 6-2](part0011_split_004.html#spinnaker_resolved_artifact)
     shows how Spinnaker has kept track of the docker image tag and digest that was
     an input to a pipeline.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于工件存储库是立即在持续交付之前的软件交付生命周期的一部分，唯一的二进制工件版本是工件溯源链中的第一步。对于给定的流水线运行，Spinnaker跟踪该流水线的工件输入。任何生成的部署资产也将标记有此溯源信息。[图 6-2](part0011_split_004.html#spinnaker_resolved_artifact)
+    显示了Spinnaker如何跟踪作为流水线输入的docker镜像标签和摘要。
 - en: '![srej 0602](../images/00003.png)'
+  id: totrans-39
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0602](../images/00003.png)'
 - en: Figure 6-2\. Spinnaker resolved expected artifact (notice the artifact is identified
     by digest instead of tag)
+  id: totrans-40
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-2\. Spinnaker解析的预期工件（注意，工件是通过摘要而不是标签标识的）
 - en: For this image version tag to uniquely identify a piece of code, the tag has
     to be unique for each unique combination of source code and dependencies. That
     is, if *either* the source code or dependencies that make up an application change,
     the version needs to change, and it is this unique version number that needs to
     be used to retrieve the artifact.
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使此图像版本标签能够唯一标识一段代码，该标签必须对于每个源代码和依赖项的唯一组合都是唯一的。也就是说，如果应用程序的源代码或依赖项发生任何更改，版本号都需要更改，并且需要使用此唯一版本号来检索工件。
 - en: Docker Image Tags Are Mutable
+  id: totrans-42
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: Docker镜像标签可变
 - en: Docker registries don’t make any guarantee about tag immutability. And digests
     are not necessarily 1:1 with tags, though they are immutable. A common convention
     when publishing a new version of a Docker container to a container registry is
@@ -271,97 +363,145 @@
     mutable from the registry’s perspective, you can build a release process that
     never actually mutates fixed version numbers so that this more human-readable
     tag can be used to associate an image with the code that is in it.
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: Docker注册表不保证标签的不可变性。而摘要并非与标签一一对应，尽管摘要是不可变的。发布新版本的Docker容器到容器注册表时的常见约定是使用标签“latest”和固定版本（如“1.2.0”）发布镜像。这样，“latest”标签实际上被覆盖，并且与“1.2.0”共享相同的摘要，直到下一个发布版本。尽管从注册表的角度看，镜像标签是可变的，但可以构建一个发布流程，实际上从不更改固定版本号，以便可以使用这种更易读的标签将图像与其中的代码关联起来。
 - en: The type of artifact that becomes the input to a deployment depends on the target
     cloud platform. For a PaaS like Cloud Foundry it is a JAR or WAR; for Kubernetes,
     it is a container image, and for an IaaS like AWS EC2, an Amazon Machine Image
     is “baked” (see [“Packaging for IaaS Platforms”](part0010_split_005.html#packaging_iaas))
     from a system package like a Debian or RPM.
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 成为部署输入的工件类型取决于目标云平台。对于像Cloud Foundry这样的PaaS，它是一个JAR或WAR；对于Kubernetes，它是一个容器镜像；对于像AWS
+    EC2这样的IaaS，是从系统包（如Debian或RPM）中“烘焙”的Amazon Machine Image（参见[“面向IaaS平台的打包”](part0010_split_005.html#packaging_iaas)）。
 - en: Regardless of whether we are producing a JAR, a container image, or a Debian/RPM,
     the same versioning scheme considerations apply.
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论我们是生成JAR、容器镜像还是Debian/RPM，都适用相同的版本控制方案考虑。
 - en: We’ll narrow this discussion to JARs published to a Maven repository (the discussion
     applies equally to Debians published to a Maven repository), but the end goal
     of producing an immutable version would be the same for publishing container images
     to a container registry.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将此讨论缩小到发布到 Maven 仓库的 JAR 包（该讨论同样适用于发布到 Maven 仓库的 Debian 包），但生产不可变版本的最终目标对于发布容器映像到容器注册表也是一样的。
 - en: Maven Repositories
+  id: totrans-47
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: Maven 仓库
 - en: 'In artifact repositories, there are generally two types of Maven repositories:
     release repositories and snapshot repositories. The structure of the release repository
     is the repository’s base URL plus the artifact’s group, artifact, and version.
     Any dots in the group name are separated by `/` in the path to arrive at the location
     of an artifact. In Gradle, a dependency on Micrometer core 1.4.1 can be defined
     as `implementation io.micrometer:micrometer-core:1.4.1`.'
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 在构件存储库中，通常有两种类型的 Maven 仓库：发布仓库和快照仓库。发布仓库的结构是仓库的基础 URL 加上构件的组、构件和版本。组名中的任何点号在路径中用
+    `/` 分隔，以确定构件的位置。在 Gradle 中，对 Micrometer 核心 1.4.1 的依赖可以定义为 `implementation io.micrometer:micrometer-core:1.4.1`。
 - en: The artifacts for this dependency in Maven Central look like [Figure 6-3](part0011_split_006.html#maven_repo_path).
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些依赖在 Maven 中央仓库的构件看起来像 [图 6-3](part0011_split_006.html#maven_repo_path)。
 - en: '![srej 0603](../images/00013.png)'
+  id: totrans-50
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0603](../images/00013.png)'
 - en: Figure 6-3\. Maven Central directory listing for micrometer-core 1.4.1
+  id: totrans-51
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-3\. micrometer-core 1.4.1 的 Maven 中央仓库目录列表
 - en: The directory listing contains the binary JAR (micrometer-core-1.4.1.jar), checksums,
     a Maven POM file describing the module, a set of checksums, and optionally sources
     and javadoc JARs.
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 此目录列表包含二进制 JAR（micrometer-core-1.4.1.jar）、校验和、描述模块的 Maven POM 文件、一组校验和，以及可选的源代码和
+    javadoc JAR 包。
 - en: Maven Release Versions Are Immutable
+  id: totrans-53
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: Maven 发布版本是不可变的
 - en: Generally an artifact version like 1.4.1 in a Maven repository is immutable.
     No other code should ever be published over this version.
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常，像 Maven 仓库中的版本 1.4.1 这样的构件版本是不可变的。任何其他代码都不应发布在此版本之上。
 - en: Maven snapshot repositories are structured a little differently. [Figure 6-4](part0011_split_007.html#maven_snapshot_repo_path)
     shows how RSocket’s snapshots are structured in a Maven repository for the dependency
     `implementation io.rsocket:rsocket-core:1.0.0-RC7-SNAPSHOT`.
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: Maven 快照仓库的结构略有不同。[图 6-4](part0011_split_007.html#maven_snapshot_repo_path)
+    展示了在 Maven 仓库中如何为依赖 `implementation io.rsocket:rsocket-core:1.0.0-RC7-SNAPSHOT`
+    结构化 RSocket 的快照。
 - en: '![srej 0604](../images/00014.png)'
+  id: totrans-56
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0604](../images/00014.png)'
 - en: Figure 6-4\. Spring Artifactory snapshot repository for RSocket 1.0.0-RC7-SNAPSHOT
+  id: totrans-57
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-4\. RSocket 1.0.0-RC7-SNAPSHOT 的 Spring Artifactory 快照仓库
 - en: The path to this directory listing has the path segment `1.0.0-RC7-SNAPSHOT`,
     but notice that none of the actual artifacts do. Instead they replace `SNAPSHOT`
     with a timestamp when they were published. If we look in `maven-metadata.xml`,
     we’ll see that it maintains a record of the last timestamp that was published
     to this snapshot repository, as shown in [Example 6-3](part0011_split_007.html#maven_metadata_snapshot).
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 指向此目录列表的路径具有路径段 `1.0.0-RC7-SNAPSHOT`，但请注意，实际的构件中没有一个包含 `SNAPSHOT`。相反，它们在发布时将
+    `SNAPSHOT` 替换为时间戳。如果我们查看 `maven-metadata.xml`，我们将看到它维护了发布到此快照仓库的最后时间戳的记录，如 [示例 6-3](part0011_split_007.html#maven_metadata_snapshot)
+    所示。
 - en: Example 6-3\. Maven metadata for RSocket 1.0.0-RC7-SNAPSHOT
+  id: totrans-59
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-3\. RSocket 1.0.0-RC7-SNAPSHOT 的 Maven 元数据
 - en: '[PRE2]'
+  id: totrans-60
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Each time a new snapshot is published, this `maven-metadata.xml` is updated
     by the artifact repository. This means that the dependency `implementation io.rsocket:rsocket-core:1.0.0-RC7-SNAPSHOT`
     is *not* immutable. If we tagged some deployed asset with the version `1.0.0-RC7-SNAPSHOT`,
     we don’t have enough specific information to tie this snapshot back to the particular
     snapshot timestamp that was latest at the time that the deployment happened.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 每次发布新的快照，构件存储库都会更新此 `maven-metadata.xml`。这意味着依赖项 `implementation io.rsocket:rsocket-core:1.0.0-RC7-SNAPSHOT`
+    *不* 是不可变的。如果我们使用版本 `1.0.0-RC7-SNAPSHOT` 标记了某个部署资产，我们没有足够的特定信息来将此快照关联到在部署发生时最新的快照时间戳。
 - en: In other words, Maven snapshot versioning is a problem for artifact provenance
     because it doesn’t uniquely identify a binary dependency in the artifact repository.
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 换句话说，Maven 快照版本的问题在于构件库中不能唯一标识二进制依赖项的来源。
 - en: Microservice versioning is different than library versioning as well in that
     at any time a candidate version that is being tested in a lower environment could
     be *promoted* to production. It’s safest if we don’t examine a candidate binary
@@ -371,36 +511,55 @@
     storage. More significantly, it introduces the possibility that any part of the
     build (or the conditions of the machine on which the build is occurring, which
     might influence the resulting binary) is not repeatable.
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 微服务版本控制与库版本控制也不同，因为随时可能将在低级环境中进行测试的候选版本 *提升* 到生产环境。如果我们不检查具有类似快照版本的候选二进制文件，并决定其适合提升到生产环境中，*重新构建*
+    该二进制文件是不安全的。重新构建二进制文件既浪费时间，也浪费构件库存储空间。更重要的是，这引入了任何构建的一部分（或构建时机条件可能会影响生成的二进制文件）不可重复的可能性。
 - en: 'To summarize everything we’ve discussed about versioning into two principles
     for microservice versioning, we need the following:'
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 总结我们讨论的微服务版本控制的两个原则，我们需要以下内容：
 - en: Uniqueness
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 独特性
 - en: A version number for each unique combination of source code and dependencies
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个唯一的源代码和依赖组合都有一个版本号
 - en: Immutability
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 不变性
 - en: A guarantee that artifact versions are never overwritten in the artifact repository
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 保证在构件库中不会覆盖构件版本
 - en: Maven snapshots fail the uniqueness test.
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: Maven快照不符合独特性测试。
 - en: While there are a variety of release versioning schemes that could work, there
     is a relatively simple approach using open source build tooling that takes quite
     a bit of the toil out of microservice versioning while meeting both of these tests.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然有各种各样的发布版本控制方案可以工作，但使用开源构建工具的一个相对简单的方法可以显著减少微服务版本控制的苦力，同时满足这两个测试。
 - en: Build Tools for Release Versioning
+  id: totrans-71
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 发布版本控制的构建工具
 - en: 'The Netflix Nebula suite of plug-ins contains a release plug-in that provides
     a convenient workflow for calculating a version number that meets both of these
     tests. It contains a set of Gradle tasks for versioning your project: `final`,
@@ -412,15 +571,22 @@
     An iteration cycle is shown in [Figure 6-5](part0011_split_008.html#microservice_versioning_cycle).
     In this example workflow, tagging at the end of the deployment pipeline advances
     the minor release number *N* for the next development iteration.'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: Netflix Nebula套件包含一个发布插件，提供了一个方便的工作流程，用于计算满足这两个测试的版本号。它包含一组Gradle任务用于为您的项目进行版本控制：`final`、`candidate`和`devSnapshot`。在开发库时，通常会生成快照，直到接近发布时，然后可能进行一次或多次发布候选版本，最后生成最终版本。对于微服务版本控制，情况有所不同，因为随时可能将低级环境中运行的特定代码迭代提升到生产环境。[图 6-5](part0011_split_008.html#microservice_versioning_cycle)展示了一个迭代周期。在这个示例工作流程中，在部署管道的末尾进行标记会提升次要发布号
+    *N* 到下一个开发迭代。
 - en: '![srej 0605](../images/00063.png)'
+  id: totrans-73
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0605](../images/00063.png)'
 - en: Figure 6-5\. Microservice release versioning cycle
+  id: totrans-74
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图6-5\. 微服务发布版本循环
 - en: This cycle of code change, continuous integration building and producing an
     artifact and storing it in an artifact repository, and delivery automation provisioning
     the new artifact in a lower-level environment can be performed potentially many
@@ -430,26 +596,35 @@
     some automated tests against that lower-level environment) results in a production
     promotion. Whether you get to this level of comfort with immediately shipping
     changes or not is not important to the versioning scheme.
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 在代码更改、持续集成构建和生成工件并将其存储在工件存储库中的循环以及交付自动化在较低级别环境中设置新工件的过程中，可能会多次执行，然后才最终促进到生产环境的部署。在只有一个循环的专门情况下，这是理想化的持续部署模型。当在较低级别环境中（可能还会对该较低级别环境进行一些自动化测试）成功部署时，就会进行生产推广。是否立即运送变更并不重要于版本方案。
 - en: Whenever the build is run, Nebula release looks at the latest tag on the repository,
     say, `v0.1.0`, and selects (by default) to generate snapshots (and candidates,
     and final builds for libraries) for the *next* minor version. In this case, that
     would be the minor release 0.2.0.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 每次运行构建时，Nebula发布会查看存储库上的最新标签，例如`v0.1.0`，并选择（默认情况下）生成下一个次要版本的快照（以及候选版本和库的最终构建）。在本例中，这将是次要版本0.2.0。
 - en: In the proposed versioning cycle, CI will execute a Gradle build for a repository
     that uses Nebula release to generate immutable snapshots. The minor revision remains
     consistent until a deployment is eventually promoted to production, at which point
     your delivery automation, like a Spinnaker pipeline stage, tags the repository
     (e.g., a Spinnaker job stage specifically executes `./gradlew final` on the repository,
     pushing a tag to the Git remote for the current minor release iteration).
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 在建议的版本周期中，CI将为使用Nebula发布生成不可变快照的存储库执行Gradle构建。次要修订版本保持一致，直到最终将部署提升到生产环境，此时您的交付自动化（如Spinnaker管道阶段）会为存储库打标签（例如，Spinnaker作业阶段专门在存储库上执行`./gradlew
+    final`，将当前次要发布迭代的标签推送到Git远程）。
 - en: Releasing SaaS Versus Packaged Software
+  id: totrans-78
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 发布的SaaS与打包软件对比
 - en: 'Even packaged software can consist of a series of microservices. For example,
     Spinnaker itself is a suite of microservices that are intended to be deployed
     together. Generally there is an extra step for packaged software: producing some
@@ -459,29 +634,43 @@
     of materials help to create potentially many running copies of a set of microservices.
     When running SaaS, the production environment tends to be the only running copy,
     and the bill of materials isn’t necessary.'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 即使打包软件也可以由一系列微服务组成。例如，Spinnaker本身就是一个旨在一起部署的微服务套件。通常，打包软件还需要额外的步骤：生成某种包含每个单独微服务版本的物料清单。这些版本包含在物料清单中，以表明它们已经*一起*经过测试并且已知可以作为一个组一起工作。物料清单有助于创建可能有多个运行副本的一组微服务。在运行SaaS时，生产环境往往是唯一运行的副本，物料清单则不是必需的。
 - en: The Nebula release plug-in is applied to the root project of a Gradle project,
     as shown in [Example 6-4](part0011_split_009.html#AFMJJ-2d714b853a094e9a910510217e0e3d73).
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: Nebula发布插件应用于Gradle项目的根项目，如[示例 6-4](part0011_split_009.html#AFMJJ-2d714b853a094e9a910510217e0e3d73)所示。
 - en: Example 6-4\. The Nebula release plug-in applied to the root project of a Gradle
     project
+  id: totrans-81
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-4\. 将Nebula发布插件应用于Gradle项目的根项目
 - en: '[PRE3]'
+  id: totrans-82
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: '[![1](../images/00112.png)](part0011_split_009.html#co_source_code_observability_CO2-1)'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](../images/00112.png)](part0011_split_009.html#co_source_code_observability_CO2-1)'
 - en: Replace `LATEST` with the version listed on the [Gradle plug-in portal](https://oreil.ly/_MRA2).
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 将`LATEST`替换为[Gradle插件门户网站](https://oreil.ly/_MRA2)上列出的版本。
 - en: '[![2](../images/00059.png)](part0011_split_009.html#co_source_code_observability_CO2-2)'
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![2](../images/00059.png)](part0011_split_009.html#co_source_code_observability_CO2-2)'
 - en: Whenever the CI build executes `devSnapshot`, build and publish an artifact
     to Artifactory. Because we *haven’t* attached `final` to publishing, running `./gradlew
     final` in a stage after promotion to production will tag the repository with the
@@ -490,22 +679,34 @@
     of this tag completes the development cycle. Any subsequent code pushes, and therefore
     runs of `./gradlew devSnapshot`, then generate snapshots for the next minor release
     (e.g., `0.2.0-snapshot.<timestamp>+<commit_hash>`).
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 每当CI构建执行`devSnapshot`时，构建并发布一个工件到Artifactory。因为我们*还没有*将`final`附加到发布，所以在推广到生产后的阶段运行`./gradlew
+    final`将用当前次要版本（例如，v0.1.0）标记仓库，并将标记推送到仓库，但不会不必要地上传另一个工件到工件库。此标记的存在完成了开发周期。任何随后的代码推送，因此运行`./gradlew
+    devSnapshot`，都会为下一个次要版本生成快照（例如，`0.2.0-snapshot.<timestamp>+<commit_hash>`）。
 - en: '[![3](../images/00067.png)](part0011_split_009.html#co_source_code_observability_CO2-3)'
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![3](../images/00067.png)](part0011_split_009.html#co_source_code_observability_CO2-3)'
 - en: Optionally, ensure that developers don’t accidentally use the other types of
     snapshot tasks made available by Nebula release that would generate snapshots
     with different version number semantics.
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 可选地，确保开发人员不会意外使用Nebula发布提供的其他类型的快照任务，这些任务会生成具有不同版本号语义的快照。
 - en: '[![4](../images/00016.png)](part0011_split_009.html#co_source_code_observability_CO2-4)'
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![4](../images/00016.png)](part0011_split_009.html#co_source_code_observability_CO2-4)'
 - en: Define the repository that is referenced in the `dependsOn` clause of `devSnapshot`.
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 定义在`devSnapshot`的`dependsOn`子句中引用的仓库。
 - en: For the continuous deployment model of every commit (that passes automated tests)
     resulting in a production deployment, provided that there is no need for an automated
     test suite in a lower environment, there will be precisely one snapshot per minor
@@ -515,8 +716,11 @@
     going to be comfortable with this, and there is no pressure to ever reach this
     level of automation. As mentioned in [“Separating Platform and Application Metrics”](part0007_split_021.html#6LM03-2d714b853a094e9a910510217e0e3d73),
     you “ship your org chart” to some extent.
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于每次提交（通过自动化测试）都会导致生产部署的持续部署模型，只要较低环境中不需要自动化测试套件，每个次要版本发布将恰好有一个快照。如果在工件发布之前运行了所有检查，并且信任结果足以立即推广到生产环境，则可以轻松使用`./gradlew
+    final`，完全避免不可变的快照。很少有企业会对此感到舒适，并且没有达到这种自动化水平的压力。正如在[“分离平台和应用程序度量标准”](part0007_split_021.html#6LM03-2d714b853a094e9a910510217e0e3d73)中提到的，您在某种程度上“发布您的组织图表”。
 - en: Associating every deployment with an immutable release version is the first
     phase in the artifact provenance chain. When you have a combination of the ability
     to interrogate your delivery service for all current deployments *and* your delivery
@@ -524,52 +728,73 @@
     this is stored in the Auto Scaling Group name in EC2, a Kubernetes tag, etc.),
     you unlock the ability to iterate over all production deployment resources and
     map to artifact coordinates that are retrievable from your artifact repository.
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 将每次部署与不可变版本关联是工件溯源链的第一阶段。当您具备了查询交付服务所有当前部署资源的能力 *和* 您的交付自动化某种方式将每次部署与不可变发布版本（无论是存储在EC2中的Auto
+    Scaling组名称、Kubernetes标签等）进行标记时，您将解锁遍历所有生产部署资源并映射到可以从工件库检索的工件坐标的能力。
 - en: The pseudocode showing the extent of the artifact provenance chain to this point
     is in [Example 6-5](part0011_split_009.html#mapping_to_artifact).
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止显示工件溯源链程度的伪代码在[示例 6-5](part0011_split_009.html#mapping_to_artifact)中。
 - en: Example 6-5\. Mapping deployed resources to artifact versions
+  id: totrans-94
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-5\. 映射部署资源到工件版本
 - en: '[PRE4]'
+  id: totrans-95
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: '[![1](../images/00112.png)](part0011_split_009.html#co_source_code_observability_CO3-1)'
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](../images/00112.png)](part0011_split_009.html#co_source_code_observability_CO3-1)'
 - en: Type is `Stream<Artifact>` because there is a 1:1 correspondence between a deployment
     and an artifact.
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 类型是`Stream<Artifact>`，因为部署和工件之间存在一对一的对应关系。
 - en: '[![2](../images/00059.png)](part0011_split_009.html#co_source_code_observability_CO3-2)'
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![2](../images/00059.png)](part0011_split_009.html#co_source_code_observability_CO3-2)'
 - en: Because `devSnapshot` produces immutable artifact versions that are unique for
     every unique combination of source code and dependencies, two artifacts with the
     same group/artifact/version coordinates are guaranteed to have the same dependencies
     as well.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
 - en: '[![3](../images/00067.png)](part0011_split_009.html#co_source_code_observability_CO3-3)'
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
 - en: At this stage, we don’t yet have the ability to determine dependencies.
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
 - en: We need more configuration up front to provide artifact provenance that includes
     dependencies as well.
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
 - en: Capturing Resolved Dependencies in Metadata
+  id: totrans-103
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: Extending the provenance chain deeper to include the dependencies of applications
     allows us to quickly find which deployed assets contain a version of a *library*
     that may be problematic, for example, because of an identified security vulnerability.
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
 - en: Generally, when we publish a Maven POM file along with the application, it contains
@@ -580,38 +805,48 @@
     would be something like [Example 6-6](part0011_split_010.html#first_level_dependencies).
     Specifically, `spring-boot-starter-actuator` and `spring-boot-starter-webflux`
     are the two first-level dependencies.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
 - en: Example 6-6\. First-level dependencies of a sample Spring Boot application
+  id: totrans-106
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE5]'
+  id: totrans-107
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: For the sake of establishing a provenance chain, test dependencies are not really
     important. They are only on the classpath during test execution on local developer
     machines and on continuous integration builds, and they aren’t packed in the final
     application that is running in the deployed environment. Any problem or vulnerability
     in test dependencies is safely confined to the continuous integration environment
     and doesn’t cause problems in running deployed applications.
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
 - en: When this application is published to an artifact repository like Artifactory,
     a Maven POM file is published alongside the binary artifact which contains a `dependencies`
     section like in [Example 6-7](part0011_split_010.html#first_level_dependencies_pom).
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
 - en: Example 6-7\. First-level dependencies as they appear in the Maven POM
+  id: totrans-110
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE6]'
+  id: totrans-111
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: First-level dependencies of course bring in *other* dependencies. The set of
     all other dependencies, resolved recursively from the first level down, is called
     the transitive closure of dependencies.
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
 - en: It may be tempting to think that the transitive closure of dependencies in this
@@ -621,76 +856,110 @@
     influence in some way the transitive dependencies that were resolved and packaged
     with the application. For example, a particular version could be denied with a
     replacement because some critical bug is fixed by a later version, as in [Example 6-8](part0011_split_010.html#dependency_denied_replacement).
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 也许会有人认为，通过递归地从存储库获取每个依赖项的 POM 文件，就可以简单地确定此示例应用程序中的依赖项的传递闭包。遗憾的是，事实并非如此。在构建中通常存在其他约束，这些约束以某种方式影响了已解析并与应用程序一起打包的传递依赖项。例如，某个特定版本可能会被拒绝，因为某个关键错误已由更高版本修复，如[示例 6-8](part0011_split_010.html#dependency_denied_replacement)中所示。
 - en: Example 6-8\. Denying a version with a replacement
+  id: totrans-114
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-8\. 拒绝版本并进行替换
 - en: '[PRE7]'
+  id: totrans-115
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: No Process That Determines Dependencies from the Artifact Repository Alone Is
     Correct
+  id: totrans-116
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 仅通过从存储库获取标准元数据（如 POM 的 `<dependencies>` 块）来确定依赖项的传递闭包的任何过程都是不正确的。
 - en: The consequence of build-time features like resolution strategies is that no
     process that tries to determine the transitive closure of dependencies from standard
     artifact metadata alone (such as the POM `<dependencies>` block) will be correct.
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 解析策略等构建时特性的后果是，试图仅通过标准构件元数据（如 POM 的 `<dependencies>` 块）来确定依赖项的传递闭包的任何过程都是不正确的。
 - en: Vendors trying to build universal component analysis tools strictly from standard
     metadata can only give you an *approximation* of what dependencies are in use.
     And this approximation is often not trivially divergent from reality.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 试图仅从标准元数据严格构建通用组件分析工具的供应商只能给出对依赖关系使用的*近似值*。而这种近似值通常与现实并不相符。
 - en: As a result of resolution strategies, forced versions, etc., the transitive
     closure must be persisted somehow as the application binary is published. One
     easy way to do this is to include the resolved transitive closure in a POM `<properties>`
     element for later consumption by any tooling you build to examine the dependencies
     in use across your organization.
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于解析策略、强制版本等原因，在发布应用程序二进制文件时，必须以某种方式持久化传递闭包。一个简单的方法是在 POM 的 `<properties>` 元素中包含已解析的传递闭包，以供稍后构建的任何工具使用，以检查组织中使用的依赖关系。
 - en: The [Nebula Info](https://oreil.ly/ASOpi) plug-in specializes in just this,
     attaching build-time metadata to the `<properties>` section of a POM. Out of the
     box, Nebula Info adds properties for things like Git commit hash and branch, the
     source and target Java version, and build host.
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: '[星云信息](https://oreil.ly/ASOpi)插件专门用于将构建时的元数据附加到 POM 的`<properties>`部分。星云信息默认添加了诸如
+    Git 提交哈希和分支、源和目标 Java 版本以及构建主机等属性。'
 - en: The `InfoBrokerPlugin` allows us to add new properties at will by key-value
     pair. [Example 6-9](part0011_split_011.html#AFN3T-2d714b853a094e9a910510217e0e3d73)
     shows how to traverse the transitive dependency closure of the runtime classpath
     and add the list of dependencies as a property. [`nebula.maven-manifest`](https://oreil.ly/Bb-hM),
     included automatically by `nebula.maven-publish`, reads all the properties managed
     by the info broker and adds them as POM properties.
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: '`InfoBrokerPlugin`允许我们按键值对随意添加新属性。[示例 6-9](part0011_split_011.html#AFN3T-2d714b853a094e9a910510217e0e3d73)展示了如何遍历运行时类路径的传递依赖闭包，并将依赖项列表添加为属性。[`nebula.maven-manifest`](https://oreil.ly/Bb-hM)，由`nebula.maven-publish`自动包含，读取信息代理管理的所有属性，并将它们作为
+    POM 属性添加。'
 - en: Example 6-9\. List all transitive dependencies sorted in a flat list
+  id: totrans-122
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-9\. 列出所有传递依赖项并按平面列表排序
 - en: '[PRE8]'
+  id: totrans-123
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: '[![1](../images/00112.png)](part0011_split_011.html#co_source_code_observability_CO4-1)'
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](../images/00112.png)](part0011_split_011.html#co_source_code_observability_CO4-1)'
 - en: Replace `LATEST` with whatever the latest version is on the [Gradle Plug-in
     Portal](https://oreil.ly/TNrDy).
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 用最新版本替换`LATEST`，可以从[Gradle 插件门户](https://oreil.ly/TNrDy)上获得最新版本。
 - en: This results in a properties listing in the POM that looks something like [Example 6-10](part0011_split_011.html#nebula_info_dependencies_flat_pom).
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 这导致 POM 中的属性列表看起来类似于[示例 6-10](part0011_split_011.html#nebula_info_dependencies_flat_pom)。
 - en: Example 6-10\. A flattened transitive dependency closure listed, sorted, and
     added as a POM property
+  id: totrans-127
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-10\. 列出、排序并将扁平化的传递依赖闭包添加为 POM 属性
 - en: '[PRE9]'
+  id: totrans-128
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: Now, to build tooling to find all deployments that contain `logback-core` version
     1.2.3, we can use something like the pseudocode in [Example 6-11](part0011_split_011.html#mapping_to_artifact_dependencies)
     to list all the server groups containing a particular `logback-core` dependency.
@@ -698,84 +967,124 @@
     the POM from the artifact repository, given the Artifact’s group/artifact/version
     coordinates, and parsing the contents of the `<nebula_Resolved_Dependencies>`
     POM property.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，要构建工具来查找所有包含`logback-core`版本 1.2.3 的部署，我们可以使用类似于 [Example 6-11](part0011_split_011.html#mapping_to_artifact_dependencies)
+    中的伪代码来列出包含特定 `logback-core` 依赖项的所有服务器组。在`Artifact` 类型上的`dependencies` 的填充包括从存储库下载
+    POM，给定 Artifact 的组/Artifact/版本坐标，并解析`<nebula_Resolved_Dependencies>` POM 属性的内容。
 - en: Example 6-11\. Mapping deployed resources to the set of all dependencies included
     in them
+  id: totrans-130
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 6-11\. 将部署资源映射到其中包含的所有依赖项集合
 - en: '[PRE10]'
+  id: totrans-131
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: The flattened list representation can be improved upon a little for readability
     when glancing at an individual POM file without really affecting how we parse
     the transitive closure for a given artifact. [Example 6-12](part0011_split_011.html#AFND5-2d714b853a094e9a910510217e0e3d73)
     shows how to instead create a pretty-printed minimum spanning tree of the transitive
     closure of dependencies.
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 当眼睛一瞥 POM 文件时，可以稍微改进展平的列表表示，而不会真正影响我们如何解析给定 Artifact 的传递闭包。[Example 6-12](part0011_split_011.html#AFND5-2d714b853a094e9a910510217e0e3d73)
+    展示了如何代替创建传递依赖闭包的最小生成树的漂亮打印。
 - en: Example 6-12\. A tree view of the transitive dependency closure added as a POM
     property
+  id: totrans-133
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 6-12\. 作为 POM 属性添加的传递依赖闭包的树视图
 - en: '[PRE11]'
+  id: totrans-134
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: This generates a resolved dependencies property that looks something like [Example 6-13](part0011_split_011.html#nebula_info_dependencies_tree_pom).
     This looks a bit more readable individually, and consuming such a property from
     tooling is equivalent to the flattened representation—simply strip the whitespace
     off the front of each line no matter how much whitespace there is.
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 这会生成一个解析的依赖属性，看起来像 [Example 6-13](part0011_split_011.html#nebula_info_dependencies_tree_pom)。这在单独查看时更易读，并从工具中使用这样的属性等同于展平表示法——只需去掉每行前面的空格，无论有多少空格。
 - en: Example 6-13\. A tree view of the transitive dependency closure shown as a POM
     property
+  id: totrans-136
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 6-13\. 作为 POM 属性显示的传递依赖闭包的树视图
 - en: '[PRE12]'
+  id: totrans-137
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: You can see a hint in this Nebula info output of how we can go further to the
     commit (`<nebula_Change>`).
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以在这个星云信息输出中看到一个提示，我们可以进一步找到提交（`<nebula_Change>`）的方式。
 - en: Capturing Method-Level Utilization of the Source Code
+  id: totrans-139
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 捕获源代码的方法级别利用
 - en: Going a step further, we can capture the source code level for a given artifact
     version. This is the last phase in the provenance chain. Once complete, the chain
     leads from a conceptual “application,” consisting of clusters spread across potentially
     multiple cloud providers, all the way down to the method declarations and invocations
     of the source code in these applications. For example, for an AWS EC2 IaaS-based
     deployment footprint, the provenance chain now looks like [Example 6-14](part0011_split_012.html#full_provenance_chain).
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 更进一步，我们可以捕获给定 Artifact 版本的源代码级别。这是来源链中的最后阶段。完成后，链条从概念上的“应用程序”，包括分布在多个云提供商上的集群，一直到这些应用程序中源代码的方法声明和调用。例如，对于基于
+    AWS EC2 的 IaaS 部署足迹，现在来源链看起来像 [Example 6-14](part0011_split_012.html#full_provenance_chain)。
 - en: Example 6-14\. An AWS EC2 full provenance chain from application to method-level
     source code
+  id: totrans-141
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 6-14\. 从应用程序到方法级别源代码的 AWS EC2 完整来源链
 - en: '[PRE13]'
+  id: totrans-142
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: '[![1](../images/00112.png)](part0011_split_012.html#co_source_code_observability_CO5-1)'
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](../images/00112.png)](part0011_split_012.html#co_source_code_observability_CO5-1)'
 - en: How this is constructed is the topic of this section.
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: 如何构建这个是本节的主题。
 - en: 'Since this chain is linked top-to-bottom with just enough uniquely identifying
     metadata, we can answer almost any question about our running production environment.
     Each of these scenarios now has an exact answer that can be updated at will against
     the current state of a deployed footprint:'
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于这条链仅通过足够独特的标识元数据从上到下链接，我们几乎可以回答关于我们正在运行的生产环境的任何问题。现在，每个这些场景都有一个确切的答案，可以随时根据当前部署足迹的状态进行更新：
 - en: Zero-day exploit in an open source third-party library
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 开源第三方库中的零日漏洞
 - en: The security team learns of a vulnerability in a method in an open source third-party
     library that might be used in the company. This exposure could lead to sensitive
     personally identifiable customer information leaking if exploited and have significant
@@ -786,11 +1095,15 @@
     on a path to eventual production deployment. Which teams does the security team
     need to communicate with in the first phase that have potential execution paths
     leading to the vulnerable method?
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
+  zh: 安全团队发现了开源第三方库中一个方法的漏洞。如果被利用，这一漏洞可能导致公司泄露敏感的个人可识别信息，从而造成重大的法律责任和品牌影响。由于这个漏洞的影响广泛，安全团队希望分两个阶段解决这个问题。首先专注于生产环境中涉及到这一漏洞方法的公共界面，然后在较低的环境中处理内部工具和应用程序代码，最终部署到生产环境。在第一阶段，安全团队需要与哪些团队沟通，这些团队的执行路径可能导致到达这一漏洞方法？
 - en: Platform team wants to deprecate or change an API
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 平台团队希望废弃或更改一个API
 - en: A centralized tools team, responsible for providing a library that every microservice
     team uses to check whether a given request is subject to a running A/B experiment,
     would like to make an API change in the way its library is used. The tools team
@@ -803,15 +1116,21 @@
     session and proceed with the change. If it affects a much broader swath of the
     organization, perhaps the change is approached more incrementally or reconsidered
     altogether.
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 负责提供每个微服务团队使用的库，以检查给定请求是否处于运行的A/B实验中的集中化工具团队，希望改变其库的使用方式。工具团队在其Github企业实例上使用源代码搜索机制来查看现有API的使用情况，并注意到某些结果指向了死代码。如果团队决定进行API更改，哪些活跃开发和部署的代码将受到影响？哪些团队将受到这一潜在变更的影响？如果影响的团队数量较少，工具团队可能可以与受影响的用户逐个会面或举行小型会议和反馈会议，并继续进行更改。如果影响到了更广泛的组织范围，也许需要更渐进地处理这一变更，或者重新考虑整体变更的策略。
 - en: 'When it comes to identifying which methods are being used in the execution
     paths of running microservices, there are two approaches:'
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: 当涉及到识别正在运行的微服务执行路径中使用的方法时，有两种方法：
 - en: Live monitoring of execution paths
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 实时监控执行路径
 - en: An agent can be attached to a running Java process to monitor which methods
     are actually executed. The set of all observed method signatures over a period
     of time approximates the reachable execution paths. For example, [Snyk](https://snyk.io),
@@ -820,11 +1139,15 @@
     research and alert organizations to known vulnerabilities. Live monitoring like
     this naturally *underreports* the real set of execution paths to a point, since
     some execution paths may be rarely exercised (e.g., exception-handling paths).
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 可以附加代理到运行中的Java进程中，以监控实际执行的方法。一段时间内观察到的所有方法签名集合近似于可达的执行路径。例如，[Snyk](https://snyk.io)，专注于安全漏洞分析，提供了一个Java代理，监控可证明的执行路径以与其方法级漏洞研究匹配，并提醒组织已知的漏洞。这种实时监控自然地*低估*了实际的执行路径集合，因为有些执行路径可能很少被执行（例如异常处理路径）。
 - en: Statically analyzing potential execution paths from the source code
+  id: totrans-153
   prefs: []
   type: TYPE_NORMAL
+  zh: 从源代码静态分析潜在的执行路径
 - en: Several Java tools exist to construct an [abstract syntax tree](https://oreil.ly/f0r4M)
     (an intermediate representation of the source code). This tree can be walked to
     look for method invocations. The set of all method invocations across the abstract
@@ -834,14 +1157,18 @@
     that never evaluate to true or request mappings that are never exercised. An example
     of one of these tools available in the open is given in [“Structured Code Search
     with OpenRewrite”](part0011_split_013.html#AFNN3-2d714b853a094e9a910510217e0e3d73).
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 存在多个Java工具来构建[抽象语法树](https://oreil.ly/f0r4M)（源代码的中间表示）。可以遍历此树以查找方法调用。对于源代码库中每个类的抽象语法树的所有方法调用集合表示所有潜在执行的集合。这自然会*过报告*真实的执行路径集合，因为某些方法调用会存在于永远不会评估为真的条件集或永远不会执行的请求映射中。一个开放可用的工具示例是[“使用OpenRewrite进行结构化代码搜索”](part0011_split_013.html#AFNN3-2d714b853a094e9a910510217e0e3d73)。
 - en: Because of the under/overreporting nature of these approaches, it can be useful
     to combine them. Any applications which are reporting the use of a method through
     live monitoring are certain to require a change. Potential execution paths can
     be evaluated on a second pass.
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于这些方法的欠报告和过报告特性，将它们结合使用可能很有用。任何通过实时监控报告方法使用的应用程序都肯定需要更改。潜在的执行路径可以在第二次通过中进行评估。
 - en: Static analysis tools need to evaluate source code. The combination of `nebula.info`
     and `nebula.maven-publish`, shown again in [Example 6-15](part0011_split_012.html#nebula_info_commit_branch),
     gives us a Git commit hash and branch, the right amount of detail to connect an
@@ -849,477 +1176,715 @@
     that is included in it. Also, you can follow the application artifact’s transitive
     dependency closure, looking at a POM file for each dependency and peeking at what
     commit hash and branch each dependency used to examine their source code in turn.
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
+  zh: 静态分析工具需要评估源代码。在[示例 6-15](part0011_split_012.html#nebula_info_commit_branch)中再次展示的`nebula.info`和`nebula.maven-publish`的结合给出了一个Git提交哈希和分支，这足以连接已知在给定服务器组中运行的工件版本与其中包含的源代码。此外，您可以跟踪应用工件的传递依赖闭包，查看每个依赖项的POM文件，并查看每个依赖项用于检查其源代码的提交哈希和分支。
 - en: Example 6-15\. Gradle plug-ins that generate POM properties for Git commit hash
     and branch
+  id: totrans-157
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-15。生成Git提交哈希和分支的Gradle插件。
 - en: '[PRE14]'
+  id: totrans-158
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: The POM properties this generates, shown in [Example 6-16](part0011_split_012.html#nebula_info_commit_branch_pom),
     are easily scraped by tools.
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 此生成的POM属性，如[示例 6-16](part0011_split_012.html#nebula_info_commit_branch_pom)所示，可以很容易地被工具抓取。
 - en: Example 6-16\. Maven POM properties for Git commit hash and branch
+  id: totrans-160
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-16。生成Git提交哈希和分支的Maven POM属性。
 - en: '[PRE15]'
+  id: totrans-161
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: To set expectations about what kinds of capabilities a structured code search
     tool should have that could analyze execution paths, consider OpenRewrite.
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 要设定关于结构化代码搜索工具应具备的能力类型的预期，可以考虑OpenRewrite。
 - en: Structured Code Search with OpenRewrite
+  id: totrans-163
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用OpenRewrite进行结构化代码搜索。
 - en: 'The [OpenRewrite](http://github.com/openrewrite) project is a mass refactoring
     ecosystem for Java and other source code, designed to eliminate technical debt
     across an engineering organization. Rewrite is designed to be plugged into various
     workflows, including the following:'
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: '[OpenRewrite](http://github.com/openrewrite)项目是Java和其他源代码的大规模重构生态系统，旨在消除工程组织中的技术债务。Rewrite被设计为可插入各种工作流程，包括以下内容：'
 - en: Discover and fix code as a build tool task (e.g., Gradle and Maven).
+  id: totrans-165
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 发现和修复代码作为构建工具任务（例如Gradle和Maven）。
 - en: Subsecond organization-wide code search for a pattern of arbitrary complexity.
+  id: totrans-166
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 用于任意复杂度模式的亚秒级组织范围内代码搜索。
 - en: Mass pull-request issuance to fix a security vulnerability, eliminate the use
     of a deprecated API, migrate from one technology to another (e.g., JUnit asserts
     to AssertJ), etc.
+  id: totrans-167
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 大规模发出拉取请求以修复安全漏洞，消除弃用API的使用，从一种技术迁移到另一种技术（例如从JUnit断言到AssertJ）等。
 - en: Mass organization-wide Git commits to do the same.
+  id: totrans-168
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 组织范围内的Git提交执行相同操作。
 - en: It builds on a custom abstract syntax tree (AST) that encodes the structure
     and formatting of source code. The AST is printable to reconstitute the source
     code, including its original formatting. Rewrite provides high-level search and
     refactoring functions that can transform the AST, as well as utilities for unit
     testing refactoring logic.
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 它基于自定义的抽象语法树（AST），用于编码源代码的结构和格式。AST可以打印以重建源代码，包括其原始格式。重写提供了高级搜索和重构功能，可以转换AST，以及用于单元测试重构逻辑的实用程序。
 - en: 'Two key capabilities of the Rewrite AST make it suited for the purpose of the
     provenance chain:'
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 重写AST的两个关键功能使其适合用于溯源链的目的：
 - en: Type-attributed
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 类型属性
 - en: Each AST element is imbued with type information. For a field reference, for
     example, the source code may just refer to myField. The Rewrite AST element for
     `myField` would also contain information about what the type of `myField` is,
     even if it isn’t defined in the same source file or even the same project.
+  id: totrans-172
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个AST元素都蕴含有类型信息。例如，对于字段引用，源代码可能只是引用了`myField`。`myField`的重写AST元素还将包含关于`myField`类型的信息，即使它并未在同一源文件甚至同一项目中定义。
 - en: Acyclic and serializable
+  id: totrans-173
   prefs: []
   type: TYPE_NORMAL
+  zh: 非循环和可序列化
 - en: Most ASTs containing type information are potentially cyclic. Cycles usually
     come from generic type signatures like class `A<T extends A<T>>`. This kind of
     pattern is generally found in things like abstract builder types in Java. Rewrite
     cuts these cycles off and adds serialization annotations to its types so the AST
     can be serialized/deserialized with libraries like Jackson.
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 大多数包含类型信息的AST可能是循环的。循环通常来自泛型类型签名，例如类`A<T extends A<T>>`。这种模式通常出现在Java中的抽象构建器类型中。重写会截断这些循环，并为其类型添加序列化注解，以便AST可以使用像Jackson这样的库进行序列化/反序列化。
 - en: Type attribution is necessary for accurate matching of patterns. How do we know
     if `logger` is an SLF4J or a Logback logger when looking at a statement like [Example 6-17](part0011_split_013.html#logging_statement_type_attribution)?
     The class type of the instance that a method is invoked against is called the
     receiver type.
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: 准确匹配模式需要类型属性。当查看类似[Example 6-17](part0011_split_013.html#logging_statement_type_attribution)的日志记录语句时，我们如何知道`logger`是SLF4J还是Logback记录器？方法被调用的实例的类类型称为接收器类型。
 - en: Example 6-17\. A logging statement with an ambiguous receiver type
+  id: totrans-176
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-17\. 具有模糊接收器类型的日志记录语句
 - en: '[PRE16]'
+  id: totrans-177
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: The production of type-attributed ASTs for a whole organization is arbitrarily
     computationally complex, since it requires dependency resolution, parsing of the
     source code, and type attribution (basically Java compilation up to the point
     of bytecode generation). Since Rewrite ASTs are serializable, we can store them
     off centrally as a byproduct of compilation in continuous integration environments
     and then operate on them en masse later.
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 为整个组织生成带有类型属性的AST在计算上是任意复杂的，因为它需要依赖解析、源代码解析和类型属性（基本上是Java编译直到生成字节码的过程）。由于重写AST是可序列化的，我们可以将它们作为编译的副产品在持续集成环境中集中存储，然后稍后批量操作。
 - en: Once we have a serialized AST for a particular source file, and because it also
     contains type information, it can be refactored/searched completely independently
     of other source files in the same source package or repository. This makes mass
     search and refactoring a truly linearly scalable operation.
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦我们为特定源文件生成了序列化的抽象语法树（AST），由于它还包含类型信息，它可以完全独立于同一源代码包或存储库中的其他源文件进行重构和搜索。这使得大规模搜索和重构成为一种真正线性可扩展的操作。
 - en: Creating a Rewrite AST from Java source code
+  id: totrans-180
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 从Java源代码创建重写AST
 - en: To build a Rewrite AST for Java source code, construct a `JavaParser` either
     with or without the runtime classpath using one of the constructor signatures
     shown in [Example 6-18](part0011_split_013.html#constructing_java_parser).
+  id: totrans-181
   prefs: []
   type: TYPE_NORMAL
+  zh: 要构建Java源代码的重写AST，可以使用以下其中一个构造函数签名构建`JavaParser`，无论是否在运行时类路径上，如[Example 6-18](part0011_split_013.html#constructing_java_parser)所示。
 - en: Example 6-18\. Constructing a JavaParser instance
+  id: totrans-182
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-18\. 构造JavaParser实例
 - en: '[PRE17]'
+  id: totrans-183
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'Providing a classpath is optional, because type attribution is a *best effort*
     for each element. If we are storing ASTs in a datastore for organization-wide
     search, ideally they are stored fully type-attributed, because you don’t know
     what kinds of searches will be made in advance. The kinds of searches include
     the following:'
+  id: totrans-184
   prefs: []
   type: TYPE_NORMAL
+  zh: 提供类路径是可选的，因为每个元素的类型属性都是*尽力而为*的。如果我们将AST存储在数据存储中以进行组织范围的搜索，最好将其完全存储为类型属性，因为无法预知将要进行的搜索类型。此类搜索包括以下内容：
 - en: No types needed at all
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 完全不需要类型
 - en: If you are applying a refactoring rule like autoremediation for Checkstyle’s
     `WhitespaceBefore` rule, we’re strictly looking at source formatting, and it’s
     OK if none of the AST elements have types on them, as it doesn’t influence the
     outcome.
+  id: totrans-186
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您正在应用类似于 Checkstyle 的 `WhitespaceBefore` 规则的自动修复规则，我们严格关注源代码格式化，如果 AST 元素中没有任何类型，这并不影响结果。
 - en: Partial types needed
+  id: totrans-187
   prefs: []
   type: TYPE_NORMAL
+  zh: 部分类型需求
 - en: If searching for occurrences of deprecated Guava methods, it is OK to construct
     a `JavaParser` with a path to a Guava binary. It doesn’t even have to be the Guava
     version that the project is using! The resulting ASTs will have limited type information,
     but just enough to search for what we want.
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果要搜索已弃用的 Guava 方法的出现次数，则可以使用指向 Guava 二进制文件的路径构造一个 `JavaParser`。它甚至不必是项目正在使用的
+    Guava 版本！生成的 AST 将具有有限的类型信息，但足以搜索我们想要的内容。
 - en: Full types needed
+  id: totrans-189
   prefs: []
   type: TYPE_NORMAL
+  zh: 完整类型需求
 - en: When ASTs are emitted as a side effect of compilation to a central datastore
     for later arbitrary code search, they need to have full type information, because
     we can’t be sure in advance what kinds of searches people will attempt.
+  id: totrans-190
   prefs: []
   type: TYPE_NORMAL
+  zh: 当 AST 作为编译的副作用发射到中央数据存储以供后续任意代码搜索时，它们需要具有完整的类型信息，因为我们无法预先知道人们将尝试进行什么样的搜索。
 - en: '`JavaParser` contains a convenience method for building a `JavaParser` from
     the runtime classpath of the Java process that is constructing the parser, shown
     in [Example 6-19](part0011_split_013.html#parser_with_classpath).'
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
+  zh: '`JavaParser` 包含一个方便的方法，用于从构造解析器的 Java 进程的运行时类路径构建 `JavaParser`，如 [示例 6-19](part0011_split_013.html#parser_with_classpath)
+    所示。'
 - en: Example 6-19\. Giving the parser the compile dependencies necessary to do type
     attribution
+  id: totrans-192
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-19\. 给解析器提供进行类型归属所需的编译依赖项
 - en: '[PRE18]'
+  id: totrans-193
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: This utility takes the “artifact name” of the dependency to look for. The artifact
     name is the artifact portion of `group:artifact:version` coordinates. For example,
     for Google’s Guava (`com.google.guava:guava:VERSION`), the artifact name is `guava`.
+  id: totrans-194
   prefs: []
   type: TYPE_NORMAL
+  zh: 此实用程序获取要查找的依赖项的“artifact name”。artifact name 是 `group:artifact:version` 坐标的
+    artifact 部分。例如，对于 Google 的 Guava (`com.google.guava:guava:VERSION`)，artifact name
+    是 `guava`。
 - en: Once you have a `JavaParser` instance, you can parse all the source files in
     a project with the `parse` method, which takes a `List<Path>`. [Example 6-20](part0011_split_013.html#parsing_source_paths)
     shows the process.
+  id: totrans-195
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦您有了 `JavaParser` 实例，您可以使用 `parse` 方法解析项目中的所有源文件，该方法接受一个 `List<Path>`。 [示例 6-20](part0011_split_013.html#parsing_source_paths)
+    展示了这一过程。
 - en: Example 6-20\. Parsing a list of Java source paths
+  id: totrans-196
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-20\. 解析 Java 源路径列表
 - en: '[PRE19]'
+  id: totrans-197
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: '`J.CompilationUnit`'
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
+  zh: '`J.CompilationUnit`'
 - en: This is the top-level AST element for Java source files, which contains information
     about the package, imports, and any class/enum/interface definitions contained
     in the source file. `J.CompilationUnit` is the basic building block upon which
     we’ll build refactoring and search operations for Java source code.
+  id: totrans-199
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是 Java 源文件的顶级 AST 元素，包含有关包、导入以及源文件中包含的任何类/枚举/接口定义的信息。 `J.CompilationUnit` 是我们将为
+    Java 源代码构建重构和搜索操作的基本构建块。
 - en: '`JavaParser`'
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: '`JavaParser`'
 - en: This contains `parse` method overloads for constructing an AST from a string,
     which is useful for quickly constructing unit tests for different search and refactoring
     operations.
+  id: totrans-201
   prefs: []
   type: TYPE_NORMAL
+  zh: 这包含了从字符串构建 AST 的 `parse` 方法重载，对于快速构建不同搜索和重构操作的单元测试非常有用。
 - en: For JVM languages like Kotlin that support multiline strings, this can be especially
     convenient, as shown in [Example 6-21](part0011_split_013.html#parsing_java_source).
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于像 Kotlin 这样支持多行字符串的 JVM 语言，这特别方便，如 [示例 6-21](part0011_split_013.html#parsing_java_source)
+    所示。
 - en: Example 6-21\. Parsing Java source
+  id: totrans-203
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-21\. 解析 Java 源代码
 - en: '[PRE20]'
+  id: totrans-204
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: Notice how this returns a single `J.CompilationUnit`, which can be immediately
     acted upon. Ultimately, [JEP-355](https://oreil.ly/9p7X8) will bring multiline
     strings to Java as well, so beautiful unit tests for Rewrite operations will be
     possible to write in plain Java code.
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: 请注意，这返回一个单独的 `J.CompilationUnit`，可以立即对其进行操作。最终，[JEP-355](https://oreil.ly/9p7X8)
+    也将为 Java 带来多行字符串，因此将能够以纯 Java 代码编写漂亮的 Rewrite 操作单元测试。
 - en: The `dependenciesFromClasspath` method demonstrated in [Example 6-22](part0011_split_013.html#parsing_source_with_classpath)
     is especially useful for building unit tests, as you can place a module for which
     you are affecting some transformation on the test runtime classpath and bind it
     to the parser. In this way, any references to classes, methods, etc., in that
     dependency are type-attributed in ASTs produced for unit tests.
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 [示例 6-22](part0011_split_013.html#parsing_source_with_classpath) 中演示的 `dependenciesFromClasspath`
+    方法特别适用于构建单元测试，因为您可以将影响测试运行时类路径上的模块放置在解析器中，并将其绑定到解析器。 这样，用于单元测试的 AST 将对该依赖项中的类、方法等的引用进行类型归因。
 - en: Example 6-22\. Parsing source with a classpath for type attribution
+  id: totrans-207
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-22\. 使用类路径对类型进行解析
 - en: '[PRE21]'
+  id: totrans-208
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: Performing a search with Rewrite
+  id: totrans-209
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 使用 Rewrite 执行搜索
 - en: Extending on the previous example, we can search for uses of Guava’s `Files#createTempDir()`,
     shown in [Example 6-23](part0011_split_013.html#search_with_rewrite). The argument
     for `findMethodCalls` takes the [AspectJ syntax](https://oreil.ly/4UaEQ) for pointcut
     matching on methods.
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的示例基础上，我们可以搜索 Guava 的 `Files#createTempDir()` 的用法，如[示例 6-23](part0011_split_013.html#search_with_rewrite)
+    所示。 `findMethodCalls` 的参数采用 [AspectJ 语法](https://oreil.ly/4UaEQ) 来匹配方法的切入点。
 - en: Example 6-23\. Performing a search with Rewrite
+  id: totrans-211
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-23\. 使用 Rewrite 执行搜索
 - en: '[PRE22]'
+  id: totrans-212
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: 'Many other search methods exist on `J.CompilationUnit`, among them the following:'
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: '`J.CompilationUnit` 上还有许多其他搜索方法，其中包括以下内容：'
 - en: '`boolean hasImport(String clazz)`'
+  id: totrans-214
   prefs: []
   type: TYPE_NORMAL
+  zh: '`boolean hasImport(String clazz)`'
 - en: Looks for imports
+  id: totrans-215
   prefs: []
   type: TYPE_NORMAL
+  zh: 寻找导入
 - en: '`boolean hasType(String clazz)`'
+  id: totrans-216
   prefs: []
   type: TYPE_NORMAL
+  zh: '`boolean hasType(String clazz)`'
 - en: Checks whether a source file has a reference to a type
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: 检查源文件是否引用了某一类型
 - en: '`Set<NameTree> findType(String clazz)`'
+  id: totrans-218
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Set<NameTree> findType(String clazz)`'
 - en: Returns all the AST elements that are type-attributed with a particular type
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 返回所有与特定类型相关的 AST 元素
 - en: 'You can also move down a level to individual classes (`cu.getClasses()`) inside
     a source file and perform additional operations:'
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: 您还可以向下移动到源文件中的单个类（`cu.getClasses()`）并执行其他操作：
 - en: '`List<VariableDecls> findFields(String clazz)`'
+  id: totrans-221
   prefs: []
   type: TYPE_NORMAL
+  zh: '`List<VariableDecls> findFields(String clazz)`'
 - en: Finds fields declared in this class that refer to a specific type.
+  id: totrans-222
   prefs: []
   type: TYPE_NORMAL
+  zh: 查找在此类中声明的字段，这些字段引用了特定类型。
 - en: '`List<JavaType.Var> findInheritedFields(String clazz)`'
+  id: totrans-223
   prefs: []
   type: TYPE_NORMAL
+  zh: '`List<JavaType.Var> findInheritedFields(String clazz)`'
 - en: Finds fields that are inherited from a base class. Note that since they are
     inherited, there is no AST element to match on, but you’ll be able to determine
     if a class has a field of a particular type coming from a base class and then
     look for uses of this field.
+  id: totrans-224
   prefs: []
   type: TYPE_NORMAL
+  zh: 查找从基类继承的字段。 请注意，由于它们是继承的，所以没有 AST 元素可以匹配，但是您可以确定一个类是否有来自基类的特定类型的字段，并查找此字段的用法。
 - en: '`Set<NameTree> findType(String clazz)`'
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Set<NameTree> findType(String clazz)`'
 - en: Returns all AST elements inside this class referring to a type.
+  id: totrans-226
   prefs: []
   type: TYPE_NORMAL
+  zh: 返回此类内部所有引用特定类型的 AST 元素。
 - en: '`List<Annotation> findAnnotations(String signature)`'
+  id: totrans-227
   prefs: []
   type: TYPE_NORMAL
+  zh: '`List<Annotation> findAnnotations(String signature)`'
 - en: Finds all annotations matching a signature as defined in the AspectJ pointcut
     definition for annotation matching.
+  id: totrans-228
   prefs: []
   type: TYPE_NORMAL
+  zh: 查找所有与 AspectJ 切入点定义中的注释匹配的注释。
 - en: '`boolean hasType(String clazz)`'
+  id: totrans-229
   prefs: []
   type: TYPE_NORMAL
+  zh: '`boolean hasType(String clazz)`'
 - en: Checks whether a class refers to a type.
+  id: totrans-230
   prefs: []
   type: TYPE_NORMAL
+  zh: 检查类是否引用了某一类型。
 - en: '`hasModifier(String modifier)`'
+  id: totrans-231
   prefs: []
   type: TYPE_NORMAL
+  zh: '`hasModifier(String modifier)`'
 - en: Checks for modifiers on the class definition (e.g., public, private, static).
+  id: totrans-232
   prefs: []
   type: TYPE_NORMAL
+  zh: 检查类定义上的修饰符（例如，public、private、static）。
 - en: '`isClass()/isEnum()/isInterface()/isAnnotation()`'
+  id: totrans-233
   prefs: []
   type: TYPE_NORMAL
+  zh: '`isClass()/isEnum()/isInterface()/isAnnotation()`'
 - en: Checks the type of declaration.
+  id: totrans-234
   prefs: []
   type: TYPE_NORMAL
+  zh: 检查声明的类型。
 - en: More search methods are available further down the AST.
+  id: totrans-235
   prefs: []
   type: TYPE_NORMAL
+  zh: AST 更深层次的更多搜索方法可用。
 - en: You can build custom search visitors by extending `JavaSourceVisitor` and implementing
     any `visitXXX` methods that you need to perform your search. These don’t have
     to be complex. `FindMethods` only extends `visitMethodInvocation` to check whether
     a given invocation matches the signature we are looking for, as shown in [Example 6-24](part0011_split_013.html#find_methods_visitor).
+  id: totrans-236
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以通过扩展 `JavaSourceVisitor` 并实现所需的任何 `visitXXX` 方法来构建自定义搜索访问者。 这些不必复杂。 如[示例
+    6-24](part0011_split_013.html#find_methods_visitor) 所示，`FindMethods` 仅扩展了 `visitMethodInvocation`
+    来检查给定调用是否与我们正在寻找的签名匹配。
 - en: Example 6-24\. The implementation of the FindMethods operation in Rewrite
+  id: totrans-237
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-24\. Rewrite 中 FindMethods 操作的实现
 - en: '[PRE23]'
+  id: totrans-238
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: Invoke a custom visitor by instantiating the visitor and calling `visit` on
     the root AST node, as shown in [Example 6-25](part0011_split_013.html#invoke_custom_visitor).
     `JavaSourceVisitor` can return any type. You define a default return with `defaultTo`
     and can provide a custom reduction operation by overriding `reduce` on the visitor.
+  id: totrans-239
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过实例化访问者并在根AST节点上调用`visit`来调用自定义访问者，如[示例 6-25](part0011_split_013.html#invoke_custom_visitor)所示。`JavaSourceVisitor`可以返回任何类型。您可以使用`defaultTo`定义默认返回，并且可以通过在访问者上覆盖`reduce`来提供自定义减少操作。
 - en: Example 6-25\. Invoking a custom Rewrite visitor
+  id: totrans-240
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-25。调用自定义重写访问者
 - en: '[PRE24]'
+  id: totrans-241
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: Refactoring Java source
+  id: totrans-242
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 重构Java源代码
 - en: 'One of the benefits of establishing this artifact provenance chain all the
     way down to the method invocation level on source code is you can actually perform
     some *remediating* action on the source code in a targeted way: first iterating
     over deployed assets and mapping them to binaries, then mapping to a commit, then
     to the ASTs built from that commit.'
+  id: totrans-243
   prefs: []
   type: TYPE_NORMAL
+  zh: 将此工件溯源链建立到源代码方法调用级别的一个好处是，您可以有针对性地执行源代码的某些*修复*操作：首先迭代部署的资产并将其映射到二进制文件，然后映射到提交，然后映射到从该提交构建的AST。
 - en: Refactoring code starts at the root of the AST, which for Java is `J.CompilationUnit`.
     Call `refactor()` to begin a refactoring operation. We’ll detail the kinds of
     refactoring operations that you can do in a moment, but at the end of this process
     you can call `fix()`, which generates a `Change` instance that allows you to generate
     git diffs and print out the original and transformed source. [Example 6-26](part0011_split_013.html#parsing_to_printing)
     shows the whole process end-to-end.
+  id: totrans-244
   prefs: []
   type: TYPE_NORMAL
+  zh: 重构代码从AST的根开始，对于Java来说是`J.CompilationUnit`。调用`refactor()`开始重构操作。我们将详细介绍可以执行的重构操作类型，但在此过程结束时，您可以调用`fix()`，生成一个`Change`实例，允许您生成git差异并打印出原始和转换后的源代码。[示例 6-26](part0011_split_013.html#parsing_to_printing)展示了整个过程的端到端。
 - en: 'Example 6-26\. End to end: parsing Java source code to printing a fix'
+  id: totrans-245
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-26。端到端：解析Java源代码到打印修复
 - en: '[PRE25]'
+  id: totrans-246
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: '`rewrite-java` packs with a series of refactoring building blocks that can
     be used to perform low-level refactoring operations. For example, to change all
     fields from `java.util.List` to `java.util.Collection`, we could use the `ChangeFieldType`
     operation, as shown in test form in [Example 6-27](part0011_split_013.html#testing_change_field_type).'
+  id: totrans-247
   prefs: []
   type: TYPE_NORMAL
+  zh: '`rewrite-java`打包了一系列重构构建块，可用于执行低级重构操作。例如，要将所有字段从`java.util.List`更改为`java.util.Collection`，我们可以使用`ChangeFieldType`操作，如在测试形式中所示的[示例 6-27](part0011_split_013.html#testing_change_field_type)。'
 - en: Example 6-27\. A unit test for changing a field type
+  id: totrans-248
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-27。更改字段类型的单元测试
 - en: '[PRE26]'
+  id: totrans-249
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: 'The `rewrite-java` module comes with basic refactoring building blocks that
     resemble many of the individual refactoring tools you would find in an IDE:'
+  id: totrans-250
   prefs: []
   type: TYPE_NORMAL
+  zh: '`rewrite-java`模块带有基本的重构构建块，这些构建块类似于IDE中找到的许多单独的重构工具：'
 - en: Add annotation to a class, method, or variable.
+  id: totrans-251
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 向类、方法或变量添加注解。
 - en: Add a field to a class.
+  id: totrans-252
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 向类添加字段。
 - en: Add/remove an import, which can be configured to expand/collapse star imports.
+  id: totrans-253
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 添加/删除导入项，可以配置为展开/折叠星号导入。
 - en: Change field name (including its references, even across other source files
     that *use* this field, not just where the field is defined).
+  id: totrans-254
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 更改字段名称（包括引用该字段的其他源文件，而不仅仅是字段定义的位置）。
 - en: Change a field type.
+  id: totrans-255
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 更改字段类型。
 - en: Change a literal expression.
+  id: totrans-256
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 更改文字表达式。
 - en: Change a method name, including anywhere that method is referenced.
+  id: totrans-257
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 更改方法名称，包括引用该方法的任何位置。
 - en: Change a method target to a static from an instance method.
+  id: totrans-258
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 将方法目标更改为从实例方法到静态方法。
 - en: Change a method target to an instance method from a static.
+  id: totrans-259
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 将方法目标更改为从静态方法到实例方法。
 - en: Change a type reference anywhere it is found in the tree.
+  id: totrans-260
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在树的任何位置更改类型引用。
 - en: Insert/delete method arguments.
+  id: totrans-261
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 插入/删除方法参数。
 - en: Delete any statement.
+  id: totrans-262
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 删除任何语句。
 - en: Generate constructors using fields.
+  id: totrans-263
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用字段生成构造函数。
 - en: Rename a variable.
+  id: totrans-264
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 重命名变量。
 - en: Reorder method arguments.
+  id: totrans-265
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 重新排序方法参数。
 - en: Unwrap parentheses.
+  id: totrans-266
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 取消括号。
 - en: Implement an interface.
+  id: totrans-267
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 实现一个接口。
 - en: Each one of these operations is defined as a `JavaRefactorVisitor`, which is
     an extension of `JavaSourceVisitor` designed for mutating the AST, ultimately
     leading to a `Change` object at the end of the refactoring operation.
+  id: totrans-268
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个操作都定义为`JavaRefactorVisitor`，它是专为改变AST而设计的`JavaSourceVisitor`的扩展，在重构操作结束时最终生成一个`Change`对象。
 - en: Visitors can be cursored or not. Cursored visitors maintain a stack of AST elements
     that have been traversed in the tree thus far. In exchange for the extra memory
     footprint, such visitors can operate based on the location of AST elements in
@@ -1329,47 +1894,67 @@
     cursor to determine if the class is top level or not. Refactoring operations should
     also be given a fully qualified name with a package representing the group of
     operations and a name signifying what it does.
+  id: totrans-269
   prefs: []
   type: TYPE_NORMAL
+  zh: 访问者可以是有游标或无游标的。有游标的访问者维护一个已经在树中遍历过的 AST 元素堆栈。尽管需要额外的内存足迹，这种访问者可以基于树中 AST 元素的位置进行操作。许多重构操作不需要此状态。[例子
+    6-28](part0011_split_013.html#make_classes_final) 提供了一个使每个顶层类都变为 final 的重构操作示例。由于类声明可以是嵌套的（例如，内部类），我们使用游标来确定类是否是顶级的或不是。重构操作还应给出一个带有表示操作组的完全限定名称和表示其功能的名称。
 - en: Example 6-28\. An example of a refactoring operation that makes each top-level
     class final
+  id: totrans-270
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-28\. 使每个顶级类变为 final 的重构操作示例
 - en: '[PRE27]'
+  id: totrans-271
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: Visitors can be chained together by calling `andThen(anotherVisitor)`. This
     is useful for building up pipelines of refactoring operations made of lower-level
     components. For example, when `ChangeFieldType` finds a matching field that it
     is going to transform, it chains together an `AddImport` visitor to add the new
     import if necessary, and a `RemoveImport` to remove the old import if there are
     no longer any references to it.
+  id: totrans-272
   prefs: []
   type: TYPE_NORMAL
+  zh: 访问者可以通过调用 `andThen(anotherVisitor)` 连接在一起。这对于构建由较低级别组件组成的重构操作流水线非常有用。例如，当 `ChangeFieldType`
+    找到要转换的匹配字段时，它会将 `AddImport` 访问者链接在一起，如果需要则添加新的导入，以及将 `RemoveImport` 链接在一起，以移除旧的导入，如果不再有引用。
 - en: A platform of open source out-of-the-box remediations continues to grow in open
     source.
+  id: totrans-273
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个开源平台的现成补救措施继续在开源中增长。
 - en: At this point, the provenance chain is complete. Connecting the dots down to
     source code method-level detail allows you to observe your deployed footprint
     in a fine-grained way, answering a wide array of questions in real time.
+  id: totrans-274
   prefs: []
   type: TYPE_NORMAL
+  zh: 此时，来源链已经完整。将连接到源代码方法级细节的各个点连接起来，让你能够以精细的方式观察你部署的足迹，实时回答各种问题。
 - en: 'Let’s switch focus now to a different aspect of building reliability in your
     source: managing binary dependencies.'
+  id: totrans-275
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在让我们把注意力转移到建立源可靠性的另一个方面：管理二进制依赖。
 - en: Dependency Management
+  id: totrans-276
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 依赖管理
 - en: Binary dependencies (those defined in Gradle build files or Maven POMs) present
     a series of systemic challenges. We’ll go over several of these issues and present
     strategies for how to solve them. You’ll notice that in each case the remediation
     is something that is applied at the build tool layer.
+  id: totrans-277
   prefs: []
   type: TYPE_NORMAL
+  zh: 二进制依赖（在 Gradle 构建文件或 Maven POM 文件中定义）带来一系列系统性挑战。我们将讨论其中几个问题，并提出解决策略。你会注意到，在每种情况下，补救措施都是在构建工具层面应用的。
 - en: Some organizations attempt to limit the impact of dependency problems through
     *curation*, i.e., barring the use of dependencies from public artifact repository
     sources like Maven Central or JCenter in favor of an approved and curated set
@@ -1381,24 +1966,33 @@
     increasing the security vulnerability and bug footprint. Ironically, the goal
     of curation is usually to *improve* security. At the very least, this trade-off
     is worth evaluating against your stated goal.
+  id: totrans-278
   prefs: []
   type: TYPE_NORMAL
+  zh: 一些组织尝试通过*策展*来限制依赖问题的影响，即禁止使用来自 Maven Central 或 JCenter 等公共存储库源的依赖，而是选择经过批准和策划的一组依赖项。依赖项的策展提出了一系列挑战。特别是考虑到库之间的相互连接，决定将另一个库添加到策划集中涉及添加其整个传递闭包。还存在一种自然倾向，即避免获得添加新工件所需的辛劳，这意味着你的组织会偏向使用略旧的库版本，增加安全漏洞和错误足迹。具有讽刺意味的是，策展的目标通常是为了*提高*安全性。至少，这种权衡值得根据你的声明目标进行评估。
 - en: Version Misalignments
+  id: totrans-279
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 版本不对齐
 - en: Version misalignments caused by conflict resolution of dependency families like
     Jackson cause the family to not function correctly. Curated artifact repositories
     increase the likelihood of version misalignments.
+  id: totrans-280
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于冲突解析导致的依赖家族版本不一致，使得该家族无法正确运行。策划的构件仓库增加了版本不一致的可能性。
 - en: Jackson is a great example of this. Suppose we brought a new version of Spring
     Boot and its transitive dependencies into our curated repository. [Figure 6-6](part0011_split_015.html#spring_transitive_jackson_dependencies)
     uses the Gradle `dependencyInsight` task to show the Jackson dependencies that
     are included in Spring Boot’s transitive dependency closure and the paths by which
     they are included.
+  id: totrans-281
   prefs: []
   type: TYPE_NORMAL
+  zh: Jackson 就是一个很好的例子。假设我们将 Spring Boot 的新版本及其传递的依赖带入我们的策划仓库。[图 6-6](part0011_split_015.html#spring_transitive_jackson_dependencies)
+    使用 Gradle 的 `dependencyInsight` 任务来展示 Spring Boot 传递依赖闭包中包含的 Jackson 依赖及其包含方式的路径。
 - en: Notably absent from this list are all the other Jackson modules that aren’t
     directly required by the framework, e.g., `jackson-module-kotlin`, `jackson-module-afterburner`,
     and `jackson-modules-java8`. Any microservice using one of these other modules
@@ -1406,37 +2000,54 @@
     now has an unresolvable version misalignment (which may or may not create runtime
     issues) until the new versions of those modules are also added to the curated
     set.
+  id: totrans-282
   prefs: []
   type: TYPE_NORMAL
+  zh: 值得注意的是，此列表中显然缺少所有其他不直接由框架需要的 Jackson 模块，例如 `jackson-module-kotlin`、`jackson-module-afterburner`
+    和 `jackson-modules-java8`。任何使用这些其他模块的微服务在更新到策划仓库中的新版本的 Spring Boot 后，现在存在无法解决的版本不一致（可能会创建运行时问题），直到这些模块的新版本也被添加到策划集中。
 - en: '![srej 0606](../images/00007.png)'
+  id: totrans-283
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0606](../images/00007.png)'
 - en: Figure 6-6\. Spring Boot transitive Jackson dependencies
+  id: totrans-284
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-6\. Spring Boot 传递的 Jackson 依赖
 - en: Dynamic versions create a different set of problems.
+  id: totrans-285
   prefs: []
   type: TYPE_NORMAL
+  zh: 动态版本带来了一系列不同的问题。
 - en: Dynamic Version Constraints
+  id: totrans-286
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 动态版本约束
 - en: Java build tooling unfortunately still lacks advanced range selectors for semantic
     versioning like [NPM’s selector](https://oreil.ly/17iNf). Instead, we are left
     with coarser selectors like `latest.release` and `2.10.+` in Gradle and `RELEASE`
     and `(,2.11.0]` (range selection) in Maven.
+  id: totrans-287
   prefs: []
   type: TYPE_NORMAL
+  zh: 遗憾的是，Java 构建工具仍然缺乏像[NPM 的选择器](https://oreil.ly/17iNf)那样针对语义化版本的高级范围选择器。相反，我们只能使用像`latest.release`和`2.10.+`（Gradle）、`RELEASE`和`(,2.11.0]`（Maven）这样粗略的选择器。
 - en: Whenever possible, it is best to avoid `+` type selectors, because they *lexicographically*
     sort versions. So `2.10.9` is considered later than `2.10.10`.
+  id: totrans-288
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽量避免使用`+`类型的选择器，因为它们会按照字典顺序排序版本号。所以 `2.10.9` 被认为比 `2.10.10` 更晚。
 - en: The Maven-style range selector unfortunately pins you to an upper bound that
     isn’t static. When a further release comes out, the upper bounds need to be updated
     everywhere they are defined.
+  id: totrans-289
   prefs: []
   type: TYPE_NORMAL
+  zh: Maven 风格的范围选择器不幸地将您固定在一个静态的上限。当进一步的版本发布时，需要在定义它们的所有位置更新上限。
 - en: While for the most part, common open source libraries are cautious to only publish
     releases to public repositories, periodically we still see even heavily used libraries
     publish release candidates. Unfortunately, the `latest.release` (Gradle) and `RELEASE`
@@ -1446,125 +2057,189 @@
     Less than a year earlier, in September 2019, Jackson published a `2.10.0.pr1`
     version (the unconventional “pr” suffix apparently meaning “pre-release”). Neither
     one of these versions semantically matches the intent behind “latest release.”
+  id: totrans-290
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管大部分常见的开源库都会谨慎地仅向公共仓库发布正式版本，但偶尔我们仍然会看到即使是被广泛使用的库也发布候选版本。遗憾的是，`latest.release`（Gradle）和`RELEASE`（Maven）选择器无法区分版本号和人类明显的正式发布候选版本。例如，在2020年3月，Jackson
+    发布了 `2.11.0.rc1` 版本，这会被`latest.release`选择。不到一年前的2019年9月，Jackson 发布了 `2.10.0.pr1`
+    版本（非常规的“pr”后缀显然意味着“预发布”）。这两个版本在语义上都不符合“最新发布”的意图。
 - en: We can bar known patterns for release candidates by adding two Maven repositories
     to the Gradle build that together form a disjoint subset of resolvable artifacts,
     in the case of [Example 6-29](part0011_split_016.html#bar_jackson_rcs), the set
     of all nonrelease candidate Jackson modules, and everything other than Jackson
     modules.
+  id: totrans-291
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以通过向 Gradle 构建中添加两个 Maven 仓库，以此来阻止已知模式的发布候选版本，这两个仓库共同形成了一个不可分割的可解析工件的子集，关于[示例
+    6-29](part0011_split_016.html#bar_jackson_rcs)，就是所有非发布候选的 Jackson 模块，以及所有非 Jackson
+    模块的集合。
 - en: Example 6-29\. Barring the use of Jackson release candidates in Gradle
+  id: totrans-292
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-29\. 在 Gradle 中阻止使用 Jackson 发布候选版本
 - en: '[PRE28]'
+  id: totrans-293
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: Unused dependencies pose a different sort of problem.
+  id: totrans-294
   prefs: []
   type: TYPE_NORMAL
+  zh: 未使用的依赖项提出了另一种问题。
 - en: Unused Dependencies
+  id: totrans-295
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 未使用的依赖项
 - en: In addition to bloating the size of a packaged microservice (which is rarely
     a major issue), unused dependencies can result in implicit autoconfiguration of
     features, with serious consequences.
+  id: totrans-296
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了会使打包的微服务体积膨胀（这通常不是一个重大问题），未使用的依赖项还可能导致功能的隐式自动配置，后果严重。
 - en: A Spring Data REST [vulnerability](https://oreil.ly/m6n_W) caught by surprise
     many who weren’t even using the library but, being present in the runtime classpath,
     caused Spring to the autoconfigure a series of REST endpoints that exposed an
     attack vector.
+  id: totrans-297
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个 Spring Data REST [漏洞](https://oreil.ly/m6n_W) 让许多人措手不及，即使他们根本没有使用该库，但由于它存在于运行时类路径中，导致
+    Spring 自动配置了一系列 REST 端点，暴露了攻击向量。
 - en: Guice-based [Governator](https://oreil.ly/yrGcx) autoconfigures any Guice module
     in the classpath. Governator’s scanning mechanism is not constrained by package
     name. Modules located in the classpath could have dependencies on other modules,
     but these dependencies weren’t necessarily reliably in the classpath. Frequently,
     unused but autoconfigured Guice modules caused application failure because dependencies
     that were previously accidentally on the classpath were removed.
+  id: totrans-298
   prefs: []
   type: TYPE_NORMAL
+  zh: 基于 Guice 的 [Governator](https://oreil.ly/yrGcx) 会自动配置类路径中的任何 Guice 模块。Governator
+    的扫描机制不受包名的限制。类路径中的模块可能依赖于其他模块，但这些依赖项并不一定可靠地在类路径中。经常会发现未使用但已自动配置的 Guice 模块导致应用程序失败，因为之前意外存在于类路径中的依赖项被移除。
 - en: Unused dependencies can be detected and removed automatically by the [Nebula
     Lint](https://oreil.ly/4YFe8) Gradle plug-in. It can be configured in a Gradle
     project, as shown in [Example 6-30](part0011_split_017.html#nebula_lint_unused_dependencies).
+  id: totrans-299
   prefs: []
   type: TYPE_NORMAL
+  zh: 未使用的依赖项可以通过 [Nebula Lint](https://oreil.ly/4YFe8) Gradle 插件自动检测和删除。它可以在 Gradle
+    项目中进行配置，如[示例 6-30](part0011_split_017.html#nebula_lint_unused_dependencies)所示。
 - en: Example 6-30\. Nebula Lint configuration for unused dependencies
+  id: totrans-300
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-30\. Nebula Lint 配置未使用依赖项
 - en: '[PRE29]'
+  id: totrans-301
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: When `nebula.lint` is applied, build scripts will be automatically linted by
     a task called `lintGradle` after the last task in the task graph executes. Results
     are reported in the console, as shown in [Figure 6-7](part0011_split_017.html#lint_output).
+  id: totrans-302
   prefs: []
   type: TYPE_NORMAL
+  zh: 当 `nebula.lint` 被应用时，构建脚本将在任务图中的最后一个任务执行后自动由名为 `lintGradle` 的任务进行 lint 检查。结果会在控制台中报告，如[图
+    6-7](part0011_split_017.html#lint_output)所示。
 - en: '![srej 0607](../images/00030.png)'
+  id: totrans-303
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0607](../images/00030.png)'
 - en: Figure 6-7\. Nebula Lint warning about dependency formatting
+  id: totrans-304
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-7\. Nebula Lint 关于依赖项格式的警告
 - en: Run `./gradlew fixGradleLint` to automatically fix your build scripts. The autofix
     process lists all violations and how they were fixed, as shown in [Figure 6-8](part0011_split_017.html#lint_autofix).
+  id: totrans-305
   prefs: []
   type: TYPE_NORMAL
+  zh: 运行 `./gradlew fixGradleLint` 来自动修复你的构建脚本。自动修复过程列出了所有违规项及其修复方式，如[图 6-8](part0011_split_017.html#lint_autofix)所示。
 - en: '![srej 0608](../images/00048.png)'
+  id: totrans-306
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0608](../images/00048.png)'
 - en: Figure 6-8\. Nebula Lint automatically fixing dependency formatting
+  id: totrans-307
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-8\. Nebula Lint 自动修复依赖项格式
 - en: The last problem represents the mirror opposite of unused dependencies.
+  id: totrans-308
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后一个问题代表了未使用依赖项的镜像相反。
 - en: Undeclared Explicitly Used Dependencies
+  id: totrans-309
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 未声明的显式使用依赖项
 - en: An application class imports a class from a dependency that is defined transitively.
     The first-order dependency that effectively brought the transitive dependency
     onto the classpath is either removed or its tree changes such that the transitive
     dependency is no longer on the classpath.
+  id: totrans-310
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个应用程序类导入了一个从依赖中定义的类，该依赖是通过传递定义的。有效地将传递依赖项引入类路径的一级依赖项要么被移除，要么其树发生变化，使得传递依赖项不再在类路径中。
 - en: Undeclared dependencies can also be detected and added automatically by Nebula
     Lint. It can be configured in a Gradle project, as shown in [Example 6-31](part0011_split_018.html#nebula_lint_undeclared_dependencies).
+  id: totrans-311
   prefs: []
   type: TYPE_NORMAL
+  zh: 未声明的依赖项也可以通过 Nebula Lint 自动检测和添加。它可以在 Gradle 项目中进行配置，如[示例 6-31](part0011_split_018.html#nebula_lint_undeclared_dependencies)所示。
 - en: Example 6-31\. Nebula Lint configuration for undeclared dependencies
+  id: totrans-312
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 6-31\. 未声明依赖项的Nebula Lint配置
 - en: '[PRE30]'
+  id: totrans-313
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: Once added as a first-order dependency, its visibility as a dependency whose
     version matters to this application is more important.
+  id: totrans-314
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦作为一级依赖项添加，其作为依赖项的可见性，特别是其版本对该应用的重要性更为突出。
 - en: Summary
+  id: totrans-315
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: This chapter introduced some of the basic requirements to set up your software
     delivery life cycle in such a way that you can map deployed assets back to the
     source code that was included inside of them. With an increase in the number of
     deployed assets (smaller microservices), the existence of some queryable system
     of record to determine where particular code patterns are present in production-executable
     code becomes more important.
+  id: totrans-316
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章介绍了一些基本要求，以便设置您的软件交付生命周期，使您可以将部署的资产映射回其中包含的源代码。随着部署资产数量的增加（更小的微服务），确定生产可执行代码中特定代码模式存在的可查询记录系统变得更加重要。
 - en: In the next chapter, we will discuss traffic management and call resiliency
     patterns that can be used to compensate for and limit the extent of failure, which
     will naturally be present in any microservice architecture.
+  id: totrans-317
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一章中，我们将讨论可用于补偿和限制任何微服务架构中存在的失败范围的流量管理和调用弹性模式。
