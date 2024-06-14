@@ -1,0 +1,2910 @@
+- en: Chapter 3\. A Java Performance Toolbox
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第3章. Java 性能工具箱
+- en: Performance analysis is all about visibility—knowing what is going on inside
+    an application and in the application’s environment. Visibility is all about tools.
+    And so performance tuning is all about tools.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 性能分析关乎于可见性 —— 知道应用程序及其环境内部发生了什么。可见性关乎于工具。因此，性能调优关乎于工具。
+- en: 'In [Chapter 2](ch02.html#SampleApplications), we looked at the importance of
+    taking a data-driven approach to performance: you must measure the application’s
+    performance and understand what those measurements mean. Performance analysis
+    must be similarly data-driven: you must have data about what, exactly, the program
+    is doing in order to make it perform better. How to obtain and understand that
+    data is the subject of this chapter.'
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 [第2章](ch02.html#SampleApplications) 中，我们探讨了采用数据驱动方法对性能进行分析的重要性：必须测量应用程序的性能，并理解这些测量数据的含义。性能分析也必须是数据驱动的：必须有关于程序实际运行情况的数据，以便优化其性能。如何获取和理解这些数据是本章的主题。
+- en: Hundreds of tools can provide information about what a Java application is doing,
+    and looking at all of them would be impractical. Many of the most important tools
+    come with the Java Development Kit (JDK), and although those tools have other
+    open source and commercial competitors, this chapter focuses mostly on the JDK
+    tools as a matter of expedience.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数百种工具可以提供有关 Java 应用程序正在执行的操作的信息，查看所有这些工具将是不切实际的。许多最重要的工具都随 Java 开发工具包（JDK）提供，尽管这些工具还有其他开源和商业竞争对手，本章主要出于便利性考虑，主要关注
+    JDK 工具。
+- en: Operating System Tools and Analysis
+  id: totrans-4
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 操作系统工具和分析
+- en: 'The starting point for program analysis is not Java-specific at all: it is
+    the basic set of monitoring tools that come with the operating system. On Unix-based
+    systems, these are `sar` (System Accounting Report) and its constituent tools
+    like `vmstat`, `iostat`, `prstat`, and so on. Windows has graphical resource monitors
+    as well as command-line utilities like `typeperf`.'
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 程序分析的起点与 Java 无关：它是操作系统自带的一套基本监控工具。在基于 Unix 的系统上，这些工具包括 `sar`（系统账户报告）及其组成部分，如
+    `vmstat`、`iostat`、`prstat` 等等。Windows 也有图形资源监视器以及像 `typeperf` 这样的命令行实用程序。
+- en: Whenever performance tests are run, data should be gathered from the operating
+    system. At a minimum, information on CPU, memory, and disk usage should be collected;
+    if the program uses the network, information on network usage should be gathered
+    as well. If performance tests are automated, this means relying on command-line
+    tools (even on Windows). But even if tests are running interactively, it is better
+    to have a command-line tool that captures output, rather than eyeballing a GUI
+    graph and guessing what it means. The output can always be graphed later when
+    doing analysis.
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每次运行性能测试时，都应从操作系统收集数据。至少应收集关于 CPU、内存和磁盘使用情况的信息；如果程序使用网络，则还应收集关于网络使用情况的信息。如果性能测试是自动化的，这意味着依赖命令行工具（即使在
+    Windows 上也是如此）。但即使测试是交互式运行的，最好也有一个捕捉输出的命令行工具，而不是仅仅依靠 GUI 图表猜测其含义。在进行分析时，输出始终可以稍后绘制成图表。
+- en: CPU Usage
+  id: totrans-7
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: CPU 使用率
+- en: 'Let’s look first at monitoring the CPU and what it tells us about Java programs.
+    CPU usage is typically divided into two categories: user time and system time
+    (Windows refers to this as *privileged time*). *User time* is the percentage of
+    time the CPU is executing application code, while *system time* is the percentage
+    of time the CPU is executing kernel code. System time is related to the application;
+    if the application performs I/O, for example, the kernel will execute the code
+    to read the file from disk, or write the buffered data to the network, and so
+    on. Anything that uses an underlying system resource will cause the application
+    to use more system time.'
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先让我们来监控 CPU 并了解它对 Java 程序的影响。CPU 使用率通常分为两类：用户时间和系统时间（Windows 称之为 *特权时间*）。*用户时间*
+    是 CPU 执行应用程序代码的时间百分比，而 *系统时间* 是 CPU 执行内核代码的时间百分比。系统时间与应用程序相关；例如，如果应用程序执行 I/O 操作，则内核将执行读取磁盘文件或将缓冲数据写入网络等代码。任何使用底层系统资源的操作都会导致应用程序使用更多的系统时间。
+- en: The goal in performance is to drive CPU usage as high as possible for as short
+    a time as possible. That may sound a little counterintuitive; you’ve doubtless
+    sat at your desktop and watched it struggle because the CPU is 100% utilized.
+    So let’s consider what the CPU usage actually tells us.
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在性能方面的目标是尽可能地提高 CPU 使用率，并尽量缩短时间。这听起来可能有些反直觉；你无疑曾坐在桌面前，看着它因 CPU 使用率达到100%而奋力运行。因此，让我们考虑一下
+    CPU 使用率实际上告诉我们什么。
+- en: The first thing to keep in mind is that the CPU usage number is an average over
+    an interval—5 seconds, 30 seconds, perhaps even as little as 1 second (though
+    never really less than that). Say that the average CPU usage of a program is 50%
+    for the 10 minutes it takes to execute. This means that the CPU is idle for half
+    the time; if we can restructure the program to not have idle patches (nor other
+    bottlenecks), we can double the performance and run in 5 minutes (with the CPU
+    100% busy).
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先要记住的是，CPU 使用率数字是一个时间间隔的平均值 —— 5 秒、30 秒，甚至可能只有 1 秒（虽然实际上不会少于这个）。假设一个程序在执行时的平均
+    CPU 使用率为 50%，需要 10 分钟才能完成。这意味着 CPU 有一半的时间是空闲的；如果我们重新设计程序，避免空闲段（以及其他瓶颈），我们可以将性能提升一倍，在
+    5 分钟内运行（CPU 百分之百忙碌）。
+- en: If then we improve the algorithm used by the program and double performance
+    again, the CPU will still be at 100% during the 2.5 minutes it takes the program
+    to complete. The CPU usage number is an indication of how effectively the program
+    is using the CPU, and so the higher the number, the better.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果然后我们改进程序使用的算法，再次提高性能，CPU 仍然在程序完成所需的 2.5 分钟内保持 100%。CPU 使用率数字表明程序有效利用 CPU 的程度，因此数字越高，表明程序利用
+    CPU 的效率越高。
+- en: 'If I run `vmstat 1` on my Linux desktop, I will get a series of lines (one
+    every second) that look like this:'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我在我的 Linux 桌面上运行 `vmstat 1`，我会得到一系列的行（每秒钟一行），看起来像这样：
+- en: '[PRE0]'
+  id: totrans-13
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: This example comes from running an application with one active thread—that makes
+    the example easier to follow—but the concepts apply even if there are multiple
+    threads.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个例子来自于运行一个只有一个活动线程的应用程序，这使得示例更容易理解，但即使有多个线程，这些概念也适用。
+- en: 'During each second, the CPU is busy for 450 ms (42% of the time executing user
+    code, and 3% of the time executing system code). Similarly, the CPU is idle for
+    550 ms. The CPU can be idle for multiple reasons:'
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每秒钟，CPU 忙碌 450 毫秒（42% 的时间执行用户代码，3% 的时间执行系统代码）。同样，CPU 空闲 550 毫秒。CPU 可以因为多种原因而空闲：
+- en: The application might be blocked on a synchronization primitive and unable to
+    execute until that lock is released.
+  id: totrans-16
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 应用程序可能因为同步原语上的阻塞而无法执行，直到释放该锁。
+- en: The application might be waiting for something, such as a response to come back
+    from a call to the database.
+  id: totrans-17
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 应用程序可能正在等待某些事情，比如等待从数据库调用返回的响应。
+- en: The application might have nothing to do.
+  id: totrans-18
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 应用程序可能什么都不需要做。
+- en: These first two situations are always indicative of something that can be addressed.
+    If contention on the lock can be reduced or the database can be tuned so that
+    it sends the answer back more quickly, then the program will run faster, and the
+    average CPU use of the application will go up (assuming, of course, that there
+    isn’t another such issue that will continue to block the application).
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这两种情况总是表明可以解决的问题。如果可以减少对锁的争用或调整数据库以更快地发送答案回来，那么程序将运行得更快，应用程序的平均 CPU 使用率将上升（当然，前提是没有其他类似问题会继续阻塞应用程序）。
+- en: 'That third point is where confusion often lies. If the application has something
+    to do (and is not prevented from doing it because it is waiting for a lock or
+    another resource), then the CPU will spend cycles executing the application code.
+    This is a general principle, not specific to Java. Say that you write a simple
+    script containing an infinite loop. When that script is executed, it will consume
+    100% of a CPU. The following batch job will do just that in Windows:'
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那第三点通常是混淆的根源。如果应用程序有事情要做（并且不因为等待锁或其他资源而被阻止），那么 CPU 将花费周期执行应用程序代码。这是一个通用原则，不特定于
+    Java。假设你编写一个包含无限循环的简单脚本。当执行该脚本时，它将消耗 CPU 的 100%。以下是在 Windows 中执行的批处理作业：
+- en: '[PRE1]'
+  id: totrans-21
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: Consider what it would mean if this script did not consume 100% of a CPU. It
+    would mean that the operating system had something it could do—it could print
+    yet another line saying `LOOPING`—but it chose instead to be idle. Being idle
+    doesn’t help anyone in that case, and if we were doing a useful (lengthy) calculation,
+    forcing the CPU to be periodically idle would mean that it would take longer to
+    get the answer we are after.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 考虑一下，如果此脚本不会消耗 CPU 的 100%，会意味着什么。这将意味着操作系统有其他事情可以做 —— 它可以打印另一行 `LOOPING` ——
+    但它选择保持空闲。在这种情况下，保持空闲对任何人都没有帮助，如果我们正在进行有用的（耗时的）计算，强制 CPU 定期空闲将意味着需要更长时间才能得到我们想要的答案。
+- en: If you run this command on a single-CPU machine or container, much of the time
+    you are unlikely to notice that it is running. But if you attempt to start a new
+    program, or time the performance of another application, then you will certainly
+    see the effect. Operating systems are good at time-slicing programs that are competing
+    for CPU cycles, but less CPU will be available for the new program, and it will
+    run more slowly. That experience sometimes leads people to think it would be a
+    good idea to leave some idle CPU cycles just in case something else needs them.
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果在单CPU的机器或容器上运行此命令，你很少会注意到它在运行。但是如果尝试启动新程序或计时另一个应用程序的性能，那么你肯定会看到影响。操作系统擅长对竞争CPU周期的程序进行时间切片，但新程序将有较少的CPU可用，因此运行速度会变慢。有时这种经验会导致人们认为留下一些空闲的CPU周期以备其他程序需要时会是个好主意。
+- en: But the operating system cannot guess what you want to do next; it will (by
+    default) execute everything it can rather than leaving the CPU idle.
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但操作系统不能猜测你接下来想要做什么；它（默认情况下）会尽可能执行所有任务，而不是让CPU空闲。
+- en: Java and single-CPU usage
+  id: totrans-25
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: Java和单CPU使用
+- en: To return to the discussion of the Java application—what does periodic, idle
+    CPU mean in that case? It depends on the type of application. If the code in question
+    is a batch-style application that has a fixed amount of work, you should never
+    see idle CPU, because that would mean there is no work to do. Driving the CPU
+    usage higher is always the goal for batch jobs, because the job will be completed
+    faster. If the CPU is already at 100%, you can still look for optimizations that
+    allow the work to be completed faster (while trying also to keep the CPU at 100%).
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们重新讨论Java应用程序的话题——在这种情况下，“周期性，空闲CPU”是什么意思？这取决于应用程序的类型。如果所讨论的代码是批处理样式应用程序，其工作量是固定的，你不应该看到空闲的CPU，因为那意味着没有工作要做。提高CPU使用率总是批处理作业的目标，因为这样可以更快地完成作业。如果CPU已经达到100%，你仍然可以寻找优化方案，使工作能够更快地完成（同时也尽量保持CPU在100%）。
+- en: 'If the measurement involves a server-style application that accepts requests
+    from a source, idle time may occur because no work is available: for example,
+    when a web server has processed all outstanding HTTP requests and is waiting for
+    the next request. This is where the average time comes in. The sample `vmstat`
+    output was taken during execution of a server that was receiving one request every
+    second. It took 450 ms for the application server to process that request—meaning
+    that the CPU was 100% busy for 450 ms, and 0% busy for 550 ms. That was reported
+    as the CPU being 45% busy.'
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果测量涉及接受来自源的服务器样式应用程序的情况，空闲时间可能会发生，因为没有可用的工作：例如，当Web服务器处理完所有未完成的HTTP请求并等待下一个请求时。这就是平均时间的地方。在执行接收每秒一个请求的服务器时，取样的`vmstat`输出显示应用服务器处理该请求需要450毫秒——这意味着CPU在450毫秒内100%繁忙，并在550毫秒内0%繁忙。这被报告为CPU繁忙45%。
+- en: 'Although it usually happens at a level of granularity that is too small to
+    visualize, the expected behavior of the CPU when running a load-based application
+    is to operate in short bursts like this. The same macro-level pattern will be
+    seen from the reporting if the CPU received one request every half-second and
+    the average time to process the request was 225 ms. The CPU would be busy for
+    225 ms, idle for 275 ms, busy again for 225 ms, and idle for 275 ms: on average,
+    45% busy and 55% idle.'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然通常发生在视觉化粒度太小的情况下，但在运行基于负载的应用程序时，CPU的预期行为是像这样短暂地进行。如果CPU每半秒接收一个请求，并且处理请求的平均时间为225毫秒，那么从报告中可以看到同样的宏观级别模式：CPU繁忙225毫秒，空闲275毫秒，再次繁忙225毫秒，空闲275毫秒；平均而言，CPU繁忙45%，空闲55%。
+- en: If the application is optimized so that each request takes only 400 ms, the
+    overall CPU usage will also be reduced (to 40%). This is the only case where driving
+    the CPU usage lower makes sense—when a fixed amount of load is coming into the
+    system and the application is not constrained by external resources. On the other
+    hand, that optimization also gives you the opportunity to add more load into the
+    system, ultimately increasing the CPU utilization. And at a micro level, optimizing
+    in this case is still a matter of getting the CPU usage to 100% for a short period
+    of time (the 400 ms it takes to execute the request)—it’s just that the duration
+    of the CPU spike is too short to effectively register as 100% using most tools.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果应用程序经过优化，以便每个请求仅需要 400 毫秒，那么总体 CPU 使用率也会降低（至 40%）。这是唯一的情况，其中降低 CPU 使用率是有意义的
+    —— 当固定数量的负载进入系统，并且应用程序没有受外部资源限制时。另一方面，该优化还为您提供了向系统添加更多负载的机会，最终增加 CPU 利用率。在微观层面上，在这种情况下进行优化仍然是使
+    CPU 使用率在短时间内达到 100% 的问题（即执行请求所需的 400 毫秒）——只是 CPU 尖峰的持续时间太短，以至于大多数工具无法有效地注册为 100%。
+- en: Java and multi-CPU usage
+  id: totrans-30
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: Java 和多 CPU 使用
+- en: This example has assumed a single thread running on a single CPU, but the concepts
+    are the same in the general case of multiple threads running on multiple CPUs.
+    Multiple threads can skew the average of the CPU in interesting ways—one such
+    example is shown in [Chapter 5](ch05.html#GC), which shows the effect of the multiple
+    GC threads on CPU usage. But in general, the goal for multiple threads on a multi-CPU
+    machine is still to drive the CPU higher by making sure individual threads are
+    not blocked, or to drive the CPU lower (over a long interval) because the threads
+    have completed their work and are waiting for more work.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此示例假定一个单线程在单个 CPU 上运行，但是在多个线程在多个 CPU 上运行的一般情况下，概念是相同的。多个线程可以以有趣的方式扭曲 CPU 的平均值
+    —— [第5章](ch05.html#GC) 中展示了多个 GC 线程对 CPU 使用率的影响。但总体上，在多 CPU 机器上的多线程的目标仍然是通过确保单个线程不被阻塞来提高
+    CPU 使用率，或者在较长时间内降低 CPU 使用率（因为线程已完成其工作并等待更多工作）。
+- en: 'In a multithreaded, multi-CPU case, there is one important addition regarding
+    when CPUs could be idle: CPUs can be idle even when there is work to do. This
+    occurs if no threads are available in the program to handle that work. The typical
+    case is an application with a fixed-size thread pool running various tasks. Tasks
+    for the threads get placed onto a queue; when a thread is idle and a task in the
+    queue, the thread picks up that task and executes it. However, each thread can
+    execute only one task at a time, and if that particular task blocks (e.g., is
+    waiting for a response from the database), the thread cannot pick up a new task
+    to execute in the meantime. Hence, at times we may have periods where there are
+    tasks to be executed (work to be done) but no thread available to execute them;
+    the result is idle CPU time.'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在多线程、多 CPU 的情况下，关于 CPU 可能空闲的一个重要补充是：即使有工作要做，CPU 也可能空闲。这种情况发生在程序中没有可用的线程来处理该工作时。典型情况是一个具有固定大小线程池的应用程序运行各种任务。线程为任务放置到队列中；当线程空闲并且队列中有任务时，线程会接收并执行该任务。然而，每个线程一次只能执行一个任务，如果特定任务阻塞（例如等待来自数据库的响应），则线程在此期间无法执行新任务。因此，有时我们可能会出现有任务要执行（有工作要做），但没有可用线程来执行它们的情况；结果是
+    CPU 空闲时间。
+- en: In that specific example, the size of the thread pool should be increased. However,
+    don’t assume that just because idle CPU is available, the size of the thread pool
+    should be increased in order to accomplish more work. The program may not be getting
+    CPU cycles for the other two reasons previously mentioned—because of bottlenecks
+    in locks or external resources. It is important to understand *why* the program
+    isn’t getting CPU before determining a course of action. (See [Chapter 9](ch09.html#ThreadPerformance)
+    for more details on this topic.)
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在特定示例中，应增加线程池的大小。但是，请不要认为仅因为有空闲 CPU 可用，就应增加线程池的大小以完成更多工作。在确定行动方向之前，重要的是了解程序为何未获得
+    CPU 周期 —— 这可能是由于锁定或外部资源的瓶颈。在确定行动方向之前，了解 *为什么* 程序未获得 CPU 是很重要的。（有关此主题的更多详细信息，请参阅[第9章](ch09.html#ThreadPerformance)。）
+- en: 'Looking at the CPU usage is a first step in understanding application performance,
+    but it is only that: use it to see if the code is using all the CPU that can be
+    expected, or if it points to a synchronization or resource issue.'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 查看 CPU 使用情况是了解应用程序性能的第一步，但仅仅是这样：使用它来查看代码是否使用了预期的所有 CPU，或者是否指向了同步或资源问题。
+- en: The CPU Run Queue
+  id: totrans-35
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: CPU运行队列
+- en: 'Both Windows and Unix systems allow you to monitor the number of threads that
+    can be run (meaning that they are not blocked on I/O, or sleeping, and so on).
+    Unix systems refer to this as the *run queue*, and several tools include the run
+    queue length in their output. That includes the `vmstat` output in the previous
+    section: the first number in each line is the length of the run queue. Windows
+    refers to this number as the *processor queue* and reports it (among other ways)
+    via `typeperf`:'
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Windows和Unix系统都允许您监视可以运行的线程数（这意味着它们没有被I/O阻塞、休眠等）。Unix系统将其称为*运行队列*，几种工具包括其在输出中的运行队列长度。这包括前一节中`vmstat`输出中的数据：每行的第一个数字是运行队列的长度。Windows将此数字称为*处理器队列*，并通过`typeperf`报告它（除其他方式）：
+- en: '[PRE2]'
+  id: totrans-37
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'There is an important difference in this output: the run queue length number
+    on a Unix system (which was either 1 or 2 in the sample `vmstat` output) is the
+    number of all threads that *are* running or that *could run* if there were an
+    available CPU. In that example, there was always at least one thread that wanted
+    to run: the single thread doing application work. Hence, the run queue length
+    was always at least 1\. Keep in mind that the run queue represents everything
+    on the machine, so sometimes there are other threads (from completely separate
+    processes) that want to run, which is why the run queue length sometimes was 2
+    in that sample output.'
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个输出中有一个重要的区别：Unix系统上的运行队列长度数字（在样本`vmstat`输出中可能是1或2）是所有正在运行或如果有可用CPU则可以运行的所有线程的数量。在示例中，始终至少有一个线程想要运行：执行应用程序工作的单个线程。因此，运行队列长度始终至少为1。请记住，运行队列代表机器上的所有内容，因此有时会有其他线程（来自完全不同的进程）想要运行，这就是为什么在样本输出中运行队列长度有时为2的原因。
+- en: In Windows, the processor queue length does not include the number of threads
+    that are currently running. Hence, in the `typeperf` sample output, the processor
+    queue number was 0, even though the machine was running the same single-threaded
+    application with one thread always executing.
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在Windows中，处理器队列长度不包括当前运行的线程数。因此，在`typeperf`的示例输出中，即使机器在运行相同的单线程应用程序且一个线程始终在执行，处理器队列数字也是0。
+- en: If there are more threads to run than available CPUs, performance begins to
+    degrade. In general, then, you want the processor queue length to be 0 on Windows
+    and equal to (or less than) the number of CPUs on Unix systems. That isn’t a hard-and-fast
+    rule; system processes and other things will come along periodically and briefly
+    raise that value without any significant performance impact. But if the run queue
+    length is too high for any significant period of time, it’s an indication that
+    the machine is overloaded, and you should look into reducing the amount of work
+    the machine is doing (either by moving jobs to another machine or by optimizing
+    the code).
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果要运行的线程多于可用的CPU数量，性能会开始下降。一般来说，在Windows上，您希望处理器队列长度为0，在Unix系统上等于（或少于）CPU数量。这不是一个硬性规则；系统进程和其他事物会定期出现，并且会短暂地提高该值，而不会对性能造成显著影响。但是，如果运行队列长度在任何显著时间内都过高，这表明机器负载过重，您应该考虑减少机器正在执行的工作量（通过将作业移动到另一台机器或优化代码）。
+- en: Quick Summary
+  id: totrans-41
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: CPU time is the first thing to examine when looking at the performance of an
+    application.
+  id: totrans-42
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在查看应用程序性能时，首先要检查的是CPU时间。
+- en: The goal in optimizing code is to drive the CPU usage up (for a shorter period
+    of time), not down.
+  id: totrans-43
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 优化代码的目标是使CPU使用率提高（并保持较短的时间），而不是降低。
+- en: Understand why CPU usage is low before diving in and attempting to tune an application.
+  id: totrans-44
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在深入尝试调整应用程序之前，了解CPU使用率为何低是很重要的。
+- en: Disk Usage
+  id: totrans-45
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 磁盘使用
+- en: 'Monitoring disk usage has two important goals. The first pertains to the application
+    itself: if the application is doing a lot of disk I/O, that I/O can easily become
+    a bottleneck.'
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 监控磁盘使用有两个重要目标。第一个与应用程序本身相关：如果应用程序进行大量磁盘I/O操作，那么该I/O很容易成为瓶颈。
+- en: Knowing when disk I/O is a bottleneck is tricky, because it depends on the behavior
+    of the application. If the application is not efficiently buffering the data it
+    writes to disk (an example is in [Chapter 12](ch12.html#Misc)), the disk I/O statistics
+    will be low. But if the application is performing more I/O than the disk can handle,
+    the disk I/O statistics will be high. In either situation, performance can be
+    improved; be on the lookout for both.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 知道磁盘I/O何时成为瓶颈是棘手的，因为它取决于应用程序的行为。如果应用程序未有效地缓冲写入磁盘的数据（例如在[第12章](ch12.html#Misc)中的一个示例中），则磁盘I/O统计数据将较低。但是，如果应用程序执行的I/O超过磁盘处理能力，磁盘I/O统计数据将很高。在任何情况下，都可以改善性能；要注意这两种情况。
+- en: 'The basic I/O monitors on some systems are better than on others. Here is partial
+    output of `iostat` on a Linux system:'
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一些系统上的基本输入/输出监视器比其他系统更好。以下是Linux系统上`iostat`的部分输出：
+- en: '[PRE3]'
+  id: totrans-49
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'This application is writing data to disk `sda`. At first glance, the disk statistics
+    look good. The `w_await`—the time to service each I/O write—is fairly low (6.08
+    ms), and the disk is only 1.04% utilized. (The acceptable values for that depend
+    on the physical disk, but the 5200 RPM disk in my desktop system behaves well
+    when the service time is under 15 ms.) But a clue is indicating that something
+    is wrong: the system is spending 37.89% of its time in the kernel. If the system
+    is doing other I/O (in other programs), that’s one thing; but if all that system
+    time is from the application being tested, something inefficient is happening.'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此应用程序正在向`/dev/sda`磁盘写入数据。乍一看，磁盘统计数据看起来不错。`w_await`——服务每个I/O写入的时间——相当低（6.08毫秒），磁盘只使用了1.04%。
+    （对于物理磁盘，这些值的可接受性取决于，但在我台式机系统中的5200 RPM磁盘在服务时间低于15毫秒时表现良好。）但是有一个线索表明出现了问题：系统花费37.89%的时间在内核中。如果系统正在进行其他I/O（在其他程序中），那就没什么问题；但如果所有这些系统时间都来自正在测试的应用程序，那么可能发生了一些效率低下的情况。
+- en: 'The fact that the system is doing 24.2 writes per second is another clue: that
+    is a lot when writing only 0.14 MB per second (MBps). I/O has become a bottleneck,
+    and the next step would be to look into how the application is performing its
+    writes.'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 系统每秒进行24.2次写入是另一个线索：当每秒只写入0.14 MB（MBps）时，这是很多的。I/O已经成为瓶颈，下一步将是查看应用程序如何执行其写入操作。
+- en: 'The other side of the coin comes if the disk cannot keep up with the I/O requests:'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面的问题是，如果磁盘无法跟上I/O请求：
+- en: '[PRE4]'
+  id: totrans-53
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: The nice thing about Linux is that it tells us immediately that the disk is
+    100% utilized; it also tells us that processes are spending 47.89% of their time
+    in `iowait` (that is, waiting for the disk).
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Linux的好处在于它立即告诉我们磁盘已经100%利用；它还告诉我们，进程花费47.89%的时间在`iowait`（即等待磁盘）上。
+- en: 'Even on other systems with only raw data available, that data will tell us
+    something is amiss: the time to complete the I/O (`w_await`) is 871 ms, the queue
+    size is quite large, and the disk is writing 81 MB of data per second. This all
+    points to disk I/O as a problem and that the amount of I/O in the application
+    (or, possibly, elsewhere in the system) must be reduced.'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即使在其他系统上仅有原始数据可用的情况下，这些数据也会告诉我们某些地方出了问题：完成I/O的时间（`w_await`）为871毫秒，队列大小相当大，磁盘每秒写入81
+    MB的数据。这一切都指向磁盘I/O存在问题，并且必须减少应用程序（或可能是系统其他地方）中的I/O量。
+- en: A second reason to monitor disk usage—even if the application is not expected
+    to perform a significant amount of I/O—is to help monitor if the system is swapping.
+    Computers have a fixed amount of physical memory, but they can run a set of applications
+    that use a much larger amount of virtual memory. Applications tend to reserve
+    more memory than they need, and they usually operate on only a subset of their
+    memory. In both cases, the operating system can keep the unused parts of memory
+    on disk, and page it into physical memory only if it is needed.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 监控磁盘使用的第二个原因——即使不希望应用程序执行大量I/O——是为了帮助监视系统是否在交换。计算机有固定数量的物理内存，但它们可以运行使用更大量虚拟内存的应用程序集。应用程序倾向于保留比它们需要的内存更多，并且通常仅在其内存的一个子集上操作。在这两种情况下，操作系统可以将未使用的内存部分保留在磁盘上，并且仅在需要时将其页面化到物理内存中。
+- en: For the most part, this kind of memory management works well, especially for
+    interactive and GUI programs (which is good, or your laptop would require much
+    more memory than it has). It works less well for server-based applications, since
+    those applications tend to use more of their memory. And it works particularly
+    badly for any kind of Java application (including a Swing-based GUI application
+    running on your desktop) because of the Java heap. More details about that appear
+    in [Chapter 5](ch05.html#GC).
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 大多数情况下，这种内存管理效果良好，特别是对于交互式和GUI程序（这很好，否则你的笔记本电脑将需要比它具有的内存多得多）。但对于基于服务器的应用程序来说效果不佳，因为这些应用程序倾向于更多地使用其内存。对于任何类型的Java应用程序（包括在桌面上运行的基于Swing的GUI应用程序），它的表现尤其糟糕，这是由于Java堆的存在。有关更多详细信息，请参阅[第5章](ch05.html#GC)。
+- en: System tools can also report if the system is swapping; for example, the `vmstat`
+    output has two columns (`si`, for *swap in*, and `so`, for *swap out*) that alert
+    us if the system is swapping. Disk activity is another indicator that swapping
+    might be occurring. Pay close attention to those, because a system that is swapping—moving
+    pages of data from main memory to disk, and vice versa—will have quite bad performance.
+    Systems must be configured so that swapping never occurs.
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 系统工具还可以报告系统是否在交换；例如，`vmstat`输出有两列（`si`表示*换入*，`so`表示*换出*），提醒我们系统是否在交换。磁盘活动是另一个指示器，表明可能正在发生交换。请特别注意这些，因为进行交换的系统——将数据页从主内存移动到磁盘，反之亦然——性能会非常差。系统必须配置得使交换永远不会发生。
+- en: Quick Summary
+  id: totrans-59
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: Monitoring disk usage is important for all applications. For applications that
+    don’t directly write to disk, system swapping can still affect their performance.
+  id: totrans-60
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 监控磁盘使用对所有应用程序都很重要。对于不直接写入磁盘的应用程序，系统交换仍然会影响其性能。
+- en: Applications that write to disk can be bottlenecked both because they are writing
+    data inefficiently (too little throughput) or because they are writing too much
+    data (too much throughput).
+  id: totrans-61
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 写入磁盘的应用程序可能会成为瓶颈，因为它们写入数据的效率低（吞吐量太低）或者因为它们写入了太多的数据（吞吐量太高）。
+- en: Network Usage
+  id: totrans-62
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 网络使用情况
+- en: 'If you are running an application that uses the network—for example, a REST
+    server—you must monitor the network traffic as well. Network usage is similar
+    to disk traffic: the application might be inefficiently using the network so that
+    bandwidth is too low, or the total amount of data written to a particular network
+    interface might be more than the interface is able to handle.'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果您正在运行使用网络的应用程序，例如REST服务器，您必须监视网络流量。网络使用类似于磁盘流量：应用程序可能在不高效地使用网络，以致带宽过低，或者写入到特定网络接口的数据总量可能超过接口能够处理的能力。
+- en: Unfortunately, standard system tools are less than ideal for monitoring network
+    traffic because they typically show only the number of packets and number of bytes
+    that are sent and received over a particular network interface. That is useful
+    information, but it doesn’t tell us if the network is under- or overutilized.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不幸的是，标准系统工具并不理想用于监控网络流量，因为它们通常只显示发送和接收到特定网络接口上的数据包数和字节数。这是有用的信息，但它并不能告诉我们网络是过度利用还是不足利用。
+- en: 'On Unix systems, the basic network monitoring tool is `netstat` (and on most
+    Linux distributions, `netstat` is not even included and must be obtained separately).
+    On Windows, `typeperf` can be used in scripts to monitor the network usage—but
+    here is a case where the GUI has an advantage: the standard Windows resource monitor
+    will display a graph showing what percentage of the network is in use. Unfortunately,
+    the GUI is of little help in an automated performance-testing scenario.'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在Unix系统上，基本的网络监控工具是`netstat`（在大多数Linux发行版上，甚至没有包含`netstat`，必须单独获取）。在Windows上，可以在脚本中使用`typeperf`来监视网络使用情况，但这里有一个情况，图形用户界面具有优势：标准的Windows资源监视器将显示一个图表，显示网络使用情况的百分比。不幸的是，在自动化性能测试场景中，GUI帮助不大。
+- en: 'Fortunately, many open source and commercial tools monitor network bandwidth.
+    On Unix systems, one popular command-line tool is [`nicstat`](http://sourceforge.net/projects/nicstat),
+    which presents a summary of the traffic on each interface, including the degree
+    to which the interface is utilized:'
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 幸运的是，许多开源和商业工具可以监控网络带宽。在Unix系统上，一个流行的命令行工具是[`nicstat`](http://sourceforge.net/projects/nicstat)，它显示每个接口的流量摘要，包括接口利用率的程度：
+- en: '[PRE5]'
+  id: totrans-67
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: The `e1000g1` interface is a 1,000 MB interface; it is not utilized very much
+    (0.33%) in this example. The usefulness of this tool (and others like it) is that
+    it calculates the utilization of the interface. In this output, 225.7 Kbps of
+    data are being written, and 176.2 Kbps of data are being read over the interface.
+    Doing the division for a 1,000 MB network yields the 0.33% utilization figure,
+    and the `nicstat` tool was able to figure out the bandwidth of the interface automatically.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`e1000g1`接口是一个1,000 MB接口；在本例中没有被充分利用（0.33%）。这类工具（以及类似工具）的用处在于计算接口的利用率。在这个输出中，正在写入225.7
+    Kbps的数据，并且正在读取176.2 Kbps的数据。对于1,000 MB网络进行除法运算得到0.33%的利用率数字，`nicstat`工具能够自动确定接口的带宽。'
+- en: Tools such as `typeperf` or `netstat` will report the amount of data read and
+    written, but to figure out the network utilization, you must determine the bandwidth
+    of the interface and perform the calculation in your own scripts. Be sure to remember
+    that the bandwidth is measured in bits per second (bps), although tools generally
+    report bytes per second (Bps). A 1,000-megabit network yields 125 megabytes (MB)
+    per second. In this example, 0.22 MBps are read and 0.16 MBps are written; adding
+    those and dividing by 125 yields a 0.33% utilization rate. So there is no magic
+    to `nicstat` (or similar) tools; they are just more convenient to use.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 类似`typeperf`或`netstat`的工具会报告读取和写入的数据量，但要想计算网络利用率，必须确定接口的带宽并在您自己的脚本中执行计算。请记住，带宽以每秒位数（bps）为单位测量，尽管工具通常报告每秒字节（Bps）。一个1,000兆比特网络每秒产生125兆字节（MB）。在这个例子中，读取了0.22
+    MBps，写入了0.16 MBps；将它们相加并除以125得到0.33%的利用率。因此，`nicstat`（或类似工具）并非魔术，它们只是使用起来更加方便。
+- en: Networks cannot sustain a 100% utilization rate. For local-area Ethernet networks,
+    a sustained utilization rate over 40% indicates that the interface is saturated.
+    If the network is packet-switched or utilizes a different medium, the maximum
+    possible sustained rate will be different; consult a network architect to determine
+    the appropriate goal. This goal is independent of Java, which will simply use
+    the networking parameters and interfaces of the operating system.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 网络无法持续100%的利用率。对于局域以太网网络，持续超过40%的利用率表示接口已饱和。如果网络是分组交换的或者使用不同的介质，则可能的最大持续速率将不同；请咨询网络架构师确定合适的目标。这个目标与Java无关，Java只会使用操作系统的网络参数和接口。
+- en: Quick Summary
+  id: totrans-71
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: For network-based applications, monitor the network to make sure it hasn’t become
+    a bottleneck.
+  id: totrans-72
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对于基于网络的应用程序，请监视网络，确保它没有成为瓶颈。
+- en: Applications that write to the network can be bottlenecked because they are
+    writing data inefficiently (too little throughput) or because they are writing
+    too much data (too much throughput).
+  id: totrans-73
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 写入网络的应用程序可能会因为数据写入效率低（吞吐量太少）或者写入数据过多（吞吐量过高）而成为瓶颈。
+- en: Java Monitoring Tools
+  id: totrans-74
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Java监控工具
+- en: 'To gain insight into the JVM itself, Java monitoring tools are required. These
+    tools come with the JDK:'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要深入了解JVM本身，需要使用Java监控工具。这些工具包含在JDK中：
+- en: '`jcmd`'
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jcmd`'
+- en: 'Prints basic class, thread, and JVM information for a Java process. This is
+    suitable for use in scripts; it is executed like this:'
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 打印Java进程的基本类、线程和JVM信息。这适合在脚本中使用；它是这样执行的：
+- en: '[PRE6]'
+  id: totrans-78
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: Supplying the command `help` will list all possible commands, and supplying
+    `help <*command*>` will give the syntax for a particular command.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提供`help`命令将列出所有可能的命令，并提供`help <*command*>`命令将给出特定命令的语法。
+- en: '`jconsole`'
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jconsole`'
+- en: Provides a graphical view of JVM activities, including thread usage, class usage,
+    and GC activities.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提供了JVM活动的图形视图，包括线程使用情况、类使用情况和GC活动。
+- en: '`jmap`'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jmap`'
+- en: Provides heap dumps and other information about JVM memory usage. Suitable for
+    scripting, though the heap dumps must be used in a postprocessing tool.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提供了堆转储和有关JVM内存使用的其他信息。适合脚本编写，虽然堆转储必须在后处理工具中使用。
+- en: '`jinfo`'
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jinfo`'
+- en: Provides visibility into the system properties of the JVM, and allows some system
+    properties to be set dynamically. Suitable for scripting.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提供了对JVM系统属性的可见性，并允许动态设置一些系统属性。适合脚本编写。
+- en: '`jstack`'
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jstack`'
+- en: Dumps the stacks of a Java process. Suitable for scripting.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 转储Java进程的堆栈。适合脚本编写。
+- en: '`jstat`'
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jstat`'
+- en: Provides information about GC and class-loading activities. Suitable for scripting.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提供GC和类加载活动的信息。适合脚本编写。
+- en: '`jvisualvm`'
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jvisualvm`'
+- en: A GUI tool to monitor a JVM, profile a running application, and analyze JVM
+    heap dumps (which is a postprocessing activity, though `jvisualvm` can also take
+    the heap dump from a live program).
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个 GUI 工具用于监视 JVM、分析运行中的应用程序，并分析 JVM 堆转储（尽管 `jvisualvm` 也可以从活动程序中获取堆转储）。
+- en: All of these tools are easy to run from the same machine as the JVM. If the
+    JVM is running inside a Docker container, the nongraphical tools (i.e., those
+    except `jconsole` and `jvisualvm`) can be run via the `docker exec` command, or
+    if you use `nsenter` to enter the Docker container. However, either case assumes
+    that you have installed those tools into the Docker image, which is definitely
+    recommended. It’s typical to pare down Docker images to the bare necessities of
+    your application and hence to include only the JRE, but sooner or later in production
+    you will need insight into that application, so it’s better to have the necessary
+    tools (which are bundled with the JDK) within the Docker image.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所有这些工具都可以轻松地从与 JVM 相同的机器上运行。如果 JVM 在 Docker 容器内运行，则非图形化工具（即除了 `jconsole` 和 `jvisualvm`
+    外的工具）可以通过 `docker exec` 命令运行，或者如果您使用 `nsenter` 进入 Docker 容器。无论哪种情况，都假定您已将这些工具安装到
+    Docker 镜像中，这绝对是推荐的做法。通常会将 Docker 镜像简化为应用程序的基本需求，因此仅包括 JRE，但在生产中迟早需要了解该应用程序的内部情况，因此最好在
+    Docker 镜像中包含必要的工具（这些工具与 JDK 捆绑在一起）。
+- en: '`jconsole` requires a fair amount of system resources, so running it on a production
+    system can interfere with that system. You can set up `jconsole` so that it can
+    be run locally and attach to a remote system, which won’t interfere with that
+    remote system’s performance. In a production environment, that requires installing
+    certificates to enable `jconsole` to run over SSL, and setting up a secure authentication
+    system.'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jconsole` 需要相当数量的系统资源，因此在生产系统上运行它可能会干扰该系统。您可以设置 `jconsole` 以便可以在本地运行并附加到远程系统，这样不会影响远程系统的性能。在生产环境中，这需要安装证书以使
+    `jconsole` 能够通过 SSL 运行，并设置安全认证系统。'
+- en: 'These tools fits into these broad areas:'
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些工具适用于以下广泛领域：
+- en: Basic VM information
+  id: totrans-95
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 基本 VM 信息
+- en: Thread information
+  id: totrans-96
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 线程信息
+- en: Class information
+  id: totrans-97
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 类信息
+- en: Live GC analysis
+  id: totrans-98
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实时 GC 分析
+- en: Heap dump postprocessing
+  id: totrans-99
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 堆转储后处理
+- en: Profiling a JVM
+  id: totrans-100
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对 JVM 进行性能分析
+- en: As you likely noticed, there is no one-to-one mapping here; many tools perform
+    functions in multiple areas. So rather than exploring each tool individually,
+    we’ll take a look at the functional areas of visibility that are important to
+    Java and discuss how various tools provide that information. Along the way, we’ll
+    discuss other tools (some open source, some commercial) that provide the same
+    basic functionality but have advantages over the basic JDK tools.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如您可能注意到的那样，在这里没有一一对应的映射；许多工具在多个领域执行功能。因此，我们不会单独探讨每个工具，而是看看对于 Java 重要的可见性功能区域，并讨论各种工具如何提供这些信息。沿途我们会讨论其他工具（一些开源的，一些商业的），它们提供相同基本功能但具有优于基本
+    JDK 工具的优势。
+- en: Basic VM Information
+  id: totrans-102
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 基本 VM 信息
+- en: 'JVM tools can provide basic information about a running JVM process: how long
+    it has been up, what JVM flags are in use, JVM system properties, and so on:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JVM 工具可以提供有关正在运行的 JVM 进程的基本信息：它已运行多长时间，正在使用哪些 JVM 标志，JVM 系统属性等等：
+- en: Uptime
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 运行时间
+- en: 'The length of time the JVM has been up can be found via this command:'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以通过以下命令找到 JVM 已运行时间：
+- en: '[PRE7]'
+  id: totrans-106
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: System properties
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 系统属性
+- en: 'The set of items in `System.getProperties()` can be displayed with either of
+    these commands:'
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以用以下任一命令显示`System.getProperties()`中的项目集合：
+- en: '[PRE8]'
+  id: totrans-109
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: or
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 或
+- en: '[PRE9]'
+  id: totrans-111
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: This includes all properties set on the command line with a `-D` option, any
+    properties dynamically added by the application, and the set of default properties
+    for the JVM.
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这包括通过 `-D` 选项在命令行上设置的所有属性，应用程序动态添加的任何属性，以及 JVM 的默认属性集。
+- en: JVM version
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JVM 版本
+- en: 'The version of the JVM is obtained like this:'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 获取 JVM 版本的方法如下：
+- en: '[PRE10]'
+  id: totrans-115
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: JVM command line
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JVM 命令行
+- en: 'The command line can be displayed in the VM summary tab of `jconsole`, or via
+    `jcmd`:'
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 命令行可以在 `jconsole` 的 VM 概要选项卡中显示，或者通过 `jcmd`：
+- en: '[PRE11]'
+  id: totrans-118
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: JVM tuning flags
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JVM 调优标志
+- en: 'The tuning flags in effect for an application can be obtained like this:'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以通过以下方式获取应用程序的调优标志：
+- en: '[PRE12]'
+  id: totrans-121
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: Working with tuning flags
+  id: totrans-122
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用调优标志
+- en: A lot of tuning flags can be given to a JVM, and many of those flags are a major
+    focus of this book. Keeping track of those flags and their default values can
+    be a little daunting; those last two examples of `jcmd` are useful in that regard.
+    The `command_line` command shows which flags were specified directly on the command
+    line. The `flags` command shows which flags were set on the command line, plus
+    some flags that were set directly by the JVM (because their value was determined
+    ergonomically). Including the `-all` option lists every flag within the JVM.
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JVM可以提供许多调整标志，并且其中许多标志是本书的重点关注对象。跟踪这些标志及其默认值可能有些令人生畏；这些`jcmd`的最后两个示例对此非常有用。`command_line`命令显示在命令行上直接指定的标志。`flags`命令显示在命令行上设置的标志，以及JVM直接设置的一些标志（因为它们的值是按人体工程学确定的）。包括`-all`选项会列出JVM中的每个标志。
+- en: 'Hundreds of JVM tuning flags exist, and most are obscure; it is recommended
+    that most of them never be changed (see [“Too Much Information?”](#toomuchinfo-sb)).
+    Figuring out which flags are in effect is a frequent task when diagnosing performance
+    issues, and the `jcmd` commands can do that for a running JVM. Often, you’d rather
+    figure out the platform-specific defaults for a particular JVM, in which case
+    using the `-XX:+PrintFlagsFinal` option on the command line is more useful. This
+    easiest way to do that is to execute this command:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 存在数百个JVM调整标志，其中大多数是晦涩的；建议大多数标志永远不要更改（请参阅[“信息过载？”](#toomuchinfo-sb)）。在诊断性能问题时，确定哪些标志生效是一个常见的任务，`jcmd`命令可以为正在运行的JVM执行此操作。通常，您更愿意了解特定JVM的特定于平台的默认值，在这种情况下，在命令行上使用`-XX:+PrintFlagsFinal`选项更有用。这样做的最简单方法是执行此命令：
+- en: '[PRE13]'
+  id: totrans-125
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: You should include any other options you intend to use on the command line because
+    setting some options (particularly when setting GC-related flags) will affect
+    the final value of other options. This will print out the entire list of JVM flags
+    and their values (the same as is printed via the `VM.flags -all` option to `jcmd`
+    for a live JVM).
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因为设置某些选项（特别是设置与GC相关的标志时）将影响其他选项的最终值，因此应在命令行中包含您打算使用的任何其他选项。这将打印出JVM标志及其值的完整列表（与为实时JVM使用`jcmd`的`VM.flags
+    -all`选项打印的内容相同）。
+- en: 'Flag data from these commands is printed in one of the two ways shown. The
+    colon in the first line of included output indicates that a nondefault value is
+    in use for the flag in question. This can happen for the following reasons:'
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些命令的标志数据以两种方式之一打印出来。包含输出的第一行的冒号表示正在使用标志的非默认值。这可能是因为以下原因：
+- en: The flag’s value was specified directly on the command line.
+  id: totrans-128
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 标志的值是在命令行上直接指定的。
+- en: Some other option indirectly changed that option.
+  id: totrans-129
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 某些其他选项间接地改变了该选项。
+- en: The JVM calculated the default value ergonomically.
+  id: totrans-130
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: JVM按人体工程学计算了默认值。
+- en: The second line (without a colon) indicates that value is the default value
+    for this version of the JVM. Default values for some flags may be different on
+    different platforms, which is shown in the final column of this output. `product`
+    means that the default setting of the flag is uniform across all platforms; `pd
+    product` indicates that the default setting of the flag is platform-dependent.
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第二行（没有冒号）表示该值是此版本JVM的默认值。某些标志的默认值在不同平台上可能不同，这在输出的最后一列中显示。`product`表示该标志的默认设置在所有平台上是统一的；`pd
+    product`表示该标志的默认设置是依赖于平台的。
+- en: Other possible values for the last column include `manageable` (the flag’s value
+    can be changed dynamically during runtime) and `C2 diagnostic` (the flag provides
+    diagnostic output for the compiler engineers to understand how the compiler is
+    functioning).
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后一列的其他可能值包括`manageable`（标志的值可以在运行时动态更改）和`C2 diagnostic`（该标志为编译器工程师提供诊断输出，以了解编译器的功能）。
+- en: Yet another way to see this information for a running application is with `jinfo`.
+    The advantage of `jinfo` is that it allows certain flag values to be changed during
+    execution of the program.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一种查看正在运行的应用程序的信息的方法是使用`jinfo`。`jinfo`的优点在于它允许在程序执行过程中更改某些标志值。
+- en: 'Here is how to retrieve the values of all the flags in the process:'
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里是如何检索进程中所有标志的值：
+- en: '[PRE14]'
+  id: totrans-135
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: With the `-flags` option, `jinfo` will provide information about all flags;
+    otherwise, it prints only those specified on the command line. The output from
+    either of these commands isn’t as easy to read as that from the `-XX:+PrintFlagsFinal`
+    option, but `jinfo` has other features to keep in mind.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用 `-flags` 选项，`jinfo` 将提供关于所有标志的信息；否则，它仅打印命令行指定的标志。任一命令的输出不如 `-XX:+PrintFlagsFinal`
+    选项易读，但 `jinfo` 还有其他需要注意的功能。
+- en: '`jinfo` can inspect the value of an individual flag:'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jinfo` 可以检查单个标志的值：'
+- en: '[PRE15]'
+  id: totrans-138
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Although `jinfo` does not itself indicate whether a flag is manageable, flags
+    that are manageable (as identified when using the `PrintFlagsFinal` argument)
+    can be turned on or off via `jinfo`:'
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然 `jinfo` 本身不指示标志是否可管理，但是可以通过 `jinfo` 打开或关闭可管理的标志（在使用 `PrintFlagsFinal` 参数时识别）：
+- en: '[PRE16]'
+  id: totrans-140
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: Be aware that in JDK 8, `jinfo` can change the value of any flag, but that doesn’t
+    mean that the JVM will respond to that change. For example, most flags that affect
+    the behavior of a GC algorithm are used at startup time to determine various ways
+    that the collector will behave. Altering a flag later via `jinfo` does not cause
+    the JVM to change its behavior; it will continue executing based on how the algorithm
+    was initialized. So this technique works only for those flags marked `manageable`
+    in the output of the `PrintFlagsFinal` command. In JDK 11, `jinfo` will report
+    an error if you attempt to change the value of a flag that cannot be changed.
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，在 JDK 8 中，`jinfo` 可以更改任何标志的值，但这并不意味着 JVM 将响应该更改。例如，大多数影响 GC 算法行为的标志在启动时用于确定收集器行为的各种方式。稍后通过
+    `jinfo` 改变标志并不会导致 JVM 更改其行为；它将根据算法初始化时的方式继续执行。因此，此技术仅适用于在 `PrintFlagsFinal` 命令的输出中标记为
+    `manageable` 的那些标志。在 JDK 11 中，如果尝试更改不能更改的标志的值，`jinfo` 将报告错误。
+- en: Quick Summary
+  id: totrans-142
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: '`jcmd` can be used to find the basic JVM information—including the value of
+    all the tuning flags—for a running application.'
+  id: totrans-143
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`jcmd` 可用于查找正在运行应用程序的基本 JVM 信息，包括所有调整标志的值。'
+- en: Default flag values can be found by including `-XX:+PrintFlagsFinal` on a command
+    line. This is useful for determining the default ergonomic settings of flags on
+    a particular platform.
+  id: totrans-144
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 可通过在命令行中包含 `-XX:+PrintFlagsFinal` 来查找默认标志值。这对于确定特定平台上标志的默认人体工程学设置非常有用。
+- en: '`jinfo` is useful for inspecting (and in some cases changing) individual flags.'
+  id: totrans-145
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`jinfo` 用于检查（在某些情况下更改）单个标志非常有用。'
+- en: Thread Information
+  id: totrans-146
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 线程信息
+- en: '`jconsole` and `jvisualvm` display information (in real time) about the number
+    of threads running in an application. It can be useful to look at the stack of
+    running threads to determine if they are blocked. The stacks can be obtained via
+    `jstack`:'
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`jconsole` 和 `jvisualvm` 实时显示应用程序中运行的线程数量信息。查看运行线程的堆栈可以帮助确定它们是否被阻塞。可以通过 `jstack`
+    获取堆栈信息：'
+- en: '[PRE17]'
+  id: totrans-148
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'Stack information can also be obtained from `jcmd`:'
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以通过 `jcmd` 获取堆栈信息：
+- en: '[PRE18]'
+  id: totrans-150
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: See [Chapter 9](ch09.html#ThreadPerformance) for more details on monitoring
+    thread stacks.
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更多关于监控线程堆栈的细节，请参阅 [第9章](ch09.html#ThreadPerformance)。
+- en: Class Information
+  id: totrans-152
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 类信息
+- en: Information about the number of classes in use by an application can be obtained
+    from `jconsole` or `jstat`. `jstat` can also provide information about class compilation.
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以通过 `jconsole` 或 `jstat` 获取应用程序使用的类数量信息。`jstat` 还可以提供有关类编译的信息。
+- en: See [Chapter 12](ch12.html#Misc) for more details on class usage by applications,
+    and see [Chapter 4](ch04.html#JustInTimeCompilation) for details on monitoring
+    class compilation.
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更多关于应用程序类使用情况的细节，请参阅 [第12章](ch12.html#Misc)，关于监视类编译的细节，请参阅 [第4章](ch04.html#JustInTimeCompilation)。
+- en: Live GC Analysis
+  id: totrans-155
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 实时 GC 分析
+- en: Virtually every monitoring tool reports something about GC activity. `jconsole`
+    displays live graphs of the heap usage; `jcmd` allows GC operations to be performed;
+    `jmap` can print heap summaries or information on the permanent generation or
+    create a heap dump; and `jstat` produces a lot of views of what the garbage collector
+    is doing.
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 几乎每个监控工具都会报告有关 GC 活动的信息。`jconsole` 显示堆使用情况的实时图表；`jcmd` 允许执行 GC 操作；`jmap` 可以打印堆摘要或永久代信息，或者创建堆转储；而
+    `jstat` 提供了许多关于垃圾收集器活动的视图。
+- en: See [Chapter 5](ch05.html#GC) for examples of how these programs monitor GC
+    activities.
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 查看 [第5章](ch05.html#GC) 以获取这些程序监控 GC 活动的示例。
+- en: Heap Dump Postprocessing
+  id: totrans-158
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 堆转储后处理
+- en: Heap dumps can be captured from the `jvisualvm` GUI or from the command line
+    using `jcmd` or `jmap`. The *heap dump* is a snapshot of the heap that can be
+    analyzed with various tools, including `jvisualvm`. Heap dump processing is one
+    area where third-party tools have traditionally been a step ahead of what comes
+    with the JDK, so [Chapter 7](ch07.html#Memory) uses a third-party tool—the Eclipse
+    Memory Analyzer Tool (mat)—to provide examples of how to postprocess heap dumps.
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 堆转储可以通过`jvisualvm` GUI或从命令行使用`jcmd`或`jmap`来捕获。*堆转储*是堆的快照，可以用各种工具分析，包括`jvisualvm`。堆转储处理是第三方工具传统上领先于JDK提供的一个领域，因此[第7章](ch07.html#Memory)使用第三方工具——Eclipse
+    Memory Analyzer Tool (mat)——提供堆转储后处理的示例。
+- en: Profiling Tools
+  id: totrans-160
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 性能分析工具
+- en: '*Profilers* are the most important tool in a performance analyst’s toolbox.
+    Many profilers are available for Java, each with its own advantages and disadvantages.
+    Profiling is one area where it often makes sense to use different tools—particularly
+    if they are sampling profilers. Sampling profilers tend to show issues differently,
+    so one may pinpoint performance issues better on some applications and worse on
+    others.'
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*性能分析工具*是性能分析师工具箱中最重要的工具。Java有许多性能分析工具，各有优缺点。性能分析是一个通常有意义使用不同工具的领域——特别是采样分析器。采样分析器倾向于以不同方式显示问题，因此在某些应用程序上可以更好地找出性能问题，但在其他应用程序上则可能更糟糕。'
+- en: Many common Java profiling tools are themselves written in Java and work by
+    “attaching” themselves to the application to be profiled. This attachment is via
+    a socket or via a native Java interface called the JVM Tool Interface (JVMTI).
+    The target application and the profiling tool then exchange information about
+    the behavior of the target application.
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 许多常见的Java性能分析工具本身是用Java编写的，并通过“附加”到要分析的应用程序来工作。此附加是通过套接字或通过称为JVM工具接口（JVMTI）的本机Java接口进行的。然后目标应用程序和性能分析工具交换关于目标应用程序行为的信息。
+- en: This means you must pay attention to tuning the profiling tool just as you would
+    tune any other Java application. In particular, if the application being profiled
+    is large, it can transfer quite a lot of data to the profiling tool, so the profiling
+    tool must have a sufficiently large heap to handle the data. It is often a good
+    idea to run the profiling tool with a concurrent GC algorithm as well; ill-timed
+    full GC pauses in the profiling tool can cause the buffers holding the data to
+    overflow.
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这意味着您必须像调整任何其他Java应用程序一样注意调整性能分析工具。特别是，如果被分析的应用程序很大，它可能会向性能分析工具传输大量数据，因此性能分析工具必须具有足够大的堆来处理数据。同时运行性能分析工具和并发GC算法通常是个好主意；性能分析工具中的不适时的全GC暂停可能导致保存数据的缓冲区溢出。
+- en: Sampling Profilers
+  id: totrans-164
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 采样分析器
+- en: 'Profiling happens in one of two modes: sampling mode or instrumented mode.
+    *Sampling mode* is the basic mode of profiling and carries the least amount of
+    overhead. That’s important, since one of the pitfalls of profiling is that by
+    introducing measurement into the application, you are altering its performance
+    characteristics.^([1](ch03.html#idm45775556710120)) Limiting the impact of profiling
+    will lead to results that more closely model the way the application behaves under
+    usual circumstances.'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 分析有两种模式：采样模式或插装模式。*采样模式*是基本的分析模式，开销最小。这很重要，因为分析的一个陷阱是通过引入测量到应用程序中，改变了其性能特征。^([1](ch03.html#idm45775556710120))
+    限制分析的影响将导致更接近应用程序在通常情况下行为的结果。
+- en: Unfortunately, sampling profilers can be subject to all sorts of errors. Sampling
+    profilers work when a timer periodically fires; the profiler then looks at each
+    thread and determines which method the thread is executing. That method is then
+    charged with having been executed since the timer previously fired.
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不幸的是，采样分析器可能会遭受各种错误。采样分析器在定时器定期触发时工作；然后分析器查看每个线程并确定线程正在执行的方法。该方法则被认为自上次定时器触发以来已执行。
+- en: The most common sampling error is illustrated by [Figure 3-1](#FigureProfile).
+    The thread here is alternating between executing `methodA` (shown in the shaded
+    bars) and `methodB` (shown in the clear bars). If the timer fires only when the
+    thread happens to be in `methodB`, the profile will report that the thread spent
+    all its time executing `methodB`; in reality, more time was actually spent in
+    `methodA`.
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最常见的采样错误由[图 3-1](#FigureProfile)说明。这里的线程在执行`methodA`（显示为阴影条）和`methodB`（显示为清晰条）之间交替。如果计时器只在线程恰好在`methodB`时触发，配置文件将报告线程花费所有时间执行`methodB`；实际上，更多的时间实际上是花在`methodA`上的。
+- en: '![Figure of Methods Executing Alternately](assets/jp2e_0301.png)'
+  id: totrans-168
+  prefs: []
+  type: TYPE_IMG
+  zh: '![交替执行方法的图示](assets/jp2e_0301.png)'
+- en: Figure 3-1\. Alternate method execution
+  id: totrans-169
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-1\. 替代方法执行
+- en: This is the most common sampling error, but it is by no means the only one.
+    The way to minimize this error is to profile over a longer period of time and
+    to reduce the time interval between samples. Reducing the interval between samples
+    is counterproductive to the goal of minimizing the impact of profiling on the
+    application; there is a balance here. Profiling tools resolve that balance differently,
+    which is one reason that one profiling tool may happen to report much different
+    data than another tool.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是最常见的采样错误，但绝不是唯一的。减少此错误的方法是在较长的时间段内进行分析，并减少样本之间的时间间隔。减少样本间隔对减少分析对应用程序的影响目标是适得其反的；这里存在一种平衡。分析工具在解决这种平衡时的方法各不相同，这是一个分析工具可能报告的数据与另一个工具大相径庭的原因之一。
+- en: 'That kind of error is inherent to all sampling profilers, but is worse in many
+    Java profilers (particularly older ones). This is due to *safepoint bias*. In
+    the common Java interface for profilers, the profiler can get the stack trace
+    of a thread only when the thread is at a safepoint. Threads automatically go into
+    a safepoint when they are:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种错误是所有采样分析器固有的，但在许多 Java 分析器中（尤其是旧版本中）更为严重。这是由于*安全点偏差*。在分析器的常见 Java 接口中，只有线程在安全点时分析器才能获取线程的堆栈跟踪。当线程处于以下状态时，线程会自动进入安全点：
+- en: Blocked on a synchronized lock
+  id: totrans-172
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 阻塞在同步锁上
+- en: Blocked waiting for I/O
+  id: totrans-173
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 阻塞等待 I/O
+- en: Blocked waiting for a monitor
+  id: totrans-174
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 阻塞等待监视器
+- en: Parked
+  id: totrans-175
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 停放
+- en: Executing Java Native Interface (JNI) code (unless they perform a GC locking
+    function)
+  id: totrans-176
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 执行 Java Native Interface (JNI) 代码（除非它们执行 GC 锁定功能）
+- en: In addition, the JVM can set a flag asking for threads to go into a safepoint.
+    Code to check this flag (and go to a safepoint if necessary) is inserted into
+    the JVM code at key locations, including during certain memory allocations and
+    at loop or method transitions in compiled code. No specification indicates when
+    these safepoint checks occur, and they vary between releases.
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，JVM 可以设置一个标志，要求线程进入安全点。代码用于检查此标志（如有必要，在某些内存分配或在编译代码的循环或方法转换期间插入到 JVM 代码中）。没有规范指示这些安全点检查何时发生，它们在发布版本之间有所不同。
+- en: 'The effect of this safepoint bias on sampling profilers can be profound: because
+    the stack can be sampled only when the thread is at a safepoint, the sampling
+    becomes even less reliable. In [Figure 3-1](#FigureProfile), it would be unlikely
+    that a random profiler without safepoint bias would fire the thread samples only
+    during the execution of `methodB`. But with safepoint bias, it is easier to see
+    scenarios where `methodA` never goes to a safepoint and all work is therefore
+    charged to `methodB`.'
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种安全点偏差对采样分析器的影响可以是深远的：因为只有线程在安全点时才能对栈进行采样，所以采样变得更加不可靠。在[图 3-1](#FigureProfile)中，如果没有安全点偏差的随机分析器可能很难仅在`methodB`执行时触发线程采样。但是有了安全点偏差，更容易看到`methodA`永远不进入安全点的情况，因此所有工作都计入`methodB`。
+- en: Java 8 provides a different way for tools to gather stack traces (which is one
+    reason older tools have safepoint bias, and newer tools tend not to have safepoint
+    bias, though that does require that the newer tool be rewritten to use the new
+    mechanism). In programmatic terms, this is done by using the `AsyncGetCallTrace`
+    interface. Profilers that use this interface tend to be called *async profilers*.
+    The *async* here refers to the way the JVM provides the stack information, and
+    not anything about how the profiling tool works; it’s called *async* because the
+    JVM can provide the stack at any point in time, without waiting for the thread
+    to come to a (synchronous) safepoint.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Java 8为工具提供了一种不同的方式来收集堆栈跟踪信息（这也是较旧的工具存在安全点偏差的一个原因，而较新的工具则倾向于没有安全点偏差，尽管这需要较新的工具重写以使用新的机制）。在编程术语中，这是通过使用`AsyncGetCallTrace`接口来完成的。使用此接口的分析器通常被称为*异步分析器*。这里的*异步*指的是JVM提供堆栈信息的方式，并不是指分析工具的工作方式；它被称为*异步*是因为JVM可以在任何时间点提供堆栈信息，而不必等待线程达到（同步的）安全点。
+- en: Profilers that use this async interface hence have fewer sampling artifacts
+    than other sampling profilers (though they’re still subject to errors like that
+    in [Figure 3-1](#FigureProfile)). The async interface was made public in Java
+    8 but existed as a private interface well before that.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用此异步接口的分析器比其他采样分析器具有更少的采样伪像（尽管它们仍然会受到类似于[图 3-1](#FigureProfile)中错误的影响）。异步接口在Java
+    8中被公开，但在此之前作为私有接口存在很长一段时间。
+- en: '[Figure 3-2](#FigureSampleProfile) shows a basic sampling profile taken to
+    measure the performance of a REST server that provides sample stock data from
+    the application described in [Chapter 2](ch02.html#SampleApplications). The REST
+    call is configured to return a byte stream containing the compressed, serialized
+    form of the stock object (part of an example we’ll explore in [Chapter 12](ch12.html#Misc)).
+    We’ll use that sample program for examples throughout this section.'
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[图 3-2](#FigureSampleProfile)显示了一个基本的采样分析报告，用于测量提供来自[第2章](ch02.html#SampleApplications)描述的应用程序的样本股票数据的REST服务器的性能。
+    REST调用配置为返回包含股票对象的压缩序列化形式的字节流（这是我们将在[第12章](ch12.html#Misc)中探讨的示例的一部分）。我们将在本节中的示例中使用该示例程序。'
+- en: '![A profile from a sampling profiler.](assets/jp2e_0302.png)'
+  id: totrans-182
+  prefs: []
+  type: TYPE_IMG
+  zh: '![来自采样分析器的分析报告。](assets/jp2e_0302.png)'
+- en: Figure 3-2\. A sample-based profile
+  id: totrans-183
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-2\. 采样分析报告示例
+- en: This screenshot is from the Oracle Developer Studio profiler. This tool uses
+    the async profiling interface, though it is not usually called an async profiler
+    (likely for historical reasons, since it began using that interface when the interface
+    was private and hence predates the popular use of the async profiler term). It
+    provides various views into the data; in this view, we see the methods that consumed
+    the most CPU cycles. Several of those methods are related to object serialization
+    (e.g., the `ObjectOutputStream.writeObject0()` method), and many are related to
+    calculating the actual data (e.g., the `Math.pow()` method).^([2](ch03.html#idm45775556676248))
+    Still, the object serialization is dominating this profile; to improve performance,
+    we’ll need to improve the serialization performance.
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此截图来自Oracle Developer Studio分析器。该工具使用异步分析接口，尽管通常不被称为异步分析器（可能是由于历史原因，因为它在该接口是私有的时候开始使用该接口，因此早于异步分析器术语的流行使用）。它提供了对数据的各种视图；在这个视图中，我们看到消耗最多CPU周期的方法。其中一些方法与对象序列化有关（例如，`ObjectOutputStream.writeObject0()`方法），而许多方法与计算实际数据有关（例如，`Math.pow()`方法）。^([2](ch03.html#idm45775556676248))
+    尽管如此，对象序列化在这个分析中占据主导地位；为了提高性能，我们需要改进序列化性能。
+- en: 'Note carefully the last statement: it is the performance of serialization that
+    must be improved, and not the performance of the `writeObject0()` method itself.
+    The common assumption when looking at a profile is that improvements must come
+    from optimizing the top method in the profile. However, that approach is often
+    too limiting. In this case, the `writeObject0()` method is part of the JDK; its
+    performance isn’t going to be improved without rewriting the JVM. But we do know
+    from the profile that the serialization path is where our performance bottleneck
+    lies.'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请仔细注意最后一句话：需要改进的是序列化的性能，而不是`writeObject0()`方法本身的性能。在查看分析报告时的常见假设是优化应从分析报告中排名靠前的方法开始。然而，这种方法通常过于局限。在这种情况下，`writeObject0()`方法是JDK的一部分；不会通过重写JVM来改进其性能。但是我们从分析报告中知道，序列化路径是我们性能瓶颈所在的地方。
+- en: So the top method(s) in a profile should point you to the area in which to search
+    for optimizations. Performance engineers aren’t going to attempt to make JVM methods
+    faster, but they can figure out how to speed up object serialization in general.
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，概要中的顶部方法应该指向您搜索优化区域的位置。性能工程师不会尝试使 JVM 方法更快，但他们可以找出如何加速对象序列化。
+- en: We can visualize the sampling output in two additional ways; both visually display
+    the call stack. The newest approach is called a *flame graph*, which is an interactive
+    diagram of the call stacks within an application.
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以以两种额外的方式可视化抽样输出；两者都直观地显示调用堆栈。最新的方法称为*火焰图*，它是应用程序内调用堆栈的交互式图表。
+- en: '[Figure 3-3](#FigureFlameGraph) shows a portion of a flame graph from using
+    the open source [`async-profiler` project](https://oreil.ly/DbNSL). A flame graph
+    is a bottom-up diagram of the methods using the most CPU. In this section of the
+    graph, the `getStockObject()` method is taking all the time. Roughly 60% of that
+    time is spent in the `writeObject()` call, and 40% of the time in the constructor
+    of the `StockPriceHistoryImpl` object. Similarly, we can read up the stack of
+    each of those methods and locate our performance bottlenecks. The graph itself
+    is interactive, so you can click lines and see information about the method—including
+    the full name where that gets cut off, the CPU cycles, and so on.'
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[图 3-3](#FigureFlameGraph) 展示了使用开源 [`async-profiler` 项目](https://oreil.ly/DbNSL)
+    的一部分火焰图。火焰图是方法使用大量 CPU 的自下而上图表。在图的这一部分中，`getStockObject()` 方法占据了所有时间。大约 60% 的时间花费在
+    `writeObject()` 调用中，而 40% 的时间花费在 `StockPriceHistoryImpl` 对象的构造函数中。类似地，我们可以查看每个方法的堆栈并找到性能瓶颈。图本身是交互式的，因此您可以单击行并查看有关方法的信息，包括被截断的完整名称、CPU
+    周期等。'
+- en: The older (though still useful) approach to visualizing the performance is a
+    top-down approach known as the *call tree*. [Figure 3-4](#FigureCallTree) shows
+    an example.
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 较旧（尽管仍然有用）的性能可视化方法是一种自上而下的方法，称为*调用树*。[图 3-4](#FigureCallTree) 展示了一个示例。
+- en: '![A flame graph from a sampling profiler.](assets/jp2e_0303.png)'
+  id: totrans-190
+  prefs: []
+  type: TYPE_IMG
+  zh: '![来自抽样分析器的火焰图。](assets/jp2e_0303.png)'
+- en: Figure 3-3\. A flame graph from a sampling profiler
+  id: totrans-191
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-3\. 来自抽样分析器的火焰图
+- en: '![A call tree from a sampling profiler.](assets/jp2e_0304.png)'
+  id: totrans-192
+  prefs: []
+  type: TYPE_IMG
+  zh: '![来自抽样分析器的调用树。](assets/jp2e_0304.png)'
+- en: Figure 3-4\. A call tree from a sampling profiler
+  id: totrans-193
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-4\. 来自抽样分析器的调用树
+- en: 'In this case, we have similar data starting with the top: of 100% of time,
+    44% was spent by the `Errors.process()` method and its descendants. Then we drill
+    into a parent and see where its children are spending time. For example, of the
+    17% of total time spent in the `getStockObject()` method, 10% of that time was
+    spent in `writeObject0` and 7% in the constructor.'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这种情况下，我们从顶部开始具有类似的数据：100% 的时间中，`Errors.process()` 方法及其后继消耗了 44%。然后我们深入到父级并查看其子级在哪里花费时间。例如，在`getStockObject()`
+    方法中，总时间的 17% 中，10% 的时间花费在 `writeObject0` 中，7% 在构造函数中。
+- en: Quick Summary
+  id: totrans-195
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: Sampling-based profilers are the most common kind of profiler.
+  id: totrans-196
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 基于抽样的分析器是最常见的一种分析器。
+- en: Because of their relatively low performance impact, sampling profilers introduce
+    fewer measurement artifacts.
+  id: totrans-197
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 由于其相对较低的性能影响，抽样分析器引入较少的测量工件。
+- en: Sampling profilers that can use asynchronous stack collection will have fewer
+    measurement artifacts.
+  id: totrans-198
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用可以进行异步堆栈收集的抽样分析器将减少测量工件。
+- en: Different sampling profiles behave differently; each may be better for a particular
+    application.
+  id: totrans-199
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 不同的抽样配置表现不同；每种对特定应用程序可能更好。
+- en: Instrumented Profilers
+  id: totrans-200
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 仪器化分析器
+- en: '*Instrumented profilers* are much more intrusive than sampling profilers, but
+    they can also give more beneficial information about what’s happening inside a
+    program.'
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*仪器化的分析器*比抽样分析器更具侵入性，但它们也可以提供关于程序内部操作的更多有益信息。'
+- en: Instrumented profilers work by altering the bytecode sequence of classes as
+    they are loaded (inserting code to count the invocations, and so on). They are
+    much more likely to introduce performance differences into the application than
+    are sampling profilers. For example, the JVM will inline small methods (see [Chapter 4](ch04.html#JustInTimeCompilation))
+    so that no method invocation is needed when the small-method code is executed.
+    The compiler makes that decision based on the size of the code; depending on how
+    the code is instrumented, it may no longer be eligible to be inlined. This may
+    cause the instrumented profiler to overestimate the contribution of certain methods.
+    And inlining is just one example of a decision that the compiler makes based on
+    the layout of the code; in general, the more the code is instrumented (changed),
+    the more likely it is that its execution profile will change.
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 插装分析器通过修改类加载时的字节码序列（插入代码来计算调用次数等）来工作。它们更有可能在应用程序中引入性能差异，而不是采样分析器。例如，JVM会内联小方法（见[第
+    4 章](ch04.html#JustInTimeCompilation)），这样在执行小方法代码时就不需要方法调用。编译器根据代码的大小来做出这个决定；根据代码的插装方式，可能不能再内联。这可能导致插装分析器高估某些方法的贡献。内联只是编译器根据代码布局做出的一个决定的示例；一般来说，代码插装（修改）越多，执行配置文件的概率就会更高。
+- en: 'Because of the changes introduced into the code via instrumentation, it is
+    best to limit its use to a few classes. This means it is best used for second-level
+    analysis: a sampling profiler can point to a package or section of code, and then
+    the instrumented profiler can be used to drill into that code if needed.'
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于插装引入的代码更改，最好将其用于少数几个类。这意味着最好用于二级分析：采样分析器可以指向一个包或代码段，然后如果需要，可以使用插装分析器来深入分析该代码。
+- en: '[Figure 3-5](#FigureInstrumentedProfile) uses an instrumenting profiler (which
+    is not using the async interfaces) to look at the sample REST server.'
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[图 3-5](#FigureInstrumentedProfile) 使用一个插装分析器（不使用异步接口）来查看样本 REST 服务器。'
+- en: '![A profile from an instrumented profiler.](assets/jp2e_0305.png)'
+  id: totrans-205
+  prefs: []
+  type: TYPE_IMG
+  zh: '![一个来自插装分析器的分析](assets/jp2e_0305.png)'
+- en: Figure 3-5\. An instrumented profile
+  id: totrans-206
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-5\. 插装分析的一个示例
+- en: A few things are different about this profiler. First, the dominant time is
+    attributed to the `writeObject()` method and not the `writeObject0()` method.
+    That’s because private methods are filtered out of the instrumentation. Second,
+    a new method from the entity manager appears; this didn’t appear earlier because
+    it was inlined into the constructor in the sampling case.
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个分析器与其他分析器有几点不同。首先，主要时间归因于`writeObject()`方法，而不是`writeObject0()`方法。这是因为私有方法在检测中被过滤掉了。其次，实体管理器中出现了一个新方法；在采样情况下，这个方法内联到构造函数中，所以之前没有出现。
+- en: 'But the more important thing about this kind of profile is the invocation count:
+    we executed a whopping 33 million calls to that entity manager method, and 166
+    million calls to calculate a random number. We can have a much greater performance
+    impact by reducing the total number of calls to these methods rather than speeding
+    up their implementations, but we wouldn’t necessarily know that without the instrumentation
+    count.'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但这种类型的分析更重要的是调用次数：我们对那个实体管理器方法进行了惊人的 3300 万次调用，以及对计算随机数进行了 1.66 亿次调用。通过减少这些方法的总调用次数，我们可以获得更大的性能提升，而不是加快它们的执行速度，但如果没有插装计数，我们可能不会知道这一点。
+- en: Is this a better profile than the sampled version? It depends; there is no way
+    to know in a given situation which is the more accurate profile. The invocation
+    count of an instrumented profile is certainly accurate, and that additional information
+    is often helpful in determining where the code is spending more time and which
+    things are more fruitful to optimize.
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种分析比采样版本更好吗？这取决于情况；在特定情况下，没有办法知道哪个分析更准确。插装分析的调用次数肯定是准确的，这些额外信息通常有助于确定代码在哪里花费了更多时间，以及哪些优化更有价值。
+- en: 'In this example, both the instrumented and sampled profiles point to the same
+    general area of the code: object serialization. In practice, it is possible for
+    different profilers to point to completely different areas of the code. Profilers
+    are good estimators, but they are only making estimates: some of them will be
+    wrong some of the time.'
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个例子中，无论是插装还是采样的分析器，都指向了代码的同一大致区域：对象序列化。实际上，不同的分析器可能指向完全不同的代码区域。分析器是良好的估算工具，但它们只是在估算：它们有时候会出错。
+- en: Quick Summary
+  id: totrans-211
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: Instrumented profilers yield more information about an application but could
+    have a greater effect on the application than a sampling profiler.
+  id: totrans-212
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 工具化的性能分析器提供了关于应用程序更多的信息，但可能对应用程序的影响大于采样分析器。
+- en: Instrumented profilers should be set up to instrument small sections of the
+    code—a few classes or packages. That limits their impact on the application’s
+    performance.
+  id: totrans-213
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 工具化的性能分析器应设置为仪器化代码的小部分——几个类或包。这限制了它们对应用程序性能的影响。
+- en: Blocking Methods and Thread Timelines
+  id: totrans-214
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 阻塞方法和线程时间轴
+- en: '[Figure 3-6](#FigureBlockProfile) shows the REST server using a different instrumented
+    profiling tool: the profiler built into `jvisualvm`. Now the execution time is
+    dominated by the `select()` methods (and to a lesser extent, the `run()` methods
+    of the `TCPTransport` connection handler).'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[图 3-6](#FigureBlockProfile) 展示了使用不同工具化分析器——内置于 `jvisualvm` 的分析器——的 REST 服务器。现在执行时间主要由
+    `select()` 方法（以及 `TCPTransport` 连接处理器的 `run()` 方法）主导。'
+- en: '![A profile that shows blocked methods.](assets/jp2e_0306.png)'
+  id: totrans-216
+  prefs: []
+  type: TYPE_IMG
+  zh: '![显示阻塞方法的分析](assets/jp2e_0306.png)'
+- en: Figure 3-6\. A profile with blocked methods
+  id: totrans-217
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-6\. 带有阻塞方法的分析
+- en: Those methods (and similar blocking methods) do not consume CPU time, so they
+    are not contributing to the overall CPU usage of the application. Their execution
+    cannot necessarily be optimized. Threads in the application are not spending 673
+    seconds executing code in the `select()` method; they are spending 673 seconds
+    waiting for a selection event to occur.
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些方法（以及类似的阻塞方法）不消耗 CPU 时间，因此它们不会增加应用程序的整体 CPU 使用率。它们的执行不能必然优化。应用程序中的线程并非在 `select()`
+    方法中执行代码 673 秒；它们在等待选择事件发生 673 秒。
+- en: For that reason, most profilers will not report methods that are blocked; those
+    threads are shown as being idle. In this particular example, that is a good thing.
+    Threads wait in the `select()` method because no data is flowing into the server;
+    they are not being inefficient. That is their normal state.
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，大多数性能分析器不会报告被阻塞的方法；这些线程被显示为空闲状态。在这个特定示例中，这是件好事。线程在 `select()` 方法中等待，因为没有数据流入服务器；它们并不低效。这是它们的正常状态。
+- en: In other cases, you do want to see the time spent in those blocking calls. The
+    time that a thread spends inside the `wait()` method—waiting for another thread
+    to notify it—is a significant determinant of the overall execution time of many
+    applications. Most Java-based profilers have filter sets and other options that
+    can be tweaked to show or hide these blocking calls.
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在其他情况下，确实希望看到在这些阻塞调用中花费的时间。线程在 `wait()` 方法内等待——等待另一个线程通知它——是许多应用程序整体执行时间的重要决定因素。大多数基于
+    Java 的性能分析器具有可以调整以显示或隐藏这些阻塞调用的过滤集和其他选项。
+- en: Alternately, it is usually more fruitful to examine the execution patterns of
+    threads rather than the amount of time a profiler attributes to the blocking method
+    itself. [Figure 3-7](#FigureStudioTimeline) shows a thread display from the Oracle
+    Developer Studio profiling tool.
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 或者，通常更有成效的是检查线程的执行模式，而不是分析器将时间归因于阻塞方法本身。[图 3-7](#FigureStudioTimeline) 展示了来自
+    Oracle Developer Studio 分析工具的线程显示。
+- en: '![A profile showing per-thread execution information](assets/jp2e_0307.png)'
+  id: totrans-222
+  prefs: []
+  type: TYPE_IMG
+  zh: '![显示每个线程执行信息的分析](assets/jp2e_0307.png)'
+- en: Figure 3-7\. A thread timeline profile
+  id: totrans-223
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-7\. 线程时间轴分析
+- en: 'Each horizontal area here is a different thread (so the figure shows nine threads:
+    thread 1.14 to thread 1.22). The colored (or different grayscale) bars represent
+    execution of different methods; blank areas represent places where the thread
+    is not executing. At a high level, observe that thread 1.14 executed code and
+    then waited for something.'
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里每个水平区域都是一个不同的线程（因此图中显示了九个线程：从线程 1.14 到线程 1.22）。彩色（或不同灰度）条代表不同方法的执行；空白区域表示线程未执行的地方。从高层次来看，观察到线程
+    1.14 执行了代码，然后等待某些事情。
+- en: Notice too the blank areas where no thread appears to be executing. The image
+    shows only nine of many threads in the application, so it is possible that these
+    threads are waiting for one of those other threads to do something, or the thread
+    could be executing a blocking `read()` (or similar) call.
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 还要注意空白区域，看不到任何线程在执行。这张图片只显示了应用程序中的九个线程中的九个，因此可能是这些线程在等待其他线程做某事，或者线程可能正在执行一个阻塞的
+    `read()` （或类似的）调用。
+- en: Quick Summary
+  id: totrans-226
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: Threads that are blocked may or may not be a source of a performance issue;
+    it is necessary to examine why they are blocked.
+  id: totrans-227
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 阻塞的线程可能或可能不是性能问题的源头；有必要检查它们为何被阻塞。
+- en: Blocked threads can be identified by the method that is blocking or by a timeline
+    analysis of the thread.
+  id: totrans-228
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 阻塞线程可以通过阻塞方法或线程的时间轴分析来识别。
+- en: Native Profilers
+  id: totrans-229
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 本地分析器
+- en: Tools like `async-profiler` and Oracle Developer Studio have the capability
+    to profile native code in addition to Java code. This has two advantages.
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 像 `async-profiler` 和 Oracle Developer Studio 这样的工具除了可以分析 Java 代码外，还能够分析本地代码。这有两个优点。
+- en: First, significant operations occur in native code, including within native
+    libraries and native memory allocation. In [Chapter 8](ch08.html#NativeMemory),
+    we’ll use a native profiler to see an example of a native memory allocation that
+    caused a real-world issue. Using the native profiler to track memory usage quickly
+    pinpointed the root cause.
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，在本地代码中进行重要操作，包括在本地库和本地内存分配中。在 [第 8 章](ch08.html#NativeMemory) 中，我们将使用本地分析器查看一个导致真实问题的本地内存分配示例。使用本地分析器快速定位了根本原因。
+- en: Second, we typically profile to find bottlenecks in application code, but sometimes
+    the native code is unexpectedly dominating performance. We would prefer to find
+    out our code is spending too much time in GC by examining GC logs (as we’ll do
+    in [Chapter 6](ch06.html#Collectors)), but if we forget that path, a profiler
+    that understands native code will quickly show us we’re spending too much time
+    in GC. Similarly, we would generally limit a profile to the period after the program
+    has warmed up, but if compilation threads ([Chapter 4](ch04.html#JustInTimeCompilation))
+    are running and taking too much CPU, a native-capable profiler will show us that.
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其次，我们通常进行分析以找出应用程序代码中的瓶颈，但有时本地代码意外地占主导地位。我们更愿意通过检查 GC 日志（正如我们将在 [第 6 章](ch06.html#Collectors)
+    中所做的那样）来发现我们的代码在 GC 中花费了过多时间，但如果忘记了这条路径，一个理解本地代码的分析器将迅速显示出我们在 GC 中花费了过多的时间。同样地，我们通常会限制分析到程序热身后的时期，但如果编译线程（[第
+    4 章](ch04.html#JustInTimeCompilation)）正在运行并且消耗了过多的 CPU，一个支持本地代码的分析器将显示给我们。
+- en: When you looked at the flame graph for our sample REST server, I showed only
+    a small portion for readability. [Figure 3-8](#FigureNativeFlameGraph) shows the
+    entire graph.
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你查看我们示例 REST 服务器的火焰图时，为了可读性只展示了一小部分。[图 3-8](#FigureNativeFlameGraph) 显示了整个图。
+- en: At the bottom of this graph are five components. The first two (from JAX-RS
+    code) are application threads and Java code. The third, though, is the GC for
+    the process, and the fourth is the compiler.^([3](ch03.html#idm45775556595416))
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在图表的底部有五个组件。前两个（来自 JAX-RS 代码）是应用线程和 Java 代码。第三个是进程的 GC，第四个是编译器。^([3](ch03.html#idm45775556595416))
+- en: '![A profile showing per-thread execution information](assets/jp2e_0308.png)'
+  id: totrans-235
+  prefs: []
+  type: TYPE_IMG
+  zh: '![显示每个线程执行信息的概要文件](assets/jp2e_0308.png)'
+- en: Figure 3-8\. A flame graph including native code
+  id: totrans-236
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-8\. 包含本地代码的火焰图
+- en: Quick Summary
+  id: totrans-237
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: Native profilers provide visibility into both the JVM code and the application
+    code.
+  id: totrans-238
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 本地分析器提供了对 JVM 代码和应用程序代码的可见性。
+- en: If a native profiler shows that time in GC dominates the CPU usage, tuning the
+    collector is the right thing to do. If it shows significant time in the compilation
+    threads, however, that is usually not affecting the application’s performance.
+  id: totrans-239
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果本地分析器显示 GC 占用 CPU 使用时间过多，则调整收集器是正确的做法。然而，如果显示编译线程占用了显著的时间，则通常不会影响应用程序的性能。
+- en: Java Flight Recorder
+  id: totrans-240
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Java 飞行记录器
+- en: '*Java Flight Recorder* (JFR) is a feature of the JVM that performs lightweight
+    performance analysis of applications while they are running. As its name suggests,
+    JFR data is a history of events in the JVM that can be used to diagnose the past
+    performance and operations of the JVM.'
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*Java 飞行记录器*（JFR）是 JVM 的一个特性，它在应用程序运行时执行轻量级性能分析。顾名思义，JFR 数据是 JVM 中事件的历史记录，可用于诊断
+    JVM 的过去性能和操作。'
+- en: JFR was originally a feature of the JRockit JVM from BEA Systems. It eventually
+    made its way into Oracle’s HotSpot JVM; in JDK 8, only the Oracle JVM supports
+    JFR (and it is licensed for use only by Oracle customers). In JDK 11, however,
+    JFR is available in open source JVMs including the AdoptOpenJDK JVMs. Because
+    JFR is open source in JDK 11, it is possible for it to be backported in open source
+    to JDK 8, so AdoptOpenJDK and other versions of JDK 8 may someday include JFR
+    (though that is not the case at least through 8u232).
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JFR 最初是 BEA Systems 的 JRockit JVM 的一个特性。最终它进入了 Oracle 的 HotSpot JVM；在 JDK 8
+    中，只有 Oracle JVM 支持 JFR（并且仅许 Oracle 客户使用）。然而，在 JDK 11 中，JFR 可在包括 AdoptOpenJDK JVM
+    在内的开源 JVM 中使用。由于 JDK 11 中的 JFR 是开源的，因此有可能将其移植回 JDK 8 的开源版本中，因此 AdoptOpenJDK 和其他
+    JDK 8 的版本可能会在未来某天包含 JFR（尽管至少在 8u232 中尚未如此）。
+- en: The basic operation of JFR is that a set of events is enabled (for example,
+    one event is that a thread is blocked waiting for a lock), and each time a selected
+    event occurs, data about that event is saved (either in memory or to a file).
+    The data stream is held in a circular buffer, so only the most recent events are
+    available. Then you can use a tool to display those events—either taken from a
+    live JVM or read from a saved file—and you can perform analysis on those events
+    to diagnose performance issues.
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JFR 的基本操作是启用一组事件（例如，一个事件是线程因等待锁而阻塞），每次发生选定的事件时，都会保存关于该事件的数据（保存在内存中或文件中）。数据流保存在循环缓冲区中，因此只有最近的事件可用。然后，您可以使用工具显示这些事件——从实时
+    JVM 中获取或从保存的文件中读取——并对这些事件进行分析以诊断性能问题。
+- en: 'All of that—the kind of events, the size of the circular buffer, where it is
+    stored, and so on—is controlled via various arguments to the JVM, or via tools,
+    including `jcmd` commands as the program runs. By default, JFR is set up so that
+    it has very low overhead: an impact below 1% of the program’s performance. That
+    overhead will change as more events are enabled, as the threshold at which events
+    are reported is changed, and so on. The details of all that configuration are
+    discussed later in this section, but first we’ll examine what the display of these
+    events look like, since that makes it easier to understand how JFR works.'
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所有这些——事件的类型、循环缓冲区的大小、存储位置等等——都通过 JVM 的各种参数或在程序运行时通过工具（包括 `jcmd` 命令）来控制。默认情况下，JFR
+    被设置为具有非常低的开销：对程序性能影响低于 1%。随着启用更多事件、更改事件报告阈值等，此开销将发生变化。所有这些配置的详细信息将在本节后面讨论，但首先我们将研究这些事件显示看起来如何，因为这样更容易理解
+    JFR 的工作原理。
+- en: Java Mission Control
+  id: totrans-245
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: Java Mission Control
+- en: The usual tool to examine JFR recordings is *Java Mission Control* (`jmc`),
+    though other tools exist, and you can use toolkits to write your own analysis
+    tools. In the shift to a full open source JVM, `jmc` was moved out of the OpenJDK
+    source base and into a separate project. This allows `jmc` to evolve on a separate
+    release schedule and path, though at first it can be a little confusing to deal
+    with the separate releases.
+  id: totrans-246
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 检查 JFR 记录的通常工具是 *Java Mission Control*（`jmc`），尽管存在其他工具，并且您可以使用工具包编写自己的分析工具。在全面转向全开源
+    JVM 过程中，`jmc` 已从 OpenJDK 源代码库中移出，并成为一个独立的项目。这使得 `jmc` 可以按独立的发布时间表和路径进行演化，尽管最初可能处理独立的发布有点令人困惑。
+- en: In JDK 8, `jmc` version 5 is bundled with Oracle’s JVM (the only JVM for which
+    JFR is available). JDK 11 can use `jmc` version 7, though for now, the binaries
+    for that must be obtained from the [OpenJDK project page](http://openjdk.java.net/projects/jmc).
+    The plan is that eventually JDK builds will consume and bundle the appropriate
+    `jmc` binaries.
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 JDK 8 中，`jmc` 版本 5 随 Oracle 的 JVM 捆绑提供（这是唯一支持 JFR 的 JVM）。JDK 11 可以使用 `jmc`
+    版本 7，尽管目前必须从 [OpenJDK 项目页面](http://openjdk.java.net/projects/jmc) 获取二进制文件。计划是最终
+    JDK 构建将使用并捆绑适当的 `jmc` 二进制文件。
+- en: The Java Mission Control program (`jmc`) starts a window that displays the JVM
+    processes on the machine and lets you select one or more processes to monitor.
+    [Figure 3-9](#FigureJMCMonitor) shows the Java Management Extensions (JMX) console
+    of Java Mission Control monitoring our example REST server.
+  id: totrans-248
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Java Mission Control 程序（`jmc`）启动一个窗口，显示机器上的 JVM 进程，并允许您选择一个或多个进程进行监视。[图 3-9](#FigureJMCMonitor)
+    显示了 Java Mission Control 监视我们示例 REST 服务器的 Java 管理扩展（JMX）控制台。
+- en: '![A Java Mission Control window.](assets/jp2e_0309.png)'
+  id: totrans-249
+  prefs: []
+  type: TYPE_IMG
+  zh: '![Java Mission Control 窗口。](assets/jp2e_0309.png)'
+- en: Figure 3-9\. Java Mission Control monitoring
+  id: totrans-250
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-9\. Java Mission Control 监视
+- en: 'This display shows basic information that Java Mission Control is monitoring:
+    CPU usage, heap usage, and GC time. Note, though, that the CPU graph includes
+    the total CPU on the machine. The JVM itself is using about 38% of the CPU, though
+    all processes on the machine are consuming about 60% of the CPU. That is a key
+    feature of the monitoring: via the JMX console, Java Mission Control has the ability
+    to monitor the entire system, not just the JVM that has been selected. The upper
+    dashboard can be configured to display JVM information (all kinds of statistics
+    about GC, classloading, thread usage, heap usage, and so on) as well as OS-specific
+    information (total machine CPU and memory usage, swapping, load averages, and
+    so on).'
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此显示展示了 Java Mission Control 正在监控的基本信息：CPU 使用率、堆使用率和 GC 时间。不过，请注意，CPU 图表包含了机器上的总
+    CPU 使用情况。JVM 本身正在使用约 38% 的 CPU，尽管机器上所有进程总共占用了约 60% 的 CPU。这是监控的一个关键特性：通过 JMX 控制台，Java
+    Mission Control 能够监控整个系统，而不仅仅是所选择的 JVM。上部的仪表板可以配置为显示 JVM 信息（关于 GC、类加载、线程使用、堆使用等各种统计信息）以及特定于操作系统的信息（总机器
+    CPU 和内存使用情况、交换、负载平均值等等）。
+- en: Like other monitoring tools, Java Mission Control can make Java Management Extensions
+    calls into whatever managed beans the application has available.
+  id: totrans-252
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与其他监控工具一样，Java Mission Control 可以调用 Java 管理扩展（JMX）调用，访问应用程序可用的任何托管 bean。
+- en: JFR Overview
+  id: totrans-253
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: JFR 概述
+- en: With the appropriate tool, we can then look into how JFR works. This example
+    uses a JFR recording taken from our REST server over a 6-minute period. As the
+    recording is loaded into Java Mission Control, the first thing it displays is
+    a basic monitoring overview ([Figure 3-10](#FigureJFRGeneral)).
+  id: totrans-254
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过适当的工具，我们可以深入了解 JFR 的工作原理。此示例使用从我们的 REST 服务器获取的 JFR 记录，持续时间为 6 分钟。当记录加载到 Java
+    Mission Control 中时，它首先显示的是基本的监控概述（[图 3-10](#FigureJFRGeneral)）。
+- en: '![Basic Data Display from a JFR](assets/jp2e_0310.png)'
+  id: totrans-255
+  prefs: []
+  type: TYPE_IMG
+  zh: '![来自 JFR 的基本数据显示](assets/jp2e_0310.png)'
+- en: Figure 3-10\. Java Flight Recorder general information
+  id: totrans-256
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-10\. Java Flight Recorder 概述
+- en: This display is similar to what Java Mission Control displays when doing basic
+    monitoring. Above the gauges showing CPU and heap usage is a timeline of events
+    (represented by a series of vertical bars). The timeline allows us to zoom into
+    a particular region of interest; although in this example the recording was taken
+    over a 6-minute period, I zoomed into a 38-second interval near the end of the
+    recording.
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此显示类似于 Java Mission Control 在进行基本监控时显示的内容。在显示 CPU 和堆使用率的仪表之上是事件时间轴（由一系列垂直条表示）。时间轴允许我们放大到特定感兴趣的区域；虽然在此示例中，录制持续了
+    6 分钟，但我放大到了录制末尾附近的 38 秒间隔。
+- en: 'This graph for CPU usage more clearly shows what is going on: the REST server
+    is the bottom portion of the graph (averaging about 20% usage), and the machine
+    is running at 38% CPU usage. Along the bottom, other tabs allow us to explore
+    information about system properties and how the JFR recording was made. The icons
+    that run down the left side of the window are more interesting: those icons provide
+    visibility into the application behavior.'
+  id: totrans-258
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此 CPU 使用率图更清楚地显示了发生的情况：REST 服务器位于图表底部（平均使用率约为 20%），整机的 CPU 使用率为 38%。底部还有其他选项卡，允许我们探索有关系统属性以及
+    JFR 记录制作方式的信息。窗口左侧的图标更加有趣：这些图标提供了对应用程序行为的可见性。
+- en: JFR Memory view
+  id: totrans-259
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: JFR 内存视图
+- en: The information gathered here is extensive. [Figure 3-11](#FigureJFRMemory)
+    shows just one panel of the Memory view.
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此处收集的信息非常广泛。[图 3-11](#FigureJFRMemory) 显示了内存视图的一个面板。
+- en: '![A display of the Java Flight Recorder Memory Panel](assets/jp2e_0311.png)'
+  id: totrans-261
+  prefs: []
+  type: TYPE_IMG
+  zh: '![Java Flight Recorder 内存面板显示](assets/jp2e_0311.png)'
+- en: Figure 3-11\. Java Flight Recorder Memory panel
+  id: totrans-262
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-11\. Java Flight Recorder 内存面板
+- en: 'This graph shows that memory is fluctuating fairly regularly as the young generation
+    is cleared (and we see that the heap overall is growing during this time: it started
+    at about 340 MB and ends about at 2 GB). The lower-left panel shows all the collections
+    that occurred during the recording, including their duration and type of collection
+    (always a `ParallelScavenge` in this example). When one of those events is selected,
+    the bottom-right panel breaks that down even further, showing all the specific
+    phases of that collection and how long each took.'
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该图显示，由于年轻代被清除（同时我们看到堆在此期间总体上是增长的：从约 340 MB 开始，最终约为 2 GB），内存波动相当规律。左下角面板显示了记录期间发生的所有收集事件，包括它们的持续时间和收集类型（在此示例中始终是
+    `ParallelScavenge`）。当选择其中一个事件时，右下角面板进一步详细显示了该收集的所有特定阶段及其持续时间。
+- en: 'The various tabs on this page provide a wealth of other information: how long
+    and how many reference objects were cleared, whether there are promotion or evacuation
+    failures from the concurrent collectors, the configuration of the GC algorithm
+    itself (including the sizes of the generations and the survivor space configurations),
+    and even information on the specific kinds of objects that were allocated. As
+    you read through Chapters [5](ch05.html#GC) and [6](ch06.html#Collectors), keep
+    in mind how this tool can diagnose the problems that are discussed there. If you
+    need to understand why the G1 GC collector bailed out and performed a full GC
+    (was it due to promotion failure?), how the JVM has adjusted the tenuring threshold,
+    or virtually any other piece of data about how and why GC behaved as it did, JFR
+    will be able to tell you.'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此页面上的各个标签提供了丰富的其他信息：清除引用对象的时间和数量，是否存在并发收集器的提升或疏散失败，GC 算法本身的配置（包括代的大小和幸存者空间配置），甚至是分配的特定类型对象的信息。当您阅读第
+    [5](ch05.html#GC) 章和第 [6](ch06.html#Collectors) 章时，请记住这个工具如何诊断讨论的问题。如果您需要理解为什么
+    G1 GC 收集器退出并执行了全局 GC（是由于提升失败吗？），JVM 如何调整终身阈值，或者关于 GC 行为如何以及为什么的任何其他数据，JFR 都能告诉您。
+- en: JFR Code view
+  id: totrans-265
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: JFR 代码视图
+- en: The Code page in Java Mission Control shows basic profiling information from
+    the recording ([Figure 3-12](#FigureJFRCode)).
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Java Mission Control 中的 Code 页面显示了来自记录的基本分析信息（[图 3-12](#FigureJFRCode)）。
+- en: '![A JFR showing where the application spent its time executing.](assets/jp2e_0312.png)'
+  id: totrans-267
+  prefs: []
+  type: TYPE_IMG
+  zh: '![显示应用程序执行时间的 JFR。](assets/jp2e_0312.png)'
+- en: Figure 3-12\. Java Flight Recorder Code panel
+  id: totrans-268
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-12\. Java Flight Recorder Code 面板
+- en: 'The first tab on this page shows an aggregation by package name, which is an
+    interesting feature not found in many profilers. At the bottom, other tabs present
+    the traditional profile views: the hot methods and call tree of the profiled code.'
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此页面上的第一个标签显示了按包名称聚合的信息，这是许多分析工具中找不到的有趣功能。在底部，其他标签呈现了受分析代码的热点方法和调用树的传统概要视图。
+- en: Unlike other profilers, JFR offers other modes of visibility into the code.
+    The Exceptions tab provides a view into the exception processing of the application
+    ([Chapter 12](ch12.html#Misc) discusses why excessive exception processing can
+    be bad for performance). Other tabs provide information on what the compiler is
+    doing, including a view into the code cache (see [Chapter 4](ch04.html#JustInTimeCompilation)).
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与其他分析工具不同，JFR 提供了进入代码的其他可见性模式。异常标签提供了对应用程序异常处理的视图（[第 12](ch12.html#Misc) 章讨论为什么过度异常处理对性能不利）。其他标签提供了关于编译器正在执行的内容的信息，包括对代码缓存的视图（参见
+    [第 4](ch04.html#JustInTimeCompilation) 章）。
+- en: On the other hand, note that the packages here didn’t really show up in the
+    previous profiles we looked at; conversely, the previous hot spots we saw don’t
+    appear here. Because it is designed to have very low overhead, the profile sampling
+    of JFR (at least in the default configuration) is quite low, and so the profiles
+    are not as accurate as what we’d see from a more intrusive sampling.
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，请注意，这里的包在我们之前查看的分析中并没有真正显示出来；反之，我们之前看到的热点在这里也没有出现。由于它设计为具有非常低的开销，JFR 的配置（至少在默认配置中）的性能抽样相当低，因此与更入侵性的抽样相比，这些分析结果并不那么精确。
+- en: There are other displays like this—for threads, I/O, and system events—but for
+    the most part, these displays simply provide nice views into the actual events
+    in the JFR recording.
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这类似的显示还有其他，比如线程、I/O 和系统事件，但大多数情况下，这些显示只是提供了 JFR 记录中实际事件的良好视图。
+- en: Overview of JFR events
+  id: totrans-273
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: JFR 事件概述
+- en: JFR produces a stream of events that are saved as a recording. The displays
+    seen so far provide views of those events, but the most powerful way to look at
+    the events is on the Event panel itself, as shown in [Figure 3-13](#FigureJFREvent).
+  id: totrans-274
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JFR 生成一系列事件作为记录保存。迄今为止看到的显示提供了这些事件的视图，但查看事件本身面板是最强大的方式，如图 [3-13](#FigureJFREvent)
+    所示。
+- en: '![A display of events from a JFR.](assets/jp2e_0313.png)'
+  id: totrans-275
+  prefs: []
+  type: TYPE_IMG
+  zh: '![显示来自 JFR 的事件。](assets/jp2e_0313.png)'
+- en: Figure 3-13\. Java Flight Recorder Event panel
+  id: totrans-276
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-13\. Java Flight Recorder Event 面板
+- en: 'The events to display can be filtered in the left panel of this window; here,
+    application-level and JVM-level events are selected. Be aware that when the recording
+    is made, only certain kinds of events are included in the first place: at this
+    point, we are doing postprocessing filtering (the next section shows how to filter
+    the events included in the recording).'
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此窗口左侧面板可筛选要显示的事件；这里选择了应用级和 JVM 级事件。请注意，在录制时，仅包括特定类型的事件：在此时，我们正在进行后处理筛选（下一节将展示如何筛选录制中包含的事件）。
+- en: Within the 34-second interval in this example, the application produced 878
+    events from the JVM and 32 events from the JDK libraries, and the event types
+    generated in that period are shown near the bottom of the window. When we looked
+    at this example with profilers, we saw why the thread-park and monitor-wait events
+    for this example will be high; those can be ignored (and the thread park events
+    are filtered out here in the left panel). What about the other events?
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个示例中的 34 秒间隔内，应用程序从 JVM 生成了 878 个事件和从 JDK 库生成了 32 个事件，并且在此期间生成的事件类型显示在窗口底部附近。当我们使用分析器查看这个示例时，我们看到为什么该示例的线程停靠和监视器等待事件会很高；这些可以忽略（并且这里在左侧面板中过滤掉了线程停靠事件）。那么其他事件呢？
+- en: Over the 34-second period, multiple threads in the application spent 34 seconds
+    reading from sockets. That number doesn’t sound good, particularly because it
+    will show up in JFR only if the socket read takes longer than 10 milliseconds.
+    We need to look at that further, which can be done by visiting the log tab shown
+    in [Figure 3-14](#FigureJFRLog).
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 34 秒的时间段内，应用程序中的多个线程花费了 34 秒来读取套接字。这个数字听起来不好，特别是因为它只有在套接字读取时间超过 10 毫秒时才会在
+    JFR 中显示出来。我们需要进一步研究这一点，可以通过访问图 [3-14](#FigureJFRLog) 中显示的日志选项卡来完成。
+- en: '![A log of events from a JFR.](assets/jp2e_0314.png)'
+  id: totrans-280
+  prefs: []
+  type: TYPE_IMG
+  zh: '![来自 JFR 的事件日志。](assets/jp2e_0314.png)'
+- en: Figure 3-14\. Java Flight Recorder Event Log panel
+  id: totrans-281
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-14\. Java 飞行记录器事件日志面板
+- en: 'It is worthwhile to look at the traces involved with those events, but it turns
+    out that several threads use blocking I/O to read administrative requests that
+    are expected to arrive periodically. Between those requests—for long periods of
+    time—the threads sit blocked on the `read()` method. So the read time here turns
+    out to be acceptable: just as when using a profiler, it is up to you to determine
+    whether a lot of threads blocked in I/O is expected or indicates a performance
+    issue.'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 值得注意的是要查看与这些事件相关的跟踪，但事实证明，有几个线程使用阻塞 I/O 读取预期定期到达的管理请求。在这些请求之间——长时间的周期内——线程将阻塞在
+    `read()` 方法上。所以这里的读取时间是可以接受的：就像使用分析器时一样，你需要确定大量阻塞 I/O 的线程是预期的还是表示性能问题。
+- en: 'That leaves the monitor-blocked events. As discussed in [Chapter 9](ch09.html#ThreadPerformance),
+    contention for locks goes through two levels: first the thread spins waiting for
+    the lock, and then it uses (in a process called *lock inflation*) some CPU- and
+    OS-specific code to wait for the lock. A standard profiler can give hints about
+    that situation, since the spinning time is included in the CPU time charged to
+    a method. A native profiler can give information about the locks subject to inflation,
+    but that can be hit or miss. The JVM, though, can provide all this data directly
+    to JFR.'
+  id: totrans-283
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这留下了监视器阻塞事件。正如[第 9 章](ch09.html#ThreadPerformance)中讨论的那样，对于锁的争用经历了两个级别：首先线程在等待锁时会自旋，然后它会使用（在称为*锁膨胀*的过程中）一些
+    CPU 和操作系统特定的代码来等待锁。标准的分析器可以提供关于这种情况的线索，因为自旋时间包含在方法的 CPU 时间中。本地分析器可以提供关于受膨胀影响的锁的信息，但这可能是有或无的。然而，JVM
+    可以直接向 JFR 提供所有这些数据。
+- en: An example of using lock visibility is shown in [Chapter 9](ch09.html#ThreadPerformance),
+    but the general takeaway about JFR events is that, because they come directly
+    from the JVM, they offer a level of visibility into an application that no other
+    tool can provide. In Java 11, about 131 event types can be monitored with JFR.
+    The exact number and types of events will vary slightly depending on release,
+    but the following list details some of the more useful ones.
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在[第 9 章](ch09.html#ThreadPerformance)中展示了使用锁可见性的示例，但关于 JFR 事件的一般结论是，由于它们直接来自
+    JVM，它们提供了其他任何工具都无法提供的应用程序可见性。在 Java 11 中，大约可以通过 JFR 监控 131 种事件类型。确切的事件数量和类型会因版本而略有不同，但以下列表详细说明了一些更有用的事件类型。
+- en: Each event type in the following list displays two bullet points. Events can
+    collect basic information that can be collected with other tools like `jconsole`
+    and `jcmd`; that kind of information is described in the first bullet. The second
+    bullet describes information the event provides that is difficult to obtain outside
+    JFR.
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下面列表中的每个事件类型显示两个项目符号。事件可以收集基本信息，这些信息可以使用像`jconsole`和`jcmd`这样的其他工具收集；这类信息在第一个项目符号中描述。第二个项目符号描述事件提供的难以在JFR之外获得的信息。
+- en: Classloading
+  id: totrans-286
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 类加载
+- en: Number of classes loaded and unloaded
+  id: totrans-287
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 装载和卸载的类的数量
+- en: Which classloader loaded the class; time required to load an individual class
+  id: totrans-288
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 装载类的类加载器；加载单个类所需的时间
+- en: Thread statistics
+  id: totrans-289
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 线程统计
+- en: Number of threads created and destroyed; thread dumps
+  id: totrans-290
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 创建和销毁的线程数量；线程转储
+- en: Which threads are blocked on locks (and the specific lock they are blocked on)
+  id: totrans-291
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 哪些线程被锁定在锁上（以及它们被锁定的具体锁）
+- en: Throwables
+  id: totrans-292
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可抛出对象
+- en: Throwable classes used by the application
+  id: totrans-293
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 应用程序使用的可抛出类
+- en: Number of exceptions and errors thrown and the stack trace of their creation
+  id: totrans-294
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 抛出的异常和错误的数量及其创建时的堆栈跟踪
+- en: TLAB allocation
+  id: totrans-295
+  prefs: []
+  type: TYPE_NORMAL
+  zh: TLAB 分配
+- en: Number of allocations in the heap and size of thread-local allocation buffers
+    (TLABs)
+  id: totrans-296
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 堆中分配的次数和线程本地分配缓冲区（TLAB）的大小
+- en: Specific objects allocated in the heap and the stack trace where they are allocated
+  id: totrans-297
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 分配在堆中的特定对象及其分配位置的堆栈跟踪
+- en: File and socket I/O
+  id: totrans-298
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 文件和套接字 I/O
+- en: Time spent performing I/O
+  id: totrans-299
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 执行 I/O 操作的时间
+- en: Time spent per read/write call, the specific file or socket taking a long time
+    to read or write
+  id: totrans-300
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 每次读取/写入调用所花费的时间，以及长时间读取或写入的特定文件或套接字
+- en: Monitor blocked
+  id: totrans-301
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 阻塞的监视器
+- en: Threads waiting for a monitor
+  id: totrans-302
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 等待监视器的线程
+- en: Specific threads blocked on specific monitors and the length of time they are
+    blocked
+  id: totrans-303
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 特定线程在特定监视器上的阻塞以及它们被阻塞的时间长度
+- en: Code cache
+  id: totrans-304
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代码缓存
+- en: Size of code cache and how much it contains
+  id: totrans-305
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 代码缓存的大小及其所包含的内容量
+- en: Methods removed from the code cache; code cache configuration
+  id: totrans-306
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 从代码缓存中删除的方法；代码缓存配置
+- en: Code compilation
+  id: totrans-307
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代码编译
+- en: Which methods are compiled, on-stack replacement (OSR) compilation (see [Chapter 4](ch04.html#JustInTimeCompilation)),
+    and length of time to compile
+  id: totrans-308
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 编译的方法，栈上替换（OSR）编译（参见[第 4 章](ch04.html#JustInTimeCompilation)），以及编译所需的时间
+- en: Nothing specific to JFR, but unifies information from several sources
+  id: totrans-309
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 没有特定于 JFR 的内容，但统一了来自多个来源的信息
+- en: Garbage collection
+  id: totrans-310
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 垃圾回收
+- en: Times for GC, including individual phases; sizes of generations
+  id: totrans-311
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: GC 的时间，包括各个阶段的时间；各代的大小
+- en: Nothing specific to JFR, but unifies the information from several tools
+  id: totrans-312
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 没有特定于 JFR 的内容，但统一了来自多个工具的信息
+- en: Profiling
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 分析
+- en: Instrumenting and sampling profiles
+  id: totrans-314
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 仪器化和采样分析配置
+- en: Not as much as you’d get from a true profiler, but the JFR profile provides
+    a good high-order overview
+  id: totrans-315
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 虽然不如真正的分析器那样详细，但 JFR 分析器提供了一个很好的高级概述
+- en: Enabling JFR
+  id: totrans-316
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 启用 JFR
+- en: JFR is initially disabled. To enable it, add the flag `-XX:+FlightRecorder`
+    to the command line of the application. This enables JFR as a feature, but no
+    recordings will be made until the recording process itself is enabled. That can
+    occur either through a GUI or via the command line.
+  id: totrans-317
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 初始情况下，JFR 是禁用的。要启用它，请在应用程序的命令行中添加标志`-XX:+FlightRecorder`。这将作为一个功能启用 JFR，但直到启用录制过程本身之前都不会进行录制。可以通过
+    GUI 或命令行执行此操作。
+- en: 'In Oracle’s JDK 8, you must also specify this flag (prior to the `FlightRecorder`
+    flag): `-XX:+UnlockCommercialFeatures` (default: `false`).'
+  id: totrans-318
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Oracle JDK 8 中，您还必须指定此标志（在`FlightRecorder`标志之前）：`-XX:+UnlockCommercialFeatures`（默认值：`false`）。
+- en: If you forget to include these flags, remember that you can use `jinfo` to change
+    their values and enable JFR. If you use `jmc` to start a recording, it will automatically
+    change these values in the target JVM if necessary.
+  id: totrans-319
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果忘记包含这些标志，请记住可以使用`jinfo`更改它们的值并启用 JFR。如果使用`jmc`启动录制，如果需要，它会自动在目标 JVM 中更改这些值。
+- en: Enabling JFR via Java Mission Control
+  id: totrans-320
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 通过 Java Mission Control 启用 JFR
+- en: The easiest way to enable recording of a local application is through the Java
+    Mission Control GUI (`jmc`). When `jmc` is started, it displays a list of all
+    the JVM processes running on the current system. The JVM processes are displayed
+    in a tree-node configuration; expand the node under the Flight Recorder label
+    to bring up the flight recorder window shown in [Figure 3-15](#FigureJFRStart).
+  id: totrans-321
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 启用本地应用程序录制的最简单方法是通过 Java Mission Control GUI（`jmc`）。当启动`jmc`时，它会显示当前系统上运行的所有
+    JVM 进程的列表。JVM 进程以树节点配置显示；展开 Flight Recorder 标签下的节点即可显示[图 3-15](#FigureJFRStart)中显示的飞行记录器窗口。
+- en: '![The Wizard to start a flight recording and control its parameters.](assets/jp2e_0315.png)'
+  id: totrans-322
+  prefs: []
+  type: TYPE_IMG
+  zh: '![启动飞行录制并控制其参数的向导。](assets/jp2e_0315.png)'
+- en: Figure 3-15\. JFR Start Flight Recording window
+  id: totrans-323
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图3-15\. JFR启动飞行录制窗口
+- en: 'Flight recordings are made in one of two modes: either for a fixed duration
+    (1 minute in this case) or continuously. For continuous recordings, a circular
+    buffer is utilized; the buffer will contain the most recent events that are within
+    the desired duration and size.'
+  id: totrans-324
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 飞行记录有两种模式：固定持续时间（在本例中为1分钟）或连续。对于连续录制，将使用循环缓冲区；缓冲区将包含在所需持续时间和大小内的最近事件。
+- en: To perform proactive analysis—meaning that you will start a recording and then
+    generate some work or start a recording during a load-testing experiment after
+    the JVM has warmed up—a fixed-duration recording should be used. That recording
+    will give a good indication of how the JVM responded during the test.
+  id: totrans-325
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要执行主动分析——这意味着您将启动录制，然后生成一些工作或在JVM预热后的负载测试实验期间启动录制——应使用固定持续时间录制。该录制将提供JVM在测试期间响应的良好指示。
+- en: The continuous recording is best for reactive analysis. This lets the JVM keep
+    the most recent events and then dump out a recording in response to an event.
+    For example, the WebLogic application server can trigger that a recording be dumped
+    out in response to an abnormal event in the application server (such as a request
+    that takes more than 5 minutes to process). You can set up your own monitoring
+    tools to dump out the recording in response to any sort of event.
+  id: totrans-326
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 连续录制对于反应性分析最为合适。这使得JVM保留最近的事件，然后根据事件将录制内容输出。例如，WebLogic应用服务器可以触发在应用服务器中出现异常事件（例如请求处理超过5分钟）时输出录制内容。您可以设置自己的监控工具，以响应任何类型的事件输出录制内容。
+- en: Enabling JFR via the command line
+  id: totrans-327
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 通过命令行启用JFR
+- en: After enabling JFR (with the `-XX:+FlightRecorder` option), there are different
+    ways to control how and when the actual recording should happen.
+  id: totrans-328
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 启用JFR后（使用`-XX:+FlightRecorder`选项），有不同的方法来控制实际录制的时间和方式。
+- en: 'In JDK 8, the default recording parameters can be controlled when the JVM starts
+    by using the `-XX:+FlightRecorderOptions=`*`string`* parameter; this is most useful
+    for reactive recordings. The *`string`* in that parameter is a list of comma-separated
+    name-value pairs taken from these options:'
+  id: totrans-329
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在JDK 8中，可以使用`-XX:+FlightRecorderOptions=`*`string`*参数在JVM启动时控制默认录制参数；这对于反应性录制最为有用。该*`string`*参数是从这些选项中取出的逗号分隔的名称-值对列表：
+- en: '`name=*name*`'
+  id: totrans-330
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`name=*name*`'
+- en: The name used to identify the recording.
+  id: totrans-331
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用于标识录制的名称。
+- en: '`defaultrecording=*<true|false>*`'
+  id: totrans-332
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`defaultrecording=*<true|false>*`'
+- en: Whether to start the recording initially. The default value is `false`; for
+    reactive analysis, this should be set to `true`.
+  id: totrans-333
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 是否最初开始录制。默认值为`false`；对于反应性分析，应设置为`true`。
+- en: '`settings=*path*`'
+  id: totrans-334
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`settings=*path*`'
+- en: Name of the file containing the JFR settings (see the next section).
+  id: totrans-335
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 包含JFR设置的文件名（请参阅下一节）。
+- en: '`delay=*time*`'
+  id: totrans-336
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`delay=*time*`'
+- en: The amount of time (e.g., `30s`, `1h`) before the recording should start.
+  id: totrans-337
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 开始录制前的时间量（例如，`30s`，`1h`）。
+- en: '`duration=*time*`'
+  id: totrans-338
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`duration=*time*`'
+- en: The amount of time to make the recording.
+  id: totrans-339
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 进行录制的时间量。
+- en: '`filename=*path*`'
+  id: totrans-340
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`filename=*path*`'
+- en: Name of the file to write the recording to.
+  id: totrans-341
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要将录制写入的文件名。
+- en: '`compress=*<true|false>*`'
+  id: totrans-342
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`compress=*<true|false>*`'
+- en: Whether to compress (with gzip) the recording; the default is `false`.
+  id: totrans-343
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 是否（使用gzip）压缩录制内容；默认为`false`。
+- en: '`maxage=*time*`'
+  id: totrans-344
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`maxage=*time*`'
+- en: Maximum time to keep recorded data in the circular buffer.
+  id: totrans-345
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 保持循环缓冲区中记录数据的最长时间。
+- en: '`maxsize=*size*`'
+  id: totrans-346
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`maxsize=*size*`'
+- en: Maximum size (e.g., `1024K`, `1M`) of the recording’s circular buffer.
+  id: totrans-347
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 录制的循环缓冲区的最大大小（例如，`1024K`，`1M`）。
+- en: '`-XX:+FlightRecorderOptions` only sets the defaults for any options; individual
+    recordings can override those settings.'
+  id: totrans-348
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`-XX:+FlightRecorderOptions`仅设置任何选项的默认值；个别录制可以覆盖这些设置。'
+- en: In both JDK 8 and JDK 11, you can start a JFR when the program initially begins
+    by using the `-XX:+StartFlightRecording=*string*` flag with a similar comma-separated
+    list of options.
+  id: totrans-349
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在JDK 8和JDK 11中，您可以通过使用`-XX:+StartFlightRecording=*string*`标志在程序初始启动时开始JFR，其中包含类似的逗号分隔选项列表。
+- en: Setting up a default recording like that can be useful in some circumstances,
+    but for more flexibility, all options can be controlled with `jcmd` during a run.
+  id: totrans-350
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 设置默认录制可以在某些情况下非常有用，但为了更灵活，可以在运行时使用`jcmd`控制所有选项。
+- en: 'To start a flight recording:'
+  id: totrans-351
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 开始飞行记录：
+- en: '[PRE19]'
+  id: totrans-352
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: The `options_list` is a series of comma-separated name-value pairs that control
+    how the recording is made. The possible options are exactly the same as those
+    that can be specified on the command line with the `-XX:+FlightRecorderOptions=`*`string`*
+    flag.
+  id: totrans-353
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`options_list` 是一系列逗号分隔的名称-值对，控制录制的方式。可能的选项与可以在命令行上使用 `-XX:+FlightRecorderOptions=`*`string`*
+    标志指定的选项完全相同。'
+- en: 'If a continuous recording has been enabled, the current data in the circular
+    buffer can be dumped to a file at any time via this command:'
+  id: totrans-354
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果启用了连续录制，则可以随时通过此命令将循环缓冲区中的当前数据转储到文件：
+- en: '[PRE20]'
+  id: totrans-355
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'The list of options includes the following:'
+  id: totrans-356
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 选项列表包括以下内容：
+- en: '`name=*name*`'
+  id: totrans-357
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`name=*name*`'
+- en: The name under which the recording was started (see the next example for `JFR.check`).
+  id: totrans-358
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 启动录制时使用的名称（有关 `JFR.check` 的示例，请参见下一个示例）。
+- en: '`filename=*path*`'
+  id: totrans-359
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`filename=*path*`'
+- en: The location to dump the file to.
+  id: totrans-360
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 转储文件到的位置。
+- en: 'It is possible that multiple JFR recordings have been enabled for a given process.
+    To see the available recordings:'
+  id: totrans-361
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可能已为给定进程启用了多个JFR录制。要查看可用的录制：
+- en: '[PRE21]'
+  id: totrans-362
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: In this example, process ID 21532 has two active JFR recordings that are named
+    1 and 2\. That name can be used to identify them in other `jcmd` commands.
+  id: totrans-363
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在此示例中，进程ID 21532有两个活动的JFR录制，分别命名为1和2。该名称可用于标识它们在其他 `jcmd` 命令中的使用。
+- en: 'Finally, to abort a recording in process:'
+  id: totrans-364
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，要中止正在进行的录制：
+- en: '[PRE22]'
+  id: totrans-365
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'That command takes the following options:'
+  id: totrans-366
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该命令接受以下选项：
+- en: '`name=*name*`'
+  id: totrans-367
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`name=*name*`'
+- en: The recording name to stop.
+  id: totrans-368
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 停止的录制名称。
+- en: '`discard=*boolean*`'
+  id: totrans-369
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`discard=*boolean*`'
+- en: If `true`, discard the data rather than writing it to the previously provided
+    filename (if any).
+  id: totrans-370
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果为 `true`，则丢弃数据而不是将其写入先前提供的文件名（如果有的话）。
+- en: '`filename=*path*`'
+  id: totrans-371
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`filename=*path*`'
+- en: Write the data to the given path.
+  id: totrans-372
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将数据写入指定路径。
+- en: In an automated performance-testing system, running these command-line tools
+    and producing a recording is useful when it comes time to examine those runs for
+    regressions.
+  id: totrans-373
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在自动化性能测试系统中，运行这些命令行工具并生成录制在需要检查这些运行是否存在回归时非常有用。
+- en: Selecting JFR Events
+  id: totrans-374
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 选择JFR事件
+- en: 'As mentioned earlier, JFR supports many events. Often, these are periodic events:
+    they occur every few milliseconds (e.g., the profiling events work on a sampling
+    basis). Other events are triggered only when the duration of the event exceeds
+    a certain threshold (e.g., the event for reading a file is triggered only if the
+    `read()` method has taken more than a specified amount of time).'
+  id: totrans-375
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如前面提到的，JFR支持许多事件。通常，这些是周期性事件：它们每隔几毫秒发生一次（例如，性能分析事件基于采样基础）。其他事件仅在事件持续时间超过某个阈值时触发（例如，仅当
+    `read()` 方法的执行时间超过指定时间时才触发读文件事件）。
+- en: Collecting events naturally involves overhead. The threshold at which events
+    are collected—since it increases the number of events—also plays a role in the
+    overhead that comes from enabling a JFR recording. In the default recording, not
+    all events are collected (the six most-expensive events are not enabled), and
+    the threshold for the time-based events is somewhat high. This keeps the overhead
+    of the default recording to less than 1%.
+  id: totrans-376
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 收集事件自然会增加开销。事件收集的阈值——因为它增加了事件的数量——也会对启用JFR录制带来的开销产生影响。在默认录制中，并不收集所有事件（最昂贵的六个事件未启用），而基于时间的事件的阈值也相对较高。这使得默认录制的开销保持在低于1%的水平。
+- en: Sometimes extra overhead is worthwhile. Looking at TLAB events, for example,
+    can help you determine if objects are being allocated directly to the old generation,
+    but those events are not enabled in the default recording. Similarly, the profiling
+    events are enabled in the default recording, but only every 20 ms—that gives a
+    good overview, but it can also lead to sampling errors.^([4](ch03.html#idm45775556384040))
+  id: totrans-377
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有时候额外的开销是值得的。例如，查看TLAB事件可以帮助您确定对象是否直接分配到老年代，但这些事件在默认录制中未启用。类似地，性能分析事件在默认录制中启用，但只有每20毫秒一次——这提供了一个很好的概述，但也可能导致采样误差。^([4](ch03.html#idm45775556384040))
+- en: 'The events (and the threshold for events) that JFR captures are defined in
+    a template (which is selected via the `settings` option on the command line).
+    JFR ships with two templates: the default template (limiting events so that the
+    overhead will be less than 1%) and a profile template (which sets most threshold-based
+    events to be triggered every 10 ms). The estimated overhead of the profiling template
+    is 2% (though, as always, your mileage may vary, and typically overhead is lower
+    than that).'
+  id: totrans-378
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JFR 捕获的事件（及事件的阈值）是在模板中定义的（通过命令行上的 `settings` 选项选择）。JFR 随附两个模板：默认模板（限制事件，使开销低于
+    1%）和配置文件模板（将大多数基于阈值的事件设置为每 10 ms 触发一次）。配置文件模板的预估开销为 2%（尽管，如常情况会有所不同，通常开销低于此值）。
+- en: 'Templates are managed by the `jmc` template manager; you may have noticed a
+    button to start the template manager in [Figure 3-15](#FigureJFRStart). Templates
+    are stored in two locations: under the *$HOME/.jmc/<release>* directory (local
+    to a user) and in the *$JAVA_HOME/jre/lib/jfr* directory (global for a JVM). The
+    template manager allows you to select a global template (the template will say
+    that it is “on server”), select a local template, or define a new template. To
+    define a template, cycle through the available events, and enable (or disable)
+    them as desired, optionally setting the threshold at which the event kicks in.'
+  id: totrans-379
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 模板由 `jmc` 模板管理器管理；您可能已经注意到了在 [图 3-15](#FigureJFRStart) 中启动模板管理器的按钮。模板存储在两个位置：在
+    *$HOME/.jmc/<release>* 目录下（用户本地）和在 *$JAVA_HOME/jre/lib/jfr* 目录下（JVM 全局）。模板管理器允许您选择全局模板（模板将显示“在服务器上”），选择本地模板或定义新模板。要定义模板，请循环遍历可用事件，并根据需要启用（或禁用）它们，可选择设置事件启动的阈值。
+- en: '[Figure 3-16](#FigureJFRTemplate) shows that the File Read event is enabled
+    with a threshold of 15 ms: file reads that take longer than that will cause an
+    event to be triggered. This event has also been configured to generate a stack
+    trace for the File Read events. That increases the overhead—which in turn is why
+    taking a stack trace for events is a configurable option.'
+  id: totrans-380
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[图 3-16](#FigureJFRTemplate) 显示，文件读取事件启用时设置阈值为 `15 ms`：超过此阈值的文件读取将触发事件。该事件还已配置生成文件读取事件的堆栈跟踪。这会增加开销，这也是为什么为事件获取堆栈跟踪是可配置选项的原因。'
+- en: '![The wizard to enable a JFR event.](assets/jp2e_0316.png)'
+  id: totrans-381
+  prefs: []
+  type: TYPE_IMG
+  zh: '![启用 JFR 事件的向导。](assets/jp2e_0316.png)'
+- en: Figure 3-16\. A sample JFR event template
+  id: totrans-382
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 3-16\. 一个示例 JFR 事件模板
+- en: The event templates are simple XML files, so the best way to determine which
+    events are enabled in a template (and their thresholds and stack-trace configurations)
+    is to read the XML file. Using an XML file also allows the local template file
+    to be defined on one machine and then copied to the global template directory
+    for use by others on the team.
+  id: totrans-383
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 事件模板是简单的 XML 文件，因此确定模板中启用的事件（及其阈值和堆栈跟踪配置）的最佳方法是阅读 XML 文件。使用 XML 文件还允许在一台计算机上定义本地模板文件，然后将其复制到团队中其他人使用的全局模板目录中。
+- en: Quick Summary
+  id: totrans-384
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: Java Flight Recorder provides the best possible visibility into the JVM, since
+    it is built into the JVM itself.
+  id: totrans-385
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Java Flight Recorder 提供了对 JVM 最佳的可见性，因为它内置于 JVM 本身。
+- en: Like all tools, JFR introduces some level of overhead into an application. For
+    routine use, JFR can be enabled to gather a substantial amount of information
+    with low overhead.
+  id: totrans-386
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 与所有工具一样，JFR 在应用程序中引入了一定级别的开销。对于日常使用，可以启用 JFR 以低开销收集大量信息。
+- en: JFR is useful in performance analysis, but it is also useful when enabled on
+    a production system so that you can examine the events that led up to a failure.
+  id: totrans-387
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: JFR 在性能分析中很有用，但在生产系统上启用时，也可以检查导致故障的事件。
+- en: Summary
+  id: totrans-388
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: 'Good tools are key to good performance analysis; in this chapter, we’ve just
+    scratched the surface of what tools can tell us. Here are the key things to keep
+    in mind:'
+  id: totrans-389
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 优秀的工具是优秀性能分析的关键；在本章中，我们仅仅触及了工具能告诉我们的一部分内容。以下是需要牢记的关键点：
+- en: No tool is perfect, and competing tools have relative strengths. Profiler X
+    may be a good fit for many applications, but in some cases it will miss something
+    that Profiler Y points out quite clearly. Always be flexible in your approach.
+  id: totrans-390
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 没有完美的工具，竞争工具各有其相对优势。`Profiler X` 可能非常适合许多应用程序，但在某些情况下，它会错过 `Profiler Y` 明确指出的一些问题。在方法上一定要保持灵活。
+- en: Command-line monitoring tools can gather important data automatically; be sure
+    to include gathering this monitoring data in your automated performance testing.
+  id: totrans-391
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 命令行监控工具可以自动收集重要数据；务必在自动化性能测试中包含收集此监控数据。
+- en: 'Tools rapidly evolve: some of the tools mentioned in this chapter are probably
+    already obsolete (or at least have been superseded by new, superior tools). Keeping
+    up-to-date in this area is important.'
+  id: totrans-392
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 工具迅速演进：本章提到的一些工具可能已经过时（或至少已被新的、更优越的工具所取代）。在这个领域保持更新是很重要的。
+- en: '^([1](ch03.html#idm45775556710120-marker)) Still, you must profile: how else
+    will you know if the cat inside your program is still alive?'
+  id: totrans-393
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ^([1](ch03.html#idm45775556710120-marker)) 不过，你仍需进行性能分析：否则，你怎么知道程序内部的猫是否还活着呢？
+- en: ^([2](ch03.html#idm45775556676248-marker)) You’ll see references to native C++
+    code like `InstanceKlass::oop_push_contents`; we’ll look at that more in the next
+    section.
+  id: totrans-394
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ^([2](ch03.html#idm45775556676248-marker)) 你会看到对像 `InstanceKlass::oop_push_contents`
+    这样的本地 C++ 代码的引用；我们将在下一节更详细地讨论它。
+- en: ^([3](ch03.html#idm45775556595416-marker)) This particular graph is again from
+    the Oracle Developer Studio tool, though `async-profiler` produced the identical
+    set of native calls.
+  id: totrans-395
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ^([3](ch03.html#idm45775556595416-marker)) 这张特定的图表再次来自 Oracle Developer Studio
+    工具，尽管 `async-profiler` 生成了相同的一组本地调用。
+- en: ^([4](ch03.html#idm45775556384040-marker)) That’s why the JFR profile we looked
+    at didn’t necessarily match the more intrusive profiles from previous sections.
+  id: totrans-396
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ^([4](ch03.html#idm45775556384040-marker)) 这就是为什么我们查看的 JFR 配置文件未必与前几节中更为侵入性的配置文件匹配。

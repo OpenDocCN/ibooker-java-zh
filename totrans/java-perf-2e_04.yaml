@@ -1,11 +1,15 @@
 - en: Chapter 4\. Working with the JIT Compiler
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第四章。与 JIT 编译器一起工作
 - en: The *just-in-time (JIT) compiler* is the heart of the Java Virtual Machine;
     nothing controls the performance of your application more than the JIT compiler.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: '**即时编译器（JIT compiler）** 是 Java 虚拟机的核心；没有什么比 JIT 编译器更能控制应用程序的性能了。'
 - en: This chapter covers the compiler in depth. It starts with information on how
     the compiler works and discusses the advantages and disadvantages of using a JIT
     compiler. Until JDK 8 came along, you had to choose between two Java compilers.
@@ -14,21 +18,30 @@
     and advanced tunings of the compiler. If an application is running slowly without
     any obvious reason, those sections can help you determine whether the compiler
     is at fault.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章深入讲解编译器。它从编译器的工作原理开始讲起，探讨了使用即时编译器（**JIT compiler**）的优缺点。直到 JDK 8 出现之前，你必须选择两个
+    Java 编译器之间。如今，这两个编译器仍然存在，但它们协同工作，虽然在少数情况下需要选择其中一个。最后，我们将研究一些编译器的中级和高级调优方法。如果一个应用程序运行缓慢且没有明显原因，这些部分可以帮助您确定是否是编译器的问题。
 - en: 'Just-in-Time Compilers: An Overview'
+  id: totrans-3
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 即时编译器：概述
 - en: We’ll start with some introductory material; feel free to skip ahead if you
     understand the basics of just-in-time compilation.
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将从一些介绍性材料开始；如果您理解即时编译的基础知识，可以直接跳过。
 - en: Computers—and more specifically CPUs—can execute only a relatively few, specific
     instructions, which are called *machine code*. All programs that the CPU executes
     must therefore be translated into these instructions.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 计算机——特别是 CPU——只能执行相对较少的特定指令，称为**机器码（machine code）**。因此，CPU 执行的所有程序都必须转换成这些指令。
 - en: 'Languages like C++ and Fortran are called *compiled languages* because their
     programs are delivered as binary (compiled) code: the program is written, and
     then a static compiler produces a binary. The assembly code in that binary is
@@ -38,29 +51,39 @@
     of instructions as previous versions of that CPU. The reverse is not always true;
     new versions of CPUs often introduce instructions that will not run on older versions
     of CPUs.'
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 类似 C++ 和 Fortran 的语言被称为**编译语言（compiled languages）**，因为它们的程序以二进制（编译后的）代码交付：程序编写完成后，静态编译器生成二进制代码。该二进制代码的汇编代码针对特定的
+    CPU。兼容的 CPU 可以执行相同的二进制代码：例如，AMD 和 Intel CPU 共享一组基本的汇编语言指令，并且后续版本的 CPU 几乎总是可以执行与前一版本相同的指令集。反之则不尽然；新版本的
+    CPU 通常会引入在旧版本 CPU 上无法运行的指令。
 - en: Languages like PHP and Perl, on the other hand, are interpreted. The same program
     source code can be run on any CPU as long as the machine has the correct interpreter
     (that is, the program called `php` or `perl`). The interpreter translates each
     line of the program into binary code as that line is executed.
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，像 PHP 和 Perl 这样的语言是解释执行的。只要机器有正确的解释器（即名为`php`或`perl`的程序），就可以在任何 CPU 上运行相同的程序源代码。解释器在执行每行程序时将该行翻译成二进制代码。
 - en: 'Each system has advantages and disadvantages. Programs written in interpreted
     languages are portable: you can take the same code and drop it on any machine
     with the appropriate interpreter, and it will run. However, it might run slowly.
     As a simple case, consider what happens in a loop: the interpreter will retranslate
     each line of code when it is executed in the loop. The compiled code doesn’t need
     to repeatedly make that translation.'
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个系统都有优缺点。用解释语言编写的程序是可移植的：你可以将相同的代码放到任何有适当解释器的机器上，它都能运行。但它可能运行得很慢。举个简单的例子，考虑循环中发生的情况：解释器在每次执行循环中的代码时都会重新翻译每一行代码。而编译代码则不需要重复进行这种翻译。
 - en: 'A good compiler takes several factors into account when it produces a binary.
     One simple example is the order of the binary statements: not all assembly language
     instructions take the same amount of time to execute. A statement that adds the
     values stored in two registers might execute in one cycle, but retrieving (from
     main memory) the values needed for the addition may take multiple cycles.'
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个优秀的编译器在生成二进制代码时考虑了多个因素。一个简单的例子是二进制语句的顺序：并非所有的汇编语言指令执行时间都相同。例如，将两个寄存器中存储的值相加的语句可能在一个周期内执行，但从主存中检索所需的值可能需要多个周期。
 - en: Hence, a good compiler will produce a binary that executes the statement to
     load the data, executes other instructions, and then—when the data is available—executes
     the addition. An interpreter that is looking at only one line of code at a time
@@ -69,14 +92,18 @@
     Bad compilers will do the same thing, by the way, and it is not necessarily the
     case that even the best compiler can prevent the occasional wait for an instruction
     to complete.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，一个优秀的编译器将生成一个二进制文件，该文件在执行加载数据语句、执行其他指令，然后在数据可用时执行加法操作时进行操作。一次只看一行代码的解释器没有足够的信息来生成这种类型的代码；它会从内存中请求数据，等待数据可用，然后执行加法操作。顺便说一句，糟糕的编译器也会做同样的事情，即使是最好的编译器也不能完全防止偶尔需要等待指令执行完成的情况。
 - en: 'For these (and other) reasons, interpreted code will almost always be measurably
     slower than compiled code: compilers have enough information about the program
     to provide optimizations to the binary code that an interpreter simply cannot
     perform.'
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，解释性代码几乎总是比编译后的代码执行速度慢：编译器对程序有足够的信息，可以对二进制代码进行优化，而解释器无法执行这种优化。
 - en: Interpreted code does have the advantage of portability. A binary compiled for
     an ARM CPU obviously cannot run on an Intel CPU. But a binary that uses the latest
     AVX instructions of Intel’s Sandy Bridge processors cannot run on older Intel
@@ -85,8 +112,12 @@
     available to it. Various tricks around this exist, including shipping a binary
     with multiple shared libraries that execute performance-sensitive code and come
     with versions for various flavors of a CPU.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 解释性代码确实具有可移植性的优势。为 ARM CPU 编译的二进制文件显然不能在 Intel CPU 上运行。但是使用 Intel Sandy Bridge
+    处理器的最新 AVX 指令的二进制文件也不能在旧的 Intel 处理器上运行。因此，商业软件通常被编译成针对较旧版本处理器的二进制文件，不会利用可用的最新指令。有各种技巧可以解决这个问题，包括使用包含多个共享库的二进制文件，这些库执行对各种
+    CPU 版本敏感的性能关键代码。
 - en: 'Java attempts to find a middle ground here. Java applications are compiled—but
     instead of being compiled into a specific binary for a specific CPU, they are
     compiled into an intermediate low-level language. This language (known as *Java
@@ -96,21 +127,32 @@
     the `java` program is able to compile the code into the platform binary as the
     code executes. This compilation occurs as the program is executed: it happens
     “just in time.”'
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 在这里试图找到一个折中点。Java 应用程序是被编译的，但不是编译成特定 CPU 的特定二进制文件，而是编译成中间低级语言。这种语言（称为 *Java
+    字节码*）然后由 `java` 二进制文件运行（就像解释性 PHP 脚本由 `php` 二进制文件运行一样）。这使得 Java 具有解释语言的平台独立性。因为它执行的是理想化的二进制代码，所以
+    `java` 程序能够在代码执行时将代码编译成平台二进制代码。这种编译发生在程序执行时：“即时” 发生。
 - en: This compilation is still subject to platform dependencies. JDK 8, for example,
     cannot generate code for the latest instruction set of Intel’s Skylake processors,
     though JDK 11 can. I’ll have more to say about that in [“Advanced Compiler Flags”](#advance-compiler-tuning).
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种编译仍然受平台依赖性的影响。例如，JDK 8 无法为 Intel Skylake 处理器的最新指令集生成代码，但 JDK 11 可以。我将在 [“高级编译器标志”](#advance-compiler-tuning)
+    中详细讨论这个问题。
 - en: The manner in which the Java Virtual Machine compiles this code as it executes
     is the focus of this chapter.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 虚拟机在执行代码时编译的方式是本章的重点。
 - en: HotSpot Compilation
+  id: totrans-16
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 热点编译
 - en: As discussed in [Chapter 1](ch01.html#Introduction), the Java implementation
     discussed in this book is Oracle’s HotSpot JVM. This name (HotSpot) comes from
     the approach it takes toward compiling the code. In a typical program, only a
@@ -118,42 +160,57 @@
     depends primarily on how fast those sections of code are executed. These critical
     sections are known as the hot spots of the application; the more the section of
     code is executed, the hotter that section is said to be.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 如 [第 1 章](ch01.html#Introduction) 中所讨论的那样，本书中讨论的 Java 实现是 Oracle 的 HotSpot JVM。这个名字（HotSpot）来自于它对编译代码的处理方式。在典型的程序中，只有很小一部分代码经常被执行，应用程序的性能主要取决于这些代码段的执行速度。这些关键部分被称为应用程序的热点；代码段被执行得越多，这部分就越热。
 - en: Hence, when the JVM executes code, it does not begin compiling the code immediately.
     There are two basic reasons for this. First, if the code is going to be executed
     only once, then compiling it is essentially a wasted effort; it will be faster
     to interpret the Java bytecodes than to compile them and execute (only once) the
     compiled code.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，当 JVM 执行代码时，并不立即开始编译代码。这有两个基本原因。首先，如果代码只会被执行一次，那么编译它基本上是一种浪费；解释 Java 字节码比编译它们并执行（只执行一次）编译代码更快。
 - en: 'But if the code in question is a frequently called method or a loop that runs
     many iterations, then compiling it is worthwhile: the cycles it takes to compile
     the code will be outweighed by the savings in multiple executions of the faster
     compiled code. That trade-off is one reason that the compiler executes the interpreted
     code first—the compiler can figure out which methods are called frequently enough
     to warrant their compilation.'
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 但是，如果所讨论的代码是一个频繁调用的方法或运行多次迭代的循环，那么编译它是值得的：编译代码所需的周期将被多次执行更快的编译代码所节省。这种权衡是编译器首先执行解释代码的原因之一——编译器可以确定哪些方法被频繁调用以足以编译。
 - en: 'The second reason is one of optimization: the more times that the JVM executes
     a particular method or loop, the more information it has about that code. This
     allows the JVM to make numerous optimizations when it compiles the code.'
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二个原因是优化的一个方面：JVM 执行特定方法或循环的次数越多，它对该代码的了解越多。这使得 JVM 在编译代码时可以进行许多优化。
 - en: Those optimizations (and ways to affect them) are discussed later in this chapter,
     but for a simple example, consider the `equals()` method. This method exists in
     every Java object (because it is inherited from the `Object` class) and is often
     overridden. When the interpreter encounters the statement `b = obj1.equals(obj2)`,
     it must look up the type (class) of `obj1` in order to know which `equals()` method
     to execute. This dynamic lookup can be somewhat time-consuming.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些优化（以及影响它们的方法）将在本章后面讨论，但是作为一个简单的例子，考虑 `equals()` 方法。这个方法存在于每个 Java 对象中（因为它从
+    `Object` 类继承而来），并经常被重写。当解释器遇到语句 `b = obj1.equals(obj2)` 时，它必须查找 `obj1` 的类型（类）以知道要执行哪个
+    `equals()` 方法。这种动态查找可能需要一些时间。
 - en: Over time, say the JVM notices that each time this statement is executed, `obj1`
     is of type `java.lang.String`. Then the JVM can produce compiled code that directly
     calls the `String.equals()` method. Now the code is faster not only because it
     is compiled but also because it can skip the lookup of which method to call.
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 随着时间的推移，JVM 注意到每次执行这个语句时，`obj1` 的类型是 `java.lang.String`。然后 JVM 可以生成直接调用 `String.equals()`
+    方法的编译代码。现在代码不仅因为被编译而更快，而且可以跳过调用哪个方法的查找。
 - en: 'It’s not quite as simple as that; it is possible the next time the code is
     executed that `obj1` refers to something other than a `String`. The JVM will create
     compiled code that deals with that possibility, which will involve deoptimizing
@@ -163,64 +220,86 @@
     method to execute. That kind of optimization can be made only after running the
     code for a while and observing what it does: this is the second reason JIT compilers
     wait to compile sections of code.'
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 事情并不像那么简单；下次执行代码时，`obj1`可能指向除了`String`以外的其他对象。JVM将创建处理这种可能性的编译代码，其中涉及去优化和重新优化相关代码（你可以在[“去优化”](#Deoptimization)中看到一个例子）。尽管如此，总体上在这里生成的编译代码将会更快（至少在`obj1`继续指向`String`的情况下），因为它跳过了执行方法查找的步骤。这种优化只能在运行代码一段时间并观察其行为后才能进行：这是JIT编译器等待编译代码段的第二个原因。
 - en: Quick Summary
+  id: totrans-24
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Java is designed to take advantage of the platform independence of scripting
     languages and the native performance of compiled languages.
+  id: totrans-25
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Java旨在充分利用脚本语言的平台独立性和编译语言的本地性能。
 - en: A Java class file is compiled into an intermediate language (Java bytecodes)
     that is then further compiled into assembly language by the JVM.
+  id: totrans-26
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Java类文件被编译成一种中间语言（Java字节码），然后由JVM进一步编译成汇编语言。
 - en: Compilation of the bytecodes into assembly language performs optimizations that
     greatly improve performance.
+  id: totrans-27
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 将字节码编译成汇编语言会执行优化，极大地提高了性能。
 - en: Tiered Compilation
+  id: totrans-28
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 分层编译
 - en: Once upon a time, the JIT compiler came in two flavors, and you had to install
     different versions of the JDK depending on which compiler you wanted to use. These
     compilers are known as the `client` and `server` compilers. In 1996, this was
     an important distinction; in 2020, not so much. Today, all shipping JVMs include
     both compilers (though in common usage, they are usually referred to as `server`
     JVMs).
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 曾几何时，JIT编译器有两种版本，你需要根据你想要使用的编译器安装不同版本的JDK。这些编译器被称为`客户端`和`服务器`编译器。在1996年，这是一个重要的区别；而在2020年，已经不再如此。如今，所有发布的JVM都包括这两种编译器（尽管在常见用法中，它们通常被称为`服务器`JVM）。
 - en: Despite being called server JVMs, the distinction between client and server
     compilers persists; both compilers are available to and used by the JVM. So knowing
     this difference is important in understanding how the compiler works.
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管称为服务器JVM，但客户端和服务器编译器之间的区别仍然存在；JVM同时可以使用这两种编译器，了解这种区别对理解编译器的工作原理很重要。
 - en: Historically, JVM developers (and even some tools) sometimes referred to the
     compilers by the names `C1` (compiler 1, client compiler) and `C2` (compiler 2,
     server compiler). Those names are more apt now, since any distinction between
     a client and server computer is long gone, so we’ll adopt those names throughout.
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 历史上，JVM开发者（甚至一些工具）有时候会用`C1`（编译器1，客户端编译器）和`C2`（编译器2，服务器编译器）来称呼这些编译器。现在这些名称更加贴切，因为客户端和服务器计算机之间的区别早已不复存在，所以我们将在全文中沿用这些名称。
 - en: The primary difference between the two compilers is their aggressiveness in
     compiling code. The C1 compiler begins compiling sooner than the C2 compiler does.
     This means that during the beginning of code execution, the C1 compiler will be
     faster, because it will have compiled correspondingly more code than the C2 compiler.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 这两个编译器之间的主要区别在于它们在编译代码时的积极性。C1编译器开始编译的时间比C2编译器早。这意味着在代码执行的初期阶段，C1编译器会更快，因为它会编译比C2编译器对应更多的代码。
 - en: 'The engineering trade-off here is the knowledge the C2 compiler gains while
     it waits: that knowledge allows the C2 compiler to make better optimizations in
     the compiled code. Ultimately, code produced by the C2 compiler will be faster
     than that produced by the C1 compiler. From a user’s perspective, the benefit
     to that trade-off is based on how long the program will run and how important
     the startup time of the program is.'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里的工程权衡在于C2编译器在等待过程中获得的知识：这种知识使得C2编译器能够在编译后的代码中做出更好的优化。最终，由C2编译器生成的代码将比C1编译器生成的代码更快。从用户的角度来看，这种权衡的好处取决于程序运行的时间长短以及程序启动时间的重要性。
 - en: 'When these compilers were separate, the obvious question was why there needed
     to be a choice at all: couldn’t the JVM start with the C1 compiler and then use
     the C2 compiler as code gets hotter? That technique is known as *tiered compilation*,
@@ -228,47 +307,69 @@
     `-XX:-TieredCompilation` flag (the default value of which is `true`); in [“Advanced
     Compiler Flags”](#advance-compiler-tuning), we’ll discuss the ramifications of
     doing that.'
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 当这些编译器是分开的时，显而易见的问题是为什么需要有选择的必要性：JVM 不能从 C1 编译器开始然后在代码变热时切换到 C2 编译器吗？这种技术被称为*分层编译*，现在所有的
+    JVM 都使用这种技术。可以通过 `-XX:-TieredCompilation` 标志显式禁用它（其默认值为 `true`）；在 [“高级编译器标志”](#advance-compiler-tuning)
+    中，我们将讨论这样做的后果。
 - en: Common Compiler Flags
+  id: totrans-35
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 常见的编译器标志
 - en: Two commonly used flags affect the JIT compiler; we’ll look at them in this
     section.
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 两个常用标志影响 JIT 编译器；我们将在本节中讨论它们。
 - en: Tuning the Code Cache
+  id: totrans-37
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 调整代码缓存
 - en: When the JVM compiles code, it holds the set of assembly-language instructions
     in the code cache. The code cache has a fixed size, and once it has filled up,
     the JVM is not able to compile any additional code.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 当 JVM 编译代码时，它将汇编语言指令集保存在代码缓存中。代码缓存的大小是固定的，一旦填满，JVM 就无法再编译额外的代码了。
 - en: 'It is easy to see the potential issue here if the code cache is too small.
     Some hot methods will get compiled, but others will not: the application will
     end up running a lot of (very slow) interpreted code.'
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果代码缓存太小，潜在问题显而易见。一些热方法将被编译，但其他方法不会：应用程序最终将运行大量（非常慢的）解释代码。
 - en: 'When the code cache fills up, the JVM spits out this warning:'
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 当代码缓存填满时，JVM 会输出如下警告：
 - en: '[PRE0]'
+  id: totrans-41
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: It is sometimes easy to miss this message; another way to determine if the compiler
     has ceased to compile code is to follow the output of the compilation log discussed
     later in this section.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 有时候会错过这个消息；确定编译器是否停止编译代码的另一种方法是查看稍后本节讨论的编译日志输出。
 - en: There really isn’t a good mechanism to figure out how much code cache a particular
     application needs. Hence, when you need to increase the code cache size, it is
     sort of a hit-and-miss operation; a typical option is to simply double or quadruple
     the default.
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 实际上没有一个很好的机制来确定特定应用程序需要多少代码缓存。因此，当您需要增加代码缓存大小时，这有点是试错操作；一个典型的选项是简单地将默认值加倍或四倍。
 - en: 'The maximum size of the code cache is set via the `-XX:ReservedCodeCacheSize=`*`N`*
     flag (where `*N*` is the default just mentioned for the particular compiler).
     The code cache is managed like most memory in the JVM: there is an initial size
@@ -278,45 +379,66 @@
     the cache happens in the background and doesn’t really affect performance, so
     setting the `ReservedCodeCacheSize` size (i.e., setting the maximum code cache
     size) is all that is generally needed.'
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 代码缓存的最大大小通过 `-XX:ReservedCodeCacheSize=`*`N`* 标志设置（其中 `*N*` 是前述特定编译器的默认值）。代码缓存像
+    JVM 中的大多数内存一样进行管理：有一个初始大小（由 `-XX:InitialCodeCacheSize=`*`N`*` 指定）。代码缓存大小的分配从初始大小开始，并在缓存填满时增加。代码缓存的初始大小为
+    2,496 KB，而默认的最大大小为 240 MB。缓存的调整在后台进行，不会真正影响性能，因此通常只需要设置 `ReservedCodeCacheSize`
+    大小（即设置最大代码缓存大小）。
 - en: Is there a disadvantage to specifying a really large value for the maximum code
     cache size so that it never runs out of space? It depends on the resources available
     on the target machine. If a 1 GB code cache size is specified, the JVM will reserve
     1 GB of native memory. That memory isn’t allocated until needed, but it is still
     reserved, which means that sufficient virtual memory must be available on your
     machine to satisfy the reservation.
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 是否指定一个非常大的最大代码缓存大小，以便永远不会耗尽空间会有什么劣势？这取决于目标机器上的资源。如果指定了 1 GB 的代码缓存大小，JVM 将保留
+    1 GB 的本机内存。该内存在需要时才分配，但仍然被保留，这意味着您的机器上必须有足够的虚拟内存来满足保留。
 - en: In addition, if you still have an old Windows machine with a 32-bit JVM, the
     total process size cannot exceed 4 GB. That includes the Java heap, space for
     all the code of the JVM itself (including its native libraries and thread stacks),
     any native memory the application allocates (either directly or via the New I/O
     [NIO] libraries), and of course the code cache.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 此外，如果您仍然拥有一台带有 32 位 JVM 的旧 Windows 机器，则总进程大小不能超过 4 GB。这包括 Java 堆、JVM 本身的所有代码（包括其本机库和线程堆栈）、应用程序分配的任何本机内存（直接或通过新
+    I/O [NIO] 库）、当然还包括代码缓存。
 - en: 'Those are the reasons the code cache is not unbounded and sometimes requires
     tuning for large applications. On 64-bit machines with sufficient memory, setting
     the value too high is unlikely to have a practical effect on the application:
     the application won’t run out of process space memory, and the extra memory reservation
     will generally be accepted by the operating system.'
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些是代码缓存不是无界的原因，有时需要调整大型应用程序的设置。在具有足够内存的64位机器上，将值设置得过高不太可能对应用程序产生实际效果：应用程序不会耗尽进程空间内存，并且额外的内存预留通常会被操作系统接受。
 - en: 'In Java 11, the code cache is segmented into three parts:'
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 Java 11 中，代码缓存被分为三部分：
 - en: Nonmethod code
+  id: totrans-49
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 非方法代码
 - en: Profiled code
+  id: totrans-50
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 概要代码
 - en: Nonprofiled code
+  id: totrans-51
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 非概要代码
 - en: By default, the code cache is sized the same way (up to 240 MB), and you can
     still adjust the total size of the code cache by using the `ReservedCodeCacheSize`
     flag. In that case, the nonmethod code segment is allocated space according to
@@ -324,121 +446,181 @@
     on a machine with four CPUs, it will be about 5.5 MB. The other two segments then
     equally divide the remaining total code cache—for example, about 117.2 MB each
     on the machine with four CPUs (yielding 240 MB total).
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，代码缓存的大小相同（最高可达 240 MB），您仍然可以使用 `ReservedCodeCacheSize` 标志调整代码缓存的总大小。在这种情况下，非方法代码段根据编译器线程的数量分配空间（参见
+    [“编译线程”](#CompilationThreads)）；在具有四个 CPU 的机器上，大约为 5.5 MB。然后，其他两个段等分剩余的总代码缓存——例如，在具有四个
+    CPU 的机器上，每个段约为 117.2 MB（总计 240 MB）。
 - en: 'You’ll rarely need to tune these segments individually, but if so, the flags
     are as follows:'
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 您很少需要单独调整这些段，但如果需要，标志如下：
 - en: '`-XX:NonNMethodCodeHeapSize=*N*`: for the nonmethod code'
+  id: totrans-54
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`-XX:NonNMethodCodeHeapSize=*N*`：用于非方法代码'
 - en: '`-XX:ProfiledCodeHapSize=*N*` for the profiled code'
+  id: totrans-55
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`-XX:ProfiledCodeHapSize=*N*` 用于概要代码'
 - en: '`-XX:NonProfiledCodeHapSize=*N*` for the nonprofiled code'
+  id: totrans-56
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`-XX:NonProfiledCodeHapSize=*N*` 用于非概要代码'
 - en: The size of the code cache (and the JDK 11 segments) can be monitored in real
     time by using `jconsole` and selecting the Memory Pool Code Cache chart on the
     Memory panel. You can also enable Java’s Native Memory Tracking feature as described
     in [Chapter 8](ch08.html#NativeMemory).
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 代码缓存的大小（以及 JDK 11 段）可以通过使用 `jconsole` 实时监控，并在内存面板上选择内存池代码缓存图表来完成。您还可以按照 [第8章](ch08.html#NativeMemory)
+    中描述的方式启用Java的本地内存跟踪功能。
 - en: Quick Summary
+  id: totrans-58
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速摘要
 - en: The code cache is a resource with a defined maximum size that affects the total
     amount of compiled code the JVM can run.
+  id: totrans-59
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 代码缓存是一个具有定义的最大大小的资源，影响 JVM 可以运行的编译代码总量。
 - en: Very large applications can use up the entire code cache in its default configuration;
     monitor the code cache and increase its size if necessary.
+  id: totrans-60
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 非常大的应用程序可以在其默认配置中使用完整的代码缓存；如果需要，监视代码缓存并增加其大小。
 - en: Inspecting the Compilation Process
+  id: totrans-61
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 检查编译过程
 - en: 'The second flag isn’t a tuning per se: it will not improve the performance
     of an application. Rather, the `-XX:+PrintCompilation` flag (which by default
     is `false`) gives us visibility into the workings of the compiler (though we’ll
     also look at tools that provide similar information).'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二个标志并非调优本身：它不会改善应用程序的性能。相反，`-XX:+PrintCompilation` 标志（默认为 `false`）使我们能够看到编译器的工作情况（尽管我们也会查看提供类似信息的工具）。
 - en: If `PrintCompilation` is enabled, every time a method (or loop) is compiled,
     the JVM prints out a line with information about what has just been compiled.
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果启用了 `PrintCompilation`，每次编译方法（或循环）时，JVM 都会打印一行信息，说明刚刚编译的内容。
 - en: 'Most lines of the compilation log have the following format:'
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译日志的大多数行具有以下格式：
 - en: '[PRE1]'
+  id: totrans-65
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: The timestamp here is the time after the compilation has finished (relative
     to 0, which is when the JVM started).
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 此处的时间戳是编译完成后的时间（相对于 JVM 启动时的时间0）。
 - en: 'The `compilation_id` is an internal task ID. Usually, this number will simply
     increase monotonically, but sometimes you may see an out-of-order compilation
     ID. This happens most frequently when there are multiple compilation threads and
     indicates that compilation threads are running faster or slower relative to each
     other. Don’t conclude, though, that one particular compilation task was somehow
     inordinately slow: it is usually just a function of thread scheduling.'
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: '`compilation_id` 是内部任务ID。通常，这个数字会单调递增，但有时你可能会看到一个无序的 `compilation_id`。这种情况最常见于多个编译线程同时运行，并且表明编译线程相对于彼此的运行速度快慢不一。不过，请不要断定某个特定的编译任务在某种程度上非常慢：这通常只是线程调度的一个功能。'
 - en: 'The `attributes` field is a series of five characters that indicates the state
     of the code being compiled. If a particular attribute applies to the given compilation,
     the character shown in the following list is printed; otherwise, a space is printed
     for that attribute. Hence, the five-character attribute string may appear as two
     or more items separated by spaces. The various attributes are as follows:'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: '`attributes` 字段是一个由五个字符组成的序列，表示正在编译的代码的状态。如果某个特定属性适用于给定的编译，则会打印下面列表中显示的字符；否则，该属性的空间会打印。因此，五字符属性字符串可以显示为由两个或多个以空格分隔的项。各种属性如下：'
 - en: '`%`'
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: '`%`'
 - en: The compilation is OSR.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译是 OSR。
 - en: '`s`'
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: '`s`'
 - en: The method is synchronized.
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 该方法已同步。
 - en: '`!`'
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: '`!`'
 - en: The method has an exception handler.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 该方法有一个异常处理程序。
 - en: '`b`'
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: '`b`'
 - en: Compilation occurred in blocking mode.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译以阻塞模式发生。
 - en: '`n`'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: '`n`'
 - en: Compilation occurred for a wrapper to a native method.
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: 对一个本地方法的包装进行了编译。
 - en: 'The first of these attributes refers to *on-stack replacement* (OSR). JIT compilation
     is an asynchronous process: when the JVM decides that a certain method should
     be compiled, that method is placed in a queue. Rather than wait for the compilation,
     the JVM then continues interpreting the method, and the next time the method is
     called, the JVM will execute the compiled version of the method (assuming the
     compilation has finished, of course).'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些属性中的第一个是 *on-stack replacement*（OSR）。JIT 编译是一个异步过程：当 JVM 决定某个方法应该被编译时，该方法会被放入一个队列中。而不是等待编译，JVM
+    接着会继续解释该方法，下次方法被调用时，JVM 将执行方法的编译版本（假设编译已经完成）。
 - en: 'But consider a long-running loop. The JVM will notice that the loop itself
     should be compiled and will queue that code for compilation. But that isn’t sufficient:
     the JVM has to have the ability to start executing the compiled version of the
@@ -447,72 +629,106 @@
     for the loop has finished compiling, the JVM replaces the code (on stack), and
     the next iteration of the loop will execute the much faster compiled version of
     the code. This is OSR.'
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 但是考虑一个长时间运行的循环。JVM 将注意到应该编译循环本身，并将该代码排队进行编译。但这还不够：JVM 必须能够在循环仍在运行时开始执行已编译的循环版本——等待循环和封闭方法退出将是低效的（甚至可能根本不会发生）。因此，当循环的代码编译完成时，JVM
+    替换代码（在栈上），循环的下一次迭代将执行代码的更快编译版本。这就是 OSR。
 - en: The next two attributes should be self-explanatory. The blocking flag will never
     be printed by default in current versions of Java; it indicates that compilation
     did not occur in the background (see [“Compilation Threads”](#CompilationThreads)
     for more details). Finally, the native attribute indicates that the JVM generated
     compiled code to facilitate the call into a native method.
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 下面两个属性应该是不言而喻的。在当前版本的 Java 中，默认情况下不会打印阻塞标志；它表示编译未在后台进行（有关更多详细信息，请参阅 [“编译线程”](#CompilationThreads)）。最后，本地属性表示
+    JVM 生成了编译代码以便调用本地方法。
 - en: If tiered compilation has been disabled, the next field (`tiered_level`) will
     be blank. Otherwise, it will be a number indicating which tier has completed compilation.
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果分层编译已禁用，则下一个字段（`tiered_level`）将为空白。否则，它将是一个表示已完成编译的层级的数字。
 - en: Next comes the name of the method being compiled (or the method containing the
     loop being compiled for OSR), which is printed as `ClassName::method`.
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来是正在编译的方法的名称（或正在为 OSR 编译的循环的方法），打印为 `ClassName::method`。
 - en: Next is the `size` (in bytes) of the code being compiled. This is the size of
     the Java bytecodes, not the size of the compiled code (so, unfortunately, this
     can’t be used to predict how large to size the code cache).
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来是代码的`size`（以字节为单位）。这是Java字节码的大小，而不是编译后代码的大小（因此，不幸的是，这不能用来预测如何调整代码缓存的大小）。
 - en: Finally, in some cases a message at the end of the compilation line will indicate
     that some sort of deoptimization has occurred; these are typically the phrases
     `made not entrant` or `made zombie`. See [“Deoptimization”](#Deoptimization) for
     more details.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，在某些情况下，编译行末尾的消息将指示发生了某种去优化；这些通常是`made not entrant`或`made zombie`短语。详细信息请参阅[“去优化”](#Deoptimization)。
 - en: 'The compilation log may also include a line that looks like this:'
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译日志中可能还包括类似以下的一行：
 - en: '[PRE2]'
+  id: totrans-87
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: 'This line (with the literal text `COMPILE SKIPPED`) indicates that something
     has gone wrong with the compilation of the given method. In two cases this is
     expected, depending on the reason specified:'
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 此行（带有字面文本`COMPILE SKIPPED`）表示给定方法的编译出现了问题。在两种情况下，这是预期的，具体取决于指定的原因：
 - en: Code cache filled
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 代码缓存已满
 - en: The size of the code cache needs to be increased using the `ReservedCodeCache`
     flag.
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用`ReservedCodeCache`标志需要增加代码缓存的大小。
 - en: Concurrent classloading
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 并发类加载
 - en: The class was modified as it was being compiled. The JVM will compile it again
     later; you should expect to see the method recompiled later in the log.
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 当编译时，该类正在被修改。JVM将稍后重新编译它；你应该期望在日志中稍后再次看到该方法被重新编译的信息。
 - en: In all cases (except the cache being filled), the compilation should be reattempted.
     If it is not, an error prevents compilation of the code. This is often a bug in
     the compiler, but the usual remedy in all cases is to refactor the code into something
     simpler that the compiler can handle.
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 在所有情况下（除了填充缓存），应重新尝试编译。如果没有重新尝试，则表示错误阻止了代码的编译。这通常是编译器中的一个错误，但在所有情况下的常规解决方法是将代码重构为编译器可以处理的更简单的东西。
 - en: 'Here are a few lines of output from enabling `PrintCompilation` on the stock
     REST application:'
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里是从启用`PrintCompilation`的股票REST应用程序中输出的几行：
 - en: '[PRE3]'
+  id: totrans-95
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'This output includes only a few of the stock-related methods (and not necessarily
     all of the lines related to a particular method). A few interesting things to
     note: the first such method wasn’t compiled until 28 seconds after the server
@@ -520,22 +736,30 @@
     other methods were methods of the server or JDK (filtered out of this output).
     The server took about 2 seconds to start; the remaining 26 seconds before anything
     else was compiled were essentially idle as the application server waited for requests.'
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 此输出仅包括一些与股票相关的方法（并不一定包括特定方法的所有行）。有几点有趣的地方需要注意：第一个这样的方法直到服务器启动后的28秒才被编译，而在此之前已编译了849个方法。在这种情况下，所有其他方法都是服务器或JDK的方法（已从此输出中过滤掉）。服务器启动大约需要2秒；在编译任何其他内容之前的剩余26秒基本上处于空闲状态，因为应用服务器在等待请求。
 - en: 'The remaining lines are included to point out interesting features. The `process()`
     method is synchronized, so the attributes include an `s`. Inner classes are compiled
     just like any other class and appear in the output with the usual Java nomenclature:
     `outer-classname$inner-classname`. The `processRequest()` method shows up with
     the exception handler as expected.'
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 其余行用于指出有趣的特征。`process()`方法是同步的，因此属性包括一个`s`。内部类与任何其他类一样编译，并以通常的Java命名方式出现在输出中：`outer-classname$inner-classname`。`processRequest()`方法如预期般带有异常处理程序。
 - en: 'Finally, recall the implementation of the `StockPriceHistoryImpl` constructor,
     which contains a large loop:'
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，回顾一下`StockPriceHistoryImpl`构造函数的实现，其中包含一个大循环：
 - en: '[PRE4]'
+  id: totrans-99
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: The loop is executed more often than the constructor itself, so the loop is
     subject to OSR compilation. Note that it took a while for that method to be compiled;
     its compilation ID is 25, but it doesn’t appear until other methods in the 900
@@ -544,168 +768,247 @@
     ID, and the % just signifies OSR compilation.) That is typical of OSR compilation;
     the stack replacement is harder to set up, but other compilation can continue
     in the meantime.
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: 循环执行的频率比构造函数本身高，因此循环会进行OSR编译。请注意，该方法的编译需要一段时间；其编译ID为25，但在编译900范围内的其他方法后才会出现。
+    （很容易像这个例子中的OSR行一样读成25%，并想知道其他的75%，但请记住，数字是编译ID，%仅表示OSR编译。） 这是OSR编译的典型情况；栈替换设置更难，但与此同时可以进行其他编译。
 - en: Tiered Compilation Levels
+  id: totrans-101
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 分层编译级别
 - en: 'The compilation log for a program using tiered compilation prints the tier
     level at which each method is compiled. In the sample output, code was compiled
     either at level 3 or 4, even though we’ve discussed only two compilers (plus the
     interpreter) so far. It turns out that there are five levels of compilation, because
     the C1 compiler has three levels. So the levels of compilation are as follows:'
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用分层编译的程序的编译日志打印出每个方法编译的层级。在样本输出中，代码编译到级别3或4，尽管到目前为止我们只讨论了两个编译器（加上解释器）。原来有五个编译级别，因为C1编译器有三个级别。所以编译的级别如下所示：
 - en: '0'
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: '0'
 - en: Interpreted code
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
+  zh: 解释性代码
 - en: '1'
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: '1'
 - en: Simple C1 compiled code
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 简单的C1编译代码
 - en: '2'
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: '2'
 - en: Limited C1 compiled code
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 有限的C1编译代码
 - en: '3'
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: '3'
 - en: Full C1 compiled code
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 完全的C1编译代码
 - en: '4'
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: '4'
 - en: C2 compiled code
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: C2编译代码
 - en: 'A typical compilation log shows that most methods are first compiled at level
     3: full C1 compilation. (All methods start at level 0, of course, but that doesn’t
     appear in the log.) If a method runs often enough, it will get compiled at level
     4 (and the level 3 code will be made not entrant). This is the most frequent path:
     the C1 compiler waits to compile something until it has information about how
     the code is used that it can leverage to perform optimizations.'
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 典型的编译日志显示，大多数方法首先在级别3处进行编译：完全的C1编译。（当然，所有方法都从级别0开始，但日志中不显示。） 如果方法运行频率足够高，则会在级别4进行编译（并且级别3代码将变为非输入）。
+    这是最常见的路径：C1编译器等待进行编译直到它有关于代码如何使用的信息，可以利用这些信息进行优化。
 - en: If the C2 compiler queue is full, methods will be pulled from the C2 queue and
     compiled at level 2, which is the level at which the C1 compiler uses the invocation
     and back-edge counters (but doesn’t require profile feedback). That gets the method
     compiled more quickly; the method will later be compiled at level 3 after the
     C1 compiler has gathered profile information, and finally compiled at level 4
     when the C2 compiler queue is less busy.
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果C2编译器队列已满，方法将从C2队列中取出，并在级别2处进行编译，这是C1编译器使用调用和反向边计数器的级别（但不需要配置文件反馈）。这样可以更快地编译该方法；在C1编译器收集配置文件信息后，该方法稍后将在级别3处进行编译，并在C2编译器队列较少时最终编译到级别4。
 - en: On the other hand, if the C1 compiler queue is full, a method that is scheduled
     for compilation at level 3 may become eligible for level 4 compilation while still
     waiting to be compiled at level 3\. In that case, it is quickly compiled to level
     2 and then transitioned to level 4.
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，如果C1编译器队列已满，计划在级别3进行编译的方法可能在等待在级别3处编译时就变得适合在级别4进行编译。在这种情况下，它会快速编译到级别2，然后过渡到级别4。
 - en: Trivial methods may start in either level 2 or 3 but then go to level 1 because
     of their trivial nature. If the C2 compiler for some reason cannot compile the
     code, it will also go to level 1\. And, of course, when code is deoptimized, it
     goes to level 0.
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于其微不足道的特性，简单的方法可能从级别2或3开始，但然后因为其微不足道而进入级别1。如果由于某种原因C2编译器无法编译代码，它也会进入级别1。当代码被取消优化时，它会回到级别0。
 - en: 'Flags control some of this behavior, but expecting results when tuning at this
     level is optimistic. The best case for performance happens when methods are compiled
     as expected: tier 0 → tier 3 → tier 4. If methods frequently get compiled into
     tier 2 and extra CPU cycles are available, consider increasing the number of compiler
     threads; that will reduce the size of the C2 compiler queue. If no extra CPU cycles
     are available, all you can do is attempt to reduce the size of the application.'
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 标志控制某些行为，但期望在此级别进行调整时获得结果是乐观的。性能的最佳情况发生在方法按预期编译的情况下：tier 0 → tier 3 → tier 4。如果方法经常编译成tier
+    2并且有额外的CPU周期可用，考虑增加编译器线程的数量；这将减少C2编译器队列的大小。如果没有额外的CPU周期可用，则唯一能做的就是尝试减少应用程序的大小。
 - en: Deoptimization
+  id: totrans-118
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 取消优化
 - en: The discussion of the output of the `PrintCompilation` flag mentioned two cases
     of the compiler deoptimizing the code. *Deoptimization* means that the compiler
     has to “undo” a previous compilation. The effect is that the performance of the
     application will be reduced—at least until the compiler can recompile the code
     in question.
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 输出`PrintCompilation`标志的讨论提到编译器取消优化代码的两种情况。*取消优化*意味着编译器必须“撤销”先前的编译。这会导致应用程序的性能降低，至少直到编译器重新编译相关代码为止。
 - en: 'Deoptimization occurs in two cases: when code is `made not entrant` and when
     code is `made zombie`.'
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 取消优化发生在两种情况下：当代码成为非入口时和当代码变成僵尸时。
 - en: Not entrant code
+  id: totrans-121
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 非入口代码
 - en: Two things cause code to be made not entrant. One is due to the way classes
     and interfaces work, and one is an implementation detail of tiered compilation.
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 有两件事导致代码成为非入口。一个是由于类和接口的工作方式，另一个是分层编译的实现细节。
 - en: 'Let’s look at the first case. Recall that the stock application has an interface
     `StockPriceHistory`. In the sample code, this interface has two implementations:
     a basic one (`StockPriceHistoryImpl`) and one that adds logging (`Stock​PriceHistoryLogger`)
     to each operation. In the REST code, the implementation used is based on the `log`
     parameter of the URL:'
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看看第一个案例。回想一下股票应用程序有一个名为`StockPriceHistory`的接口。在示例代码中，这个接口有两个实现：一个基本实现（`StockPriceHistoryImpl`）和一个添加日志记录（`StockPriceHistoryLogger`）的实现。在REST代码中，所使用的实现基于URL的`log`参数：
 - en: '[PRE5]'
+  id: totrans-124
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: If a bunch of calls are made to *http://localhost:8080/StockServlet* (that is,
     without the `log` parameter), the compiler will see that the actual type of the
     `sph` object is `StockPriceHistoryImpl`. It will then inline code and perform
     other optimizations based on that knowledge.
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果调用一堆`http://localhost:8080/StockServlet`（即没有`log`参数），编译器将会发现`sph`对象的实际类型是`StockPriceHistoryImpl`。然后会内联代码并根据此知识执行其他优化。
 - en: Later, say a call is made to *http://localhost:8080/StockServlet?log=true*.
     Now the assumption the compiler made regarding the type of the `sph` object is
     incorrect; the previous optimizations are no longer valid. This generates a deoptimization
     trap, and the previous optimizations are discarded. If a lot of additional calls
     are made with logging enabled, the JVM will quickly end up compiling that code
     and making new optimizations.
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 后来，假设调用了`http://localhost:8080/StockServlet?log=true`。现在编译器对`sph`对象类型的假设是错误的；先前的优化不再有效。这会生成一个取消优化陷阱，并且之前的优化将被丢弃。如果启用了大量带日志的附加调用，JVM将快速重新编译该代码并进行新的优化。
 - en: 'The compilation log for that scenario will include lines such as the following:'
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 针对该场景的编译日志将包含以下行：
 - en: '[PRE6]'
+  id: totrans-128
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: Note that both the OSR-compiled constructor and the standard-compiled methods
     have been made not entrant, and some time much later, they are made zombie.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 请注意，OSR编译的构造函数和标准编译的方法都已被标记为非入口，并且在稍后的某个时候它们将变成僵尸。
 - en: Deoptimization sounds like a bad thing, at least in terms of performance, but
     that isn’t necessarily the case. [Table 4-1](#TableDeopt) shows the operations
     per second that the REST server achieves under deoptimization scenarios.
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 取消优化听起来像是一件坏事，至少在性能方面是这样，但并不一定如此。[表 4-1](#TableDeopt) 显示了REST服务器在取消优化场景下达到的每秒操作数。
 - en: Table 4-1\. Throughput of server with deoptimization
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 4-1\. 在取消优化的服务器吞吐量
 - en: '| Scenario | OPS |'
+  id: totrans-132
   prefs: []
   type: TYPE_TB
+  zh: '| 场景 | OPS |'
 - en: '| --- | --- |'
+  id: totrans-133
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| Standard implementation | 24.4 |'
+  id: totrans-134
   prefs: []
   type: TYPE_TB
+  zh: '| 标准实现 | 24.4 |'
 - en: '| Standard implementation after deopt | 24.4 |'
+  id: totrans-135
   prefs: []
   type: TYPE_TB
+  zh: '| 取消优化后的标准实现 | 24.4 |'
 - en: '| Logging implementation | 24.1 |'
+  id: totrans-136
   prefs: []
   type: TYPE_TB
+  zh: '| 日志实现 | 24.1 |'
 - en: '| Mixed impl | 24.3 |'
+  id: totrans-137
   prefs: []
   type: TYPE_TB
+  zh: '| 混合实现 | 24.3 |'
 - en: The standard implementation will give us 24.4 OPS. Suppose that immediately
     after that test, a test is run that triggers the `StockPriceHistoryLogger` path—that
     is the scenario that ran to produce the deoptimization examples just listed. The
@@ -714,8 +1017,12 @@
     But after deoptimization, if the path that uses the `StockPriceHistoryImpl` implementation
     is rerun, that code will get recompiled (with slightly different assumptions),
     and we will still end up still seeing about 24.4 OPS (after another warm-up period).
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 标准实现将给出 24.4 次/秒。假设在那个测试之后立即运行一个测试，触发了 `StockPriceHistoryLogger` 路径——这是产生刚刚列出的去优化示例的场景。`PrintCompilation`
+    的完整输出显示，当开始请求日志记录实现时，`StockPriceHistoryImpl` 类的所有方法都被去优化了。但是在去优化之后，如果重新运行使用 `StockPriceHistoryImpl`
+    实现的路径，那段代码将会被重新编译（带有稍微不同的假设），我们仍然会看到约 24.4 次/秒（在另一个预热期之后）。
 - en: 'That’s the best case, of course. What happens if the calls are intermingled
     such that the compiler can never really assume which path the code will take?
     Because of the extra logging, the path that includes the logging gets about 24.1
@@ -723,8 +1030,11 @@
     what would be expected from an average. So aside from a momentary point where
     the trap is processed, deoptimization has not affected the performance in any
     significant way.'
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 当然，这是最好的情况。如果调用交错，以至于编译器永远无法真正假设代码将采取哪条路径呢？由于额外的日志记录，包含日志记录的路径通过服务器获得约 24.1
+    次/秒。如果操作混合，我们会得到约 24.3 次/秒：这几乎符合平均值的预期。因此，除了瞬间处理陷阱的时间点外，去优化没有对性能产生任何显著影响。
 - en: 'The second thing that can cause code to be made not entrant is the way tiered
     compilation works. When code is compiled by the C2 compiler, the JVM must replace
     the code already compiled by the C1 compiler. It does this by marking the old
@@ -733,26 +1043,37 @@
     tiered compilation, the compilation log will show a slew of methods that are made
     not entrant. Don’t panic: this “deoptimization” is, in fact, making the code that
     much faster.'
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 可能导致代码变为非入口的第二个因素是分层编译的工作方式。当代码由 C2 编译器编译时，JVM 必须替换已由 C1 编译器编译的代码。它通过将旧代码标记为非入口，并使用相同的去优化机制来替换新编译的（更有效的）代码来实现这一点。因此，当使用分层编译运行程序时，编译日志将显示大量被标记为非入口的方法。不要惊慌：实际上，这种“去优化”使得代码运行更快。
 - en: 'The way to detect this is to pay attention to the tier level in the compilation
     log:'
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 检测这一点的方法是注意编译日志中的层级等级：
 - en: '[PRE7]'
+  id: totrans-142
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: Here, the constructor is first OSR-compiled at level 3 and then fully compiled
     also at level 3\. A second later, the OSR code becomes eligible for level 4 compilation,
     so it is compiled at level 4 and the level 3 OSR code is made not entrant. The
     same process then occurs for the standard compilation, and finally the level 3
     code becomes a zombie.
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，构造函数首先在第 3 级进行 OSR 编译，然后也在第 3 级进行完全编译。一秒钟后，OSR 代码有资格进行第 4 级编译，因此它在第 4 级进行编译，并且第
+    3 级的 OSR 代码被标记为非入口。然后，相同的过程发生在标准编译中，并且最终第 3 级代码变成了僵尸。
 - en: Deoptimizing zombie code
+  id: totrans-144
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 去优化僵尸代码
 - en: When the compilation log reports that it has made zombie code, it is saying
     that it has reclaimed previous code that was made not entrant. In the preceding
     example, after a test was run with the `StockPriceHistoryLogger` implementation,
@@ -760,14 +1081,21 @@
     of the `StockPriceHistoryImpl` class remained. Eventually all those objects were
     reclaimed by GC. When that happened, the compiler noticed that the methods of
     that class were now eligible to be marked as zombie code.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 当编译日志报告它已经生成僵尸代码时，它是在说它已经回收了以前被标记为非入口的代码。在前面的示例中，在使用 `StockPriceHistoryLogger`
+    实现运行测试之后，`StockPriceHistoryImpl` 类的代码被标记为非入口。但 `StockPriceHistoryImpl` 类的对象仍然存在。最终，所有这些对象都被
+    GC 回收。当发生这种情况时，编译器注意到该类的方法现在有资格被标记为僵尸代码。
 - en: For performance, this is a good thing. Recall that the compiled code is held
     in a fixed-size code cache; when zombie methods are identified, the code in question
     can be removed from the code cache, making room for other classes to be compiled
     (or limiting the amount of memory the JVM will need to allocate later).
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于性能来说，这是一件好事。请记住，编译后的代码存储在固定大小的代码缓存中；当识别出僵尸方法时，相关代码可以从代码缓存中删除，为其他类编译腾出空间（或者限制
+    JVM 以后需要分配的内存量）。
 - en: The possible downside is that if the code for the class is made zombie and then
     later reloaded and heavily used again, the JVM will need to recompile and reoptimize
     the code. Still, that’s exactly what happened in the previous scenario, where
@@ -775,77 +1103,107 @@
     performance in that case was not noticeably affected. In general, the small recompilations
     that occur when zombie code is recompiled will not have a measurable effect on
     most applications.
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
+  zh: 可能的缺点是，如果类的代码变成僵尸，然后稍后重新加载并且再次大量使用，JVM 将需要重新编译和重新优化代码。不过，在先前的场景中确实发生了这种情况，在没有记录日志、有记录日志、再次没有记录日志的情况下运行测试；在这种情况下，性能并没有明显受到影响。一般来说，当僵尸代码重新编译时发生的小型重新编译不会对大多数应用程序产生可测量的影响。
 - en: Quick Summary
+  id: totrans-148
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: The best way to gain visibility into how code is being compiled is by enabling
     `PrintCompilation`.
+  id: totrans-149
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 获得查看代码编译方式的最佳方法是启用 `PrintCompilation`。
 - en: Output from enabling `PrintCompilation` can be used to make sure that compilation
     is proceeding as expected.
+  id: totrans-150
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 通过启用 `PrintCompilation` 输出的信息可以用来确保编译按预期进行。
 - en: Tiered compilation can operate at five distinct levels among the two compilers.
+  id: totrans-151
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 分层编译可以在两个编译器中的五个不同级别上操作。
 - en: Deoptimization is the process by which the JVM replaces previously compiled
     code. This usually happens in the context of C2 code replacing C1 code, but it
     can happen because of changes in the execution profile of an application.
+  id: totrans-152
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 去优化是 JVM 替换先前编译代码的过程。这通常发生在 C2 代码替换 C1 代码的情况下，但也可以因应用程序执行配置文件的变化而发生。
 - en: Advanced Compiler Flags
+  id: totrans-153
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 高级编译器标志
 - en: This section covers a few other flags that affect the compiler. Mostly, this
     gives you a chance to understand even better how the compiler works; these flags
     should not generally be used. On the other hand, another reason they are included
     here is that they were once common enough to be in wide usage, so if you’ve encountered
     them and wonder what they do, this section should answer those questions.
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 本节介绍了一些影响编译器的其他标志。主要是为了更好地理解编译器的工作原理；一般情况下，不应该使用这些标志。另一方面，它们包含在此处的另一个原因是它们曾经足够常见，以至于广泛使用，因此如果你遇到它们并想知道它们的作用，本节应该能解答这些问题。
 - en: Compilation Thresholds
+  id: totrans-155
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 编译阈值
 - en: This chapter has been somewhat vague in defining just what triggers the compilation
     of code. The major factor is how often the code is executed; once it is executed
     a certain number of times, its compilation threshold is reached, and the compiler
     deems that it has enough information to compile the code.
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
+  zh: 这一章在定义触发代码编译的内容上有些模糊。主要因素是代码执行的频率；一旦代码执行达到一定次数，其编译阈值就会达到，编译器认为有足够的信息来编译代码。
 - en: Tunings affect these thresholds. However, this section is really designed to
     give you better insight into how the compiler works (and introduce some terms);
     in current JVMs, tuning the threshold never really makes sense.
+  id: totrans-157
   prefs: []
   type: TYPE_NORMAL
+  zh: 调整会影响这些阈值。然而，本节的真正目的是为了让您更好地了解编译器的工作方式（并引入一些术语）；在当前的 JVM 中，调整阈值实际上从未有意义过。
 - en: 'Compilation is based on two counters in the JVM: the number of times the method
     has been called, and the number of times any loops in the method have branched
     back. *Branching back* can effectively be thought of as the number of times a
     loop has completed execution, either because it reached the end of the loop itself
     or because it executed a branching statement like `continue`.'
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译基于 JVM 中的两个计数器：方法被调用的次数和方法中任何循环返回的次数。*循环返回* 实际上可以被视为循环完成执行的次数，无论是因为它到达了循环本身的结尾，还是因为它执行了像
+    `continue` 这样的分支语句。
 - en: When the JVM executes a Java method, it checks the sum of those two counters
     and decides whether the method is eligible for compilation. If it is, the method
     is queued for compilation (see [“Compilation Threads”](#CompilationThreads) for
     more details about queuing). This kind of compilation has no official name but
     is often called *standard* *compilation*.
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 当JVM执行Java方法时，它会检查这两个计数器的总和，并决定该方法是否有资格进行编译。如果有，该方法将被排队等待编译（详见[“编译线程”](#CompilationThreads)了解更多排队详情）。这种编译没有官方名称，但通常被称为*标准*
+    *编译*。
 - en: Similarly, every time a loop completes an execution, the branching counter is
     incremented and inspected. If the branching counter has exceeded its individual
     threshold, the loop (and not the entire method) becomes eligible for compilation.
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 同样地，每当一个循环完成执行时，分支计数器都会递增和检查。如果分支计数器超过了其单独的阈值，该循环（而不是整个方法）就有资格进行编译。
 - en: Tunings affect these thresholds. When tiered compilation is disabled, standard
     compilation is triggered by the value of the `-XX:CompileThreshold=`*`N`* flag.
     The default value of *`N`* is 10,000\. Changing the value of the `CompileThreshold`
@@ -853,41 +1211,53 @@
     it normally would have. Note, however, that although there is one flag here, the
     threshold is calculated by adding the sum of the back-edge loop counter plus the
     method entry counter.
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 调整会影响这些阈值。当停用分层编译时，标准编译由`-XX:CompileThreshold=`*`N`* 标志的值触发。*`N`* 的默认值为10,000。改变`CompileThreshold`标志的值将导致编译器选择比通常更早（或更晚）编译代码。不过，请注意，虽然这里有一个标志，但阈值是通过添加回边循环计数器的总和加上方法入口计数器来计算的。
 - en: You can often find recommendations to change the `CompileThreshold` flag, and
     several publications of Java benchmarks use this flag (e.g., frequently after
     8,000 iterations). Some applications still ship with that flag set by default.
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 您经常会找到建议修改`CompileThreshold`标志的建议，并且一些Java基准测试的出版物在此标志之后使用它（例如，通常在8,000次迭代之后）。一些应用程序仍然默认设置了该标志。
 - en: But remember that I said this flag works when tiered compilation is disabled—which
     means that when tiered compilation is enabled (as it normally is), this flag does
     nothing at all. Use of this flag is really just a holdover from JDK 7 and earlier
     days.
+  id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: 但请记住，我说这个标志在停用分层编译时有效——这意味着当分层编译启用时（通常是这样），这个标志根本不起作用。实际上，使用这个标志只是从JDK 7及之前的日子保留下来的一个习惯。
 - en: 'This flag used to be recommended for two reasons: first, lowering it would
     improve startup time for an application using the C2 compiler, since code would
     get compiled more quickly (and usually with the same effectiveness). Second, it
     could cause some methods to get compiled that otherwise never would have been
     compiled.'
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个标志曾经推荐使用有两个原因：首先，将其降低可以改善使用C2编译器的应用程序的启动时间，因为代码会更快地被编译（通常效果相同）。其次，它可能导致一些本来不会被编译的方法被编译。
 - en: 'That last point is an interesting quirk: if a program runs forever, wouldn’t
     we expect all of its code to get compiled eventually? That’s not how it works,
     because the counters the compilers use increase as methods and loops are executed,
     but they also decrease over time. Periodically (specifically, when the JVM reaches
     a safepoint), the value of each counter is reduced.'
+  id: totrans-165
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后一点是一个有趣的特点：如果一个程序永远运行下去，我们是否期望其所有代码最终都会被编译？事实并非如此，因为编译器使用的计数器会随着方法和循环的执行而增加，但它们也会随着时间的推移而减少。定期（具体来说，当JVM达到安全点时），每个计数器的值都会减少。
 - en: Practically speaking, this means that the counters are a relative measure of
     the *recent* hotness of the method or loop. One side effect is that somewhat frequently
     executed code may never be compiled by the C2 compiler, even for programs that
     run forever. These methods are sometimes called *lukewarm* (as opposed to hot).
     Before tiered compilation, this was one case where reducing the compilation threshold
     was beneficial.
+  id: totrans-166
   prefs: []
   type: TYPE_NORMAL
+  zh: 从实际角度来看，这意味着这些计数器是方法或循环*最近*热度的相对度量。一个副作用是，即使是经常执行的代码也可能永远不会被C2编译器编译，即使是那些永远运行的程序也是如此。这些方法有时被称为*温暖的*（与热的相对）。在分层编译之前，这是减少编译阈值有益的一个案例。
 - en: Today, however, even the lukewarm methods will be compiled, though perhaps they
     could be ever-so-slightly improved if we could get them compiled by the C2 compiler
     rather than the C1 compiler. Little practical benefit exists, but if you’re really
@@ -895,97 +1265,141 @@
     200) to get C1 to compile a method more quickly, and `-XX:Tier4InvocationThreshold=*N*`
     (default 5000) to get C2 to compile a method more quickly. Similar flags are available
     for the back-edge threshold.
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，即使是温和的方法现在也将被编译，尽管如果我们能让它们由C2编译器而不是C1编译器编译，可能会稍微改进一点点。实际上没有太多实际好处，但如果你真的感兴趣，可以尝试修改标志`-XX:Tier3InvocationThreshold=*N*`（默认200）以更快地让C1编译方法，并且`-XX:Tier4InvocationThreshold=*N*`（默认5000）以更快地让C2编译方法。类似的标志也适用于后向边界阈值。
 - en: Quick Summary
+  id: totrans-168
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: The thresholds at which methods (or loops) get compiled are set via tunable
     parameters.
+  id: totrans-169
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 方法（或循环）编译的阈值通过可调参数设置。
 - en: Without tiered compilation, it sometimes made sense to adjust those thresholds,
     but with tiered compilation, this tuning is no longer recommended.
+  id: totrans-170
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 没有分层编译时，调整这些阈值有时是有意义的，但是有了分层编译，不再建议进行此调整。
 - en: Compilation Threads
+  id: totrans-171
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 编译线程
 - en: '[“Compilation Thresholds”](#CompileThreshold) mentioned that when a method
     (or loop) becomes eligible for compilation, it is queued for compilation. That
     queue is processed by one or more background threads.'
+  id: totrans-172
   prefs: []
   type: TYPE_NORMAL
+  zh: '[“编译阈值”](#CompileThreshold)提到，当一个方法（或循环）符合编译条件时，它将被加入编译队列。这个队列由一个或多个后台线程处理。'
 - en: These queues are not strictly first in, first out; methods whose invocation
     counters are higher have priority. So even when a program starts execution and
     has lots of code to compile, this priority ordering helps ensure that the most
     important code will be compiled first. (This is another reason the compilation
     ID in the `PrintCompilation` output can appear out of order.)
+  id: totrans-173
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些队列不是严格的先进先出；调用计数更高的方法具有优先级。因此，即使程序开始执行并有大量代码需要编译，这种优先级排序也确保最重要的代码首先被编译。（这也是为什么`PrintCompilation`输出中的编译ID可能会出现顺序混乱的另一个原因。）
 - en: The C1 and C2 compilers have different queues, each of which is processed by
     (potentially multiple) different threads. The number of threads is based on a
     complex formula of logarithms, but [Table 4-2](#TableCompilerThreads) lists the
     details.
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: C1和C2编译器有不同的队列，每个队列由（可能是多个）不同的线程处理。线程数基于复杂的对数公式，但[表4-2](#TableCompilerThreads)列出了详细信息。
 - en: Table 4-2\. Default number of C1 and C2 compiler threads for tiered compilation
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: 表4-2。分层编译的默认C1和C2编译器线程数
 - en: '| CPUs | C1 threads | C2 threads |'
+  id: totrans-176
   prefs: []
   type: TYPE_TB
+  zh: '| CPU | C1线程 | C2线程 |'
 - en: '| --- | --- | --- |'
+  id: totrans-177
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 1 | 1 | 1 |'
+  id: totrans-178
   prefs: []
   type: TYPE_TB
+  zh: '| 1 | 1 | 1 |'
 - en: '| 2 | 1 | 1 |'
+  id: totrans-179
   prefs: []
   type: TYPE_TB
+  zh: '| 2 | 1 | 1 |'
 - en: '| 4 | 1 | 2 |'
+  id: totrans-180
   prefs: []
   type: TYPE_TB
+  zh: '| 4 | 1 | 2 |'
 - en: '| 8 | 1 | 2 |'
+  id: totrans-181
   prefs: []
   type: TYPE_TB
+  zh: '| 8 | 1 | 2 |'
 - en: '| 16 | 2 | 6 |'
+  id: totrans-182
   prefs: []
   type: TYPE_TB
+  zh: '| 16 | 2 | 6 |'
 - en: '| 32 | 3 | 7 |'
+  id: totrans-183
   prefs: []
   type: TYPE_TB
+  zh: '| 32 | 3 | 7 |'
 - en: '| 64 | 4 | 8 |'
+  id: totrans-184
   prefs: []
   type: TYPE_TB
+  zh: '| 64 | 4 | 8 |'
 - en: '| 128 | 4 | 10 |'
+  id: totrans-185
   prefs: []
   type: TYPE_TB
+  zh: '| 128 | 4 | 10 |'
 - en: The number of compiler threads can be adjusted by setting the `-XX:CICompilerCount=`*`N`*
     flag. That is the total number of threads the JVM will use to process the queue(s);
     for tiered compilation, one-third (but at least one) will be used to process the
     C1 compiler queue, and the remaining threads (but also at least one) will be used
     to process the C2 compiler queue. The default value of that flag is the sum of
     the two columns in the preceding table.
+  id: totrans-186
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过设置`-XX:CICompilerCount=`*`N`*标志可以调整编译器线程数。这是JVM用于处理队列的总线程数；对于分层编译，将使用三分之一（但至少一个）来处理C1编译器队列，其余的线程（但至少一个）将用于处理C2编译器队列。该标志的默认值是前述表格两列的总和。
 - en: If tiered compilation is disabled, only the given number of C2 compiler threads
     are started.
+  id: totrans-187
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果禁用分层编译，只启动给定数量的C2编译器线程。
 - en: When might you consider adjusting this value? Because the default value is based
     on the number of CPUs, this is one case where running with an older version of
     JDK 8 inside a Docker container can cause the automatic tuning to go awry. In
     such a circumstance, you will need to manually set this flag to the desired value
     (using the targets in [Table 4-2](#TableCompilerThreads) as a guideline based
     on the number of CPUs assigned to the Docker container).
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 何时考虑调整此值？因为默认值基于CPU数量，这是一种情况，即在Docker容器内运行较旧版本的JDK 8可能会导致自动调整出现问题。在这种情况下，您需要根据Docker容器分配的CPU数量手动设置此标志到期望值（使用[表4-2](#TableCompilerThreads)中的目标作为指导）。
 - en: 'Similarly, if a program is run on a single-CPU virtual machine, having only
     one compiler thread might be slightly beneficial: limited CPU is available, and
     having fewer threads contending for that resource will help performance in many
@@ -997,22 +1411,30 @@
     for CPU as often). The more iterations that were run, the smaller the overall
     effect of that initial benefit, until all hot methods were compiled and the benefit
     was eliminated.'
+  id: totrans-189
   prefs: []
   type: TYPE_NORMAL
+  zh: 同样，如果程序在单CPU虚拟机上运行，并且只有一个编译器线程可能会稍微有利：有限的 CPU 可用，并且较少的线程争夺该资源将在许多情况下有助于性能。然而，该优势仅限于初始热身期；之后，要编译的合格方法数量实际上不会导致对
+    CPU 的争用。当在单CPU机器上运行股票批处理应用程序并且编译器线程数限制为一个时，初始计算速度大约快10%（因为它们不必经常竞争 CPU）。运行的迭代越多，该初始利益的整体效果越小，直到所有热方法都被编译，这种利益被消除。
 - en: On the other hand, the number of threads can easily overwhelm the system, particularly
     if multiple JVMs are run at once (each of which will start many compilation threads).
     Reducing the number of threads in that case can help overall throughput (though
     again with the possible cost that the warm-up period will last longer).
+  id: totrans-190
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，线程数量可能会轻易地压倒系统，特别是如果同时运行多个 JVM（每个 JVM 将启动许多编译线程）。在这种情况下减少线程数量可以帮助整体吞吐量（尽管可能会导致热身期持续时间更长的可能成本）。
 - en: Similarly, if lots of extra CPU cycles are available, then theoretically the
     program will benefit—at least during its warm-up period—when the number of compiler
     threads is increased. In real life, that benefit is extremely hard to come by.
     Further, if all that excess CPU is available, you’re much better off trying something
     that takes advantage of the available CPU cycles during the entire execution of
     the application (rather than just compiling faster at the beginning).
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果有大量额外的 CPU 循环可用，那么在理论上，当编译线程的数量增加时，程序将受益——至少在其热身期间会受益。在现实生活中，这种好处几乎是难以获得的。此外，如果所有这些多余的
+    CPU 可用，你最好尝试利用整个应用程序执行过程中可用的 CPU 循环（而不仅仅是在开始时编译更快）。
 - en: One other setting that applies to the compilation threads is the value of the
     `-XX:+BackgroundCompilation` flag, which by default is `true`. That setting means
     that the queue is processed asynchronously as just described. But that flag can
@@ -1020,67 +1442,95 @@
     that wants to execute it will wait until it is in fact compiled (rather than continuing
     to execute in the interpreter). Background compilation is also disabled when `-Xbatch`
     is specified.
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: 应用于编译线程的另一个设置是 `-XX:+BackgroundCompilation` 标志的值，默认为 `true`。这意味着队列按照刚才描述的方式异步处理。但是该标志可以设置为
+    `false`，在这种情况下，当一个方法有资格进行编译时，希望执行它的代码将等待直到它实际编译为止（而不是继续在解释器中执行）。当指定 `-Xbatch`
+    时，后台编译也会被禁用。
 - en: Quick Summary
+  id: totrans-193
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Compilation occurs asynchronously for methods that are placed on the compilation
     queue.
+  id: totrans-194
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于放置在编译队列上的方法，编译是异步进行的。
 - en: The queue is not strictly ordered; hot methods are compiled before other methods
     in the queue. This is another reason compilation IDs can appear out of order in
     the compilation log.
+  id: totrans-195
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 队列并不是严格有序的；热方法在编译日志中编译前于其他方法是另一个原因。
 - en: Inlining
+  id: totrans-196
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 内联
 - en: 'One of the most important optimizations the compiler makes is to inline methods.
     Code that follows good object-oriented design often contains attributes that are
     accessed via getters (and perhaps setters):'
+  id: totrans-197
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译器进行的最重要的优化之一是方法内联。遵循良好面向对象设计的代码通常包含通过 getter（可能还有 setter）访问的属性：
 - en: '[PRE8]'
+  id: totrans-198
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'The overhead for invoking a method call like this is quite high, especially
     relative to the amount of code in the method. In fact, in the early days of Java,
     performance tips often argued against this sort of encapsulation precisely because
     of the performance impact of all those method calls. Fortunately, JVMs now routinely
     perform code inlining for these kinds of methods. Hence, you can write this code:'
+  id: totrans-199
   prefs: []
   type: TYPE_NORMAL
+  zh: 调用方法的开销非常高，特别是与方法内代码量相比。事实上，在Java早期，性能优化经常反对这种封装方式，因为所有这些方法调用对性能的影响很大。幸运的是，JVM现在常规地对这类方法执行代码内联。因此，你可以这样编写这段代码：
 - en: '[PRE9]'
+  id: totrans-200
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'The compiled code will essentially execute this:'
+  id: totrans-201
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译后的代码本质上会执行以下操作：
 - en: '[PRE10]'
+  id: totrans-202
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: Inlining is enabled by default. It can be disabled using the `-XX:-Inline` flag,
     though it is such an important performance boost that you would never actually
     do that (for example, disabling inlining reduces the performance of the stock
     batching test by over 50%). Still, because inlining is so important, and perhaps
     because we have many other knobs to turn, recommendations are often made regarding
     tuning the inlining behavior of the JVM.
+  id: totrans-203
   prefs: []
   type: TYPE_NORMAL
+  zh: 内联默认启用。可以使用`-XX:-Inline`标志禁用它，尽管这种内联是如此重要的性能提升，你实际上永远不会这样做（例如，禁用内联会使库存批处理测试的性能降低超过50%）。但是，由于内联如此重要，也许是因为我们有许多其他可调整的参数，建议经常关于调整JVM内联行为。
 - en: Unfortunately, there is no basic visibility into how the JVM inlines code. If
     you compile the JVM from source, you can produce a debug version that includes
     the flag `-XX:+PrintInlining`. That flag provides all sorts of information about
     the inlining decisions that the compiler makes.) The best that can be done is
     to look at profiles of the code, and if any simple methods near the top of the
     profiles seem like they should be inlined, experiment with inlining flags.
+  id: totrans-204
   prefs: []
   type: TYPE_NORMAL
+  zh: 不幸的是，没有基本的方式可以查看JVM如何内联代码。如果你从源代码编译JVM，可以生成包含`-XX:+PrintInlining`标志的调试版本。该标志提供有关编译器做出的所有内联决策的各种信息。最好的办法是查看代码的概要，并且如果任何简单方法位于概要的顶部，并且看起来应该被内联，则尝试使用内联标志进行实验。
 - en: The basic decision about whether to inline a method depends on how hot it is
     and its size. The JVM determines if a method is hot (i.e., called frequently)
     based on an internal calculation; it is not directly subject to any tunable parameters.
@@ -1089,8 +1539,10 @@
     as the `-XX:MaxFreqInlineSize=`*`N`* flag). Otherwise, it is eligible for inlining
     only if it is smaller than 35 bytes (or whatever is specified as the `-XX:MaxInlineSize=`*`N`*
     flag).
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: 是否内联方法的基本决定取决于其热度和大小。JVM确定方法是否热（即经常调用）基于内部计算；它不直接受任何可调参数的影响。如果一个方法因为频繁调用而有资格内联，它只有在其字节码大小小于325字节（或者指定为`-XX:MaxFreqInlineSize=`*`N`*标志）时才会被内联。否则，只有当其大小小于35字节（或者指定为`-XX:MaxInlineSize=`*`N`*标志）时才有资格内联。
 - en: Sometimes you will see recommendations that the value of the `MaxInlineSize`
     flag be increased so that more methods are inlined. One often overlooked aspect
     of this relationship is that setting the `MaxInlineSize` value higher than 35
@@ -1100,67 +1552,95 @@
     Otherwise, the net effect of tuning the `MaxInlineSize` flag is that it might
     reduce the warm-up time needed for a test, but it is unlikely that it will have
     a big impact on a long-running application.
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: 有时你会看到建议增加`MaxInlineSize`标志的值，以便内联更多的方法。这种关系经常被忽视的一个方面是，如果将`MaxInlineSize`值设置得比35高，那么当方法首次被调用时可能会被内联。然而，如果该方法经常被调用——在这种情况下其性能更为重要——那么它最终会被内联（假设其大小小于325字节）。否则，调整`MaxInlineSize`标志的净效果可能会减少测试所需的预热时间，但长时间运行的应用程序不太可能产生重大影响。
 - en: Quick Summary
+  id: totrans-207
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Inlining is the most beneficial optimization the compiler can make, particularly
     for object-oriented code where attributes are well encapsulated.
+  id: totrans-208
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 内联是编译器可以进行的最有益的优化，特别是对于良好封装属性的面向对象代码而言。
 - en: Tuning the inlining flags is rarely needed, and recommendations to do so often
     fail to account for the relationship between normal inlining and frequent inlining.
     Make sure to account for both cases when investigating the effects of inlining.
+  id: totrans-209
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 调整内联标志很少需要，建议这样做的往往没有考虑到正常内联和频繁内联之间的关系。在研究内联的影响时，请确保考虑这两种情况。
 - en: Escape Analysis
+  id: totrans-210
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 逃逸分析
 - en: 'The C2 compiler performs aggressive optimizations if escape analysis is enabled
     (`-XX:+DoEscapeAnalysis`, which is `true` by default). For example, consider this
     class to work with factorials:'
+  id: totrans-211
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果启用了逃逸分析（`-XX:+DoEscapeAnalysis`，默认情况下为`true`），C2编译器将进行激进的优化。例如，考虑以下与阶乘相关的类：
 - en: '[PRE11]'
+  id: totrans-212
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'To store the first 100 factorial values in an array, this code would be used:'
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了在数组中存储前100个阶乘值，使用以下代码：
 - en: '[PRE12]'
+  id: totrans-214
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'The `factorial` object is referenced only inside that loop; no other code can
     ever access that object. Hence, the JVM is free to perform optimizations on that
     object:'
+  id: totrans-215
   prefs: []
   type: TYPE_NORMAL
+  zh: '`factorial`对象只在那个循环内部引用；其他代码永远无法访问该对象。因此，JVM可以自由地对该对象进行优化：'
 - en: It needn’t get a synchronization lock when calling the `getFactorial()` method.
+  id: totrans-216
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在调用`getFactorial()`方法时，它不需要获取同步锁。
 - en: It needn’t store the field `n` in memory; it can keep that value in a register.
     Similarly, it can store the `factorial` object reference in a register.
+  id: totrans-217
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 它不需要在内存中存储字段`n`；它可以将该值保存在寄存器中。同样，它可以将`factorial`对象引用保存在寄存器中。
 - en: In fact, it needn’t allocate an actual factorial object at all; it can just
     keep track of the individual fields of the object.
+  id: totrans-218
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 事实上，它根本不需要分配实际的阶乘对象；它只需要跟踪对象的各个字段。
 - en: 'This kind of optimization is sophisticated: it is simple enough in this example,
     but these optimizations are possible even with more-complex code. Depending on
     the code usage, not all optimizations will necessarily apply. But escape analysis
     can determine which of those optimizations are possible and make the necessary
     changes in the compiled code.'
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种优化很复杂：在这个例子中它足够简单，但即使是更复杂的代码，这些优化也是可能的。根据代码的使用情况，并非所有优化都一定适用。但逃逸分析可以确定哪些优化是可能的，并对已编译的代码进行必要的更改。
 - en: 'Escape analysis is enabled by default. In rare cases, it will get things wrong.
     That is usually unlikely, and in current JVMs, it is rare indeed. Still, because
     there were once some high-profile bugs, you’ll sometimes see recommendations for
@@ -1169,40 +1649,55 @@
     disabling this feature could lead to more stable code. If you find this to be
     the case, simplifying the code in question is the best course of action: simpler
     code will compile better. (It is a bug, however, and should be reported.)'
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: 逃逸分析默认启用。在极少数情况下，它会出错。这通常不太可能，在当前的JVM中确实很少见。尽管如此，由于曾经存在一些知名的bug，你有时会看到建议禁用逃逸分析。不过，这些建议可能已经不再适用，尽管像所有激进的编译器优化一样，禁用此功能有可能导致代码更稳定。如果你发现确实如此，简化相关代码是最佳方案：更简单的代码编译效果更好。（这确实是一个bug，应该报告。）
 - en: Quick Summary
+  id: totrans-221
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Escape analysis is the most sophisticated of the optimizations the compiler
     can perform. This is the kind of optimization that frequently causes microbenchmarks
     to go awry.
+  id: totrans-222
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 逃逸分析是编译器能够执行的最复杂的优化。这种优化经常导致微基准测试出现问题。
 - en: CPU-Specific Code
+  id: totrans-223
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: CPU特定代码
 - en: I mentioned earlier that one advantage of the JIT compiler is that it could
     emit code for different processors depending on where it was running. This presumes
     that the JVM is built with the knowledge of the newer processor, of course.
+  id: totrans-224
   prefs: []
   type: TYPE_NORMAL
+  zh: 我之前提到过，JIT编译器的一个优点是它可以根据运行的位置为不同的处理器生成代码。当然，这假设JVM是基于新处理器的知识构建的。
 - en: That is exactly what the compiler does for Intel chips. In 2011, Intel introduced
     Advanced Vector Extensions (AVX2) for the Sandy Bridge (and later) chips. JVM
     support for those instructions soon followed. Then in 2016 Intel extended this
     to include AVX-512 instructions; those are present on Knights Landing and subsequent
     chips. Those instructions are not supported in JDK 8 but are supported in JDK
     11.
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: 这正是编译器为Intel芯片所做的。在2011年，Intel为Sandy Bridge（及之后的）芯片引入了高级向量扩展（AVX2）。这些指令的JVM支持很快跟进。然后在2016年，Intel将其扩展到包括AVX-512指令；这些指令出现在Knights
+    Landing和后续的芯片上。JDK 8不支持这些指令，但JDK 11支持。
 - en: Normally, this feature isn’t something you worry about; the JVM will detect
     the CPU that it is running on and select the appropriate instruction set. But
     as with all new features, sometimes things go awry.
+  id: totrans-226
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常情况下，这个特性不是你需要担心的事情；JVM 将检测正在运行的 CPU，并选择适当的指令集。但是，像所有新特性一样，有时候会出现问题。
 - en: Support for AVX-512 instructions was first introduced in JDK 9, though it was
     not enabled by default. In a couple of false starts, it was enabled by default
     and then disabled by default. In JDK 11, those instructions were enabled by default.
@@ -1210,139 +1705,213 @@
     Hence, even in JDK 11, this is still a work in progress. (This, by the way, is
     not unique to Java; many programs have struggled to get the support of the AVX-512
     instructions exactly right.)
+  id: totrans-227
   prefs: []
   type: TYPE_NORMAL
+  zh: AVX-512 指令的支持首次出现在 JDK 9 中，尽管默认情况下未启用。在几次误启动之后，默认情况下启用了这些指令，然后又将其禁用。在 JDK 11
+    中，默认情况下启用了这些指令。然而，从 JDK 11.0.6 开始，默认情况下再次禁用了这些指令。因此，即使在 JDK 11 中，这仍然是一个正在进行中的工作。
+    （顺便说一句，这并不是 Java 才有的问题；许多程序都在努力正确支持 AVX-512 指令。）
 - en: So it is that on some newer Intel hardware, running some programs, you may find
     that an earlier instruction set works much better. The kinds of applications that
     benefit from the new instruction set typically involve more scientific calculations
     than Java programs often do.
+  id: totrans-228
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，在某些较新的英特尔硬件上运行某些程序时，您可能会发现较早的指令集效果要好得多。那些从新指令集中受益的应用程序通常涉及比 Java 程序更多的科学计算。
 - en: 'These instruction sets are selected with the `-XX:UseAVX=`*`N`* argument, where
     *`N`* is as follows:'
+  id: totrans-229
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些指令集是通过 `-XX:UseAVX=`*`N`* 参数选择的，其中 *`N`* 如下所示：
 - en: '0'
+  id: totrans-230
   prefs: []
   type: TYPE_NORMAL
+  zh: '0'
 - en: Use no AVX instructions.
+  id: totrans-231
   prefs: []
   type: TYPE_NORMAL
+  zh: 不使用 AVX 指令。
 - en: '1'
+  id: totrans-232
   prefs: []
   type: TYPE_NORMAL
+  zh: '1'
 - en: Use Intel AVX level 1 instructions (for Sandy Bridge and later processors).
+  id: totrans-233
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用 Intel AVX level 1 指令（适用于 Sandy Bridge 及更高版本处理器）。
 - en: '2'
+  id: totrans-234
   prefs: []
   type: TYPE_NORMAL
+  zh: '2'
 - en: Use Intel AVX level 2 instructions (for Haswell and later processors).
+  id: totrans-235
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用 Intel AVX-512 指令（适用于 Knights Landing 及更高版本处理器）。
 - en: '3'
+  id: totrans-236
   prefs: []
   type: TYPE_NORMAL
+  zh: '3'
 - en: Use Intel AVX-512 instructions (for Knights Landing and later processors).
+  id: totrans-237
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用 Intel AVX level 2 指令（适用于 Haswell 及更高版本处理器）。
 - en: The default value for this flag will depend on the processor running the JVM;
     the JVM will detect the CPU and pick the highest supported value it can. Java
     8 has no support for a level of 3, so 2 is the value you’ll see used on most processors.
     In Java 11 on newer Intel processors, the default is to use 3 in versions up to
     11.0.5, and 2 in later versions.
+  id: totrans-238
   prefs: []
   type: TYPE_NORMAL
+  zh: 此标志的默认值取决于运行 JVM 的处理器；JVM 将检测 CPU 并选择支持的最高值。Java 8 不支持级别 3，因此在大多数处理器上您将看到使用的值为
+    2。在新的英特尔处理器上的 Java 11 中，默认情况下在 11.0.5 版本之前使用 3，在后续版本中使用 2。
 - en: This is one of the reasons I mentioned in [Chapter 1](ch01.html#Introduction)
     that it is a good idea to use the latest versions of Java 8 or Java 11, since
     important fixes like this are in those latest versions. If you must use an earlier
     version of Java 11 on the latest Intel processors, try setting the `-XX:UseAVX=2`
     flag, which in many cases will give you a performance boost.
+  id: totrans-239
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就是我在 [第1章](ch01.html#Introduction) 中提到的其中一个原因，建议使用 Java 8 或 Java 11 的最新版本，因为这些最新版本中包含了重要的修复。如果必须在最新的英特尔处理器上使用较早的
+    Java 11 版本，请尝试设置 `-XX:UseAVX=2` 标志，这在许多情况下会提升性能。
 - en: 'Speaking of code maturity: for completeness, I’ll mention that the `-XX:UseSSE=*N*`
     flag supports Intel Streaming SIMD Extensions (SSE) one to four. These extensions
     are for the Pentium line of processors. Tuning this flag in 2010 made some sense
     as all the permutations of its use were being worked out. Today, we can generally
     rely on the robustness of that flag.'
+  id: totrans-240
   prefs: []
   type: TYPE_NORMAL
+  zh: 谈到代码成熟度：为了完整起见，我将提到 `-XX:UseSSE=*N*` 标志支持 Intel 流式 SIMD 扩展（SSE）1 到 4。这些扩展适用于
+    Pentium 系列处理器。在 2010 年调整此标志有些合理，因为当时正在处理其所有的使用情况。今天，我们通常可以依赖该标志的稳健性。
 - en: Tiered Compilation Trade-offs
+  id: totrans-241
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 分层编译的权衡
 - en: I’ve mentioned a few times that the JVM works differently when tiered compilation
     is disabled. Given the performance advantages it provides, is there ever a reason
     to turn it off?
+  id: totrans-242
   prefs: []
   type: TYPE_NORMAL
+  zh: 我已经多次提到当禁用分层编译时，JVM 的工作方式不同。考虑到它提供的性能优势，是否有理由关闭它呢？
 - en: One such reason might be when running in a memory-constrained environment. Sure,
     your 64-bit machine probably has a ton of memory, but you may be running in a
     Docker container with a small memory limit or in a cloud virtual machine that
     just doesn’t have quite enough memory. Or you may be running dozens of JVMs on
     your large machine. In those cases, you may want to reduce the memory footprint
     of your application.
+  id: totrans-243
   prefs: []
   type: TYPE_NORMAL
+  zh: 其中一个原因可能是在内存受限的环境中运行。当然，您的 64 位机器可能有大量内存，但您可能在具有小内存限制的 Docker 容器中运行，或者在云虚拟机中运行，其内存不足。或者您可能在大型机器上运行数十个
+    JVM。在这些情况下，您可能希望减少应用程序的内存占用。
 - en: '[Chapter 8](ch08.html#NativeMemory) provides general recommendations about
     this, but in this section we’ll look at the effect of tiered compilation on the
     code cache.'
+  id: totrans-244
   prefs: []
   type: TYPE_NORMAL
+  zh: '[第 8 章](ch08.html#NativeMemory) 提供了关于此的一般建议，但在本节中我们将看看分层编译对代码缓存的影响。'
 - en: '[Table 4-3](#TableCodeCache) shows the result of starting NetBeans on my system,
     which has a couple dozen projects that will be opened at startup.'
+  id: totrans-245
   prefs: []
   type: TYPE_NORMAL
+  zh: '[表 4-3](#TableCodeCache) 显示了在我的系统上启动 NetBeans 时的结果，该系统有几十个项目将在启动时打开。'
 - en: Table 4-3\. Effect of tiered compilation on the code cache
+  id: totrans-246
   prefs: []
   type: TYPE_NORMAL
+  zh: Table 4-3\. 分层编译对代码缓存的影响
 - en: '| Compiler mode | Classes compiled | Committed code cache | Startup time |'
+  id: totrans-247
   prefs: []
   type: TYPE_TB
+  zh: '| 编译器模式 | 编译的类 | 已分配的代码缓存 | 启动时间 |'
 - en: '| --- | --- | --- | --- |'
+  id: totrans-248
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- | --- |'
 - en: '| +TieredCompilation | 22,733 | 46.5 MB | 50.1 seconds |'
+  id: totrans-249
   prefs: []
   type: TYPE_TB
+  zh: '| +TieredCompilation | 22,733 | 46.5 MB | 50.1 秒 |'
 - en: '| -TieredCompilation | 5,609 | 10.7 MB | 68.5 seconds |'
+  id: totrans-250
   prefs: []
   type: TYPE_TB
+  zh: '| -TieredCompilation | 5,609 | 10.7 MB | 68.5 秒 |'
 - en: The C1 compiler compiled about four times as many classes and predictably required
     about four times as much memory for the code cache. In absolute terms, saving
     34 MB in this example is unlikely to make a huge difference. Saving 300 MB in
     a program that compiles 200,000 classes might be a different choice on some platforms.
+  id: totrans-251
   prefs: []
   type: TYPE_NORMAL
+  zh: C1 编译器编译的类约为四倍，并且根据预测需要大约四倍的代码缓存内存。在本例中节省 34 MB 可能不会产生很大的差异。在编译 200,000 个类的程序中节省
+    300 MB 在某些平台上可能会有不同的选择。
 - en: What do we lose by disabling tiered compilation? As the table shows, we do spend
     more time to start the application and load all project classes. But what about
     a long-running program, where you’d expect all the hot spots to get compiled?
+  id: totrans-252
   prefs: []
   type: TYPE_NORMAL
+  zh: 禁用分层编译会带来什么损失？正如表格所示，我们确实需要更多时间来启动应用程序并加载所有项目类。但在长时间运行的程序中，您期望所有热点都会被编译吗？
 - en: In that case, given a sufficiently long warm-up period, execution should be
     about the same when tiered compilation is disabled. [Table 4-4](#TableLongServer)
     shows the performance of our stock REST server after warm-up periods of 0, 60,
     and 300 seconds.
+  id: totrans-253
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种情况下，给定足够长的热身时间后，当禁用分层编译时执行速度应该是一样的。[表 4-4](#TableLongServer) 展示了我们的库存 REST
+    服务器在热身时间为 0、60 和 300 秒后的性能。
 - en: Table 4-4\. Throughput of server applications with tiered compilation
+  id: totrans-254
   prefs: []
   type: TYPE_NORMAL
+  zh: Table 4-4\. 服务器应用程序的吞吐量（使用分层编译）
 - en: '| Warm-up period | `-XX:-TieredCompilation` | `-XX:+TieredCompilation` |'
+  id: totrans-255
   prefs: []
   type: TYPE_TB
+  zh: '| 热身时间 | `-XX:-TieredCompilation` | `-XX:+TieredCompilation` |'
 - en: '| --- | --- | --- |'
+  id: totrans-256
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 0 seconds | 23.72 | 24.23 |'
+  id: totrans-257
   prefs: []
   type: TYPE_TB
+  zh: '| 0 秒 | 23.72 | 24.23 |'
 - en: '| 60 seconds | 23.73 | 24.26 |'
+  id: totrans-258
   prefs: []
   type: TYPE_TB
+  zh: '| 60 秒 | 23.73 | 24.26 |'
 - en: '| 300 seconds | 24.42 | 24.43 |'
+  id: totrans-259
   prefs: []
   type: TYPE_TB
+  zh: '| 300 秒 | 24.42 | 24.43 |'
 - en: 'The measurement period is 60 seconds, so even when there is no warm-up, the
     compilers had an opportunity to get enough information to compile the hot spots;
     hence, there is little difference even when there is no warm-up period. (Also,
@@ -1352,12 +1921,17 @@
     compilation thresholds: there will always be a small number of methods that are
     compiled by the C1 compiler when tiered compilation is used that won’t be compiled
     by the C2 compiler.'
+  id: totrans-260
   prefs: []
   type: TYPE_NORMAL
+  zh: 测量期为 60 秒，因此即使没有预热，编译器也有机会获得足够的信息来编译热点；因此，即使没有预热期，差异也很小。（此外，在服务器启动期间编译了大量代码。）请注意，在最后，分层编译仍能够略微领先（尽管这种优势可能不会引人注目）。我们在讨论编译阈值时已经讨论了这一点：在使用分层编译时，总会有一小部分方法是由
+    C1 编译器编译而不是由 C2 编译器编译的。
 - en: The GraalVM
+  id: totrans-261
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: GraalVM
 - en: 'The *GraalVM* is a new virtual machine. It provides a means to run Java code,
     of course, but also code from many other languages. This universal virtual machine
     can also run JavaScript, Python, Ruby, R, and traditional JVM bytecodes from Java
@@ -1365,66 +1939,104 @@
     Graal comes in two editions: a full open source Community Edition (CE) and a commercial
     Enterprise Edition (EE). Each edition has binaries that support either Java 8
     or Java 11.'
+  id: totrans-262
   prefs: []
   type: TYPE_NORMAL
+  zh: '*GraalVM* 是一种新的虚拟机。它不仅可以运行 Java 代码，当然，还能运行许多其他语言的代码。这款通用虚拟机还能够运行 JavaScript、Python、Ruby、R
+    以及传统的 JVM 字节码（来自 Java 和其他编译为 JVM 字节码的语言，如 Scala、Kotlin 等）。Graal 有两个版本：完全开源的社区版（CE）和商业版（EE）。每个版本都有支持
+    Java 8 或 Java 11 的二进制文件。'
 - en: The GraalVM has two important contributions to JVM performance. First, an add-on
     technology allows the GraalVM to produce fully native binaries; we’ll examine
     that in the next section.
+  id: totrans-263
   prefs: []
   type: TYPE_NORMAL
+  zh: GraalVM 对 JVM 性能有两个重要贡献。首先，一种附加技术使 GraalVM 能够生成完全的本地二进制文件；我们将在下一节中详细讨论这一点。
 - en: Second, the GraalVM can run in a mode as a regular JVM, but it contains a new
     implementation of the C2 compiler. This compiler is written in Java (as opposed
     to the traditional C2 compiler, which is written in C++).
+  id: totrans-264
   prefs: []
   type: TYPE_NORMAL
+  zh: 其次，GraalVM 可以以常规 JVM 的模式运行，但它包含了一个新的 C2 编译器的实现。这个编译器是用 Java 编写的（与传统的 C2 编译器不同，后者是用
+    C++ 编写的）。
 - en: The traditional JVM contains a version of the GraalVM JIT, depending on when
     the JVM was built. These JIT releases come from the CE version of GraalVM, which
     are slower than the EE version; they are also typically out-of-date compared to
     versions of GraalVM that you can download directly.
+  id: totrans-265
   prefs: []
   type: TYPE_NORMAL
+  zh: 传统的 JVM 包含 GraalVM JIT 的一个版本，具体取决于 JVM 构建的时间。这些 JIT 发布来自 GraalVM 的 CE 版本，比 EE
+    版本慢；与直接下载的 GraalVM 版本相比，它们通常也是过时的。
 - en: 'Within the JVM, using the GraalVM compiler is considered experimental, so to
     enable it, you need to supply these flags: `-XX:+UnlockExperimentalVMOptions`,
     `-XX:+EnableJVMCI`, and `-XX:+UseJVMCICompiler`. The default for all those flags
     is `false`.'
+  id: totrans-266
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JVM 内部，使用 GraalVM 编译器被视为实验性质的，因此要启用它，您需要提供以下标志：`-XX:+UnlockExperimentalVMOptions`、`-XX:+EnableJVMCI`
+    和 `-XX:+UseJVMCICompiler`。所有这些标志的默认值都是 `false`。
 - en: '[Table 4-5](#TableGraal) shows the performance of the standard Java 11 compiler,
     the Graal compiler from EE version 19.2.1, and the GraalVM embedded in Java 11
     and 13.'
+  id: totrans-267
   prefs: []
   type: TYPE_NORMAL
+  zh: '[表 4-5](#TableGraal) 显示了标准 Java 11 编译器、来自 EE 版本 19.2.1 的 Graal 编译器以及嵌入在 Java
+    11 和 13 中的 GraalVM 的性能。'
 - en: Table 4-5\. Performance of Graal compiler
+  id: totrans-268
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 4-5\. Graal 编译器性能
 - en: '| JVM/compiler | OPS |'
+  id: totrans-269
   prefs: []
   type: TYPE_TB
+  zh: '| JVM/compiler | OPS |'
 - en: '| --- | --- |'
+  id: totrans-270
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| JDK 11/Standard C2 | 20.558 |'
+  id: totrans-271
   prefs: []
   type: TYPE_TB
+  zh: '| JDK 11/Standard C2 | 20.558 |'
 - en: '| JDK 11/Graal JIT | 14.733 |'
+  id: totrans-272
   prefs: []
   type: TYPE_TB
+  zh: '| JDK 11/Graal JIT | 14.733 |'
 - en: '| Graal 1.0.0b16 | 16.3 |'
+  id: totrans-273
   prefs: []
   type: TYPE_TB
+  zh: '| Graal 1.0.0b16 | 16.3 |'
 - en: '| Graal 19.2.1 | 26.7 |'
+  id: totrans-274
   prefs: []
   type: TYPE_TB
+  zh: '| Graal 19.2.1 | 26.7 |'
 - en: '| JDK 13/Standard C2 | 21.9 |'
+  id: totrans-275
   prefs: []
   type: TYPE_TB
+  zh: '| JDK 13/Standard C2 | 21.9 |'
 - en: '| JDK 13/Graal JIT | 26.4 |'
+  id: totrans-276
   prefs: []
   type: TYPE_TB
+  zh: '| JDK 13/Graal JIT | 26.4 |'
 - en: This is once again the performance of our REST server (though on slightly different
     hardware than before, so the baseline OPS is only 20.5 OPS instead of 24.4).
+  id: totrans-277
   prefs: []
   type: TYPE_NORMAL
+  zh: 这次我们再次测试了我们的 REST 服务器的性能（尽管硬件略有不同，所以基准 OPS 只有 20.5 OPS，而不是 24.4）。
 - en: 'It’s interesting to note the progression here: JDK 11 was built with a pretty
     early version of the Graal compiler, so the performance of that compiler lags
     the C2 compiler. The Graal compiler improved through its early access builds,
@@ -1433,42 +2045,58 @@
     got substantially faster. The early access release of JDK 13 has one of those
     later builds and achieves close to the same performance with the Graal compiler,
     even while its C2 compiler is only modestly improved since JDK 11.'
+  id: totrans-278
   prefs: []
   type: TYPE_NORMAL
+  zh: 需要注意的是这里的进展情况：JDK 11 使用的是一个相当早期的 Graal 编译器版本，因此该编译器的性能落后于 C2 编译器。虽然 Graal 编译器通过其早期访问版本有所改进，但即使是其最新的早期访问版本（1.0），速度仍然不及标准
+    VM。然而，2019 年末的 Graal 版本（作为生产版本 19.2.1 发布）大幅提升了性能。JDK 13 的早期访问版本采用了这些较新的构建，即使 C2
+    编译器自 JDK 11 以来只有轻微改进，Graal 编译器的性能也接近于相同。
 - en: Precompilation
+  id: totrans-279
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 预编译
 - en: 'We began this chapter by discussing the philosophy behind a just-in-time compiler.
     Although it has its advantages, code is still subject to a warm-up period before
     it executes. What if in our environment a traditional compiled model would work
     better: an embedded system without the extra memory the JIT requires, or a program
     that completes before having a chance to warm up?'
+  id: totrans-280
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在本章开始时讨论了即时编译器背后的哲学。尽管它有其优点，但代码在执行之前仍然需要热身时间。如果在我们的环境中，传统的编译模型更好：一个没有额外内存的嵌入式系统，或者一个在有机会热身之前就完成的程序呢？
 - en: In this section, we’ll look at two experimental features that address that scenario.
     Ahead-of-time compilation is an experimental feature of the standard JDK 11, and
     the ability to produce a fully native binary is a feature of the Graal VM.
+  id: totrans-281
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这一节中，我们将介绍两个解决方案来应对这种情况的实验性功能。提前编译是标准JDK 11的实验性功能，而生成完全本地二进制的能力是Graal VM的功能。
 - en: Ahead-of-Time Compilation
+  id: totrans-282
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 提前编译
 - en: '*Ahead-of-time (AOT) compilation* was first available in JDK 9 for Linux only,
     but in JDK 11 it is available on all platforms. From a performance standpoint,
     it is still a work in progress, but this section will give you a sneak peek at
     it.^([1](ch04.html#idm45775555226680))'
+  id: totrans-283
   prefs: []
   type: TYPE_NORMAL
+  zh: '*提前（AOT）编译*首次在JDK 9中仅适用于Linux，但在JDK 11中，它适用于所有平台。从性能的角度来看，它仍然是一个正在进行中的工作，但本节将为您提供一个预览。^([1](ch04.html#idm45775555226680))'
 - en: 'AOT compilation allows you to compile some (or all) of your application in
     advance of running it. This compiled code becomes a shared library that the JVM
     uses when starting the application. In theory, this means the JIT needn’t be involved,
     at least in the startup of your application: your code should initially run at
     least as well as the C1 compiled code without having to wait for that code to
     be compiled.'
+  id: totrans-284
   prefs: []
   type: TYPE_NORMAL
+  zh: AOT编译允许您提前（或全部）编译应用程序的一部分，然后运行它。这个编译后的代码变成了JVM在启动应用程序时使用的共享库。理论上，这意味着JIT不必参与，至少在启动应用程序时：您的代码应该最初至少与C1编译的代码一样运行，而无需等待该代码被编译。
 - en: 'In practice, it’s a little different: the startup time of the application is
     greatly affected by the size of the shared library (and hence the time to load
     that shared library into the JVM). That means a simple application like a “Hello,
@@ -1479,258 +2107,375 @@
     the long startup time, and AOT produces a benefit. But remember as well that AOT
     compilation is an experimental feature, and smaller programs may see benefits
     from it as the technology evolves.'
+  id: totrans-285
   prefs: []
   type: TYPE_NORMAL
+  zh: 在实践中，情况有所不同：应用程序的启动时间受到共享库大小的影响（因此，将该共享库加载到JVM中所需的时间）。这意味着像“Hello, world”这样的简单应用程序在使用AOT编译时不会运行得更快（实际上，根据对共享库进行预编译的选择，可能会运行得更慢）。AOT编译的目标是针对启动时间相对较长的REST服务器之类的应用程序。这样，加载共享库的时间被长启动时间抵消，并且AOT产生了好处。但请记住，AOT编译是一个实验性功能，随着技术的发展，较小的程序可能会从中受益。
 - en: To use AOT compilation, you use the `jaotc` tool to produce a shared library
     containing the compiled classes that you select. Then that shared library is loaded
     into the JVM via a runtime argument.
+  id: totrans-286
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使用AOT编译，您可以使用`jaotc`工具来生成包含所选编译类的共享库。然后，通过运行时参数将该共享库加载到JVM中。
 - en: 'The `jaotc` tool has several options, but the way that you’ll produce the best
     library is something like this:'
+  id: totrans-287
   prefs: []
   type: TYPE_NORMAL
+  zh: '`jaotc`工具有几个选项，但要生成最佳的库，最好的方式是这样的：'
 - en: '[PRE13]'
+  id: totrans-288
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: This command will use a set of compile commands to produce a compiled version
     of the *java.base* module in the given output file. You have the option of AOT
     compiling a module, as we’ve done here, or a set of classes.
+  id: totrans-289
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个命令将使用一组编译命令在给定的输出文件中生成*java.base*模块的编译版本。您可以选择对模块进行AOT编译，就像我们这里所做的那样，或者对一组类进行编译。
 - en: The time to load the shared library depends on its size, which is a factor of
     the number of methods in the library. You can load multiple shared libraries that
     pre-compile different parts of code as well, which may be easier to manage but
     has the same performance, so we’ll concentrate on a single library.
+  id: totrans-290
   prefs: []
   type: TYPE_NORMAL
+  zh: 加载共享库的时间取决于其大小，这取决于库中方法的数量。您还可以加载多个共享库，预先编译不同的代码部分，这可能更容易管理，但性能相同，因此我们将专注于一个单独的库。
 - en: While you might be tempted to precompile everything, you’ll obtain better performance
     if you judiciously precompile only subsets of the code. That’s why this recommendation
     is to compile only the *java.base* module.
+  id: totrans-291
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然您可能会尝试预编译所有内容，但如果您仅明智地预编译代码的子集，您将获得更好的性能。这就是为什么建议仅编译*java.base*模块的原因。
 - en: 'The compile commands (in the */tmp/methods.txt* file in this example) also
     serve to limit the data that is compiled into the shared library. That file contains
     lines that look like this:'
+  id: totrans-292
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译命令（在此示例中的*/tmp/methods.txt*文件中）还用于限制编译到共享库中的数据。该文件包含看起来像这样的行：
 - en: '[PRE14]'
+  id: totrans-293
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: This line tells `jaotc` that when it compiles the `java.net.URI` class, it should
     include only the `getHost()` method. We can have other lines referencing other
     methods from that class to include their compilation as well; in the end, only
     the methods listed in the file will be included in the shared library.
+  id: totrans-294
   prefs: []
   type: TYPE_NORMAL
+  zh: 此行告诉`jaotc`在编译`java.net.URI`类时，应仅包括`getHost()`方法。我们可以有其他行引用该类的其他方法，以便包括它们的编译；最终，文件中列出的方法将作为共享库的一部分包括进去。
 - en: 'To create the list of compile commands, we need a list of every method that
     the application actually uses. To do that, we run the application like this:'
+  id: totrans-295
   prefs: []
   type: TYPE_NORMAL
+  zh: 要创建编译命令列表，我们需要应用程序实际使用的每种方法的列表。为此，我们这样运行应用程序：
 - en: '[PRE15]'
+  id: totrans-296
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: 'When the program exits, it will print lines of each method the program used
     in a format like this:'
+  id: totrans-297
   prefs: []
   type: TYPE_NORMAL
+  zh: 当程序退出时，它将以如下格式打印程序中使用的每个方法的行：
 - en: '[PRE16]'
+  id: totrans-298
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: To produce the *methods.txt* file, save those lines, prepend each with the `compileOnly`
     directive, and remove the colon immediately preceding the method arguments.
+  id: totrans-299
   prefs: []
   type: TYPE_NORMAL
+  zh: 要生成*methods.txt*文件，请保存这些行，每行前面加上`compileOnly`指令，并删除方法参数之前的冒号。
 - en: The classes that are precompiled by `jaotc` will use a form of the C1 compiler,
     so in a long-running program, they will not be optimally compiled. So the final
     option that we’ll need is `--compile-for-tiered`. That option arranges the shared
     library so that its methods are still eligible to be compiled by the C2 compiler.
+  id: totrans-300
   prefs: []
   type: TYPE_NORMAL
+  zh: 被`jaotc`预编译的类将使用C1编译器的一种形式，因此在长时间运行的程序中，它们将无法进行最优化编译。因此，我们最终需要的选项是`--compile-for-tiered`。该选项安排共享库使其方法仍然有资格由C2编译器编译。
 - en: If you are using AOT compilation for a short-lived program, it’s fine to leave
     out this argument, but remember that the target set of applications is a server.
     If we don’t allow the precompiled methods to become eligible for C2 compilation,
     the warm performance of the server will be slower than what is ultimately possible.
+  id: totrans-301
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您正在为一个短期运行的程序使用AOT编译，可以不带这个参数，但请记住目标是一个服务器应用程序。如果我们不允许预编译方法有资格进行C2编译，服务器的热性能将比最终可能的性能慢。
 - en: 'Perhaps unsurprisingly, if you run your application with a library that has
     tiered compilation enabled and use the `-XX:+PrintCompilation` flag, you see the
     same code replacement technique we observed before: the AOT compilation will appear
     as another tier in the output, and you’ll see the AOT methods get made not entrant
     and replaced as the JIT compiles them.'
+  id: totrans-302
   prefs: []
   type: TYPE_NORMAL
+  zh: 或许并不奇怪，如果您使用启用分层编译的库运行应用程序，并使用`-XX:+PrintCompilation`标志，您将看到我们之前观察到的相同代码替换技术：AOT编译将出现在输出中的另一层，并且您将看到AOT方法变为非入口并在JIT编译它们时替换。
 - en: 'Once the library has been created, you use it with your application like this:'
+  id: totrans-303
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦库创建完成，您可以像这样与应用程序一起使用它：
 - en: '[PRE17]'
+  id: totrans-304
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'If you want to make sure that the library is being used, include the `-XX:+PrintAOT`
     flag in your JVM arguments; that flag is `false` by default. Like the `-XX:+PrintCompilation`
     flag, the `-XX:+PrintAOT` flag will produce output whenever a precompiled method
     is used by the JVM. A typical line looks like this:'
+  id: totrans-305
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您希望确保库正在使用，请在JVM参数中包含`-XX:+PrintAOT`标志；该标志默认为`false`。像`-XX:+PrintCompilation`标志一样，`-XX:+PrintAOT`标志将在JVM使用预编译方法时生成输出。典型的行如下所示：
 - en: '[PRE18]'
+  id: totrans-306
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: 'The first column here is the milliseconds since the program started, so it
     took 373 milliseconds until the constructor of the `HashSet` class was loaded
     from the shared library and began execution. The second column is an ID assigned
     to the method, and the third column tells us which library the method was loaded
     from. The index (1 in this example) is also printed by this flag:'
+  id: totrans-307
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的第一列是自程序启动以来的毫秒数，所以直到`HashSet`类的构造函数从共享库加载并开始执行为止，花费了373毫秒。第二列是分配给该方法的ID，第三列告诉我们该方法从哪个库加载的。索引（本例中为1）也由此标志打印：
 - en: '[PRE19]'
+  id: totrans-308
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: '*JavaBaseFilteredMethods.so* is the first (and only) library loaded in this
     example, so its index is 1 (the second column) and subsequent references to `aot`
     with that index refer to this library.'
+  id: totrans-309
   prefs: []
   type: TYPE_NORMAL
+  zh: '*JavaBaseFilteredMethods.so* 是此示例中加载的第一个（也是唯一的）库，因此其索引为1（第二列），随后对具有该索引的`aot`的引用指的是此库。'
 - en: GraalVM Native Compilation
+  id: totrans-310
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: GraalVM 本地编译
 - en: AOT compilation was beneficial for relatively large programs but didn’t help
     (and could hinder) small, quick-running programs. That is because it’s still an
     experimental feature and because its architecture has the JVM load the shared
     library.
+  id: totrans-311
   prefs: []
   type: TYPE_NORMAL
+  zh: AOT编译对于相对较大的程序是有益的，但对于小型、快速运行的程序则没有帮助（甚至可能有害）。这是因为它仍然是一个实验性功能，并且因为其架构需要 JVM
+    加载共享库。
 - en: 'The GraalVM, on the other hand, can produce full native executables that run
     without the JVM. These executables are ideal for short-lived programs. If you
     ran the examples, you may have noticed references in some things (like ignored
     errors) to GraalVM classes: AOT compilation uses GraalVM as its foundation. This
     is an Early Adopter feature of the GraalVM; it can be used in production with
     the appropriate license but is not subject to warranty.'
+  id: totrans-312
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，GraalVM 可以生成无需 JVM 运行的完整本地可执行文件。这些可执行文件非常适合短期程序。如果你运行了示例，你可能会注意到某些事物（如被忽略的错误）中对
+    GraalVM 类的引用：AOT 编译使用 GraalVM 作为其基础。这是 GraalVM 的早期采用者功能；它可以在具有适当许可证的情况下用于生产，但不受保证。
 - en: The GraalVM produces binaries that start up quite fast, particularly when comparing
     them to the running programs in the JVM. However, in this mode the GraalVM does
     not optimize code as aggressively as the C2 compiler, so given a sufficiently
     long-running application, the traditional JVM will win out in the end. Unlike
     AOT compilation, the GraalVM native binary does not compile classes using C2 during
     execution.
+  id: totrans-313
   prefs: []
   type: TYPE_NORMAL
+  zh: GraalVM 生成的二进制文件启动速度相当快，特别是与在JVM中运行的程序相比。然而，在此模式下，GraalVM 不像 C2 编译器那样积极地优化代码，因此，对于足够长时间运行的应用程序，传统的
+    JVM 最终会胜出。与AOT编译不同，GraalVM 本地二进制文件不会在执行期间使用 C2 编译器编译类。
 - en: Similarly, the memory footprint of a native program produced from the GraalVM
     starts out significantly smaller than a traditional JVM. However, by the time
     a program runs and expands the heap, this memory advantage fades.
+  id: totrans-314
   prefs: []
   type: TYPE_NORMAL
+  zh: 类似地，由 GraalVM 生成的本地程序的内存占用空间开始时比传统的JVM显着较小。然而，当程序运行并扩展堆时，这种内存优势会逐渐消失。
 - en: 'Limitations also exist on which Java features can be used in a program compiled
     into native code. These limitations include the following:'
+  id: totrans-315
   prefs: []
   type: TYPE_NORMAL
+  zh: 也存在一些限制，限制了可以在编译成本地代码的程序中使用的Java特性。这些限制包括以下内容：
 - en: Dynamic class loading (e.g., by calling `Class.forName()`).
+  id: totrans-316
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 动态类加载（例如，通过调用`Class.forName()`）。
 - en: Finalizers.
+  id: totrans-317
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 终结器。
 - en: The Java Security Manager.
+  id: totrans-318
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Java 安全管理器。
 - en: JMX and JVMTI (including JVMTI profiling).
+  id: totrans-319
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: JMX 和 JVMTI（包括JVMTI分析）。
 - en: Use of reflection often requires special coding or configuration.
+  id: totrans-320
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用反射通常需要特殊的编码或配置。
 - en: Use of dynamic proxies often requires special configuration.
+  id: totrans-321
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用动态代理通常需要特殊的配置。
 - en: Use of JNI requires special coding or configuration.
+  id: totrans-322
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用 JNI 需要特殊的编码或配置。
 - en: We can see all of this in action by using a demo program from the GraalVM project
     that recursively counts the files in a directory. With a few files to count, the
     native program produced by the GraalVM is quite small and fast, but as more work
     is done and the JIT kicks in, the traditional JVM compiler generates better code
     optimizations and is faster, as we see in [Table 4-6](#TableAOTList).
+  id: totrans-323
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过使用 GraalVM 项目的演示程序，我们可以看到所有这些内容在实际中的应用，该程序递归地计算目录中的文件数。随着要计数的文件数量增加，由 GraalVM
+    生成的本地程序非常小且速度快，但随着更多工作的完成和JIT的启动，传统的JVM编译器会生成更好的代码优化，并且速度更快，正如我们在 [表4-6](#TableAOTList)
+    中看到的。
 - en: Table 4-6\. Time to count files with native and JIT-compiled code
+  id: totrans-324
   prefs: []
   type: TYPE_NORMAL
+  zh: 表4-6\. 使用本地和JIT编译代码计算文件所需的时间
 - en: '| Number of files | Java 11.0.5 | Native application |'
+  id: totrans-325
   prefs: []
   type: TYPE_TB
+  zh: '| 文件数量 | Java 11.0.5 | 本地应用程序 |'
 - en: '| --- | --- | --- |'
+  id: totrans-326
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| 7 | 217 ms (36K) | 4 ms (3K) |'
+  id: totrans-327
   prefs: []
   type: TYPE_TB
+  zh: '| 7 | 217 ms (36K) | 4 ms (3K) |'
 - en: '| 271 | 279 ms (37K) | 20 ms (6K) |'
+  id: totrans-328
   prefs: []
   type: TYPE_TB
+  zh: '| 271 | 279 ms (37K) | 20 ms (6K) |'
 - en: '| 169,000 | 2.3 s (171K) | 2.1 s (249K) |'
+  id: totrans-329
   prefs: []
   type: TYPE_TB
+  zh: '| 169,000 | 2.3 s (171K) | 2.1 s (249K) |'
 - en: '| 1.3 million | 19.2 s (212K) | 25.4 s (269K) |'
+  id: totrans-330
   prefs: []
   type: TYPE_TB
+  zh: '| 1.3 million | 19.2 s (212K) | 25.4 s (269K) |'
 - en: The times here are the time to count the files; the total footprint of the run
     (measured at completion) is given in parentheses.
+  id: totrans-331
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的时间是计算文件数的时间；运行完成时的总占用空间（在括号中测量）列在括号中。
 - en: Of course, the GraalVM itself is rapidly evolving, and the optimizations within
     its native code can be expected to improve over time as well.
+  id: totrans-332
   prefs: []
   type: TYPE_NORMAL
+  zh: 当然，GraalVM 本身正在快速发展，其本地代码中的优化也有望随着时间的推移而改善。
 - en: Summary
+  id: totrans-333
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: 'This chapter contains a lot of background about how the compiler works. This
     is so you can understand some of the general recommendations made in [Chapter 1](ch01.html#Introduction)
     regarding small methods and simple code, and the effects of the compiler on microbenchmarks
     that were described in [Chapter 2](ch02.html#SampleApplications). In particular:'
+  id: totrans-334
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章包含了关于编译器工作原理的大量背景知识。这样做是为了能够理解第一章中关于小方法和简单代码的一些总体建议，以及第二章中描述的编译器对微基准测试的影响。特别是：
 - en: Don’t be afraid of small methods—and, in particular, getters and setters—because
     they are easily inlined. If you have a feeling that the method overhead can be
     expensive, you’re correct in theory (we showed that removing inlining significantly
     degrades performance). But it’s not the case in practice, since the compiler fixes
     that problem.
+  id: totrans-335
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 不要害怕小方法——特别是 getter 和 setter，因为它们很容易被内联。如果您觉得方法开销可能很大，理论上您是正确的（我们展示了去除内联显著降低性能）。但在实践中并非如此，因为编译器解决了这个问题。
 - en: Code that needs to be compiled sits in a compilation queue. The more code in
     the queue, the longer the program will take to achieve optimal performance.
+  id: totrans-336
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 需要编译的代码位于编译队列中。队列中的代码越多，程序达到最佳性能所需的时间就越长。
 - en: Although you can (and should) size the code cache, it is still a finite resource.
+  id: totrans-337
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 虽然您可以（而且应该）调整代码缓存的大小，但它仍然是有限资源。
 - en: The simpler the code, the more optimizations that can be performed on it. Profile
     feedback and escape analysis can yield much faster code, but complex loop structures
     and large methods limit their effectiveness.
+  id: totrans-338
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 代码越简单，可以执行的优化就越多。性能分析反馈和逃逸分析可以产生更快的代码，但复杂的循环结构和大方法限制了它们的有效性。
 - en: Finally, if you profile your code and find some surprising methods at the top
     of your profile—methods you expect shouldn’t be there—you can use the information
     here to look into what the compiler is doing and to make sure it can handle the
     way your code is written.
+  id: totrans-339
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，如果您分析您的代码并发现一些意外出现在性能分析榜首的方法——这些方法您认为不应该在那里——您可以使用这里的信息来查看编译器正在执行的操作，并确保它能够处理代码编写方式。
 - en: ^([1](ch04.html#idm45775555226680-marker)) One benefit of AOC compilation is
     faster startup, but application class data sharing gives—at least for now—a better
     benefit in terms of startup performance and is a fully supported feature; see
     [“Class Data Sharing”](ch12.html#ClassDataSharing) for more details.
+  id: totrans-340
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch04.html#idm45775555226680-marker)) AOT 编译的一个好处是更快的启动速度，但应用程序类数据共享在启动性能方面至少目前更有利，并且是一个完全支持的特性；有关更多详情，请参阅“类数据共享”。
