@@ -1,14 +1,18 @@
 - en: Chapter 7\. Heap Memory Best Practices
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第7章. 堆内存最佳实践
 - en: Chapters [5](ch05.html#GC) and [6](ch06.html#Collectors) discussed the details
     of how to tune the garbage collector so that it has as little effect on a program
     as possible. Tuning the garbage collector is important, but often better performance
     gains can be made by utilizing better programming practices. This chapter discusses
     some of the best-practice approaches to using heap memory in Java.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 第[5](ch05.html#GC)章和第[6](ch06.html#Collectors)章讨论了如何调整垃圾收集器以尽可能少地影响程序的详细信息。调整垃圾收集器非常重要，但通常通过利用更好的编程实践可以获得更好的性能提升。本章讨论了一些在Java中使用堆内存的最佳实践方法。
 - en: We have two conflicting goals here. The first general rule is to create objects
     sparingly and to discard them as quickly as possible. Using less memory is the
     best way to improve the efficiency of the garbage collector. On the other hand,
@@ -18,22 +22,30 @@
     including thread-local variables, special object references, and object pools.
     Reusing objects means they will be long-lived and impact the garbage collector,
     but when they are reused judiciously, overall performance will improve.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在这里有两个相互冲突的目标。第一个一般规则是尽量少地创建对象，并尽快丢弃它们。使用更少的内存是提高垃圾收集器效率的最佳方法。另一方面，频繁重新创建某些类型的对象可能会导致整体性能下降（即使GC性能得到改善）。如果这些对象被重复使用，程序可以看到显著的性能提升。对象可以以各种方式重复使用，包括线程本地变量、特殊对象引用和对象池。重复使用对象意味着它们将长时间存在并影响垃圾收集器，但是当它们被明智地重复使用时，整体性能将会提高。
 - en: This chapter discusses both approaches and the trade-offs between them. First,
     though, we’ll look into tools for understanding what is happening inside the heap.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章讨论了这两种方法及其之间的权衡。不过首先，我们将研究了解堆内部发生情况的工具。
 - en: Heap Analysis
+  id: totrans-4
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 堆分析
 - en: GC logs and the tools discussed in [Chapter 5](ch05.html#GC) are great at understanding
     the impact GC has on an application, but for additional visibility, we must look
     into the heap itself. The tools discussed in this section provide insight into
     the objects that the application is currently using.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: GC日志和在[第五章](ch05.html#GC)讨论的工具非常适合了解GC对应用程序的影响，但为了更进一步的可视化，我们必须深入研究堆本身。本节讨论的工具能够深入了解应用程序当前正在使用的对象。
 - en: Most of the time, these tools operate only on live objects in the heap—objects
     that will be reclaimed during the next full GC cycle are not included in the tools’
     output. In some cases, tools accomplish that by forcing a full GC, so the application
@@ -41,86 +53,124 @@
     through the heap and report live data without freeing objects along the way. In
     either case, though, the tools require time and machine resources; they are generally
     not useful during measurement of a program’s execution.
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 大多数情况下，这些工具仅对堆中的活动对象进行操作——在下一个完整的GC周期中将被回收的对象不包含在工具的输出中。在某些情况下，工具通过强制执行完整的GC来实现这一点，因此在使用工具后可能会影响应用程序的行为。在其他情况下，这些工具遍历堆并报告活动数据，而不会在此过程中释放对象。不管哪种情况，这些工具都需要时间和机器资源；它们通常在程序执行的测量过程中不是很有用。
 - en: Heap Histograms
+  id: totrans-7
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 堆直方图
 - en: Reducing memory use is an important goal, but as with most performance topics,
     it helps to target efforts to maximize the available benefits. Later in this chapter,
     you’ll see an example around lazily initializing a `Calendar` object. That will
     save 640 bytes in the heap, but if the application always initializes one such
     object, no measurable difference in performance will occur. Analysis must be performed
     to know which kinds of objects are consuming large amounts of memory.
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 减少内存使用是一个重要的目标，但与大多数性能主题一样，有助于将努力集中在最大化可用收益上。在本章后面，你将看到一个关于懒初始化`Calendar`对象的示例。这将在堆中节省640字节的空间，但如果应用程序总是初始化这样的对象，性能上几乎没有可测量的差异。必须进行分析以确定哪些类型的对象消耗了大量内存。
 - en: The easiest way to do that is via a *heap histogram*. Histograms are a quick
     way to look at the number of objects within an application without doing a full
     heap dump (since heap dumps can take a while to analyze, and they consume a large
     amount of disk space). If a few particular object types are responsible for creating
     memory pressure in an application, a heap histogram is a quick way to find that.
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 最简单的方法是通过*堆直方图*。直方图是查看应用程序内对象数量的快速方法，而无需进行完整的堆转储（因为堆转储可能需要一段时间进行分析，而且会消耗大量磁盘空间）。如果一些特定对象类型负责在应用程序中创建内存压力，那么堆直方图是发现这一问题的快速方法。
 - en: 'Heap histograms can be obtained by using `jcmd` (here with process ID 8898):'
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 可以使用 `jcmd`（此处使用进程 ID 8898）获取堆直方图：
 - en: '[PRE0]'
+  id: totrans-11
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: In a histogram, we can usually expect to see character arrays (`[C`) and `String`
     objects near the top, as these are the most commonly created Java objects. Byte
     arrays (`[B`) and object arrays (`[Ljava.lang.Object;`) are also common, since
     classloaders store their data in those structures. If you’re unfamiliar with this
     syntax, it is described in the Java Native Interface (JNI) documentation.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 在直方图中，我们通常可以看到字符数组（`[C`）和 `String` 对象位于最顶部附近，因为这些是最常见的 Java 对象。字节数组（`[B`）和对象数组（`[Ljava.lang.Object;`）也很常见，因为类加载器将其数据存储在这些结构中。如果您对此语法不熟悉，请参阅
+    Java Native Interface（JNI）文档。
 - en: 'In this example, the inclusion of the `BigDecimal` class is something to pursue:
     we know the sample code produces a lot of transient `BigDecimal` objects, but
     having so many stay around in the heap is not what we might ordinarily expect.
     The output from `GC.class_histogram` includes only live objects, as the command
     normally forces a full GC. You can include the `-all` flag in the command to skip
     the full GC, though then the histogram contains unreferenced (garbage) objects.'
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此示例中，包含 `BigDecimal` 类是值得追究的：我们知道示例代码产生了大量瞬态 `BigDecimal` 对象，但是让这么多对象在堆中存在并不是我们通常所期望的。`GC.class_histogram`
+    的输出仅包括活动对象，因为该命令通常会强制进行完整的 GC。您可以在命令中包含 `-all` 标志以跳过完整的 GC，但那么直方图将包含未引用的（垃圾）对象。
 - en: 'Similar output is available by running this command:'
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 运行此命令也可以获得类似的输出：
 - en: '[PRE1]'
+  id: totrans-15
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'The output from `jmap` includes objects that are eligible to be collected (dead
     objects). To force a full GC prior to seeing the histogram, run this command instead:'
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: '`jmap` 的输出包括可被收集（死）对象。在查看直方图之前强制进行完整的 GC，请改用此命令：'
 - en: '[PRE2]'
+  id: totrans-17
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Histograms are small, so gathering one for every test in an automated system
     can be helpful. Still, because they take a few seconds to obtain and trigger a
     full GC, they should not be taken during a performance measurement steady state.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 直方图很小，因此对于自动化系统中的每个测试收集一个直方图可能很有帮助。但是，由于获取直方图需要几秒钟并触发完整的 GC，因此不应在性能测量稳定状态下获取。
 - en: Heap Dumps
+  id: totrans-19
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: '**堆转储**'
 - en: 'Histograms are great at identifying issues caused by allocating too many instances
     of one or two particular classes, but for deeper analysis, a *heap dump* is required.
     Many tools can look at heap dumps, and most of them can connect to a live program
     to generate the dump. It is often easier to generate the dump from the command
     line, which can be done with either of the following commands:'
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 直方图非常适合识别由于分配过多某一两个特定类的实例而引起的问题，但是要进行更深入的分析，则需要*堆转储*。许多工具可以查看堆转储，并且其中大多数可以连接到实时程序以生成转储。通常更容易通过命令行生成转储，可以使用以下任一命令执行：
 - en: '[PRE3]'
+  id: totrans-21
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: or
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 或者
 - en: '[PRE4]'
+  id: totrans-23
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: Including the `live` option in `jmap` will force a full GC to occur before the
     heap is dumped. That is the default for `jcmd`, though if for some reason you
     want those other (dead) objects included, you can specify `-all` at the end of
@@ -128,31 +178,45 @@
     that will obviously introduce a long pause into the application, but even if you
     don’t force a full GC, the application will be paused for the time it takes to
     write the heap dump.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 `jmap` 中包含 `live` 选项将在转储堆之前强制进行完整的 GC。这是 `jcmd` 的默认设置，但如果出于某种原因希望包含那些其他（死）对象，则可以在
+    `jcmd` 命令行的末尾指定 `-all`。如果以强制进行完整的 GC 的方式使用该命令，显然会在应用程序中引入长时间的暂停，但即使不强制进行完整的 GC，应用程序也将因为写入堆转储而暂停一段时间。
 - en: 'Either command creates a file named *heap_dump.hprof* in the given directory;
     various tools can then be used to open that file. The most common of these are
     as follows:'
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 任一命令都会在给定目录中创建名为*heap_dump.hprof*的文件；然后可以使用各种工具打开该文件。其中最常见的工具如下：
 - en: '`jvisualvm`'
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: '`jvisualvm`'
 - en: The Monitor tab of `jvisualvm` can take a heap dump from a running program or
     open a previously produced heap dump. From there, you can browse through the heap,
     examining the largest retained objects and executing arbitrary queries against
     the heap.
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: '`jvisualvm` 的 Monitor 选项卡可以从运行中的程序中获取堆转储或打开以前生成的堆转储。从那里，您可以浏览堆，检查最大的保留对象，并针对堆执行任意查询。'
 - en: '`mat`'
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: '`mat`'
 - en: The open source EclipseLink Memory Analyzer tool (`mat`) can load one or more
     heap dumps and perform analysis on them. It can produce reports that suggest where
     problems are likely to be found, and it too can be used to browse through the
     heap and execute SQL-like queries into the heap.
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 开源的 EclipseLink Memory Analyzer 工具 (`mat`) 可以加载一个或多个堆转储，并对它们进行分析。它可以生成报告，指出问题可能出现的位置，也可以用于浏览堆并在堆中执行类似
+    SQL 的查询。
 - en: The first-pass analysis of a heap generally involves retained memory. The retained
     memory of an object is the amount of memory that would be freed if the object
     itself were eligible to be collected. In [Figure 7-1](#FigureRetainedMemory),
@@ -160,22 +224,32 @@
     that object as well as the memory occupied by the Sally and David objects. It
     does not include the memory used by the Michael object, since that object has
     another reference and won’t be eligible for GC if the String Trio is freed.
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 堆的第一次分析通常涉及保留内存。对象的保留内存是如果该对象本身有资格被收集，将释放的内存量。在 [图 7-1](#FigureRetainedMemory)
+    中，String Trio 对象的保留内存包括该对象占用的内存以及 Sally 和 David 对象占用的内存。它不包括 Michael 对象使用的内存，因为该对象有另一个引用，如果释放
+    String Trio，则该对象将不会有资格进行 GC。
 - en: '![Object graph showing that some objects have multiple references to them.](assets/jp2e_0701.png)'
+  id: totrans-31
   prefs: []
   type: TYPE_IMG
+  zh: '![对象图显示一些对象有多个引用。](assets/jp2e_0701.png)'
 - en: Figure 7-1\. Object graph of retained memory
+  id: totrans-32
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 7-1\. 保留内存的对象图
 - en: 'Objects that retain a large amount of heap space are often called the *dominators*
     of the heap. If the heap analysis tool shows that a few objects dominate the bulk
     of the heap, things are easy: all you need to do is create fewer of them, retain
     them for a shorter period of time, simplify their object graph, or make them smaller.
     That may be easier said than done, but at least the analysis is simple.'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 保留大量堆空间的对象通常称为堆的 *支配者* 。如果堆分析工具显示少数对象主导了大部分堆，事情就简单了：您只需减少它们的创建数量，缩短它们的保留时间，简化它们的对象图或使它们变小。这可能说起来容易，但至少分析是简单的。
 - en: More commonly, detective work will be necessary because the program is likely
     sharing objects. Like the Michael object in the previous figure, those shared
     objects are not counted in the retained set of any other object, since freeing
@@ -185,46 +259,65 @@
     a heap from a version of the stock server that caches items strongly based on
     a client connection, and weakly in a global hash map (so that the cached items
     have multiple references).
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 更常见的情况是，需要进行侦查工作，因为程序可能在共享对象。就像前一个图中的 Michael 对象一样，这些共享对象不会计入任何其他对象的保留集，因为释放一个单独对象不会释放共享对象。此外，最大的保留大小通常是你无法控制的类加载器。作为一个极端的例子，[图
+    7-2](#FigureRetainedMatDump) 显示了一个堆的顶部保留对象，来自一个根据客户端连接缓存项目并在全局哈希映射中弱引用的股票服务器版本（因此缓存项目具有多个引用）。
 - en: '![Memory Analyzer chart showing the top objects that retain memory.](assets/jp2e_0702.png)'
+  id: totrans-35
   prefs: []
   type: TYPE_IMG
+  zh: '![内存分析器图表显示保留内存最多的顶级对象。](assets/jp2e_0702.png)'
 - en: Figure 7-2\. Retained Memory view in Memory Analyzer
+  id: totrans-36
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 7-2\. 内存分析器中的保留内存视图
 - en: The heap contains 1.4 GB of objects (that value doesn’t appear on this tab).
     Even so, the largest set of objects that is referenced singly is only 6 MB (and
     is, unsurprisingly, part of the classloading framework). Looking at the objects
     that directly retain the largest amount of memory isn’t going to solve the memory
     issues.
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 堆包含 1.4 GB 的对象（该值不会出现在此选项卡上）。即使如此，单独引用的最大对象集合仅为 6 MB（并且，毫不奇怪，是类加载框架的一部分）。查看直接保留最大内存量的对象并不能解决内存问题。
 - en: This example shows multiple instances of `StockPriceHistoryImpl` objects in
     this list, each of which retains a fair amount of memory. It can be deduced from
     the amount of memory consumed by those objects that they are the issue. In the
     general case, though, objects might be shared in such a way that looking at the
     retained heap won’t show anything obvious.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个例子展示了列表中多个`StockPriceHistoryImpl`对象的实例，每个对象都占用了相当数量的内存。从这些对象占用的内存量可以推断出它们是问题所在。但通常情况下，对象可能以一种共享的方式存在，这样查看保留堆也看不出明显的问题。
 - en: The histogram of objects is a useful second step (see [Figure 7-3](#FigureMatHisto)).
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象的直方图是一个有用的第二步（见[图7-3](#FigureMatHisto)）。
 - en: '![Histogram of the objects in the stock server application.](assets/jp2e_0703.png)'
+  id: totrans-40
   prefs: []
   type: TYPE_IMG
+  zh: '![股票服务器应用程序中的对象直方图。](assets/jp2e_0703.png)'
 - en: Figure 7-3\. Histogram view in Memory Analyzer
+  id: totrans-41
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图7-3\. 内存分析器中的直方图视图
 - en: The histogram aggregates objects of the same type, and in this example it is
     much more apparent that the 1.4 GB of memory retained by the seven million `TreeMap$Entry`
     objects is the key here. Even without knowing what is going on in the program,
     it is straightforward enough to use the Memory Analyzer’s facility to trace those
     objects to see what is holding onto them.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 直方图聚合了相同类型的对象，在这个例子中，可以明显地看出，七百万个`TreeMap$Entry`对象所保留的1.4 GB内存是关键。即使不知道程序内部发生了什么，也很容易利用内存分析工具追踪这些对象，看看是什么在持有它们。
 - en: Heap analysis tools provide a way to find the GC roots of a particular object
     (or set of objects in this case)—though jumping directly to the GC roots isn’t
     necessarily helpful. The GC roots are the system objects that hold a static, global
@@ -234,8 +327,10 @@
     threads; threads retain objects either through their thread-local variables or
     through references via their target `Runnable` object (or, in the case of a subclass
     of the `Thread` class, any other references the subclass has).
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 堆分析工具提供了一种查找特定对象（或在这种情况下一组对象）的GC根源的方法，尽管直接跳转到GC根源并不一定有帮助。GC根源是持有静态全局引用的系统对象，通过一长串其他对象引用到所讨论的对象。通常这些来自系统加载的类的静态变量或引导类路径。这包括`Thread`类和所有活动线程；线程通过它们的线程本地变量或通过它们目标`Runnable`对象的引用来保留对象（或者在`Thread`类的子类的情况下，子类的其他引用）。
 - en: In some cases, knowing the GC roots of a target object is helpful, but if the
     object has multiple references, it will have many GC roots. The references here
     are a tree structure in reverse. Say that two objects refer to a particular `TreeMap$Entry`
@@ -243,8 +338,10 @@
     which may be referred to by three other objects, and so on. The explosion of references
     as the roots are traced back means that multiple GC roots likely exist for any
     given object.
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 在某些情况下，了解目标对象的GC根源是有帮助的，但如果对象具有多个引用，则会有多个GC根源。这里的引用是一个反向的树结构。假设有两个对象引用特定的`TreeMap$Entry`对象。这两个对象可能被其他两个对象引用，每个对象可能被其他三个对象引用，依此类推。根据GC根源的追踪，引用的爆炸意味着任何给定对象可能有多个GC根源。
 - en: 'Instead, it can be more fruitful to play detective and find the lowest point
     in the object graph where the target object is shared. This is done by examining
     the objects and their incoming references and tracing those incoming references
@@ -252,21 +349,29 @@
     objects held in the tree map have two referents: the `ConcurrentHashMap`, which
     holds attribute data for the session, and the `WeakHashMap`, which holds the global
     cache.'
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 相反，更有成效的方法是像侦探一样查找对象图中的最低点，这是通过检查对象及其传入引用，并追踪这些传入引用直到找到重复路径来完成的。在这种情况下，持有在树映射中的`StockPriceHistoryImpl`对象的引用有两个：`ConcurrentHashMap`，它保存会话的属性数据，以及`WeakHashMap`，它保存全局缓存。
 - en: In [Figure 7-4](#FigureMatTrace), the back traces are expanded enough to show
     only a little data about the two of them. The way to conclude that it is the session
     data is to continue to expand the `ConcurrentHashMap` path until it becomes clear
     that path is the session data. A similar logic applies to the path for the `WeakHashMap`.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[图7-4](#FigureMatTrace)中，回溯足够展开，仅显示有关其中两个对象的少量数据。确认它是会话数据的方式是继续展开`ConcurrentHashMap`路径，直到清楚该路径是会话数据。对于`WeakHashMap`的路径，同样的逻辑也适用。
 - en: '![Each TreeMap Object is referred to by two other objects.](assets/jp2e_0704.png)'
+  id: totrans-47
   prefs: []
   type: TYPE_IMG
+  zh: '![每个 TreeMap 对象被其他两个对象引用。](assets/jp2e_0704.png)'
 - en: Figure 7-4\. Back traces of object references in Memory Analyzer
+  id: totrans-48
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图7-4\. Memory Analyzer 中对象引用的回溯
 - en: The object types used in this example made the analysis a little easier than
     is often the case. If the primary data in this application had been modeled as
     `String` objects instead of `BigDecimal` objects, and stored in `HashMap` objects
@@ -275,79 +380,112 @@
     are in the heap dump. Finding paths to the interesting objects, then, takes some
     patience. As a general rule of thumb, start with collection objects (e.g., `HashMap`)
     rather than the entries (e.g., `HashMap$Entry`), and look for the biggest collections.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 此示例中使用的对象类型使得分析比通常情况下更容易一些。如果该应用程序的主要数据被建模为`String`对象而不是`BigDecimal`对象，并存储在`HashMap`对象而不是`TreeMap`对象中，事情会变得更加困难。堆转储中还有数十万其他字符串和数万个`HashMap`对象。找到有趣对象的路径需要一些耐心。作为一个经验法则，从集合对象（例如`HashMap`）开始而不是条目（例如`HashMap$Entry`），并寻找最大的集合。
 - en: Quick Summary
+  id: totrans-50
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Knowing which objects are consuming memory is the first step in knowing which
     objects to optimize in your code.
+  id: totrans-51
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 知道哪些对象消耗了内存是了解需要优化代码中的哪些对象的第一步。
 - en: Histograms are a quick and easy way to identify memory issues caused by creating
     too many objects of a certain type.
+  id: totrans-52
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 直方图是识别因创建某一类型的太多对象而导致的内存问题的一种快速简便方法。
 - en: Heap dump analysis is the most powerful technique to track down memory usage,
     though it requires patience and effort to be utilized well.
+  id: totrans-53
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 堆转储分析是追踪内存使用的最强大技术，尽管需要耐心和努力才能充分利用。
 - en: Out-of-Memory Errors
+  id: totrans-54
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 内存不足错误
 - en: 'The JVM throws an *out-of-memory* error under these circumstances:'
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这些情况下，JVM在这些情况下会抛出*内存不足*错误：
 - en: No native memory is available for the JVM.
+  id: totrans-56
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: JVM 没有可用的本机内存。
 - en: The metaspace is out of memory.
+  id: totrans-57
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 元空间已耗尽。
 - en: 'The Java heap itself is out of memory: the application cannot create any additional
     objects for the given heap size.'
+  id: totrans-58
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Java 堆本身已经耗尽了内存：应用程序无法为给定的堆大小创建任何额外的对象。
 - en: The JVM is spending too much time performing GC.
+  id: totrans-59
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: JVM 在执行垃圾回收时花费了太多时间。
 - en: The last two cases—involving the Java heap itself—are more common, but don’t
     automatically conclude from an out-of-memory error that the heap is the problem.
     It is necessary to look at why the out-of-memory error occurred (that reason is
     part of the output of the exception).
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后两种情况——涉及Java堆本身——更为常见，但不要仅仅因为内存不足错误就自动认为堆是问题所在。必须查看内存不足错误的原因（该原因是异常输出的一部分）。
 - en: Out of native memory
+  id: totrans-61
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 本机内存耗尽
 - en: The first case in this list—no native memory available for the JVM—occurs for
     reasons unrelated to the heap at all. In a 32-bit JVM, the maximum size of a process
     is 4 GB (3 GB on some versions of Windows, and about 3.5 GB on some older versions
     of Linux). Specifying a very large heap—say, 3.8 GB—brings the application size
     dangerously close to that limit. Even in a 64-bit JVM, the operating system may
     not have sufficient virtual memory for whatever the JVM requests.
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 此列表中的第一个情况——JVM 没有可用的本机内存——是与堆毫不相关的原因。在32位JVM中，进程的最大大小为4 GB（某些版本的Windows为3 GB，在某些较旧的Linux版本中约为3.5
+    GB）。指定非常大的堆大小，比如3.8 GB，会使应用程序大小接近该限制。即使是64位JVM，操作系统可能也没有足够的虚拟内存来满足JVM请求。
 - en: 'This topic is addressed more fully in [Chapter 8](ch08.html#NativeMemory).
     Be aware that if the message for the out-of-memory error discusses allocation
     of native memory, heap tuning isn’t the answer: you need to look into whatever
     native memory issue is mentioned in the error. For example, the following message
     tells you that the native memory for thread stacks is exhausted:'
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 有关此主题的更全面讨论，请参阅[第8章](ch08.html#NativeMemory)。请注意，如果内存不足错误的消息讨论的是分配本机内存，堆调整不是解决方案：您需要查看错误消息中提到的任何本机内存问题。例如，以下消息告诉您线程堆栈的本机内存已耗尽：
 - en: '[PRE5]'
+  id: totrans-64
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: However, be aware that the JVM will sometimes issue this error for things that
     have nothing to do with memory. Users usually have constraints on the number of
     threads they can run; this constraint can be imposed by the OS or by a container.
@@ -356,18 +494,25 @@
     thread will throw that same `OutOfMemoryError`, claiming insufficient memory to
     create the native thread, when in reality, the OS limit on the number of processes
     caused the error.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 但请注意，JVM有时会因与内存无关的事物而发出此错误。用户通常对可运行的线程数量有限制；此限制可能由操作系统或容器施加。例如，在Linux中，通常只允许用户创建1,024个进程（您可以通过运行`ulimit
+    -u`来检查此值）。尝试创建第1,025个线程将抛出相同的`OutOfMemoryError`，宣称内存不足以创建本地线程，而实际上是由于进程数目的操作系统限制导致错误。
 - en: Out of metaspace memory
+  id: totrans-66
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 元空间内存不足
 - en: An out-of-metaspace memory error is also not associated with the heap—it occurs
     because the metaspace native memory is full. Because metaspace has no maximum
     size by default, this error typically occurs because you’ve chosen to set the
     maximum size (and the reason for doing so will become clear in this section).
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 元空间内存不足错误也与堆无关，而是因为元空间本地内存已满。由于元空间默认没有最大大小，因此此错误通常是因为您选择设置了最大大小（本节的原因将在下文中变得清晰）。
 - en: 'This error can have two root causes: The first is simply that the application
     uses more classes than can fit in the metaspace you’ve assigned (see [“Sizing
     Metaspace”](ch05.html#GCMetaSpace)). The second case is trickier: it involves
@@ -379,14 +524,19 @@
     application is changed, it must be redeployed: a new classloader is created to
     load the new classes, and the old classloader is allowed to go out of scope. Once
     the classloader goes out of scope, the class metadata can be collected.'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 此错误可能有两个根本原因：第一个是应用程序使用的类超过了您分配的元空间可以容纳的数量（参见[“调整元空间大小”](ch05.html#GCMetaSpace)）。第二种情况更加棘手：涉及类加载器内存泄漏。这种情况在动态加载类的服务器中最为频繁。例如，Java
+    EE应用服务器就是一个典型例子。部署到应用服务器的每个应用程序都在自己的类加载器中运行（这提供了隔离，使得一个应用程序的类不与其他应用程序的类共享或干扰）。在开发过程中，每次修改应用程序后，必须重新部署：创建一个新的类加载器来加载新的类，旧的类加载器则被允许超出作用域。一旦类加载器超出作用域，类的元数据就可以被回收。
 - en: If the old classloader does not go out of scope, the class metadata cannot be
     freed, and eventually the metaspace will fill up and throw an out-of-memory error.
     In this case, increasing the size of the metaspace will help, but ultimately that
     will simply postpone the error.
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果旧的类加载器未超出作用域，则类的元数据无法被释放，最终元空间将被填满并抛出内存不足错误。在这种情况下，增加元空间的大小会有所帮助，但最终只是推迟了错误的发生。
 - en: 'If this situation occurs in an app server environment, there is little to do
     but contact the app server vendor and get them to fix the leak. If you are writing
     your own application that creates and discards lots of classloaders, ensure that
@@ -395,31 +545,45 @@
     To debug this situation, the heap dump analysis just described is helpful: in
     the histogram, find all the instances of the `ClassLoader` class, and trace their
     GC roots to see what is holding onto them.'
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果此情况发生在应用服务器环境中，除了联系应用服务器供应商并要求其修复泄漏外，别无他法。如果您正在编写自己的应用程序，并创建和丢弃大量类加载器，请确保正确地丢弃类加载器本身（特别是确保没有线程将其上下文类加载器设置为临时类加载器之一）。要调试此情况，刚才描述的堆转储分析非常有用：在直方图中，查找所有`ClassLoader`类的实例，并追踪它们的GC根以查看它们所持有的内容。
 - en: 'The key to recognizing this situation is again the full-text output of the
     out-of-memory error. If the metaspace is full, the error text will appear like
     this:'
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 识别此情况的关键是再次查看内存溢出错误的全文输出。如果元空间已满，则错误文本将如下所示：
 - en: '[PRE6]'
+  id: totrans-72
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: Classloader leaks, by the way, are the reason you should consider setting the
     maximum size of the metaspace. Left unbounded, a system with a classloader leak
     will consume all the memory on your machine.
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 顺便说一下，类加载器泄漏是您应考虑设置元空间最大大小的原因。如果不加限制，具有类加载器泄漏的系统将消耗机器上的所有内存。
 - en: Out-of-heap memory
+  id: totrans-74
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 堆外内存
 - en: 'When the heap itself is out of memory, the error message appears like this:'
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 当堆本身内存不足时，错误消息如下：
 - en: '[PRE7]'
+  id: totrans-76
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'The common cases in which an out-of-memory condition is triggered by a lack
     of heap space are similar to the example of the metaspace we just discussed. The
     application may simply need more heap space: the number of live objects that it
@@ -428,141 +592,192 @@
     other objects to go out of scope. In the first case, increasing the heap size
     will solve the issue; in the second case, increasing the heap size will merely
     postpone the error.'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 引起内存不足条件的常见情况类似于我们刚讨论的元空间示例。应用程序可能仅需更多的堆空间：它持有的活动对象数量无法适应为其配置的堆空间。或者，应用程序可能存在内存泄漏：它继续分配额外的对象，而不允许其他对象超出作用域。在第一种情况下，增加堆大小将解决问题；在第二种情况下，增加堆大小只会推迟错误的发生。
 - en: 'In either case, heap dump analysis is necessary to find out what is consuming
     the most memory; the focus can then be on reducing the number (or size) of those
     objects. If the application has a memory leak, take successive heap dumps a few
     minutes apart and compare them. `mat` has that functionality built into it: if
     two heap dumps are open, `mat` has an option to calculate the difference in the
     histograms between the two heaps.'
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: 在任一情况下，都需要进行堆转储分析以找出消耗最多内存的是什么；然后可以专注于减少这些对象的数量（或大小）。如果应用程序存在内存泄漏，则可以在几分钟内连续进行堆转储，并进行比较。`mat`已经内建了这种功能：如果打开了两个堆转储，`mat`有一个选项可以计算两个堆之间直方图的差异。
 - en: '[Figure 7-5](#FigureMatCompare) shows the classic case of a Java memory leak
     caused by a collection class—in this case, `HashMap`. (Collection classes are
     the most frequent cause of a memory leak: the application inserts items into the
     collection and never frees them.) This is a comparison histogram view: it displays
     the difference in the number of objects in two heap dumps. For example, 19,744
     more `Integer` objects occur in the target heap dump compared to its baseline.'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: '[图 7-5](#FigureMatCompare)展示了由集合类（在本例中为`HashMap`）引起的Java内存泄漏的经典案例。（集合类是内存泄漏的最常见原因之一：应用程序将项目插入集合中，并且从不释放它们。）这是一个比较直方图视图：显示了两个堆转储中对象数量的差异。例如，与基线相比，目标堆转储中多了19,744个`Integer`对象。'
 - en: The best way to overcome this situation is to change the application logic such
     that items are proactively discarded from the collection when they are no longer
     needed. Alternatively, a collection that uses weak or soft references can automatically
     discard the items when nothing else in the application is referencing them, but
     those collections come with a cost (as is discussed later in this chapter).
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 克服这种情况的最佳方法是改变应用程序逻辑，以便在不再需要时主动从集合中丢弃项目。或者，使用弱引用或软引用的集合可以在应用程序中没有其他引用它们时自动丢弃这些项目，但这些集合也有成本（如本章后面所讨论的）。
 - en: '![A comparison of histograms, showing that the number of hash map entries has
     greatly increased.](assets/jp2e_0705.png)'
+  id: totrans-81
   prefs: []
   type: TYPE_IMG
+  zh: '![直方图比较，显示哈希映射条目数量大幅增加。](assets/jp2e_0705.png)'
 - en: Figure 7-5\. Histogram comparison
+  id: totrans-82
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 7-5\. 直方图比较
 - en: Often when this kind of exception is thrown, the JVM does not exit, because
     the exception affects only a single thread in the JVM. Let’s look at a JVM with
     two threads performing a calculation. One of them may get the `OutOfMemoryError`.
     By default, the thread handler for that thread will print out the stack trace,
     and that thread will exit.
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 在抛出此类异常时，通常JVM不会退出，因为异常只影响JVM中的单个线程。让我们来看一个具有两个线程执行计算的JVM。其中一个可能会收到`OutOfMemoryError`。默认情况下，该线程的线程处理程序将打印出堆栈跟踪，并且该线程将退出。
 - en: 'But the JVM still has another active thread, so the JVM will not exit. And
     because the thread that experienced the error has terminated, a fair amount of
     memory can likely now be claimed on a future GC cycle: all the objects that the
     terminated thread referenced and that weren’t referenced by any other threads.
     So the surviving thread will be able to continue executing and will often have
     sufficient heap memory to complete its task.'
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 但是JVM仍然有另一个活动线程，所以JVM不会退出。并且因为遇到错误的线程已经终止，因此未来可能在一个GC周期中大量的内存可能被声明：所有终止线程引用的对象，而这些对象没有被其他线程引用。因此，生存线程将能够继续执行，并且通常具有足够的堆内存来完成其任务。
 - en: Server frameworks with a thread pool handling requests will work essentially
     the same way. They will generally catch the error and prevent the thread from
     terminating, but that doesn’t affect this discussion; the memory associated with
     the request that the thread was executing will still become eligible for collection.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 处理请求的线程池的服务器框架工作方式基本相同。它们通常会捕获错误并阻止线程终止，但这不会影响此讨论；线程正在执行的请求相关联的内存仍然会变得可收集。
 - en: So when this error is thrown, it will be fatal to the JVM only if it causes
     the last non-daemon thread in the JVM to terminate. That will never be the case
     in a server framework and often won’t be the case in a standalone program with
     multiple threads. And usually that works out well, since the memory associated
     with the active request will often become eligible for collection.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，当此错误被抛出时，只有当它导致JVM中的最后一个非守护线程终止时，才会对JVM产生致命影响。这在服务器框架中永远不会发生，并且在具有多个线程的独立程序中通常不会发生。而且通常这种情况都会很好地解决，因为与活动请求相关联的内存通常会变得可收集。
 - en: If instead you want the JVM to exit whenever the heap runs out of memory, you
     can set the `-XX:+ExitOnOutOfMemoryError` flag, which by default is `false`.
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你希望JVM在堆内存耗尽时退出，可以设置`-XX:+ExitOnOutOfMemoryError`标志，默认值为`false`。
 - en: GC overhead limit reached
+  id: totrans-88
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: GC超过限制
 - en: 'The recovery described for the previous case assumes that when a thread gets
     the out-of-memory error, memory associated with whatever that thread is working
     on will become eligible for collection and the JVM can recover. That’s not always
     true, which leads us to the final case of the JVM throwing an out-of-memory error:
     when it determines that it is spending too much time performing GC:'
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 上一个案例中描述的恢复假设当一个线程遇到内存不足错误时，与该线程相关联的内存将变得可收集，JVM可以恢复。这并不总是真实的，这导致了JVM抛出内存不足错误的最终情况：当它确定自己花费太多时间执行GC时：
 - en: '[PRE8]'
+  id: totrans-90
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'This error is thrown when all of the following conditions are met:'
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 当满足以下所有条件时，会抛出此错误：
 - en: The amount of time spent in full GCs exceeds the value specified by the `-XX:GCTimeLimit=`*`N`*
     flag. The default value is 98 (i.e., if 98% of the time is spent in GC).
+  id: totrans-92
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 完全GC所花费的时间超过了由`-XX:GCTimeLimit=`*`N`*标志指定的值。默认值为98（即，如果98%的时间花在GC上）。
 - en: The amount of memory reclaimed by a full GC is less than the value specified
     by the `-XX:GCHeapFreeLimit=`*`N`* flag. The default value is 2, meaning that
     if less than 2% of the heap is freed during the full GC, this condition is met.
+  id: totrans-93
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 完全GC回收的内存量小于由`-XX:GCHeapFreeLimit=`*`N`*标志指定的值。默认值为2，这意味着在完全GC期间释放的堆小于2%时，满足此条件。
 - en: The preceding two conditions have held true for five consecutive full GC cycles
     (that value is not tunable).
+  id: totrans-94
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 上述两个条件已经连续满足了五个完全GC周期（该值不可调）。
 - en: The value of the `-XX:+UseGCOverheadLimit` flag is `true` (which it is by default).
+  id: totrans-95
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`-XX:+UseGCOverheadLimit`标志的值为`true`（默认情况下为`true`）。'
 - en: Note that all four of these conditions must be met. It is common to see more
     than five consecutive full GCs occur in an application that does not throw an
     out-of-memory error. That is because even if the application is spending 98% of
     its time performing full GCs, it may be freeing more than 2% of the heap during
     each GC. Consider increasing the value of `GCHeapFreeLimit` in that case.
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 请注意，所有这四个条件必须满足。在不抛出内存不足错误的应用程序中，常见的是连续发生五次以上的完全GC。这是因为即使应用程序花费了98%的时间执行完全GC，但每次GC可能会释放堆的超过2%。在这种情况下，考虑增加`GCHeapFreeLimit`的值。
 - en: Note that as a last-ditch effort to free memory, if the first two conditions
     hold for four consecutive full GC cycles, then all soft references in the JVM
     will be freed before the fifth full GC cycle. That often prevents the error, since
     that fifth cycle may free more than 2% of the heap (assuming that the application
     uses soft references).
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，作为释放内存的最后一招，如果前两个条件连续四次完整的 GC 循环均满足，则在第五次完整的 GC 循环之前将释放 JVM 中的所有软引用。通常这可以避免错误，因为第五次循环可能会释放超过堆的
+    2%（假设应用程序使用软引用）。
 - en: Quick Summary
+  id: totrans-98
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Out-of-memory errors are thrown for a variety of reasons; do not assume that
     the heap space is the problem.
+  id: totrans-99
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 内存不足错误出现的原因多种多样；不要假设堆空间是问题所在。
 - en: For both the metaspace and the regular heap, out-of-memory errors most frequently
     occur because of memory leaks; heap analysis tools can help to find the root cause
     of the leak.
+  id: totrans-100
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于元空间和常规堆来说，内存泄漏是最常见的导致内存不足错误的原因；堆分析工具可以帮助找出泄漏的根本原因。
 - en: Using Less Memory
+  id: totrans-101
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用更少的内存
 - en: 'The first approach to using memory more efficiently in Java is to use less
     heap memory. That statement should be unsurprising: using less memory means the
     heap will fill up less often, requiring fewer GC cycles. The effect can multiply:
@@ -571,16 +786,23 @@
     into the old generation. Hence, the number of full GC cycles (or concurrent GC
     cycles) will be reduced. And if those full GC cycles can clear up more memory,
     they will also occur less frequently.'
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 Java 中更高效地使用内存的第一种方法是减少堆内存的使用。这个说法应该不足为奇：使用更少的内存意味着堆填充的频率降低，需要的 GC 循环也会减少。效果可能会倍增：更少的年轻代收集意味着对象的老化年龄不经常增加——这意味着对象不太可能晋升到老年代。因此，全量
+    GC 循环（或并发 GC 循环）的数量会减少。而如果这些全量 GC 循环可以释放更多内存，它们也会更不频繁地发生。
 - en: 'This section investigates three ways to use less memory: reducing object size,
     using lazy initialization of objects, and using canonical objects.'
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 本节探讨了三种减少内存使用的方法：减少对象大小、使用对象的延迟初始化以及使用规范化对象。
 - en: Reducing Object Size
+  id: totrans-104
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 减少对象大小
 - en: Objects occupy a certain amount of heap memory, so the simplest way to use less
     memory is to make objects smaller. Given the memory constraints on the machine
     running your program, it may not be possible to increase the heap size by 10%,
@@ -589,52 +811,84 @@
     for `String` objects, which means that users of Java 11 can frequently set their
     maximum heap 25% smaller than they required in Java 8—with no impact on GC or
     performance.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象占用一定量的堆内存，因此减少内存使用的最简单方法是减少对象的大小。鉴于运行程序的机器的内存限制，可能无法将堆大小增加 10%，但将堆中一半对象的大小减少
+    20% 可以达到同样的目标。正如在[第 12 章](ch12.html#Misc)中讨论的，Java 11 对于 `String` 对象有这样的优化，这意味着
+    Java 11 的用户可以将最大堆大小设置为比 Java 8 要求的小 25%，而不会影响 GC 或性能。
 - en: The size of an object can be decreased by (obviously) reducing the number of
     instance variables it holds and (less obviously) by reducing the size of those
     variables. [Table 7-1](#TableObjSize) gives the size of an instance variable of
     all Java types.
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象的大小可以通过（显而易见地）减少它所包含的实例变量的数量以及（不那么明显地）减少这些变量的大小来减少。
 - en: Table 7-1\. Size in bytes of Java instance variables
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 7-1\. Java 类型实例变量的字节大小
 - en: '| Type | Size |'
+  id: totrans-108
   prefs: []
   type: TYPE_TB
+  zh: '| 类型 | 大小 |'
 - en: '| --- | --- |'
+  id: totrans-109
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| `byte` | 1 |'
+  id: totrans-110
   prefs: []
   type: TYPE_TB
+  zh: '| `byte` | 1 |'
 - en: '| `char` | 2 |'
+  id: totrans-111
   prefs: []
   type: TYPE_TB
+  zh: '| `char` | 2 |'
 - en: '| `short` | 2 |'
+  id: totrans-112
   prefs: []
   type: TYPE_TB
+  zh: '| `short` | 2 |'
 - en: '| `int` | 4 |'
+  id: totrans-113
   prefs: []
   type: TYPE_TB
+  zh: '| `int` | 4 |'
 - en: '| `float` | 4 |'
+  id: totrans-114
   prefs: []
   type: TYPE_TB
+  zh: '| `float` | 4 |'
 - en: '| `long` | 8 |'
+  id: totrans-115
   prefs: []
   type: TYPE_TB
+  zh: '| `long` | 8 |'
 - en: '| `double` | 8 |'
+  id: totrans-116
   prefs: []
   type: TYPE_TB
+  zh: '| `double` | 8 |'
 - en: '| `reference` | 8 (on 32-bit Windows JVMs, 4)^([a](ch07.html#idm45775553337304))
     |'
+  id: totrans-117
   prefs: []
   type: TYPE_TB
+  zh: '| `reference` | 8（在 32 位 Windows JVM 中为 4）^([a](ch07.html#idm45775553337304))
+    |'
 - en: '| ^([a](ch07.html#idm45775553337304-marker)) See [“Compressed Oops”](#CompressedOops)
     for more details. |'
+  id: totrans-118
   prefs: []
   type: TYPE_TB
+  zh: '| ^([a](ch07.html#idm45775553337304-marker)) 详见[“压缩指针”](#CompressedOops)获取更多详情。
+    |'
 - en: The `reference` type here is the reference to any kind of Java object—instances
     of classes or arrays. That space is the storage only for the reference itself.
     The size of an object that contains references to other objects varies depending
@@ -644,48 +898,76 @@
     on a 64-bit JVM (regardless of heap size). For an array, the size of the header
     fields is 16 bytes on a 32-bit JVM or a 64-bit JVM with a heap of less than 32
     GB, and 24 bytes otherwise.
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 此处的 `reference` 类型是对任何 Java 对象（类的实例或数组）的引用。这个空间仅用于引用本身。包含对其他对象引用的对象的大小因是否考虑对象的浅层、深层或保留大小而异，但该大小还包括一些不可见的对象头字段。对于普通对象，在
+    32 位 JVM 上，头字段的大小为 8 字节，在 64 位 JVM 上为 16 字节（无论堆大小如何）。对于数组，在 32 位 JVM 或堆大小小于 32
+    GB 的 64 位 JVM 上，头字段的大小为 16 字节，否则为 24 字节。
 - en: 'For example, consider these class definitions:'
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，考虑以下类定义：
 - en: '[PRE9]'
+  id: totrans-121
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: The actual sizes of a single instance of these objects (on a 64-bit JVM with
     a heap size of less than 32 GB) is given in [Table 7-2](#TableObjectSizes).
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 64 位 JVM（堆大小小于 32 GB）上，这些对象的单个实例的实际大小如 [表 7-2](#TableObjectSizes) 所示。
 - en: Table 7-2\. Sizes in bytes of simple objects
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 7-2\. 简单对象的字节大小
 - en: '|  | Shallow size | Deep size | Retained size |'
+  id: totrans-124
   prefs: []
   type: TYPE_TB
+  zh: '|  | 浅层大小 | 深层大小 | 保留大小 |'
 - en: '| --- | --- | --- | --- |'
+  id: totrans-125
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- | --- |'
 - en: '| `A` | 16 | 16 | 16 |'
+  id: totrans-126
   prefs: []
   type: TYPE_TB
+  zh: '| `A` | 16 | 16 | 16 |'
 - en: '| `B` | 24 | 216 | 24 |'
+  id: totrans-127
   prefs: []
   type: TYPE_TB
+  zh: '| `B` | 24 | 216 | 24 |'
 - en: '| `C` | 24 | 200 | 200 |'
+  id: totrans-128
   prefs: []
   type: TYPE_TB
+  zh: '| `C` | 24 | 200 | 200 |'
 - en: In class `B`, defining the `Locale` reference adds 8 bytes to the object size,
     but at least in that example, the `Locale` object is shared among other classes.
     If the `Locale` object is never needed by the class, including that instance variable
     will waste only the additional bytes for the reference. Still, those bytes add
     up if the application creates a lot of instances of class `B`.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 在类 `B` 中，定义 `Locale` 引用会增加 8 字节到对象大小，但在该示例中，`Locale` 对象是被其他类共享的。如果类不需要 `Locale`
+    对象，包含该实例变量只会浪费额外的引用字节。然而，如果应用程序创建大量 `B` 类的实例，这些字节会累积。
 - en: On the other hand, defining and creating a `ConcurrentHashMap` consumed additional
     bytes for the object reference, plus additional bytes for the hash-map object.
     If the hash map is never used, instances of class `C` are wasteful.
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，定义和创建 `ConcurrentHashMap` 对象会消耗额外的字节用于对象引用，再加上哈希映射对象的额外字节。如果哈希映射从未被使用，那么
+    `C` 类的实例就会显得浪费。
 - en: Defining only required instance variables is one way to save space in an object.
     The less obvious case involves using smaller data types. If a class needs to keep
     track of one of eight possible states, it can do so using a `byte` rather than
@@ -694,8 +976,12 @@
     are frequently instantiated. As discussed in [Chapter 12](ch12.html#Misc), using
     appropriately sized collections (or using simple instance variables instead of
     collections) achieves similar savings.
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 仅定义必需的实例变量是节省对象空间的一种方法。不那么明显的情况涉及使用较小的数据类型。如果一个类需要跟踪八种可能的状态之一，可以使用 `byte` 而不是
+    `int`，可能会节省 3 字节。在频繁实例化的类中，使用 `float` 替代 `double`，`int` 替代 `long` 等，可以帮助节省内存，尤其是在使用适当大小的集合（或者使用简单的实例变量而不是集合）时。如
+    [第 12 章](ch12.html#Misc) 中讨论的那样，这可以实现类似的节省。
 - en: 'Eliminating instance fields in an object can help make the object smaller,
     but a gray area exists: what about object fields that hold the result of a calculation
     based on pieces of data? This is the classic computer science trade-off of time
@@ -703,8 +989,11 @@
     to spend the time (CPU cycles) to calculate the value as needed? In Java, though,
     the trade-off applies to CPU time as well, since the additional memory can cause
     GC to consume more CPU cycles.'
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 减少对象中的实例字段可以帮助减小对象的大小，但也存在一个灰色地带：那些用于存储基于数据片段计算结果的对象字段怎么处理？这是时间与空间之间的经典计算机科学折衷：是花费内存（空间）来存储值，还是花费时间（CPU
+    周期）根据需要计算值？在 Java 中，这种折衷也适用于 CPU 时间，因为额外的内存可能导致 GC 消耗更多的 CPU 周期。
 - en: 'The hash code for a `String`, for example, is calculated by summing an equation
     involving each character of the string; it is somewhat time-consuming to calculate.
     Hence, the `String` class stores that value in an instance variable so that the
@@ -717,73 +1006,106 @@
     than the memory required to keep the string reference around. (It is also the
     case that the hash value for a `String` is used frequently, and the `toString()`
     representation of an object is often used rarely.)'
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，`String` 的哈希码是通过对字符串的每个字符进行加权求和得出的，这在计算上是相对耗时的。因此，`String` 类将该值存储在实例变量中，这样哈希码只需要计算一次：最终，重用该值几乎总是比不存储它而节省的内存效果更好。另一方面，大多数类的
+    `toString()` 方法不会缓存对象的字符串表示形式在实例变量中，这既会消耗实例变量的内存，也会消耗其引用的字符串的内存。通常，计算新字符串所需的时间比保留字符串引用所需的内存通常提供更好的性能。
+    （另外，`String` 的哈希值经常使用，对象的 `toString()` 表示通常很少使用。）
 - en: This is definitely a your-mileage-may-vary situation and the point along the
     time/space continuum where it makes sense to switch between using the memory to
     cache a value and recalculating the value will depend on many factors. If reducing
     GC is the goal, the balance will swing more to recalculating.
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 这绝对是一个因人而异的情况，以及在时间/空间连续体中切换使用内存以缓存值和重新计算值之间的最佳点，将取决于许多因素。如果减少 GC 是目标，平衡将更倾向于重新计算。
 - en: Quick Summary
+  id: totrans-135
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Reducing object sizes can often improve the efficiency of GC.
+  id: totrans-136
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 减少对象大小通常可以提高 GC 的效率。
 - en: 'The size of an object is not always immediately apparent: objects are padded
     to fit on 8-byte boundaries, and object reference sizes are different between
     32- and 64-bit JVMs.'
+  id: totrans-137
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 一个对象的大小并不总是立即显而易见：对象被填充以适应 8 字节边界，而对象引用的大小在 32 位和 64 位 JVM 之间是不同的。
 - en: Even `null` instance variables consume space within object classes.
+  id: totrans-138
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 即使 `null` 实例变量也会在对象类中占用空间。
 - en: Using Lazy Initialization
+  id: totrans-139
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用延迟初始化
 - en: Much of the time, the decision about whether a particular instance variable
     is needed is not as black-and-white as the previous section suggests. A particular
     class may need a `Calendar` object only 10% of the time, but `Calendar` objects
     are expensive to create, and it definitely makes sense to keep that object around
     rather than re-create it on demand. This is a case where *lazy initialization*
     can help.
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 大多数情况下，关于是否需要特定实例变量的决定并不像前一节所述的那样黑白分明。一个特定的类可能只有 10% 的时间需要一个 `Calendar` 对象，但是创建
+    `Calendar` 对象是昂贵的，因此保留该对象而不是按需重新创建它是有意义的。这是一种 *延迟初始化* 可以帮助的情况。
 - en: 'So far, this discussion has assumed that instance variables are initialized
     eagerly. A class that needs to use a `Calendar` object (and that doesn’t need
     to be thread-safe) might look something like this:'
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，这个讨论假设实例变量是急切地初始化的。一个需要使用 `Calendar` 对象（并且不需要线程安全性）的类可能如下所示：
 - en: '[PRE10]'
+  id: totrans-142
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'Initializing the fields lazily instead carries a small trade-off in terms of
     computation performance—the code must test the state of the variable each time
     the code is executed:'
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 而延迟初始化字段则在计算性能上有少许的折衷——代码必须每次执行时测试变量的状态：
 - en: '[PRE11]'
+  id: totrans-144
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: Lazy initialization is best used when the operation in question is only infrequently
     used. If the operation is commonly used, no memory will be saved (since it will
     always be allocated), and there will be that slight performance penalty on a common
     operation.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 当涉及的操作很少使用时，最好使用延迟初始化。如果操作经常使用，就不会节省内存（因为它总是被分配），并且在常见操作上会有轻微的性能损失。
 - en: 'When the code involved must be thread-safe, lazy initialization becomes more
     complicated. As a first step, it is easiest simply to add traditional synchronization:'
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 当涉及的代码必须是线程安全时，延迟初始化变得更加复杂。作为第一步，最简单的方法是简单地添加传统的同步：
 - en: '[PRE12]'
+  id: totrans-147
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: Introducing synchronization into the solution opens up the possibility that
     the synchronization will become a performance bottleneck. That case should be
     rare. The performance benefit from lazy initialization occurs only when the object
@@ -792,59 +1114,81 @@
     bottleneck for lazily initialized fields when an infrequently used code path is
     suddenly subject to use by a lot of threads simultaneously. That case is not inconceivable,
     but it isn’t the most common case either.
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 引入同步机制到解决方案中，可能会导致同步成为性能瓶颈的可能性增加。这种情况应该很少见。懒初始化带来的性能好处只有在很少初始化这些字段的对象时才会发生，因为如果通常初始化这些字段，实际上并没有节省内存。因此，当一个不经常使用的代码路径突然被大量线程同时使用时，同步对于懒初始化字段会成为一个瓶颈。这种情况并非不可想象，但也不是最常见的情况。
 - en: 'Solving that synchronization bottleneck can happen only if the lazily initialized
     variables are themselves thread-safe. `DateFormat` objects are not thread-safe,
     so in the current example, it doesn’t really matter if the lock includes the `Calendar`
     object: if the lazily initialized objects are suddenly used heavily, the required
     synchronization around the `DateFormat` object will be an issue no matter what.
     The thread-safe code would have to look like this:'
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 只有当惰性初始化的变量本身是线程安全的时，才能解决那个同步瓶颈。`DateFormat`对象不是线程安全的，所以在当前示例中，无论锁是否包括`Calendar`对象，都不会有什么影响：如果懒初始化对象突然被频繁使用，围绕`DateFormat`对象的必需同步将是一个问题。线程安全的代码应该如下所示：
 - en: '[PRE13]'
+  id: totrans-150
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: Lazy initialization involving an instance variable that is not thread-safe can
     always synchronize around that variable (e.g., using the `synchronized` version
     of the method shown previously).
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 涉及不是线程安全的实例变量的惰性初始化可以始终在该变量周围进行同步（例如，使用前面显示的方法的`synchronized`版本）。
 - en: 'Consider a somewhat different example, in which a large `ConcurrentHashMap`
     is lazily initialized:'
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 考虑一个稍微不同的例子，在这个例子中，一个大的`ConcurrentHashMap`是惰性初始化的：
 - en: '[PRE14]'
+  id: totrans-153
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: 'Because `ConcurrentHashMap` can be safely accessed by multiple threads, the
     extra synchronization in this example is one of the infrequent cases where properly
     used lazy initialization could introduce a synchronization bottleneck. (Such a
     bottleneck should still be rare, though; if access to the hash map is that frequent,
     consider whether anything is really saved by initializing it lazily.) The bottleneck
     is solved using the double-checked locking idiom:'
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 因为`ConcurrentHashMap`可以被多个线程安全访问，在这个例子中额外的同步是懒初始化可能引入同步瓶颈的少见情况之一。（尽管这种瓶颈仍然很少见；如果对哈希映射的访问频率很高，考虑懒初始化是否真的能节省任何东西。）双重检查锁定惯用法解决了这个瓶颈：
 - en: '[PRE15]'
+  id: totrans-155
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: 'Important threading issues exist: the instance variable must be declared `volatile`,
     and a slight performance benefit results from assigning the instance variable
     to a local variable. More details are given in [Chapter 9](ch09.html#ThreadPerformance);
     in the occasional case where lazy initialization of threaded code makes sense,
     this is the design pattern to follow.'
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
+  zh: 存在重要的线程问题：实例变量必须声明为`volatile`，并且通过将实例变量分配给一个局部变量可以获得轻微的性能好处。更多细节请参见[第9章](ch09.html#ThreadPerformance)；在偶尔有需要的情况下，这是要遵循的设计模式。
 - en: Eager deinitialization
+  id: totrans-157
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 急切地去初始化
 - en: The corollary to lazily initializing variables is *eagerly deinitializing* them
     by setting their value to `null`. That allows the object in question to be collected
     more quickly by the garbage collector. While that sounds like a good thing in
     theory, it is useful in only limited circumstances.
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 惰性初始化变量的推论是通过将它们的值设置为`null`来*急切地去初始化*它们。这允许相关对象更快地被垃圾收集器回收。尽管理论上听起来像一件好事，但实际上只在有限的情况下才有用。
 - en: 'A variable that is a candidate for lazy initialization might seem like a candidate
     for eager deinitialization: in the preceding examples, the `Calendar` and `DateFormat`
     objects could be set to `null` upon completion of the `report()` method. However,
@@ -853,18 +1197,26 @@
     in the first place. Simply create the local variable in the method, and when the
     method completes, the local variable will fall out of scope and the garbage collector
     can free it.'
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个适合惰性初始化的变量可能看起来像是急切去初始化的候选变量：在前面的例子中，`Calendar` 和 `DateFormat` 对象可以在 `report()`
+    方法完成后设置为 `null`。然而，如果该变量不会在方法的后续调用中使用（或者在类的其他地方使用），那么没有理由在首次创建实例变量时将其作为实例变量。只需在方法中创建局部变量，在方法完成时，局部变量将会超出作用域，垃圾收集器可以释放它。
 - en: 'The common exception to the rule about not needing to eagerly deinitialize
     variables occurs with classes like those in the Java collection framework: classes
     that hold references to data for a long time and then are informed that the data
     in question is no longer needed. Consider the implementation of the `remove()`
     method in the `ArrayList` class of the JDK (some code is simplified):'
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 与关于不需要急切去初始化变量的规则的常见例外情况相反，类似于 Java 集合框架中的类：这些类长时间持有数据的引用，然后被告知不再需要该数据。考虑 JDK
+    中 `ArrayList` 类的 `remove()` 方法的实现（某些代码已简化）：
 - en: '[PRE16]'
+  id: totrans-161
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: 'The code comment about GC appears in the (otherwise sparsely commented) JDK
     source itself: setting the value of a variable to `null` like that is an unusual
     enough operation that some explanation is needed. In this case, trace through
@@ -872,61 +1224,86 @@
     remaining in the array—the `size` instance variable—is decremented. Say that `size`
     is decremented from 5 to 4\. Now whatever is stored in `elementData[4]` cannot
     be accessed: it is beyond the valid size of the array.'
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: JDK 源码本身几乎没有注释，但是有关 GC 的代码注释如下：像这样将变量设置为 `null` 的操作是不寻常的，因此需要一些解释。在这种情况下，跟踪数组的最后一个元素被移除时发生的情况。数组中剩余的项目数量——`size`
+    实例变量被减少。假设 `size` 从 5 减少到 4。现在 `elementData[4]` 中存储的任何内容都无法访问：它超出了数组的有效大小。
 - en: '`elementData[4]` is, in this case, a stale reference. The `elementData` array
     is probably going to remain active for a long time, and so anything that it no
     longer needs to reference needs to be actively set to `null`.'
+  id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: '`elementData[4]` 在这种情况下是一个过时的引用。`elementData` 数组可能会长时间保持活动状态，因此不再需要引用的任何内容都需要明确设置为
+    `null`。'
 - en: 'This notion of stale references is the key: if a long-lived class caches and
     then discards object references, care must be taken to avoid stale references.
     Otherwise, explicitly setting an object reference to `null` will offer little
     performance benefit.'
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种过时引用的概念是关键：如果长寿类缓存然后丢弃对象引用，则必须小心避免过时引用。否则，显式地将对象引用设置为 `null` 将不会带来太多性能好处。
 - en: Quick Summary
+  id: totrans-165
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Use lazy initialization only when the common code paths will leave variables
     uninitialized.
+  id: totrans-166
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 仅当常见的代码路径将变量保持未初始化状态时才使用惰性初始化。
 - en: Lazy initialization of thread-safe code is unusual but can often piggyback on
     existing synchronization.
+  id: totrans-167
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 线程安全代码的惰性初始化是不寻常的，但通常可以依赖于现有的同步机制。
 - en: Use double-checked locking for lazy initialization of code using thread-safe
     objects.
+  id: totrans-168
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于使用线程安全对象进行代码的惰性初始化，使用双重检查锁定。
 - en: Using Immutable and Canonical Objects
+  id: totrans-169
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用不可变和规范化对象
 - en: In Java, many object types are immutable. This includes objects that have a
     corresponding primitive type—`Integer`, `Double`, `Boolean`, and so on—as well
     as other numeric-based types, like `BigDecimal`. The most common Java object,
     of course, is the immutable `String`. From a program design perspective, it is
     often a good idea for custom classes to represent immutable objects as well.
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 Java 中，许多对象类型是不可变的。这包括具有对应原始类型的对象——`Integer`、`Double`、`Boolean` 等，以及其他基于数字的类型，如
+    `BigDecimal`。当然，最常见的 Java 对象是不可变的 `String`。从程序设计的角度来看，为自定义类表示不可变对象通常是一个好主意。
 - en: When these objects are quickly created and discarded, they have a small effect
     on young collections; as you saw in [Chapter 5](ch05.html#GC), that impact is
     limited. But as is true of any object, if many immutable objects are promoted
     to the old generation, performance can suffer.
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 当这些对象快速创建并且被丢弃时，它们对年轻代的影响很小；正如你在 [第 5 章](ch05.html#GC) 中看到的，该影响是有限的。但与任何对象一样，如果许多不可变对象晋升到老年代，性能可能会受到影响。
 - en: Hence, there is no reason to avoid designing and using immutable objects, even
     if it may seem a little counterproductive that these objects cannot be changed
     and must be re-created. But one optimization that is often possible when handling
     these objects is to avoid creating duplicate copies of the same object.
+  id: totrans-172
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，没有理由避免设计和使用不可变对象，即使这些对象似乎不能被改变和必须重新创建可能有点逆向思维。但在处理这些对象时通常可以进行的优化之一是避免创建相同对象的重复副本。
 - en: 'The best example of this is the `Boolean` class. Any Java application needs
     only two instances of the `Boolean` class: one for true, and one for false. Unfortunately,
     the `Boolean` class is badly designed. Because it has a `public` constructor,
@@ -938,116 +1315,160 @@
     you can prevent them from contributing to the heap usage of your application.
     (Ideally, it is obvious that you should never create a `Boolean` object; you should
     just use `Boolean.TRUE` or `Boolean.FALSE` as necessary.)'
+  id: totrans-173
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个最好的例子是`Boolean`类。任何Java应用程序只需要两个`Boolean`类的实例：一个为true，一个为false。不幸的是，`Boolean`类设计不佳。因为它有一个公共构造函数，应用程序可以随意创建任意数量的这些对象，尽管它们都与两个标准`Boolean`对象之一完全相同。更好的设计应该是`Boolean`类只有一个私有构造函数，并且静态方法根据参数返回`Boolean.TRUE`或`Boolean.FALSE`。如果你的不可变类可以遵循这样的模式，你可以防止它们贡献到应用程序的堆使用中。（理想情况下，显然你永远不应该创建`Boolean`对象；必要时应该只使用`Boolean.TRUE`或`Boolean.FALSE`。）
 - en: These singular representations of immutable objects are known as the *canonical
     version* of the object.
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些不可变对象的唯一表示被称为对象的*标准版本*。
 - en: Creating canonical objects
+  id: totrans-175
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 创建标准对象
 - en: 'Even if the universe of objects for a particular class is practically limitless,
     using canonical values can often save memory. The JDK provides a facility to do
     this for the most common immutable object: strings can call the `intern()` method
     to find a canonical version of the string. More details of string interning are
     examined in [Chapter 12](ch12.html#Misc); for now we’ll look at how to accomplish
     the same thing for custom classes.'
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: 即使某个特定类的对象宇宙几乎是无限的，使用标准值通常可以节省内存。JDK提供了一种机制来为最常见的不可变对象做到这一点：字符串可以调用`intern()`方法来找到字符串的标准版本。更多关于字符串驻留的细节在[第12章](ch12.html#Misc)中进行了详细考察；现在我们来看如何为自定义类实现同样的功能。
 - en: 'To canonicalize an object, create a map that stores the canonical version of
     the object. To prevent a memory leak, make sure that the objects in the map are
     weakly referenced. The skeleton of such a class looks like this:'
+  id: totrans-177
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使对象标准化，创建一个映射来存储对象的标准版本。为了防止内存泄漏，确保映射中的对象是弱引用的。这样的类的框架如下所示：
 - en: '[PRE17]'
+  id: totrans-178
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: In a threaded environment, the synchronization could become a bottleneck. There’s
     no easy solution if you stick to JDK classes, since they do not provide a concurrent
     hash map for weak references. However, there have been proposals to add a `CustomConcurrentHashMap`
     to the JDK—originally as part of Java Specification Request (JSR)166—and you can
     find various third-party implementations of such a class.
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: 在多线程环境中，同步可能会成为瓶颈。如果坚持使用JDK类，没有简单的解决方案，因为它们不提供用于弱引用的并发哈希映射。然而，已经有提议在JDK中添加`CustomConcurrentHashMap`，最初作为Java规范请求（JSR）166的一部分，并且你可以找到各种第三方实现这样的类。
 - en: Quick Summary
+  id: totrans-180
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: 'Objects that are immutable offer the possibility of special lifecycle management:
     canonicalization.'
+  id: totrans-181
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 不可变对象提供了特殊生命周期管理的可能性：标准化。
 - en: Eliminating duplicate copies of immutable objects via canonicalization can greatly
     decrease the amount of heap an application uses.
+  id: totrans-182
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 通过标准化消除不可变对象的重复副本可以大大减少应用程序使用的堆量。
 - en: Object Life-Cycle Management
+  id: totrans-183
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 对象生命周期管理
 - en: 'The second broad topic of memory management discussed in this chapter is *object
     life-cycle management*. For the most part, Java attempts to minimize the effort
     developers must put into managing the life cycle of objects: the developer creates
     the objects when needed, and when they are no longer needed, the objects fall
     out of scope and are freed by the garbage collector.'
+  id: totrans-184
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章讨论的第二个广泛的内存管理主题是*对象生命周期管理*。在大多数情况下，Java 试图最小化开发人员管理对象生命周期所需的工作：开发人员在需要时创建对象，当它们不再需要时，对象超出范围并由垃圾收集器释放。
 - en: Sometimes this normal life cycle is not optimal. Some objects are expensive
     to create, and managing the life cycle of those objects will improve the efficiency
     of an application, even at the expense of requiring additional work by the garbage
     collector. This section explores when and how the normal life cycle of objects
     should be changed, either by reusing the objects or by maintaining special references
     to them.
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 有时，这种正常的生命周期并不是最优的。一些对象的创建成本很高，管理这些对象的生命周期将提高应用程序的效率，即使需要垃圾收集器做更多的工作。本节探讨了何时以及如何改变对象的正常生命周期，无论是通过重用对象还是保持对它们的特殊引用。
 - en: Object Reuse
+  id: totrans-186
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 对象重用
 - en: 'Object reuse is commonly achieved in two ways: object pools and thread-local
     variables. GC engineers around the world are now groaning, since either technique
     hampers the efficiency of GC. Object pooling, in particular, is widely disliked
     in GC circles for that reason, though for that matter, object pools are also widely
     disliked in development circles for many other reasons.'
+  id: totrans-187
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象重用通常通过两种方式实现：对象池和线程局部变量。全球的 GC 工程师现在正因为这些技术而叹息，因为它们会影响 GC 的效率。特别是出于这个原因，对象池技术在
+    GC 圈子里广受厌恶，虽然在开发圈子里，出于许多其他原因，对象池也广受厌恶。
 - en: 'At one level, the reason for this position seems obvious: objects that are
     reused stay around for a long time in the heap. If the heap has a lot of objects,
     there is less room to create new objects, and hence GC operations will occur more
     frequently. But that is only part of the story.'
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 在某种程度上，这个立场的原因似乎很明显：被重用的对象在堆中存活时间长。如果堆中有很多对象，那么创建新对象的空间就越少，因此 GC 操作会更频繁。但这只是故事的一部分。
 - en: As you saw in [Chapter 6](ch06.html#Collectors), when an object is created,
     it is allocated in eden. It will spend a few young GC cycles shuffling back and
     forth between the survivor spaces, before finally getting promoted to the old
     generation. Each time the newly (or recently) created pooled object is processed,
     the GC algorithm must perform some work to copy it and adjust references to it
     until it finally makes it into the old generation.
+  id: totrans-189
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如您在[第 6 章](ch06.html#Collectors)中看到的，当对象创建时，它会分配到 Eden 区。它会在幸存者空间中来回移动几个年轻代
+    GC 周期，最终最终被提升到老年代。每次处理新创建的（或最近创建的）池化对象时，GC 算法必须执行一些工作来复制它并调整对它的引用，直到它最终进入老年代。
 - en: Although that seems like the end of it, once the object is promoted to the old
     generation, it can cause even more performance problems. The length of time it
     takes to perform a full GC is proportional to the number of objects that are still
     alive in the old generation. The amount of live data is even more important than
     the size of the heap; it is faster to process a 3 GB old generation with few surviving
     objects than to process a 1 GB old generation where 75% of the objects survive.
+  id: totrans-190
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然看起来像是结束了，但一旦对象被提升到老年代，就可能导致更多的性能问题。执行完整的 GC 所需的时间与老年代中仍然存活的对象数量成正比。存活数据的量比堆的大小更重要；处理具有少量存活对象的
+    3 GB 老年代比处理其中 75% 对象存活的 1 GB 老年代更快。
 - en: Using a concurrent collector and avoiding full GCs doesn’t make the situation
     that much better, since the time required by the marking phases of the concurrent
     collectors similarly depends on the amount of still-live data. And for CMS in
     particular, the objects in a pool are likely to be promoted at different times,
     increasing the chance of a concurrent failure due to fragmentation. Overall, the
     longer objects are kept in the heap, the less efficient GC will be.
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用并发收集器并避免完整的 GC 并不能使情况好转太多，因为并发收集器标记阶段所需的时间也与仍存活数据的量有关。特别是对于 CMS，池中的对象可能在不同时间被提升，增加了由于碎片化而导致并发失败的机会。总体而言，对象在堆中存留的时间越长，GC
+    的效率就越低。
 - en: 'So: object reuse is bad. Now we can discuss how and when to reuse objects.'
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此：对象重用是不好的。现在我们可以讨论如何以及何时重用对象了。
 - en: 'The JDK provides some common object pools: the thread pool, which is discussed
     in [Chapter 9](ch09.html#ThreadPerformance), and soft references. *Soft references*,
     which are discussed later in this section, are essentially a big pool of reusable
@@ -1056,8 +1477,12 @@
     is filled with classes that use thread-local variables to avoid reallocating certain
     kinds of objects. Clearly, even Java experts understand the need for object reuse
     in some circumstances.'
+  id: totrans-193
   prefs: []
   type: TYPE_NORMAL
+  zh: JDK 提供了一些常见的对象池：讨论了线程池，详见[第 9 章](ch09.html#ThreadPerformance)，以及软引用。*软引用*稍后在本节中讨论，本质上是一大批可重用对象的池。与此同时，Java
+    服务器依赖于对象池来管理与数据库和其他资源的连接。线程本地值也是类似情况；JDK 充满了使用线程本地变量避免重新分配某些类型对象的类。显然，即使是 Java
+    专家也理解某些情况下需要对象重用的必要性。
 - en: 'The reason for reusing objects is that many objects are expensive to initialize,
     and reusing them is more efficient than the trade-off in increased GC time. That
     is certainly true of things like the JDBC connection pool: creating the network
@@ -1065,199 +1490,288 @@
     Object pooling in that case is a big performance win. Threads are pooled to save
     the time associated with creating a thread; random number generators are supplied
     as thread-local variables to save the time require to seed them; and so on.'
+  id: totrans-194
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象重用的原因是许多对象的初始化成本很高，重用它们比增加 GC 时间的权衡更有效。对于像 JDBC 连接池这样的事物来说，创建网络连接，可能登录并建立数据库会话是昂贵的。在这种情况下，对象池是一个很大的性能优势。线程池是为了节省创建线程的时间而池化线程；随机数生成器作为线程本地变量提供，以节省初始化所需的时间；等等。
 - en: One feature these examples share is that it takes a long time to initialize
     the object. In Java, object *allocation* is fast and inexpensive (and arguments
     against object reuse tend to focus on that part of the equation). Object *initialization*
     performance depends on the object. You should consider reusing only objects with
     a very high initialization cost, and only then if the cost of initializing those
     objects is one of the dominant operations in your program.
+  id: totrans-195
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些示例共享的一个特点是对象的初始化时间很长。在 Java 中，对象的分配是快速且廉价的（对于不重用对象的论点通常集中在此部分）。对象的初始化性能取决于对象本身。你应该仅考虑重新使用初始化成本非常高的对象，只有在初始化这些对象的成本是程序中主要操作之一时才这样做。
 - en: 'Another feature these examples share is that the number of shared objects tends
     to be small, which minimizes their impact on GC operations: there aren’t enough
     of them to slow down those GC cycles. Having a few objects in a pool isn’t going
     to affect the GC efficiency too much; filling the heap with pooled objects will
     slow down GC significantly.'
+  id: totrans-196
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些示例共享的另一个特点是共享对象的数量往往很少，这减少了它们对 GC 操作的影响：它们不足以减慢 GC 循环。在池中有少量对象不会对 GC 效率产生太大影响；将堆填满池化对象会显著减慢
+    GC 的速度。
 - en: 'Here are just some examples of where (and why) the JDK and Java programs reuse
     objects:'
+  id: totrans-197
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里只是 JDK 和 Java 程序重用对象的一些示例（以及原因）：
 - en: Thread pools
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程池
 - en: Threads are expensive to initialize.
+  id: totrans-199
   prefs: []
   type: TYPE_NORMAL
+  zh: 初始化线程的成本很高。
 - en: JDBC pools
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: JDBC 连接池
 - en: Database connections are expensive to initialize.
+  id: totrans-201
   prefs: []
   type: TYPE_NORMAL
+  zh: 初始化数据库连接的成本很高。
 - en: Large arrays
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: 大数组
 - en: Java requires that when an array is allocated, all individual elements in the
     array must be initialized to a default zero-based value (`null`, `0`, or `false`
     as appropriate). This can be time-consuming for large arrays.
+  id: totrans-203
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 要求在分配数组时，数组中的所有单个元素必须初始化为默认的零值（适当时为 `null`、`0` 或 `false`）。对于大数组来说，这可能是耗时的。
 - en: Native NIO buffers
+  id: totrans-204
   prefs: []
   type: TYPE_NORMAL
+  zh: 本地 NIO 缓冲区
 - en: Allocating a direct `java.nio.Buffer` (a buffer returned from calling the `allocateDirect()`
     method) is an expensive operation regardless of the size of the buffer. It is
     better to create one large buffer and manage the buffers from that by slicing
     off portions as required and return them to be reused by future operations.
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: 分配直接的 `java.nio.Buffer`（从调用 `allocateDirect()` 方法返回的缓冲区）是一种昂贵的操作，无论缓冲区的大小如何。最好创建一个大缓冲区，并从中切片以根据需要管理缓冲区，并返回以供未来操作重用。
 - en: Security classes
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: 安全类
 - en: Instances of `MessageDigest`, `Signature`, and other security algorithms are
     expensive to initialize.
+  id: totrans-207
   prefs: []
   type: TYPE_NORMAL
+  zh: '`MessageDigest`、`Signature` 和其他安全算法的实例化成本很高。'
 - en: String encoder and decoder objects
+  id: totrans-208
   prefs: []
   type: TYPE_NORMAL
+  zh: 字符串编码器和解码器对象
 - en: Various classes in the JDK create and reuse these objects. For the most part,
     these are also soft references, as you’ll see in the next section.
+  id: totrans-209
   prefs: []
   type: TYPE_NORMAL
+  zh: JDK中的各种类创建和重用这些对象。大多数情况下，这些也是软引用，正如你将在下一节中看到的那样。
 - en: '`StringBuilder` helpers'
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: '`StringBuilder`辅助程序'
 - en: The `BigDecimal` class reuses a `StringBuilder` object when calculating intermediate
     results.
+  id: totrans-211
   prefs: []
   type: TYPE_NORMAL
+  zh: 在计算中间结果时，`BigDecimal`类会重复使用一个`StringBuilder`对象。
 - en: Random number generators
+  id: totrans-212
   prefs: []
   type: TYPE_NORMAL
+  zh: 随机数生成器
 - en: Instances of either the `Random` or (especially) `SecureRandom` classes are
     expensive to seed.
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论是`Random`还是（尤其是）`SecureRandom`类的实例，种子成本都很高。
 - en: Names obtained from DNS lookups
+  id: totrans-214
   prefs: []
   type: TYPE_NORMAL
+  zh: 来自DNS查找的名称
 - en: Network lookups are expensive.
+  id: totrans-215
   prefs: []
   type: TYPE_NORMAL
+  zh: 网络查找很昂贵。
 - en: ZIP encoders and decoders
+  id: totrans-216
   prefs: []
   type: TYPE_NORMAL
+  zh: ZIP编码器和解码器
 - en: In an interesting twist, these are not particularly expensive to initialize.
     They are, however, expensive to free, because they rely on object finalization
     to ensure that the native memory they use is also freed. See [“Finalizers and
     final references”](#Finalizers) for more details.
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: 有趣的是，这些对象初始化起来并不特别昂贵。然而，它们释放起来却很昂贵，因为它们依赖于对象终结来确保它们使用的本地内存也被释放。详见[“终结器和最终引用”](#Finalizers)以获取更多详细信息。
 - en: Two options (object pools and thread-local variables) have differences in performance.
     Let’s look at those in more detail.
+  id: totrans-218
   prefs: []
   type: TYPE_NORMAL
+  zh: 两种选择（对象池和线程本地变量）在性能上有所不同。让我们更详细地看看这些差异。
 - en: Object pools
+  id: totrans-219
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 对象池
 - en: '*Object pools* are disliked for many reasons, only some of which have to do
     with their performance. They can be difficult to size correctly. They also place
     the burden of object management back on the programmer: rather than simply letting
     an object go out of scope, the programmer must remember to return the object to
     the pool.'
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: '*对象池*因多种原因而不受喜爱，其中只有一些与其性能有关。它们可能很难正确地调整大小。它们还将对象管理的负担重新放回到程序员身上：程序员不能简单地让对象超出作用域，而必须记得将对象返回到池中。'
 - en: 'The focus here, though, is on the performance of an object pool, which is subject
     to the following:'
+  id: totrans-221
   prefs: []
   type: TYPE_NORMAL
+  zh: 但重点在于对象池的性能，它受以下因素的影响：
 - en: GC impact
+  id: totrans-222
   prefs: []
   type: TYPE_NORMAL
+  zh: GC影响
 - en: As you’ve seen, holding lots of objects reduces (sometimes drastically) the
     efficiency of GC.
+  id: totrans-223
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如你所见，持有大量对象会显著降低GC的效率（有时甚至极大地）。
 - en: Synchronization
+  id: totrans-224
   prefs: []
   type: TYPE_NORMAL
+  zh: 同步
 - en: Pools of objects are inevitably synchronized, and if the objects are frequently
     removed and replaced, the pool can have a lot of contention. The result is that
     access to the pool can become slower than initializing a new object.
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象池不可避免地会进行同步，如果对象经常被移除和替换，那么池可能会有很多争用。结果是，访问池可能会变得比初始化新对象还要慢。
 - en: Throttling
+  id: totrans-226
   prefs: []
   type: TYPE_NORMAL
+  zh: 节流
 - en: 'This performance impact of pools can be beneficial: pools allow access to scarce
     resources to be throttled. As discussed in [Chapter 2](ch02.html#SampleApplications),
     if you attempt to increase load on a system beyond what it can handle, performance
     will decrease. This is one reason thread pools are important. If too many threads
     run simultaneously, the CPUs will be overwhelmed, and performance will degrade
     (an example is shown in [Chapter 9](ch09.html#ThreadPerformance)).'
+  id: totrans-227
   prefs: []
   type: TYPE_NORMAL
+  zh: 对象池的这种性能影响可能是有益的：池允许对稀缺资源的访问进行节流。正如在[第二章](ch02.html#SampleApplications)中讨论的那样，如果试图增加系统的负载超过其处理能力，性能将会下降。这就是线程池至关重要的原因之一。如果太多线程同时运行，CPU将不堪重负，性能将下降（例如在[第九章](ch09.html#ThreadPerformance)中有示例）。
 - en: This principle applies to remote system access as well and is frequently seen
     with JDBC connections. If more JDBC connections are made to a database than it
     can handle, performance of the database will degrade. In these situations, it
     is better to throttle the number of resources (e.g., JDBC connections) by capping
     the size of the pool—even if it means that threads in the application must wait
     for a free resource.
+  id: totrans-228
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个原则也适用于远程系统访问，并且在JDBC连接中经常见到。如果向数据库创建的JDBC连接超过其处理能力，数据库的性能将会下降。在这些情况下，最好通过限制池的大小来节流资源（例如JDBC连接），即使这意味着应用程序中的线程必须等待空闲资源。
 - en: Thread-local variables
+  id: totrans-229
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 线程本地变量
 - en: 'Reusing objects by storing them as *thread-local variables* results in various
     performance trade-offs:'
+  id: totrans-230
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过将它们存储为*线程本地变量*来重复使用对象会导致各种性能权衡：
 - en: Life-cycle management
+  id: totrans-231
   prefs: []
   type: TYPE_NORMAL
+  zh: 生命周期管理
 - en: 'Thread-local variables are much easier and less expensive to manage than objects
     in a pool. Both techniques require you to obtain the initial object: you check
     it out of the pool, or you call the `get()` method on the thread-local object.
     But object pools require that you return the object when you are done with it
     (otherwise no one else can use it). Thread-local objects are always available
     within the thread and needn’t be explicitly returned.'
+  id: totrans-232
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程本地变量比池中的对象更易于管理且成本更低。这两种技术都要求您获取初始对象：您可以从池中检出对象，或者在线程本地对象上调用`get()`方法。但是，对象池要求在使用完毕后将对象返回（否则其他人无法使用它）。线程本地对象始终在线程内可用，不需要显式返回。
 - en: Cardinality
+  id: totrans-233
   prefs: []
   type: TYPE_NORMAL
+  zh: 基数
 - en: Thread-local variables usually end up with a one-to-one correspondence between
     the number of threads and the number of saved (reused) objects. That isn’t strictly
     the case. The thread’s copy of the variable isn’t created until the first time
     the thread uses it, so it is possible to have fewer saved objects than threads.
     But there cannot be any more saved objects than threads, and much of the time
     it ends up being the same number.
+  id: totrans-234
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程本地变量通常会在线程数和保存（重用）对象数之间建立一对一的对应关系。这并不是严格的情况。线程的变量副本在线程第一次使用时才创建，因此可能会比线程少的保存对象。但不能有比线程更多的保存对象，大部分时间它们的数量是相同的。
 - en: On the other hand, an object pool may be sized arbitrarily. If a request sometimes
     needs one JDBC connection and sometimes needs two, the JDBC pool can be sized
     accordingly (with, say, 12 connections for 8 threads). Thread-local variables
     cannot do this effectively; nor can they throttle access to a resource (unless
     the number of threads itself serves as the throttle).
+  id: totrans-235
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，对象池的大小可以任意设定。如果一个请求有时需要一个JDBC连接，有时需要两个，那么JDBC池可以相应地设置大小（例如，为8个线程设置12个连接）。线程本地变量无法有效地做到这一点；它们也不能调节对资源的访问（除非线程数本身作为节流器）。
 - en: Synchronization
+  id: totrans-236
   prefs: []
   type: TYPE_NORMAL
+  zh: 同步
 - en: Thread-local variables need no synchronization since they can be used only within
     a single thread; the thread-local `get()` method is relatively fast. (This wasn’t
     always the case; in early versions of Java, obtaining a thread-local variable
     was expensive. If you shied away from thread-local variables because of bad performance
     in the past, reconsider their use in current versions of Java.)
+  id: totrans-237
   prefs: []
   type: TYPE_NORMAL
+  zh: 线程本地变量不需要同步，因为它们只能在单个线程内使用；线程本地的`get()`方法相对较快。（这并不总是如此；在Java的早期版本中，获取线程本地变量是昂贵的。如果您因为过去性能不佳而回避线程本地变量，请重新考虑在当前版本的Java中使用它们。）
 - en: Synchronization brings up an interesting point, because the performance benefit
     of thread-local objects is often couched in terms of saving synchronization costs
     (rather than in the savings from reusing an object). For example, Java supplies
@@ -1266,8 +1780,10 @@
     the book would encounter a synchronization bottleneck on the `next()` method of
     the single `Random` object. Using a thread-local object is a good way to avoid
     synchronization bottlenecks, since only one thread can ever use that object.
+  id: totrans-238
   prefs: []
   type: TYPE_NORMAL
+  zh: 同步提出了一个有趣的观点，因为线程本地对象的性能优势通常是通过节省同步成本来表达的（而不是通过重用对象来节省）。例如，Java提供了`ThreadLocalRandom`类；在示例股票应用程序中使用了该类（而不是单个`Random`实例）。否则，本书中的许多示例都会在单个`Random`对象的`next()`方法上遇到同步瓶颈。使用线程本地对象是避免同步瓶颈的好方法，因为只有一个线程可以使用该对象。
 - en: 'However, that synchronization problem would have been solved just as easily
     if the examples had simply created a new instance of the `Random` class each time
     one was needed. Solving the synchronization problem that way would not have helped
@@ -1275,51 +1791,76 @@
     and continually creating instances of that class would have had worse performance
     than the synchronization bottleneck from many threads sharing one instance of
     the class.'
+  id: totrans-239
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，如果这些示例每次需要时都简单地创建一个新的`Random`类实例，同步问题就很容易解决了。然而，用这种方式解决同步问题并没有帮助整体性能：初始化一个`Random`对象是昂贵的，而频繁创建该类的实例会比多个线程共享一个实例的同步瓶颈性能更差。
 - en: 'Better performance comes from using the `ThreadLocalRandom` class, as shown
     in [Table 7-3](#TableThreadLocalReuse). This example calculates the time required
     to create 10,000 random numbers in each of four threads under three scenarios:'
+  id: totrans-240
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用`ThreadLocalRandom`类可以获得更好的性能，如[表 7-3](#TableThreadLocalReuse)所示。本例计算了在三种情况下每个四个线程创建
+    10,000 个随机数所需的时间：
 - en: Each thread constructs a new `Random` object to calculate the 10,000 numbers.
+  id: totrans-241
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 每个线程都会构造一个新的`Random`对象来计算 10,000 个数。
 - en: All threads share a common, static `Random` object.
+  id: totrans-242
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 所有线程共享一个常见的静态`Random`对象。
 - en: All threads share a common, static `ThreadLocalRandom` object.
+  id: totrans-243
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 所有线程共享一个常见的静态`ThreadLocalRandom`对象。
 - en: Table 7-3\. Effect of `ThreadLocalRandom` on generating 10,000 random numbers
+  id: totrans-244
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 7-3\. 使用`ThreadLocalRandom`生成 10,000 个随机数的效果
 - en: '| Operation | Elapsed time |'
+  id: totrans-245
   prefs: []
   type: TYPE_TB
+  zh: '| 操作 | 耗时 |'
 - en: '| --- | --- |'
+  id: totrans-246
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| Create new `Random` | 134.9 ± 0.01 microseconds |'
+  id: totrans-247
   prefs: []
   type: TYPE_TB
+  zh: '| 创建新的`Random` | 134.9 ± 0.01 微秒 |'
 - en: '| `ThreadLocalRandom` | 52.0 ± 0.01 microseconds |'
+  id: totrans-248
   prefs: []
   type: TYPE_TB
+  zh: '| `ThreadLocalRandom` | 52.0 ± 0.01 微秒 |'
 - en: '| Share `Random` | 3,763 ± 200 microseconds |'
+  id: totrans-249
   prefs: []
   type: TYPE_TB
+  zh: '| 共享`Random` | 3,763 ± 200 微秒 |'
 - en: Microbenchmarking threads that contend on a lock is always unreliable. In the
     last row of this table, the threads are almost always contending for the lock
     on the `Random` object; in a real application, the amount of contention would
     be much less. Still, you can expect to see some contention with a shared object,
     while creating a new object every time is more than two times as expensive as
     using the `ThreadLocalRandom` object.
+  id: totrans-250
   prefs: []
   type: TYPE_NORMAL
+  zh: 在竞争锁的情况下进行微基准测试总是不可靠的。在本表的最后一行中，线程几乎总是在争夺`Random`对象上的锁；在实际应用中，争用量将会少得多。尽管如此，使用共享对象可能会看到一些争用，而每次创建新对象的代价超过使用`ThreadLocalRandom`对象要昂贵两倍以上。
 - en: 'The lesson here—and in general for object reuse—is that when initialization
     of objects takes a long time, don’t be afraid to explore object pooling or thread-local
     variables to reuse those expensive-to-create objects. As always, though, strike
@@ -1327,27 +1868,37 @@
     performance issues than they solve. Leave these techniques to classes that are
     expensive to initialize and for when the number of the reused objects will be
     small.'
+  id: totrans-251
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的教训——以及对象重用的一般经验——是，当对象的初始化时间很长时，不要害怕探索对象池或线程本地变量来重用那些昂贵的创建对象。然而，总是要保持平衡：大型通用类的对象池几乎肯定会导致更多性能问题而不是解决问题。将这些技术留给那些初始化昂贵且重用对象数量较少的类。
 - en: Quick Summary
+  id: totrans-252
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Object reuse is discouraged as a general-purpose operation but may be appropriate
     for small groups of objects that are expensive to initialize.
+  id: totrans-253
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 一般情况下不鼓励对象重用作为通用操作，但对于初始化代价高的少量对象可能是适当的。
 - en: Trade-offs exist between reusing an object via an object pool or using a thread-local
     variable. In general, thread-local variables are easier to work with, assuming
     that a one-to-one correspondence between threads and reusable objects is desired.
+  id: totrans-254
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在通过对象池或线程本地变量重用对象之间存在权衡。一般来说，线程本地变量更容易处理，假设想要实现线程与可重用对象的一对一对应关系。
 - en: Soft, Weak, and Other References
+  id: totrans-255
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 软引用、弱引用及其他引用
 - en: Soft and weak references in Java also allow objects to be reused, though as
     developers, we don’t always think of it in those terms. These kinds of references—which
     we will generally refer to as *indefinite references*—are more frequently used
@@ -1357,14 +1908,18 @@
     either a lengthy calculation or a long database call). That result is just an
     object, and when it is cached via an indefinite reference, we are simply reusing
     the object because it is otherwise expensive to initialize.
+  id: totrans-256
   prefs: []
   type: TYPE_NORMAL
+  zh: Java 中的软引用和弱引用也允许对象被重用，尽管作为开发者，我们并不总是用这些术语来思考。这些引用类型——通常我们将其称为*不定引用*——更常用于缓存长时间计算或数据库查询的结果，而不是重用简单对象。例如，在股票服务器中，可以使用间接引用来缓存`getHistory()`方法的结果（这需要进行长时间计算或长时间数据库调用）。这个结果只是一个对象，当通过不定引用进行缓存时，我们只是因为初始化代价昂贵才会重用这个对象。
 - en: 'Still, to many programmers this “feels” different. In fact, even the terminology
     reflects that: no one speaks of “caching” a thread for reuse, but we will explore
     the reuse of indefinite references in terms of caching the result of database
     operations.'
+  id: totrans-257
   prefs: []
   type: TYPE_NORMAL
+  zh: 对许多程序员来说，这种情况“感觉”不同。事实上，甚至术语也反映了这一点：没有人会说“缓存”一个线程以便重用，但我们将在数据库操作结果缓存方面探讨不定引用的重用。
 - en: 'The advantage to an indefinite reference over an object pool or a thread-local
     variable is that indefinite references will be (eventually) reclaimed by the garbage
     collector. If an object pool contains the last 10,000 stock lookups that have
@@ -1373,71 +1928,100 @@
     remaining heap the application can use. If those lookups are stored via indefinite
     references, the JVM can free up some space (depending on the type of reference),
     giving better GC throughput.'
+  id: totrans-258
   prefs: []
   type: TYPE_NORMAL
+  zh: 不定引用相较于对象池或线程本地变量的优势在于，不定引用最终会被垃圾收集器回收。如果对象池包含最近执行的最后10,000个股票查找，并且堆空间开始不足，那么应用程序就无法继续运行：在存储这些10,000个元素后，剩余堆空间就是应用程序可以使用的所有剩余堆空间。如果这些查找通过不定引用存储，JVM可以释放一些空间（取决于引用类型），从而提高GC吞吐量。
 - en: The disadvantage is that indefinite references have a slightly greater effect
     on the efficiency of the garbage collector. [Figure 7-6](#FigureRefProc1) shows
     a side-by-side comparison of the memory used without and with an indefinite reference
     (in this case, a soft reference).
+  id: totrans-259
   prefs: []
   type: TYPE_NORMAL
+  zh: 缺点是不定引用对垃圾收集器效率的影响略大。[图 7-6](#FigureRefProc1) 显示了没有和有不定引用（在本例中是软引用）时内存使用的对比。
 - en: 'The object being cached occupies 512 bytes. On the left, that’s all the memory
     consumed (absent the memory for the instance variable pointing to the object).
     On the right, the object is being cached inside a `SoftReference` object, which
     adds 40 bytes of memory consumption. Indefinite references are just like any other
     object: they consume memory, and other things (the `cachedValue` variable on the
     right side of the diagram) reference them strongly.'
+  id: totrans-260
   prefs: []
   type: TYPE_NORMAL
+  zh: 被缓存的对象占用512字节。左侧消耗的内存就是这些（除了指向对象的实例变量的内存）。右侧，对象被缓存在 `SoftReference` 对象中，增加了40字节的内存消耗。不定引用与任何其他对象一样：它们会消耗内存，并且其他东西（图右侧的
+    `cachedValue` 变量）会强引用它们。
 - en: So the first impact on the garbage collector is that indefinite references cause
     the application to use more memory. A second, bigger impact on the garbage collector
     is that it takes at least two GC cycles for the indefinite reference object to
     be reclaimed by the garbage collector.
+  id: totrans-261
   prefs: []
   type: TYPE_NORMAL
+  zh: 不定引用对垃圾收集器的第一个影响是应用程序使用更多内存。对垃圾收集器的第二个更大影响是，不定引用对象要经过至少两个GC周期才能被垃圾收集器回收。
 - en: '![Diagram of an indefinite reference''s memory use.](assets/jp2e_0706.png)'
+  id: totrans-262
   prefs: []
   type: TYPE_IMG
+  zh: '![不定引用内存使用示意图。](assets/jp2e_0706.png)'
 - en: Figure 7-6\. Memory allocated by indefinite reference
+  id: totrans-263
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 7-6\. 不定引用分配的内存
 - en: '[Figure 7-7](#FigureRefProc2) shows what happens when a referent is no longer
     strongly referenced (i.e., the `lastViewed` variable has been set to `null`).
     If no references to the `StockHistory` object exist, it is freed during the next
     GC that processes the generation where that object resides. So the left side of
     the diagram now consumes 0 bytes.'
+  id: totrans-264
   prefs: []
   type: TYPE_NORMAL
+  zh: '[图 7-7](#FigureRefProc2) 显示了引用不再被强引用（即 `lastViewed` 变量被设置为 `null`）时的情况。如果没有引用指向
+    `StockHistory` 对象，则在处理该对象所在代的下一个GC期间，它将被释放。因此，图的左侧现在消耗0字节。'
 - en: On the right side of the diagram, memory is still consumed. The exact point
     at which the referent gets freed varies by the type of the indefinite reference,
     but for now let’s take the case of a soft reference. The referent will stick around
     until the JVM decides that the object has not been used recently enough. When
     that happens, the first GC cycle frees the referent—but not the indefinite reference
     object itself. The application ends up with the memory state shown in [Figure 7-8](#FigureRefProc3).
+  id: totrans-265
   prefs: []
   type: TYPE_NORMAL
+  zh: 图的右侧仍然消耗内存。引用被释放的确切时间取决于不定引用的类型，但现在我们先来看软引用的情况。引用将一直保留，直到JVM决定对象最近未被使用。在此之后，第一个GC周期释放引用对象，但不释放不定引用对象本身。应用程序最终的内存状态如
+    [图 7-8](#FigureRefProc3) 所示。
 - en: '![Diagram of an indefinite reference''s memory use.](assets/jp2e_0707.png)'
+  id: totrans-266
   prefs: []
   type: TYPE_IMG
+  zh: '![不定引用内存使用示意图。](assets/jp2e_0707.png)'
 - en: Figure 7-7\. Indefinite references retain memory through GC cycles
+  id: totrans-267
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 7-7\. 不定引用通过GC周期保留内存
 - en: '![Diagram of an indefinite reference''s memory use.](assets/jp2e_0708.png)'
+  id: totrans-268
   prefs: []
   type: TYPE_IMG
+  zh: '![无限引用内存使用的示意图](assets/jp2e_0708.png)'
 - en: Figure 7-8\. Indefinite references are not cleared immediately
+  id: totrans-269
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 7-8\. 无限引用不会立即被清除
 - en: 'The indefinite reference object itself now has (at least) two strong references
     to it: the original strong reference(s) created by the application, and a new
     strong reference (created by the JVM) on a reference queue. All of these strong
     references must be cleared before the indefinite reference object itself can be
     reclaimed by the garbage collector.'
+  id: totrans-270
   prefs: []
   type: TYPE_NORMAL
+  zh: 无限引用对象本身现在至少有两个强引用：应用程序创建的原始强引用和在引用队列中由JVM创建的新强引用。在无限引用对象本身被垃圾收集器回收之前，所有这些强引用都必须被清除。
 - en: Typically, this cleanup is done by whatever code is processing the reference
     queue. That code will get notified that a new object is on the queue and immediately
     remove all strong references to that object. Then, during the next GC cycle, the
@@ -1445,31 +2029,41 @@
     reference queue will not be processed immediately, and there can be many GC cycles
     before everything is cleaned up. Even in the best case, though, the indefinite
     reference has to go through two GC cycles before it is freed.
+  id: totrans-271
   prefs: []
   type: TYPE_NORMAL
+  zh: 通   通常，这种清理工作由处理引用队列的代码完成。该代码会被通知有一个新对象进入队列，并立即移除所有对该对象的强引用。然后，在下一个GC周期中，无限引用对象（被引用对象）将被释放。最坏的情况是，引用队列不会立即处理，可能会经过多个GC周期，才会清理干净。即便是在最好的情况下，无限引用也必须经过两个GC周期才能被释放。
 - en: Depending on the type of indefinite reference, some important variations to
     this general algorithm exist, but all indefinite references have this penalty
     to some degree.
+  id: totrans-272
   prefs: []
   type: TYPE_NORMAL
+  zh: 根据无限引用的类型，这个通用算法存在一些重要的变化，但所有无限引用在某种程度上都存在这种惩罚。
 - en: Soft references
+  id: totrans-273
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 软引用
 - en: '*Soft references* are used when the object in question has a good chance of
     being reused in the future, but you want to let the garbage collector reclaim
     the object if it hasn’t been used recently (a calculation that also takes into
     consideration the amount of memory the heap has available). Soft references are
     essentially one large, least recently used (LRU) object pool. The key to getting
     good performance from them is to make sure that they are cleared on a timely basis.'
+  id: totrans-274
   prefs: []
   type: TYPE_NORMAL
+  zh: '*软引用* 用于当所讨论的对象有很大可能在将来被重用，但你希望让垃圾收集器在对象未被最近使用时回收它（计算时还考虑堆的可用内存量）。软引用基本上是一个大型的最近最少使用（LRU）对象池。确保及时清除软引用是获得良好性能的关键。'
 - en: Here is an example. The stock server can set up a global cache of stock histories
     keyed by their symbol (or symbol and date). When a request comes in for the stock
     history of `TPKS` from 9/1/19 to 12/31/19, the cache can be consulted to see if
     the result from a similar request is already there.
+  id: totrans-275
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是一个例子。股票服务器可以设置一个全局缓存，按股票代码（或股票代码和日期）存储股票历史。当有请求查询从`2019年9月1日`到`2019年12月31日`的`TPKS`股票历史时，可以查询缓存，看看是否已经有类似请求的结果。
 - en: 'The reason to cache that data is that requests tend to come in for certain
     items more often than for others. If `TPKS` is the most requested stock, it can
     be expected to remain in the soft reference cache. On the other hand, a lone request
@@ -1477,55 +2071,91 @@
     also accounts for requests over time: a cluster of requests for `DNLD` can reuse
     the result from the first request. As users realize that `DNLD` is a bad investment,
     those cached items will eventually age out of the heap.'
+  id: totrans-276
   prefs: []
   type: TYPE_NORMAL
+  zh: 缓存这些数据的原因是请求往往对某些项目的需求比其他项目更频繁。如果`TPKS`是最常请求的股票，它可以预计会保留在软引用缓存中。另一方面，单独的`KENG`请求会在缓存中存活一段时间，但最终会被回收。这也考虑了随时间变化的请求：对`DNLD`的请求集群可以重用第一个请求的结果。随着用户意识到`DNLD`是一个糟糕的投资，这些缓存项最终会从堆中消失。
 - en: 'When, exactly, is a soft reference freed? First the referent must not be strongly
     referenced elsewhere. If the soft reference is the only remaining reference to
     its referent, the referent is freed during the next GC cycle only if the soft
     reference has not recently been accessed. Specifically, the equation functions
     like this pseudocode:'
+  id: totrans-277
   prefs: []
   type: TYPE_NORMAL
+  zh: 软引用何时被释放？首先，被引用对象不能在其他地方被强引用。如果软引用是对其被引用对象的唯一剩余引用，并且软引用最近没有被访问，那么在下一个GC周期中才会释放被引用对象。具体而言，公式的函数像这样伪代码：
 - en: '[PRE18]'
+  id: totrans-278
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: This code has two key values. The first value is set by the `-XX:SoftRefLRUPolicyMSPerMB=`*`N`*
     flag, which has a default value of 1,000.
+  id: totrans-279
   prefs: []
   type: TYPE_NORMAL
+  zh: This code has two key values. The first value is set by the `-XX:SoftRefLRUPolicyMSPerMB=`*`N`*
+    flag, which has a default value of 1,000.
 - en: The second value is the amount of free memory in the heap (once the GC cycle
     has completed). The free memory in the heap is calculated based on the maximum
     possible size of the heap minus whatever is in use.
+  id: totrans-280
   prefs: []
   type: TYPE_NORMAL
+  zh: The second value is the amount of free memory in the heap (once the GC cycle
+    has completed). The free memory in the heap is calculated based on the maximum
+    possible size of the heap minus whatever is in use.
 - en: 'So how does that all work? Take the example of a JVM using a 4 GB heap. After
     a full GC (or a concurrent cycle), the heap might be 50% occupied; the free heap
     is therefore 2 GB. The default value of `SoftRefLRUPolicyMSPerMB` (1,000) means
     that any soft reference that has not been used for the past 2,048 seconds (2,048,000
     ms) will be cleared: the free heap is 2,048 (in megabytes), which is multiplied
     by 1,000:'
+  id: totrans-281
   prefs: []
   type: TYPE_NORMAL
+  zh: 'So how does that all work? Take the example of a JVM using a 4 GB heap. After
+    a full GC (or a concurrent cycle), the heap might be 50% occupied; the free heap
+    is therefore 2 GB. The default value of `SoftRefLRUPolicyMSPerMB` (1,000) means
+    that any soft reference that has not been used for the past 2,048 seconds (2,048,000
+    ms) will be cleared: the free heap is 2,048 (in megabytes), which is multiplied
+    by 1,000:'
 - en: '[PRE19]'
+  id: totrans-282
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: If the 4 GB heap is 75% occupied, objects not accessed in the last 1,024 seconds
     are reclaimed, and so on.
+  id: totrans-283
   prefs: []
   type: TYPE_NORMAL
+  zh: If the 4 GB heap is 75% occupied, objects not accessed in the last 1,024 seconds
+    are reclaimed, and so on.
 - en: To reclaim soft references more frequently, decrease the value of the `SoftRefLRU``PolicyMSPerMB`
     flag. Setting that value to 500 means that a JVM with a 4 GB heap that is 75%
     full will reclaim objects not accessed in the past 512 seconds.
+  id: totrans-284
   prefs: []
   type: TYPE_NORMAL
+  zh: To reclaim soft references more frequently, decrease the value of the `SoftRefLRUPolicyMSPerMB`
+    flag. Setting that value to 500 means that a JVM with a 4 GB heap that is 75%
+    full will reclaim objects not accessed in the past 512 seconds.
 - en: Tuning this flag is often necessary if the heap fills up quickly with soft references.
     Say that the heap has 2 GB free and the application starts to create soft references.
     If it creates 1.7 GB of soft references in less than 2,048 seconds (roughly 34
     minutes), none of those soft references will be eligible to be reclaimed. There
     will be only 300 MB of space left in the heap for other objects; GC will occur
     frequently as a result (yielding bad overall performance).
+  id: totrans-285
   prefs: []
   type: TYPE_NORMAL
+  zh: Tuning this flag is often necessary if the heap fills up quickly with soft references.
+    Say that the heap has 2 GB free and the application starts to create soft references.
+    If it creates 1.7 GB of soft references in less than 2,048 seconds (roughly 34
+    minutes), none of those soft references will be eligible to be reclaimed. There
+    will be only 300 MB of space left in the heap for other objects; GC will occur
+    frequently as a result (yielding bad overall performance).
 - en: If the JVM completely runs out of memory or starts thrashing too severely, it
     will clear all soft references, since the alternative would be to throw an `OutOfMemoryError`.
     Not throwing the error is good, but indiscriminately throwing away all the cached
@@ -1534,51 +2164,82 @@
     of soft references are being cleared unexpectedly. As discussed in [“GC overhead
     limit reached”](#GCOverhead), that will occur only after four consecutive full
     GC cycles (and if other factors apply).
+  id: totrans-286
   prefs: []
   type: TYPE_NORMAL
+  zh: If the JVM completely runs out of memory or starts thrashing too severely, it
+    will clear all soft references, since the alternative would be to throw an `OutOfMemoryError`.
+    Not throwing the error is good, but indiscriminately throwing away all the cached
+    results is probably not ideal. Hence, another time to lower the `SoftRefLRUPolicyMSPerMB`
+    value is when the reference processing GC logs indicates that a very large number
+    of soft references are being cleared unexpectedly. As discussed in [“GC overhead
+    limit reached”](#GCOverhead), that will occur only after four consecutive full
+    GC cycles (and if other factors apply).
 - en: 'On the other side of the spectrum, a long-running application can consider
     raising that value if two conditions are met:'
+  id: totrans-287
   prefs: []
   type: TYPE_NORMAL
+  zh: 'On the other side of the spectrum, a long-running application can consider
+    raising that value if two conditions are met:'
 - en: A lot of free heap is available.
+  id: totrans-288
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: A lot of free heap is available.
 - en: The soft references are infrequently accessed.
+  id: totrans-289
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: The soft references are infrequently accessed.
 - en: 'That is an unusual situation. It is similar to a situation discussed about
     setting GC policies: you may think that if the soft reference policy value is
     increased, you are telling the JVM to discard soft references only as a last resort.
     That is true, but you’ve also told the JVM not to leave any headroom in the heap
     for normal operations, and you are likely to end up spending too much time in
     GC instead.'
+  id: totrans-290
   prefs: []
   type: TYPE_NORMAL
+  zh: 'That is an unusual situation. It is similar to a situation discussed about
+    setting GC policies: you may think that if the soft reference policy value is
+    increased, you are telling the JVM to discard soft references only as a last resort.
+    That is true, but you’ve also told the JVM not to leave any headroom in the heap
+    for normal operations, and you are likely to end up spending too much time in
+    GC instead.'
 - en: 'The caution, then, is not to use too many soft references, since they can easily
     fill up the entire heap. This caution is even stronger than the caution against
     creating an object pool with too many instances: soft references work well when
     the number of objects is not too large. Otherwise, consider a more traditional
     object pool with a bounded size, implemented as an LRU cache.'
+  id: totrans-291
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，警告是不要使用太多软引用，因为它们很容易填满整个堆。这个警告甚至比对创建具有太多实例的对象池的警告更强烈：当对象数量不太多时，软引用效果很好。否则，考虑一个更传统的、作为LRU缓存实现的、有界大小的对象池。
 - en: Weak references
+  id: totrans-292
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 弱引用
 - en: '*Weak references* should be used when the referent in question will be used
     by several threads simultaneously. Otherwise, the weak reference is too likely
     to be reclaimed by the garbage collector: objects that are only weakly referenced
     are reclaimed at every GC cycle.'
+  id: totrans-293
   prefs: []
   type: TYPE_NORMAL
+  zh: 当涉及的引用在多个线程同时使用时，应该使用*弱引用*。否则，弱引用很可能被垃圾收集器回收：仅具有弱引用的对象在每个GC周期中都会被回收。
 - en: This means that weak references never get into the state shown (for soft references)
     in [Figure 7-7](#FigureRefProc2). When the strong references are removed, the
     weak reference is immediately freed. Hence, the program state moves directly from
     [Figure 7-6](#FigureRefProc1) to [Figure 7-8](#FigureRefProc3).
+  id: totrans-294
   prefs: []
   type: TYPE_NORMAL
+  zh: 这意味着弱引用永远不会进入（对软引用）在[图 7-7](#FigureRefProc2)中所示的状态。当强引用被移除时，弱引用立即被释放。因此，程序状态直接从[图 7-6](#FigureRefProc1)移动到[图 7-8](#FigureRefProc3)。
 - en: 'The interesting effect here, though, is where the weak reference ends up in
     the heap. Reference objects are just like other Java objects: they are created
     in the young generation and eventually promoted to the old generation. If the
@@ -1588,15 +2249,19 @@
     object in question.) If the referent remains around long enough for the weak reference
     to be promoted into the old generation, the weak reference will not be freed until
     the next concurrent or full GC cycle.'
+  id: totrans-295
   prefs: []
   type: TYPE_NORMAL
+  zh: 不过，这里有趣的效果在于弱引用最终在堆中的位置。引用对象就像其他Java对象一样：它们在年轻代中创建，最终晋升到老年代。如果弱引用的引用对象在弱引用本身仍在年轻代时被释放，那么弱引用将很快被释放（在下一个次要GC）。（这假设引用队列快速处理所涉及对象。）如果引用对象保留时间足够长，使得弱引用被晋升到老年代，那么弱引用将不会在下一个并发或完整GC周期之前被释放。
 - en: 'Using the cache of the stock server as an example, let’s say we know that if
     a particular client accesses `TPKS`, they are almost always likely to access it
     again. It makes sense to keep the values for that stock as a strong reference
     based on the client connection: it will always be there for them, and as soon
     as they log out, the connection is cleared and the memory reclaimed.'
+  id: totrans-296
   prefs: []
   type: TYPE_NORMAL
+  zh: 以股票服务器的缓存为例，假设我们知道如果特定客户访问`TPKS`，他们几乎总是会再次访问它。基于客户端连接保持该股票的值作为强引用是有道理的：它将始终对他们可用，而一旦他们登出，连接就清除了并且回收了内存。
 - en: Now when another user comes along and needs data for `TPKS`, how will they find
     it? Since the object is in memory somewhere, we don’t want to look it up again,
     but also the connection-based cache doesn’t work for this second user. So in addition
@@ -1606,35 +2271,46 @@
     closed their connection. (This is the scenario used in [“Heap Analysis”](#heap_analysis)
     where the data had two references and wasn’t easily found by looking at objects
     with the largest retained memory.)
+  id: totrans-297
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，当另一个用户需要`TPKS`的数据时，他们将如何找到它？由于对象在内存中的某处，我们不希望再次查找它，但连接基础的缓存对第二个用户不起作用。因此，除了基于连接保持`TPKS`数据的强引用外，在全局缓存中保持该数据的弱引用也是有意义的。现在第二个用户将能够找到`TPKS`数据——假设第一个用户没有关闭他们的连接。（这是在[“堆分析”](#heap_analysis)中使用的场景，数据有两个引用，不容易通过查看具有最大保留内存的对象找到。）
 - en: 'This is what is meant by simultaneous access. It is as if we are saying to
     the JVM: “Hey, as long as someone else is interested in this object, let me know
     where it is, but if they no longer need it, throw it away and I will re-create
     it myself.” Compare that to a soft reference, which essentially says: “Hey, try
     to keep this around as long as there is enough memory and as long as it seems
     that someone is occasionally accessing it.”'
+  id: totrans-298
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就是所谓的同时访问。这就像我们对 JVM 说的：“嘿，只要有人对这个对象感兴趣，请告诉我它在哪里，但是如果他们不再需要它，请将其丢弃，我会自己重新创建它。”与软引用相比，后者基本上是说：“嘿，尽量保持这个对象在内存中，只要有足够的内存，并且似乎偶尔有人访问它。”
 - en: 'Not understanding this distinction is the most frequent performance issue that
     occurs when using weak references. Don’t make the mistake of thinking that a weak
     reference is just like a soft reference except that it is freed more quickly:
     a softly referenced object will be available for (usually) minutes or even hours,
     but a weakly referenced object will be available for only as long as its referent
     is still around (subject to the next GC cycle clearing it).'
+  id: totrans-299
   prefs: []
   type: TYPE_NORMAL
+  zh: 不理解这个区别是在使用弱引用时最常见的性能问题。不要误以为弱引用和软引用类似，只是释放得更快：一个被软引用引用的对象将可用（通常）几分钟甚至几小时，但一个被弱引用引用的对象只有在其引用对象仍然存在时才可用（取决于下一个
+    GC 周期清除它）。
 - en: Finalizers and final references
+  id: totrans-300
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: Finalizers 和 final references
 - en: Every Java class has a `finalize()` method inherited from the `Object` class;
     that method can be used to clean up data after the object is eligible for GC.
     That sounds like a nice feature, and it is required in a few circumstances. In
     practice, it turns out to be a bad idea, and you should try hard not to use this
     method.
+  id: totrans-301
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个 Java 类都从 `Object` 类继承了一个 `finalize()` 方法；该方法可用于在对象符合 GC 条件后清理数据。这听起来像是一个不错的功能，而且在某些情况下是必需的。然而，在实践中，它被证明是一个糟糕的想法，你应该尽量避免使用这个方法。
 - en: Finalizers are so bad that the `finalize()` method is deprecated in JDK 11 (though
     not in JDK 8). We’ll get into the details of why finalizers are bad in the rest
     of this section, but first, a little motivation. *Finalizers* were originally
@@ -1643,30 +2319,45 @@
     an object when you no longer need it, the deconstructor for the object could clean
     up the state of that object. In Java, when the object is automatically reclaimed
     as it goes out of scope, the finalizer served as the deconstructor.
+  id: totrans-302
   prefs: []
   type: TYPE_NORMAL
+  zh: Finalizer 是如此糟糕，以至于在 JDK 11 中 `finalize()` 方法已被弃用（尽管在 JDK 8 中没有）。我们将在本节的其余部分详细讨论为什么
+    finalizer 是糟糕的问题，但首先，让我们先有点动力。*Finalizer* 最初是为了解决 JVM 管理对象生命周期时可能出现的问题而引入 Java
+    中的。在像 C++ 这样的语言中，当你不再需要对象时，必须显式地销毁对象，对象的析构函数可以清理对象的状态。在 Java 中，当对象因超出作用域而自动回收时，finalizer
+    充当了析构函数的角色。
 - en: The JDK, for example, uses a finalizer in its classes that manipulates ZIP files,
     because opening a ZIP file uses native code that allocates native memory. That
     memory is freed when the ZIP file is closed, but what happens if the developer
     forgets to call the `close()` method? The finalizer can ensure that the `close()`
     method has been called, even if the developer forgets that.
+  id: totrans-303
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，JDK 中的类在操作 ZIP 文件时使用了一个 finalizer，因为打开 ZIP 文件会使用分配本地内存的本地代码。当 ZIP 文件关闭时，该内存会被释放，但如果开发者忘记调用
+    `close()` 方法会发生什么呢？即使开发者忘记了，finalizer 也可以确保已调用 `close()` 方法。
 - en: 'Numerous classes in JDK 8 use finalizers like that, but in JDK 11, they all
     use a different mechanism: `Cleaner` objects. Those are discussed in the next
     section. If you have your own code and are tempted to use a finalizer (or are
     running on JDK 8 where the cleaner mechanism is not available), read on for ways
     to cope with them.'
+  id: totrans-304
   prefs: []
   type: TYPE_NORMAL
+  zh: JDK 8 中许多类都像这样使用 finalizer，但在 JDK 11 中，它们全部使用了一个不同的机制：`Cleaner` 对象。这将在下一节中讨论。如果您有自己的代码，并且有意使用
+    finalizer（或者在不可用清理器机制的 JDK 8 上运行），请继续阅读以了解如何处理它们。
 - en: 'Finalizers are bad for functional reasons, and they are also bad for performance.
     Finalizers are actually a special case of an indefinite reference: the JVM uses
     a private reference class (`java.lang.ref.Finalizer`, which in turn is a `java.lang.ref.FinalReference`)
     to keep track of objects that have defined a `finalize()` method. When an object
     that has a `finalize()` method is allocated, the JVM allocates two objects: the
     object itself and a `Finalizer` reference that uses the object as its referent.'
+  id: totrans-305
   prefs: []
   type: TYPE_NORMAL
+  zh: 最终器（Finalizers）因为功能原因不好，并且对性能也有影响。最终器实际上是一个不定引用的特殊情况：JVM 使用一个私有引用类（`java.lang.ref.Finalizer`，它又是一个
+    `java.lang.ref.FinalReference`）来跟踪那些定义了 `finalize()` 方法的对象。当分配一个定义了 `finalize()`
+    方法的对象时，JVM 会分配两个对象：对象本身和一个 `Finalizer` 引用，该引用使用对象作为其引用物。
 - en: As with other indefinite references, it takes at least two GC cycles before
     the indefinite reference object can be freed. However, the penalty here is much
     greater than with other indefinite reference types. When the referent of a soft
@@ -1677,30 +2368,43 @@
     rather than the original referent). In the case of soft and weak references, the
     two-cycle penalty for GC applies only to the reference object itself (and not
     the referent).
+  id: totrans-306
   prefs: []
   type: TYPE_NORMAL
+  zh: 与其他不定引用一样，至少需要两个 GC 周期才能释放不定引用对象。然而，在这里的惩罚要比其他不定引用类型大得多。当软引用或弱引用的引用物变得可回收时，引用物本身立即被释放；这导致了先前在
+    [图 7-8](#FigureRefProc3) 中展示的内存使用情况。软引用或弱引用被放置在引用队列上，但引用对象不再引用任何东西（也就是说，其 `get()`
+    方法返回 `null` 而不是原始引用物）。对于软引用和弱引用，两个 GC 周期的惩罚仅适用于引用对象本身（而不是引用物）。
 - en: This is not the case for final references. The implementation of the `Finalizer`
     class must have access to the referent in order to call the referent’s `finalize()`
     method, so the referent cannot be freed when the finalizer reference is placed
     on its reference queue. When the referent of a finalizer becomes eligible for
     collection, the program state is reflected by [Figure 7-9](#FigureRefProc4).
+  id: totrans-307
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于最终引用，情况并非如此。`Finalizer` 类的实现必须访问引用物以调用引用物的 `finalize()` 方法，因此当最终器引用放置在其引用队列上时，引用物无法被释放。当最终器的引用物变得可回收时，程序状态由
+    [图 7-9](#FigureRefProc4) 反映。
 - en: When the reference queue processes the finalizer, the `Finalizer` object (as
     usual) will be removed from the queue and then be eligible for collection. Only
     then will the referent also be freed. This is why finalizers have a much greater
     performance effect on GC than other indefinite references—the memory consumed
     by the referent can be much more significant than the memory consumed by the indefinite
     reference object.
+  id: totrans-308
   prefs: []
   type: TYPE_NORMAL
+  zh: 当引用队列处理最终器时，`Finalizer` 对象（通常）将从队列中移除，然后可以进行回收。只有这时候引用物才会被释放。这就是为什么最终器对垃圾收集的性能影响要比其他不定引用大得多——引用物所消耗的内存可能比不定引用对象本身消耗的内存更多。
 - en: '![Diagram of an indefinite reference''s memory use.](assets/jp2e_0709.png)'
+  id: totrans-309
   prefs: []
   type: TYPE_IMG
+  zh: '![不定引用内存使用的图示。](assets/jp2e_0709.png)'
 - en: Figure 7-9\. Finalizer references retain more memory
+  id: totrans-310
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 7-9\. 最终引用保留更多内存
 - en: 'This leads to the functional problem with finalizers, which is that the `finalize()`
     method can inadvertently create a new strong reference to the referent. That again
     causes a GC performance penalty: now the referent won’t be freed until it is no
@@ -1708,18 +2412,25 @@
     the next time the referent is eligible to be collected, its `finalize()` method
     won’t be called, and the expected cleanup of the referent won’t happen. This kind
     of error is reason enough for finalizers to be used as seldom as possible.'
+  id: totrans-311
   prefs: []
   type: TYPE_NORMAL
+  zh: 这导致了最终器的功能问题，即 `finalize()` 方法可能会无意中创建对引用物的新强引用。这再次导致 GC 性能损耗：现在引用物直到再次不再被强引用时才会被释放。功能上，这会造成一个大问题，因为下次引用物变得可回收时，其
+    `finalize()` 方法将不会被调用，引用物的预期清理也不会发生。这种错误足以成为尽量少用最终器的理由。
 - en: As a rule, then, if you are in a situation where a finalizer is unavoidable,
     make sure that the memory accessed by the object is kept to a minimum.
+  id: totrans-312
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，如果不得不使用最终器，请确保对象访问的内存尽可能少。
 - en: An alternative to using finalizers exists that avoids at least some of these
     problems—and in particular, allows the referent to be freed during normal GC operations.
     This is accomplished by simply using another kind of indefinite reference rather
     than implicitly using a `Finalizer` reference.
+  id: totrans-313
   prefs: []
   type: TYPE_NORMAL
+  zh: 存在一个避免至少某些这些问题的终结器的替代方法，特别是允许在正常 GC 操作期间释放参考对象。这是通过简单地使用另一种类型的无限制引用来实现的，而不是隐式使用`Finalizer`引用。
 - en: 'It is sometimes recommended to use yet another indefinite reference type for
     this: the `PhantomReference` class. (In fact, that’s what JDK 11 does, and if
     you’re on JDK 11, the `Cleaner` object will be much easier to use than the example
@@ -1730,72 +2441,101 @@
     weak reference can be used in more places). And in certain circumstances, a soft
     reference could be used if the caching semantics of the soft reference match the
     need of the application.'
+  id: totrans-314
   prefs: []
   type: TYPE_NORMAL
+  zh: 有时建议使用另一种无限制的引用类型：`PhantomReference`类。（事实上，这就是 JDK 11 所做的，如果你在 JDK 11 上，`Cleaner`对象会比这里呈现的示例更容易使用，这在
+    JDK 8 中真正有用。）这是一个很好的选择，因为在强引用不再引用参考物体之后，引用对象会相对快速被清理，而且在调试时，引用的目的是清楚的。尽管如此，使用弱引用也可以实现相同的目标（而且，弱引用可以在更多地方使用）。在某些情况下，如果软引用的缓存语义与应用程序的需求匹配，还可以使用软引用。
 - en: To create a substitute finalizer, you must create a subclass of the indefinite
     reference class to hold any information that needs to be cleaned up after the
     referent has been collected. Then you perform the cleanup in a method of the reference
     object (as opposed to defining a `finalize()` method in the referent class).
+  id: totrans-315
   prefs: []
   type: TYPE_NORMAL
+  zh: 要创建一个替代的终结器，必须创建一个无限制引用类的子类，以保存在收集参考对象后需要清理的任何信息。然后，在引用对象的方法中执行清理（而不是在参考类中定义`finalize()`方法）。
 - en: Here is the outline of such a class, which uses a weak reference. The constructor
     here allocates a native resource. Under normal usage, the `setClosed()` method
     is expected to be called; that will clean up the native memory.
+  id: totrans-316
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里是这样一个类的概述，它使用了弱引用。构造函数在这里分配了一个本地资源。在正常使用情况下，预计会调用`setClosed()`方法；这将清理本地内存。
 - en: '[PRE20]'
+  id: totrans-317
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: However, the weak reference is also placed on a reference queue. When the reference
     is pulled from the queue, it can check to make sure the native memory has been
     cleaned up (and clean it if it has not).
+  id: totrans-318
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，弱引用也被放置在一个引用队列中。当从队列中提取引用时，可以检查确保本地内存已被清理（如果尚未清理，则进行清理）。
 - en: 'Processing of the reference queue happens in a daemon thread:'
+  id: totrans-319
   prefs: []
   type: TYPE_NORMAL
+  zh: 引用队列的处理发生在守护线程中：
 - en: '[PRE21]'
+  id: totrans-320
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: 'All of that is in a `private` `static` inner class hidden from the developer
     using the actual class, which looks like this:'
+  id: totrans-321
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有这些都在一个`private` `static`内部类中，对使用实际类的开发人员隐藏起来，其外观如下：
 - en: '[PRE22]'
+  id: totrans-322
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: Developers construct this object just as they would any other object. They are
     told to call the `close()` method, which will clean up the native memory—but if
     they don’t, it’s OK. The weak reference still exists behind the scenes, so the
     `CleanupFinalizer` class has its own chance to clean up that memory when the inner
     class processes the weak reference.
+  id: totrans-323
   prefs: []
   type: TYPE_NORMAL
+  zh: 开发人员构建此对象的方式与构建任何其他对象的方式相同。他们被告知调用`close()`方法，这将清理本地内存，但如果他们没有这样做，也没关系。弱引用仍然存在于幕后，因此在内部类处理弱引用时，`CleanupFinalizer`类有自己的机会清理该内存。
 - en: The one tricky part of this example is the need for the `pendingRefs` set of
     weak references. Without that, the weak references themselves will be collected
     before there is the chance to put them onto the reference queue.
+  id: totrans-324
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个示例的一个棘手部分是需要使用`pendingRefs`这组弱引用。如果没有这些引用，弱引用本身将在能够将它们放入引用队列之前被收集。
 - en: 'This example overcomes two limitations of the traditional finalizer: it offers
     better performance, because the memory associated with the referent object (the
     `data` hash map in this case) is released as soon as the referent is collected
     (rather than doing that in the `finalizer()` method), and there is no way for
     the referent object to be resurrected in the cleanup code, since it has already
     been collected.'
+  id: totrans-325
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个示例克服了传统终结器的两个限制：它提供了更好的性能，因为与参考对象相关联的内存（在这种情况下是`data`哈希映射）在参考物体被收集后立即释放（而不是在`finalizer()`方法中执行），并且在清理代码中没有办法使参考对象复活，因为它已经被收集。
 - en: 'Still, other objections that apply to the use of finalizers apply to this code
     as well: you can’t ensure the garbage collector will ever get around to freeing
     the referent, nor that the reference queue thread will ever process any particular
     object on the queue. If there are a large number of these objects, processing
     that reference queue will be expensive. Like all indefinite references, this example
     should still be used sparingly.'
+  id: totrans-326
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管如此，适用于使用 finalizers 的其他异议也适用于此代码：您无法确保垃圾收集器会释放引用对象，也无法确保引用队列线程会处理队列中的任何特定对象。如果有大量这些对象，处理引用队列将是昂贵的。像所有不确定引用一样，此示例仍应谨慎使用。
 - en: Cleaner objects
+  id: totrans-327
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 清理器对象
 - en: 'In JDK 11, it’s much easier to use the new `java.lang.ref.Cleaner` class in
     place of the `finalize()` method. This class uses the `PhantomReference` class
     to get notified when the object is no longer strongly reachable. This follows
@@ -1804,28 +2544,40 @@
     setting up thread processing and their own references: they simply register the
     appropriate objects that the cleaner should process and let the core libraries
     take care of the rest.'
+  id: totrans-328
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDK 11 中，使用新的 `java.lang.ref.Cleaner` 类替代 `finalize()` 方法要容易得多。该类使用 `PhantomReference`
+    类在对象不再强引用时得到通知。这遵循与我刚刚建议在 JDK 8 中使用的 `CleanupFinalizer` 类相同的概念，但由于它是 JDK 的核心特性，开发者不必担心设置线程处理和自己的引用：他们只需注册清理器应处理的适当对象，让核心库来处理剩余的工作。
 - en: From a performance standpoint, the tricky part here is getting the “appropriate”
     object to register with the cleaner. The cleaner will keep a strong reference
     to the registered object, so by itself, that object will never become phantom
     reachable. Instead, you create a sort of shadow object and register that.
+  id: totrans-329
   prefs: []
   type: TYPE_NORMAL
+  zh: 从性能的角度来看，这里的棘手部分是获取“适当”的对象来向清理器注册。清理器将保持对注册对象的强引用，因此该对象本身永远不会变为幽灵可达。相反，您创建一种影子对象并注册它。
 - en: As an example, let’s look at the `java.util.zip.Inflater` class. This class
     needs some sort of cleanup because it must free the native memory it allocated
     during its processing. This cleanup code is executed when the `end()` method is
     called, and developers are encouraged to call that method when they are done with
     the object. But when the object is discarded, we must ensure that the `end()`
     method has been called; otherwise, we’ll end up with a native memory leak.^([1](ch07.html#idm45775550251208))
+  id: totrans-330
   prefs: []
   type: TYPE_NORMAL
+  zh: 举例来说，让我们看看 `java.util.zip.Inflater` 类。该类需要一些清理，因为它在处理期间必须释放分配的本地内存。当调用 `end()`
+    方法时执行此清理代码，并鼓励开发者在完成对象使用时调用该方法。但是，当对象被丢弃时，我们必须确保已调用 `end()` 方法；否则，我们将面临本地内存泄漏的风险。^([1](ch07.html#idm45775550251208))
 - en: 'In pseudocode, the `Inflater` class looks like this:'
+  id: totrans-331
   prefs: []
   type: TYPE_NORMAL
+  zh: 伪代码中，`Inflater` 类看起来像这样：
 - en: '[PRE23]'
+  id: totrans-332
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: 'This code is simpler than the actual implementation, which (for compatibility
     reasons) has to keep track of subclasses that might override the `end()` method,
     and of course the native memory allocation is more complex. The point to understand
@@ -1833,8 +2585,11 @@
     The outer class (the `owner`) argument that is also registered with the cleaner
     provides the trigger: when it is only phantom reachable, the cleaner is triggered,
     and it can use the saved strong reference as the hook to do the cleanup.'
+  id: totrans-333
   prefs: []
   type: TYPE_NORMAL
+  zh: 此代码比实际实现更简单，后者（出于兼容性原因）必须跟踪可能重写 `end()` 方法的子类，并且当然本地内存分配更复杂。此处要理解的重点是，内部类提供了一个
+    `Cleaner` 可以强引用的对象。同时，也注册到清理器的外部类（`owner`）参数提供了触发器：当它只能幽灵可达时，清理器被触发，并且可以使用保存的强引用作为清理的钩子。
 - en: 'Note that the inner class here is `static`. Otherwise, it would contain an
     implicit reference to the `Inflater` class itself, and then the `Inflater` object
     could never become phantom reachable: there would always be a strong reference
@@ -1843,48 +2598,69 @@
     cannot contain a reference to the object that needs to be cleaned up. For that
     reason, developers are discouraged from using a lambda rather than a class, as
     it is again too easy for the lambda to reference the enclosing class.'
+  id: totrans-334
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意这里的内部类是 `static` 的。否则，它将包含对 `Inflater` 类本身的隐式引用，那么 `Inflater` 对象就永远无法变为幻像可达：从
+    `Cleaner` 到 `InflaterZStreamRef` 对象的引用始终是强引用，从而到 `Inflater` 对象的引用也是强引用。作为一个规则，将执行清理操作的对象不能包含对需要清理的对象的引用。因此，开发者不鼓励使用
+    lambda 表达式，而是使用类，因为 lambda 表达式再次很容易引用封闭类。
 - en: Quick Summary
+  id: totrans-335
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Indefinite (soft, weak, phantom, and final) references alter the ordinary life
     cycle of Java objects, allowing them to be reused in ways that may be more GC-friendly
     than pools or thread-local variables.
+  id: totrans-336
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 持续（软，弱，幻像和最终）引用改变了 Java 对象的普通生命周期，允许它们以可能比池或线程局部变量更符合 GC 友好的方式重复使用。
 - en: Weak references should be used when an application is interested in an object
     but only if that object is strongly referenced elsewhere in the application.
+  id: totrans-337
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 当应用程序对对象感兴趣但只有在应用程序的其他地方有强引用时，应使用弱引用。
 - en: Soft references hold onto objects for (possibly) long periods of time, providing
     a simple GC-friendly LRU cache.
+  id: totrans-338
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 软引用长时间保持对象，提供简单的 GC 友好的 LRU 缓存。
 - en: Indefinite references consume their own memory and hold onto memory of other
     objects for long periods of time; they should be used sparingly.
+  id: totrans-339
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 持续引用会消耗自己的内存，并长时间保持其他对象的内存；应该节省使用。
 - en: Finalizers are a special type of reference originally designed for object cleanup;
     their use is discouraged in favor of the new `Cleaner` class.
+  id: totrans-340
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 终结器是最初设计用于对象清理的特殊引用类型；现在鼓励使用新的 `Cleaner` 类，不再推荐使用终结器。
 - en: Compressed Oops
+  id: totrans-341
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 压缩 Oops
 - en: 'Using simple programming, 64-bit JVMs are slower than 32-bit JVMs. This performance
     gap is because of the 64-bit object references: the 64-bit references take up
     twice the space (8 bytes) in the heap as 32-bit references (4 bytes). That leads
     to more GC cycles, since there is now less room in the heap for other data.'
+  id: totrans-342
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用简单编程时，64 位 JVM 比 32 位 JVM 慢。这种性能差距是因为 64 位对象引用：64 位引用在堆中占用两倍空间（8 字节），而 32
+    位引用（4 字节）则不然。这导致了更多的 GC 周期，因为现在堆中的空间更少了，不能容纳其他数据。
 - en: The JVM can compensate for that additional memory by using compressed oops.
     *Oops* stands for *ordinary object pointers*, which are the handles the JVM uses
     as object references. When oops are only 32 bits long, they can reference only
@@ -1894,8 +2670,13 @@
     any 32-bit process is limited to 4 GB of address space.) When oops are 64 bits
     long, they can reference exabytes of memory, or far more than you could ever actually
     get into a machine.
+  id: totrans-343
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 可以通过使用压缩 oops 来补偿额外的内存。*Oops* 是 *ordinary object pointers* 的缩写，它们是 JVM 用作对象引用的句柄。当
+    oops 只有 32 位长时，它们只能引用 4 GB 的内存（ <math alttext="2 Superscript 32"><msup><mrow><mn>2</mn></mrow>
+    <mn>32</mn></msup></math> ），这就是为什么 32 位 JVM 受限于 4 GB 堆大小的原因。（同样的限制也适用于操作系统级别，这就是为什么任何
+    32 位进程受限于 4 GB 地址空间的原因。）当 oops 是 64 位长时，它们可以引用 exabytes 的内存，远远超过您可能实际放入机器的量。
 - en: 'There is a middle ground here: what if there were 35-bit oops? Then the pointer
     could reference 32 GB of memory ( <math alttext="2 Superscript 35"><msup><mrow><mn>2</mn></mrow>
     <mn>35</mn></msup></math> ) and still take up less space in the heap than 64-bit
@@ -1905,16 +2686,25 @@
     When the reference is stored into a 64-bit register, the JVM can shift it left
     by 3 bits (adding three zeros at the end). When the reference is saved from a
     register, the JVM can right-shift it by 3 bits, discarding the zeros at the end.'
+  id: totrans-344
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里有一个折中方案：如果有 35 位 oops 呢？然后指针可以引用 32 GB 内存（ <math alttext="2 Superscript 35"><msup><mrow><mn>2</mn></mrow>
+    <mn>35</mn></msup></math> ），而在堆中占用的空间仍然少于 64 位引用。问题在于没有 35 位寄存器来存储这样的引用。不过，JVM
+    可以假设引用的最后 3 位都是 0。现在每个引用都可以在堆中以 32 位存储。当引用存储到 64 位寄存器中时，JVM 可以将其左移 3 位（在末尾添加三个零）。当从寄存器中保存引用时，JVM
+    可以将其右移 3 位，丢弃末尾的零。
 - en: This leaves the JVM with pointers that can reference 32 GB of memory while using
     only 32 bits in the heap. However, it also means that the JVM cannot access any
     object at an address that isn’t divisible by 8, since any address from a compressed
     oop ends with three zeros. The first possible oop is 0x1, which when shifted becomes
     0x8\. The next oop is 0x2, which when shifted becomes 0x10 (16). Objects must
     therefore be located on an 8-byte boundary.
+  id: totrans-345
   prefs: []
   type: TYPE_NORMAL
+  zh: 这使 JVM 具有可以引用 32 GB 内存的指针，同时在堆中仅使用 32 位。但这也意味着 JVM 无法访问任何不可被 8 整除的地址的对象，因为从压缩
+    oop 中的任何地址结束都以三个零结尾。第一个可能的 oop 是 0x1，左移后变为 0x8。接下来的 oop 是 0x2，左移后变为 0x10（16）。因此，对象必须位于
+    8 字节边界上。
 - en: It turns out that objects are already aligned on an 8-byte boundary in the JVM;
     this is the optimal alignment for most processors. So nothing is lost by using
     compressed oops. If the first object in the JVM is stored at location 0 and occupies
@@ -1922,29 +2712,41 @@
     be allocated. That memory trade-off is worthwhile (and will occur whether compressed
     oops are used or not), because the object can be accessed faster given that 8-byte
     alignment.
+  id: totrans-346
   prefs: []
   type: TYPE_NORMAL
+  zh: 结果表明，在 JVM 中，对象已经对齐到 8 字节边界；这是大多数处理器的最佳对齐方式。因此，使用压缩 oops 并不会丢失任何东西。如果 JVM 中的第一个对象存储在位置
+    0 并占据 57 个字节，下一个对象将存储在位置 64——浪费了无法分配的 7 个字节。这种内存权衡是值得的（无论是否使用压缩 oops），因为给定 8 字节对齐，对象可以更快地访问。
 - en: But that is the reason that the JVM doesn’t try to emulate a 36-bit reference
     that could access 64 GB of memory. In that case, objects would have to be aligned
     on a 16-byte boundary, and the savings from storing the compressed pointer in
     the heap would be outweighed by the amount of memory that would be wasted between
     the memory-aligned objects.
+  id: totrans-347
   prefs: []
   type: TYPE_NORMAL
+  zh: 但这就是 JVM 不试图模拟可以访问 64 GB 内存的 36 位引用的原因。在这种情况下，对象必须对齐到 16 字节边界，从堆中存储压缩指针的节省将被浪费在内存对齐的对象之间。
 - en: This has two implications. First, for heaps that are between 4 GB and 32 GB,
     use compressed oops. Compressed oops are enabled using the `-XX:+UseCompressedOops`
     flag; they are enabled by default whenever the maximum heap size is less than
     32 GB. (In [“Reducing Object Size”](#ObjectSize), it was noted that the size of
     an object reference on a 64-bit JVM with a 32 GB heap is 4 bytes—which is the
     default case since compressed oops are enabled by default.)
+  id: totrans-348
   prefs: []
   type: TYPE_NORMAL
+  zh: 这有两个影响。首先，对于堆大小在 4 GB 到 32 GB 之间的情况，请使用压缩 oops。可以使用 `-XX:+UseCompressedOops`
+    标志启用压缩 oops；当最大堆大小小于 32 GB 时，默认情况下启用压缩 oops（在 [“Reducing Object Size”](#ObjectSize)
+    中指出，64 位 JVM 上使用 32 GB 堆的对象引用大小为 4 字节——这是默认情况，因为默认情况下启用了压缩 oops）。
 - en: Second, a program that uses a 31 GB heap and compressed oops will usually be
     faster than a program that uses a 33 GB heap. Although the 33 GB heap is larger,
     the extra space used by the pointers in that heap means that the larger heap will
     perform more-frequent GC cycles and have worse performance.
+  id: totrans-349
   prefs: []
   type: TYPE_NORMAL
+  zh: 其次，一个使用 31 GB 堆和压缩 oops 的程序通常比使用 33 GB 堆的程序更快。尽管 33 GB 堆更大，但该堆中指针使用的额外空间意味着该较大堆将执行更频繁的
+    GC 循环，并且性能更差。
 - en: Hence, it is better to use heaps that are less than 32 GB, or heaps that are
     at least a few GB larger than 32 GB. Once extra memory is added to the heap to
     make up for the space used by the uncompressed references, the number of GC cycles
@@ -1952,30 +2754,43 @@
     GC impact of the uncompressed oops is ameliorated—but given that 20% of an average
     heap might be used for object references, planning on at least 38 GB is a good
     start.
+  id: totrans-350
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，最好使用小于32 GB的堆，或者比32 GB大几 GB 的堆。一旦向堆添加额外的内存以弥补未压缩引用所占用的空间，GC 循环次数将减少。没有硬性规定指出在减轻未压缩指针的
+    GC 影响之前需要多少内存——但鉴于平均堆的 20% 可能用于对象引用，计划至少使用 38 GB 是一个良好的起点。
 - en: Quick Summary
+  id: totrans-351
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速摘要
 - en: Compressed oops are enabled by default whenever they are most useful.
+  id: totrans-352
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 默认情况下，只要它们最有用，压缩指针（Compressed oops）就会被启用。
 - en: A 31 GB heap using compressed oops will often outperform slightly larger heaps
     that are too big to use compressed oops.
+  id: totrans-353
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用压缩指针的 31 GB 堆通常会胜过稍大的过大以至于无法使用压缩指针的堆。
 - en: Summary
+  id: totrans-354
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: Fast Java programs depend crucially on memory management. Tuning GC is important,
     but to obtain maximum performance, memory must be utilized effectively within
     applications.
+  id: totrans-355
   prefs: []
   type: TYPE_NORMAL
+  zh: 快速的 Java 程序关键取决于内存管理。调整 GC 很重要，但要获得最大性能，必须有效地利用应用程序中的内存。
 - en: 'For a while, hardware trends tended to dissuade developers from thinking about
     memory: if my laptop has 16 GB of memory, how concerned need I be with an object
     that has an extra, unused 8-byte object reference? In a cloud world of memory-limited
@@ -1984,18 +2799,26 @@
     trade-off of programming can swing to a time/space-and-time trade-off: using too
     much space in the heap can make things slower by requiring more GC. In Java, managing
     the heap is always important.'
+  id: totrans-356
   prefs: []
   type: TYPE_NORMAL
+  zh: 有一段时间，硬件趋势倾向于劝阻开发人员考虑内存：如果我的笔记本电脑有 16 GB 的内存，我对一个额外的未使用的 8 字节对象引用有多担心呢？在内存受限的容器云世界中，这种担忧再次显而易见。尽管如此，即使在大型硬件上运行具有大型堆的应用程序时，也很容易忘记编程的正常时间/空间权衡可能会转向时间/空间和时间权衡：在堆中使用过多空间可能会通过需要更多的
+    GC 使事情变慢。在 Java 中，管理堆始终很重要。
 - en: 'Much of that management centers around when and how to use special memory techniques:
     object pools, thread-local variables, and indefinite references. Judicious use
     of these techniques can vastly improve the performance of an application, but
     overuse of them can just as easily degrade performance. In limited quantities—when
     the number of objects in question is small and bounded—the use of these memory
     techniques can be quite effective.'
+  id: totrans-357
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种管理的主要重点在于何时以及如何使用特殊的内存技术：对象池、线程局部变量和不确定引用。明智地使用这些技术可以极大地提高应用程序的性能，但过度使用它们同样会降低性能。在数量有限——需要考虑的对象数量较少且有界——的情况下，使用这些内存技术可能非常有效。
 - en: ^([1](ch07.html#idm45775550251208-marker)) If the `end()` method is not called
     eagerly and we rely on GC to clear the native memory, we’ll still have the appearance
     of a native memory leak; see [Chapter 8](ch08.html#NativeMemory) for more details.
+  id: totrans-358
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch07.html#idm45775550251208-marker)) 如果不及时调用 `end()` 方法并依赖 GC 来清除本地内存，我们仍然会出现本地内存泄漏的情况；有关更多详情，请参阅[第
+    8 章](ch08.html#NativeMemory)。

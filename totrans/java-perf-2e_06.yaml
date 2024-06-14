@@ -797,6 +797,8 @@
   id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，JDK 11的输出包含了一些我们还没有讨论过的内容的引用。首先是大小以区域而不是MB为单位。我们将在本章后面讨论区域大小，但在本示例中，区域大小为1
+    MB。此外，JDK 11还提到了一个新领域：巨大区域。那是老年代的一部分，也将在本章后面讨论。
 - en: 'The initial-mark or concurrent start log message announces that the background
     concurrent cycle has begun. Since the initial mark of the marking cycle phase
     also requires all application threads to be stopped, G1 GC takes advantage of
@@ -808,10 +810,12 @@
   id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 初始标记或并发开始日志消息宣布后台并发周期已经开始。由于标记周期的初始标记阶段也需要停止所有应用程序线程，所以G1 GC利用了年轻代GC周期来完成这项工作。将初始标记阶段添加到年轻代GC的影响并不大：它使用的CPU周期比之前的收集（仅仅是一个普通的年轻代收集）多了20%，尽管暂停时间略长。（幸运的是，机器上有多余的CPU周期供并行G1线程使用，否则暂停时间将会更长。）
 - en: 'Next, G1 GC scans the root region:'
   id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，G1 GC扫描根区域：
 - en: '[PRE8]'
   id: totrans-111
   prefs: []
@@ -827,6 +831,7 @@
   id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个过程需要0.58秒，但不会停止应用程序线程；它只使用后台线程。然而，这个阶段不能被年轻代收集打断，因此为这些后台线程提供可用的CPU周期至关重要。如果在根区域扫描期间年轻代填满了，那么年轻代收集（已经停止所有应用程序线程）必须等待根扫描完成。实际上，这意味着收集年轻代需要比平常更长的暂停时间。这种情况在GC日志中显示如下：
 - en: '[PRE9]'
   id: totrans-113
   prefs: []
@@ -841,6 +846,7 @@
   id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的GC暂停在根区域扫描结束之前开始。在JDK 8中，GC日志中的交错输出表明年轻代收集必须暂停等待根区域扫描完成才能继续进行。在JDK 11中，这有点难以检测：你必须注意到根区域扫描结束的时间戳恰好与下一个年轻代收集开始的时间戳相同。
 - en: In either case, it is impossible to know exactly how long the young collection
     was delayed. It wasn’t necessarily delayed the entire 610 ms in this example;
     for some period of that time (until the young generation actually filled up),
@@ -852,12 +858,15 @@
   id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论哪种情况，都无法准确知道年轻代收集延迟了多长时间。在这个例子中，它并不一定会延迟整整610毫秒；在那段时间内（直到年轻代实际填满），事情仍在继续。但在这种情况下，时间戳显示应用程序线程等待了额外的约100毫秒—这就是为什么年轻代GC暂停的持续时间比日志中其他暂停的平均持续时间长约100毫秒的原因（如果这种情况经常发生，这表明G1
+    GC需要更好地调整，如下一节所讨论的）。
 - en: 'After the root region scanning, G1 GC enters a concurrent marking phase. This
     happens completely in the background; a message is printed when it starts and
     ends:'
   id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 在根区域扫描之后，G1 GC进入并发标记阶段。这完全在后台进行；开始和结束时会打印一条消息：
 - en: '[PRE10]'
   id: totrans-117
   prefs: []
@@ -868,6 +877,7 @@
   id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 并发标记可以被中断，因此在此阶段可能发生年轻代收集（因此在省略号处会有大量GC输出）。
 - en: 'Also note that in the JDK 11 example, the output has the same GC entry—20—as
     did the entry where the root region scanning occurred. We are breaking down the
     operations more finely than the JDK logging does: in the JDK, the entire background
@@ -1105,6 +1115,8 @@
   id: totrans-153
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如我提到的，元空间本质上是一个独立的堆，与主堆独立收集。它不通过 G1 GC 进行收集，但是当 JDK 8 需要收集时，G1 GC 将在主堆上执行完整的
+    GC（立即在年轻代收集之前）：
 - en: '[PRE18]'
   id: totrans-154
   prefs: []
@@ -1114,38 +1126,45 @@
   id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDK 11 中，元空间可以在不需要完整 GC 的情况下进行收集/调整大小。
 - en: Quick Summary
   id: totrans-156
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: G1 has multiple cycles (and phases within the concurrent cycle). A well-tuned
     JVM running G1 should experience only young, mixed, and concurrent GC cycles.
   id: totrans-157
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: G1 有多个循环（并发循环内的阶段）。运行 G1 的良好调整的 JVM 应该只会经历年轻代、混合和并发 GC 循环。
 - en: Small pauses occur for some of the G1 concurrent phases.
   id: totrans-158
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在一些 G1 并发阶段会发生小的暂停。
 - en: G1 should be tuned if necessary to avoid full GC cycles.
   id: totrans-159
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果需要避免完整的 GC 循环，则应对 G1 进行调整。
 - en: Tuning G1 GC
   id: totrans-160
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: G1 GC 的调整
 - en: The major goal in tuning G1 GC is to make sure that no concurrent mode or evacuation
     failures end up requiring a full GC. The techniques used to prevent a full GC
     can also be used when frequent young GCs must wait for a root region scan to complete.
   id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 调整 G1 GC 的主要目标是确保没有并发模式或疏散故障会导致需要进行完整的 GC。用于防止完整 GC 的技术也可以在频繁的年轻 GC 必须等待根区域扫描完成时使用。
 - en: Tuning to prevent a full collection is critical in JDK 8, because when G1 GC
     executes a full GC in JDK 8, it does so using a single thread. That creates a
     longer than usual pause time. In JDK 11, the full GC is executed by multiple threads,
@@ -1156,35 +1175,44 @@
   id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDK 8 中，调整以避免完整的收集是至关重要的，因为当 G1 GC 在 JDK 8 中执行完整的 GC 时，它会使用一个线程。这会导致比通常更长的暂停时间。在
+    JDK 11 中，完整的 GC 由多个线程执行，导致较短的暂停时间（基本上与使用吞吐量收集器执行完整 GC 的暂停时间相同）。这种差异是在使用 G1 GC
+    时更喜欢升级到 JDK 11 的一个原因（尽管一个避免完整 GC 的 JDK 8 应用程序也会表现良好）。
 - en: Secondarily, tuning can minimize the pauses that occur along the way.
   id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: 其次，调整可以尽量减少沿途发生的暂停。
 - en: 'These are the options to prevent a full GC:'
   id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些是防止完整 GC 的选项：
 - en: Increase the size of the old generation either by increasing the heap space
     overall or by adjusting the ratio between the generations.
   id: totrans-165
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 增加老年代的大小，可以通过增加总堆空间或调整两代之间的比率来实现。
 - en: Increase the number of background threads (assuming there is sufficient CPU).
   id: totrans-166
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 增加后台线程的数量（假设有足够的 CPU）。
 - en: Perform G1 GC background activities more frequently.
   id: totrans-167
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 更频繁地执行 G1 GC 后台活动。
 - en: Increase the amount of work done in mixed GC cycles.
   id: totrans-168
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 增加在混合 GC 循环中完成的工作量。
 - en: 'A lot of tunings can be applied here, but one of the goals of G1 GC is that
     it shouldn’t have to be tuned that much. To that end, G1 GC is primarily tuned
     via a single flag: the same `-XX:MaxGCPauseMillis=`*`N`* flag that was used to
@@ -1192,6 +1220,7 @@
   id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里可以应用很多调整，但是 G1 GC 的目标之一是不需要进行太多的调整。为此，G1 GC 主要通过一个标志进行调整：与用于调整吞吐量收集器的相同 `-XX:MaxGCPauseMillis=`*`N`* 标志。
 - en: 'When used with G1 GC (and unlike the throughput collector), that flag does
     have a default value: 200 ms. If pauses for any of the stop-the-world phases of
     G1 GC start to exceed that value, G1 GC will attempt to compensate—adjusting the
@@ -1201,6 +1230,8 @@
   id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 当与 G1 GC 结合使用时（与吞吐量收集器不同），该标志确实具有默认值：200 毫秒。如果 G1 GC 的停止世界阶段的暂停开始超过该值，G1 GC
+    将尝试进行补偿 — 调整年轻代和老年代的比例、调整堆大小、更早地启动后台处理、更改保留阈值以及（最重要的）在混合 GC 循环期间处理更多或更少的老年代区域。
 - en: 'Some trade-offs apply here: if that value is reduced, the young size will contract
     to meet the pause-time goal, but more frequent young GCs will be performed. In
     addition, the number of old generation regions that can be collected during a
@@ -1209,6 +1240,7 @@
   id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里存在一些权衡：如果该值减小，年轻代大小将会收缩以达到暂停时间目标，但会执行更频繁的年轻代 GC。此外，在混合 GC 期间可以收集的老年代区域数量将减少以达到暂停时间目标，这会增加并发模式失败的可能性。
 - en: If setting a pause-time goal does not prevent the full GCs from happening, these
     various aspects can be tuned individually. Tuning the heap sizes for G1 GC is
     accomplished in the same way as for other GC algorithms.
@@ -1736,11 +1768,15 @@
   id: totrans-242
   prefs: []
   type: TYPE_NORMAL
+  zh: 结果，在年轻收集过程中（当所有线程已经停止时），CMS 收集并压缩了整个老年代。好消息是，通过堆的压缩，碎片问题已经解决（至少暂时解决了）。但是这导致了长达
+    28 秒的暂停时间。这个时间比 CMS 发生并发模式失败时要长得多，因为整个堆被压缩；而并发模式失败只是简单地释放了堆中的对象。此时的堆看起来就像吞吐收集器的完全
+    GC 结束时一样（[图 6-2](#FigureParOld)）：年轻代完全为空，老年代已经被压缩。
 - en: 'Finally, the CMS log may show a full GC without any of the usual concurrent
     GC messages:'
   id: totrans-243
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，CMS 日志可能显示完全 GC，但没有任何常规的并发 GC 消息：
 - en: '[PRE30]'
   id: totrans-244
   prefs: []
@@ -1753,33 +1789,40 @@
   id: totrans-245
   prefs: []
   type: TYPE_NORMAL
+  zh: 当元空间填满并且需要收集时，会发生这种情况。CMS 不会收集元空间，因此如果填满了，需要进行完全 GC 来丢弃任何未引用的类。[“高级调整”](#advance-tunings-sec)
+    显示了如何解决这个问题。
 - en: Quick Summary
   id: totrans-246
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: CMS has several GC operations, but the expected operations are minor GCs and
     concurrent cycles.
   id: totrans-247
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: CMS 有几个 GC 操作，但预期的操作是小 GC 和并发周期。
 - en: Concurrent mode failures and promotion failures in CMS are expensive; CMS should
     be tuned to avoid these as much as possible.
   id: totrans-248
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: CMS 中的并发模式失败和推广失败都很昂贵；应尽量调整 CMS 以避免这些问题。
 - en: By default, CMS does not collect metaspace.
   id: totrans-249
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 默认情况下，CMS 不会收集元空间。
 - en: Tuning to Solve Concurrent Mode Failures
   id: totrans-250
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 调整以解决并发模式失败
 - en: 'The primary concern when tuning CMS is to make sure that no concurrent mode
     or promotion failures occur. As the CMS GC log showed, a concurrent mode failure
     occurs because CMS did not clean out the old generation fast enough: when it comes
@@ -1789,6 +1832,8 @@
   id: totrans-251
   prefs: []
   type: TYPE_NORMAL
+  zh: 在调整 CMS 时的主要关注点是确保不会发生并发模式或推广失败。正如 CMS GC 日志所示，发生并发模式失败是因为 CMS 没有及时清理老年代：当需要在年轻代执行收集时，CMS
+    计算到它没有足够的空间来晋升这些对象到老年代，于是首先收集老年代。
 - en: 'The old generation initially fills up by placing the objects right next to
     each other. When a certain amount of the old generation is filled (by default,
     70%), the concurrent cycle begins and the background CMS thread(s) start scanning
@@ -1799,36 +1844,44 @@
   id: totrans-252
   prefs: []
   type: TYPE_NORMAL
+  zh: 老年代最初通过将对象放置在彼此相邻的位置来填充。当老年代填充了一定量（默认为 70%）时，并发周期开始，并且后台 CMS 线程开始扫描老年代的垃圾。此时比赛开始：CMS
+    必须在老年代扫描和释放对象完成之前（剩余的 30% 填充），完成扫描老年代。如果并发周期失败，CMS 将经历并发模式失败。
 - en: 'We can attempt to avoid this failure in multiple ways:'
   id: totrans-253
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以尝试多种方法来避免这种失败：
 - en: Make the old generation larger, either by shifting the proportion of the new
     generation to the old generation or by adding more heap space altogether.
   id: totrans-254
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 增加老年代的大小，可以通过将新生代与老年代的比例调整或完全添加更多堆空间来实现。
 - en: Run the background thread more often.
   id: totrans-255
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 更频繁地运行后台线程。
 - en: Use more background threads.
   id: totrans-256
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用更多后台线程。
 - en: If more memory is available, the better solution is to increase the size of
     the heap. Otherwise, change the way the background threads operate.
   id: totrans-257
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果有更多内存可用，更好的解决方案是增加堆的大小。否则，更改后台线程的操作方式。
 - en: Running the background thread more often
   id: totrans-258
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 更频繁地运行后台线程
 - en: 'One way to let CMS win the race is to start the concurrent cycle sooner. If
     the concurrent cycle starts when 60% of the old generation is filled, CMS has
     a better chance of finishing than if the cycle starts when 70% of the old generation
@@ -1836,16 +1889,19 @@
   id: totrans-259
   prefs: []
   type: TYPE_NORMAL
+  zh: 让 CMS 赢得竞争的一种方法是更早地启动并发周期。如果并发周期在老年代填充了 60% 时开始，CMS 完成的机会就比在老年代填充了 70% 时开始的机会更大。实现这一点的最简单方法是设置这两个标志：
 - en: '`-XX:CMSInitiatingOccupancyFraction=`*`N`*'
   id: totrans-260
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`-XX:CMSInitiatingOccupancyFraction=`*`N`*'
 - en: '`-XX:+UseCMSInitiatingOccupancyOnly`'
   id: totrans-261
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`-XX:+UseCMSInitiatingOccupancyOnly`'
 - en: 'Using both flags also makes CMS easier to understand: if both are set, CMS
     determines when to start the background thread based only on the percentage of
     the old generation that is filled. (Note that unlike G1 GC, the occupancy ratio
@@ -1853,6 +1909,7 @@
   id: totrans-262
   prefs: []
   type: TYPE_NORMAL
+  zh: 同时使用这两个标志也使 CMS 更容易理解：如果两者都设置了，CMS 仅根据填充的老年代的百分比确定何时启动后台线程。（请注意，与 G1 GC 不同，在这里，占用比率仅为老年代，而不是整个堆。）
 - en: By default, the `UseCMSInitiatingOccupancyOnly` flag is `false`, and CMS uses
     a more complex algorithm to determine when to start the background thread. If
     the background thread needs to be started earlier, it’s better to start it the
@@ -1860,6 +1917,8 @@
   id: totrans-263
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，`UseCMSInitiatingOccupancyOnly` 标志为 `false`，CMS 使用更复杂的算法来确定何时启动后台线程。如果需要更早地启动后台线程，则最好以最简单的方式启动它，并将
+    `UseCMSInitiatingOccupancyOnly` 标志设置为 `true`。
 - en: 'Tuning the value of the `CMSInitiatingOccupancyFraction` may require a few
     iterations. If `UseCMSInitiatingOccupancyOnly` is enabled, the default value for
     `CMSInitiatingOccupancyFraction` is 70: the CMS cycle starts when the old generation
@@ -1867,6 +1926,8 @@
   id: totrans-264
   prefs: []
   type: TYPE_NORMAL
+  zh: 调整 `CMSInitiatingOccupancyFraction` 的值可能需要几次迭代。如果启用了 `UseCMSInitiatingOccupancyOnly`，则
+    `CMSInitiatingOccupancyFraction` 的默认值为 70：当老年代占用率为 70% 时，CMS 循环启动。
 - en: 'A better value for that flag for a given application can be found in the GC
     log by figuring out when the failed CMS cycle started in the first place. Find
     the concurrent mode failure in the log, and then look back to when the most recent
@@ -1875,6 +1936,8 @@
   id: totrans-265
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于给定应用程序来说，该标志的更好值可以通过在 GC 日志中找到 CMS 循环失败开始的时间来确定。在日志中查找并发模式失败，然后回溯到最近的 CMS
+    循环开始的时间。`CMS-initial-mark` 行将显示 CMS 循环开始时老年代的填充程度：
 - en: '[PRE31]'
   id: totrans-266
   prefs: []
@@ -1888,12 +1951,16 @@
   id: totrans-267
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此示例中，这大约为 50%（1,398 MB 中的 702 MB）。这还不够早，因此 `CMSInitiatingOccupancyFraction`
+    需要设置为低于 50 的值。（尽管该标志的默认值为 70，但此示例在老年代填充了 50% 时启动了 CMS 线程，因为未设置 `UseCMSInitiatingOccupancyOnly`
+    标志。）
 - en: The temptation here is just to set the value to 0 or another small number so
     that the background CMS cycle runs all the time. That’s usually discouraged, but
     as long as you are aware of the trade-offs being made, it may work out fine.
   id: totrans-268
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的诱惑是将值设置为 0 或另一个较小的数字，以便后台 CMS 循环始终运行。通常不鼓励这样做，但只要您意识到正在做出的权衡，它可能会很好地解决问题。
 - en: 'The first trade-off comes in CPU time: the CMS background thread(s) will run
     continually, and they consume a fair amount of CPU—each background CMS thread
     will consume 100% of a CPU. There will also be very short bursts when multiple
@@ -1902,6 +1969,8 @@
   id: totrans-269
   prefs: []
   type: TYPE_NORMAL
+  zh: 第一个权衡出现在 CPU 时间上：CMS 后台线程将持续运行，并且它们会消耗相当多的 CPU —— 每个后台 CMS 线程将消耗一个 CPU 的 100%。当多个
+    CMS 线程运行并且作为结果总 CPU 占用率急剧上升时，也会有非常短暂的爆发。如果这些线程是不必要地运行，则会浪费 CPU 资源。
 - en: On the other hand, it isn’t necessarily a problem to use those CPU cycles. The
     background CMS threads have to run sometimes, even in the best case. Hence, the
     machine must always have enough CPU cycles available to run those CMS threads.
@@ -1909,6 +1978,8 @@
   id: totrans-270
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，使用这些 CPU 循环并不一定是个问题。即使在最佳情况下，后台 CMS 线程有时也必须运行。因此，机器必须始终有足够的 CPU 循环可用于运行这些
+    CMS 线程。因此，在确定机器大小时，您必须计划 CPU 的使用情况。
 - en: The second trade-off is far more significant and has to do with pauses. As the
     GC log showed, certain phases of the CMS cycle stop all the application threads.
     The main reason CMS is used is to limit the effect of GC pauses, so running CMS
@@ -1921,16 +1992,21 @@
   id: totrans-271
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二个折中方案更为重要，与暂停有关。正如 GC 日志所示，CMS 周期的某些阶段会停止所有应用线程。CMS 被使用的主要原因是为了限制 GC 暂停的影响，因此比需要的更频繁地运行
+    CMS 是得不偿失的。CMS 暂停通常比年轻代暂停短得多，特定应用程序可能不会对这些额外的暂停敏感——这是额外暂停与减少并发模式失败机会之间的折中。但是持续运行后台
+    GC 暂停可能会导致过度的总体暂停，最终会降低应用程序的性能。
 - en: Unless those trade-offs are acceptable, take care not to set the `CMSInitiatingOccupancyFraction`
     higher than the amount of live data in the heap, plus at least 10% to 20%.
   id: totrans-272
   prefs: []
   type: TYPE_NORMAL
+  zh: 除非那些折中方案是可以接受的，否则要注意不要将`CMSInitiatingOccupancyFraction`设置得比堆中的活动数据量高，至少要高出10%到20%。
 - en: Adjusting the CMS background threads
   id: totrans-273
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 调整 CMS 后台线程
 - en: 'Each CMS background thread will consume 100% of a CPU on a machine. If an application
     experiences a concurrent mode failure and extra CPU cycles are available, the
     number of those background threads can be increased by setting the `-XX:ConcGCThreads=`*`N`*
@@ -1938,6 +2014,8 @@
   id: totrans-274
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个 CMS 后台线程将在机器上占用 100% 的 CPU。如果应用程序遇到并发模式失败并且有额外的 CPU 周期可用，则可以通过设置 `-XX:ConcGCThreads=`*`N`*
+    标志来增加这些后台线程的数量。CMS 与 G1 GC 设置此标志的方式不同；它使用以下计算：
 - en: '[PRE32]'
   id: totrans-275
   prefs: []
@@ -1948,50 +2026,59 @@
   id: totrans-276
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，CMS 在比 G1 GC 更早的阶段增加了`ConcGCThreads`的值。
 - en: Quick Summary
   id: totrans-277
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速摘要
 - en: Avoiding concurrent mode failures is the key to achieving the best possible
     performance with CMS.
   id: totrans-278
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 避免并发模式失败是实现 CMS 最佳性能的关键。
 - en: The simplest way to avoid those failures (when possible) is to increase the
     size of the heap.
   id: totrans-279
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 避免这些失败的最简单方法（如果可能的话）是增加堆的大小。
 - en: Otherwise, the next step is to start the concurrent background threads sooner
     by adjusting `CMSInitiatingOccupancy​Frac⁠tion`.
   id: totrans-280
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 否则，下一步是通过调整`CMSInitiatingOccupancy​Frac⁠tion`来更早地启动并发后台线程。
 - en: Tuning the number of background threads can also help.
   id: totrans-281
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 调整后台线程的数量也可能有所帮助。
 - en: Advanced Tunings
   id: totrans-282
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 高级调整
 - en: This section on tunings covers some fairly unusual situations. Even though these
     situations are not encountered frequently, many of the low-level details of the
     GC algorithms are explained in this section.
   id: totrans-283
   prefs: []
   type: TYPE_NORMAL
+  zh: 关于调整的这一部分涵盖了一些相当不寻常的情况。尽管不经常遇到这些情况，但是本节解释了 GC 算法的许多底层细节。
 - en: Tenuring and Survivor Spaces
   id: totrans-284
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 续寿和幸存者空间
 - en: 'When the young generation is collected, some objects will still be alive. This
     includes not only newly created objects that are destined to exist for a long
     time but also objects that are otherwise short-lived. Consider the loop of `BigDecimal`
@@ -2003,6 +2090,8 @@
   id: totrans-285
   prefs: []
   type: TYPE_NORMAL
+  zh: 当年轻代被收集时，一些对象仍然存活。这不仅包括了那些注定会存在很长时间的新创建对象，还包括了其他短暂存在的对象。考虑一下在[第五章](ch05.html#GC)中的`BigDecimal`计算的循环。如果
+    JVM 在该循环中间执行 GC，那么其中一些短命的 `BigDecimal` 对象就会不幸：它们刚刚被创建并且正在使用中，因此无法释放，但它们也不会存活足够长的时间以证明将它们移到老年代是合理的。
 - en: This is the reason that the young generation is divided into two survivor spaces
     and eden. This setup allows objects to have additional chances to be collected
     while still in the young generation, rather than being promoted into (and filling
@@ -2010,6 +2099,7 @@
   id: totrans-286
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就是为什么年轻代被分为两个幸存者空间和伊甸园的原因。这种设置允许对象在仍然在年轻代时有额外的机会被收集，而不是被提升到（并填满）老年代。
 - en: When the young generation is collected and the JVM finds an object that is still
     alive, that object is moved to a survivor space rather than to the old generation.
     During the first young generation collection, objects are moved from eden into
@@ -2023,6 +2113,8 @@
   id: totrans-287
   prefs: []
   type: TYPE_NORMAL
+  zh: 当年轻一代对象被收集时，JVM 发现仍然存活的对象，将其移动到幸存者空间而不是老年代。在第一次年轻一代收集期间，对象从伊甸园移动到幸存者空间 0。在下一次收集期间，活动对象从幸存者空间
+    0 和伊甸园移动到幸存者空间 1。此时，伊甸园和幸存者空间 0 完全为空。下一次收集将活动对象从幸存者空间 1 和伊甸园移动到幸存者空间 0，依此类推。（幸存者空间也被称为*to*和*from*空间；在每次收集期间，对象从*from*空间移动到*to*空间。*from*和*to*只是在每次收集期间在两个幸存者空间之间切换的指针。）
 - en: Clearly this cannot continue forever, or nothing would ever be moved into the
     old generation. Objects are moved into the old generation in two circumstances.
     First, the survivor spaces are fairly small. When the target survivor space fills
@@ -2033,6 +2125,8 @@
   id: totrans-288
   prefs: []
   type: TYPE_NORMAL
+  zh: 显然，这种情况不能永远持续，否则就不会将任何对象移入老年代。对象在两种情况下被移入老年代。首先，幸存者空间相对较小。当在年轻代收集期间目标幸存者空间填满时，伊甸园中剩余的活动对象直接移入老年代。其次，对象在幸存者空间中可以保留的
+    GC 周期数量存在限制。该限制称为*tenuring threshold*。
 - en: 'Tunings can affect each of those situations. The survivor spaces take up part
     of the allocation for the young generation, and like other areas of the heap,
     the JVM sizes them dynamically. The initial size of the survivor spaces is determined
@@ -2040,6 +2134,8 @@
   id: totrans-289
   prefs: []
   type: TYPE_NORMAL
+  zh: 调优可能会影响到这些情况之一。幸存者空间占用年轻代分配的一部分，并且像堆的其他区域一样，JVM 动态调整它们的大小。幸存者空间的初始大小由`-XX:InitialSurvivorRatio=`*`N`*
+    标志决定，该标志在以下方程式中使用：
 - en: '[PRE33]'
   id: totrans-290
   prefs: []
@@ -2050,11 +2146,13 @@
   id: totrans-291
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于默认的初始幸存者比率为 8，每个幸存者空间将占年轻代的 10%。
 - en: 'The JVM may increase the survivor spaces size to a maximum determined by the
     setting of the `-XX:MinSurvivorRatio=`*`N`* flag. That flag is used in this equation:'
   id: totrans-292
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 可能会将幸存者空间的大小增加到由`-XX:MinSurvivorRatio=`*`N`* 标志设置的最大值。该标志在以下方程式中使用：
 - en: '[PRE34]'
   id: totrans-293
   prefs: []
@@ -2067,12 +2165,14 @@
   id: totrans-294
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，此值为 3，这意味着幸存者空间的最大大小将为年轻代的 20%。请再次注意，该值是一个比率，因此比率的最小值给出了幸存者空间的最大大小。因此，名称有些反直觉。
 - en: To keep the survivor spaces at a fixed size, set the `SurvivorRatio` to the
     desired value and disable the `UseAdaptiveSizePolicy` flag (though remember that
     disabling adaptive sizing will apply to the old and new generations as well).
   id: totrans-295
   prefs: []
   type: TYPE_NORMAL
+  zh: 要保持幸存者空间的固定大小，将`SurvivorRatio`设置为所需值，并禁用`UseAdaptiveSizePolicy`标志（尽管请记住，禁用自适应大小将同时应用于老年代和新生代）。
 - en: The JVM determines whether to increase or decrease the size of the survivor
     spaces (subject to the defined ratios) based on how full a survivor space is after
     a GC. The survivor spaces will be resized so that they are, by default, 50% full
@@ -2081,6 +2181,8 @@
   id: totrans-296
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM 根据 GC 后幸存者空间的填充情况（遵循定义的比率）决定是否增加或减少幸存者空间的大小。幸存者空间将被调整大小，以便在 GC 后，默认情况下填充至
+    50%。可以使用`-XX:TargetSurvivorRatio=`*`N`* 标志来更改该值。
 - en: Finally, there is the question of how many GC cycles an object will remain ping-ponging
     between the survivor spaces before being moved into the old generation. That answer
     is determined by the tenuring threshold. The JVM continually calculates what it
@@ -2093,18 +2195,24 @@
   id: totrans-297
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，还有一个问题是对象在在幸存者空间之间来回移动多少次后被移至老年代。这个答案由晋升阈值确定。JVM 不断计算它认为最佳的晋升阈值。阈值从由`-XX:InitialTenuringThreshold=`*`N`*标志指定的值开始（对于吞吐量和
+    G1 GC 收集器，默认值为 7，对于 CMS 为 6）。最终 JVM 将确定一个介于 1 和由`-XX:MaxTenuringThreshold=`*`N`*标志指定的值之间的阈值；对于吞吐量和
+    G1 GC 收集器，默认的最大阈值为 15，对于 CMS 为 6。
 - en: Given all that, which values might be tuned under which circumstances? It is
     helpful to look at the tenuring statistics; these are not printed using the GC
     logging commands we’ve used so far.
   id: totrans-298
   prefs: []
   type: TYPE_NORMAL
+  zh: 综合考虑所有因素，在什么情况下可能调整哪些值？查看晋升统计信息很有帮助；这些信息在我们迄今为止使用的 GC 日志命令中没有打印出来。
 - en: In JDK 8, the tenuring distribution can be added to the GC log by including
     the flag `-XX:+PrintTenuringDistribution` (which is `false` by default). In JDK
     11, it is added by including `age*=debug` or `age*=trace` to the `Xlog` argument.
   id: totrans-299
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDK 8 中，可以通过包含标志`-XX:+PrintTenuringDistribution`（默认为`false`）将晋升分布添加到 GC 日志中。在
+    JDK 11 中，可通过在`Xlog`参数中包含`age*=debug`或`age*=trace`来添加。
 - en: The most important thing to look for is whether the survivor spaces are so small
     that during a minor GC, objects are promoted directly from eden into the old generation.
     The reason to avoid that is short-lived objects will end up filling the old generation,
@@ -2112,11 +2220,14 @@
   id: totrans-300
   prefs: []
   type: TYPE_NORMAL
+  zh: 最重要的是要查看幸存者空间是否太小，以至于在小型 GC 过程中，对象直接从 Eden 区晋升到老年代。要避免这种情况的原因是短寿命对象将填满老年代，导致频繁发生
+    Full GC。
 - en: 'In GC logs taken with the throughput collector, the only hint for that condition
     is this line:'
   id: totrans-301
   prefs: []
   type: TYPE_NORMAL
+  zh: 在使用吞吐量收集器记录的 GC 日志中，该条件的唯一提示是这一行：
 - en: '[PRE35]'
   id: totrans-302
   prefs: []
@@ -2127,6 +2238,7 @@
   id: totrans-303
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用`age*=debug`的 JDK 11 日志类似；在收集过程中，它会打印出所需的幸存者大小。
 - en: 'The desired size for a single survivor space here is 39 MB out of a young generation
     of 660 MB: the JVM has calculated that the two survivor spaces should take up
     about 11% of the young generation. But the open question is whether that is large
@@ -2138,10 +2250,13 @@
   id: totrans-304
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里单个幸存者空间的期望大小为 39 MB，而年轻代大小为 660 MB：JVM 计算出两个幸存者空间应占年轻代的约 11%。但一个悬而未决的问题是是否这个大小足以防止溢出。该日志并没有提供明确的答案，但
+    JVM 调整了晋升阈值至 1 表明它已经确定大多数对象直接晋升到老年代，因此最小化了晋升阈值。这个应用可能直接将对象晋升到老年代而不充分利用幸存者空间。
 - en: 'When G1 GC is used, more-informative output is obtained in the JDK 8 log:'
   id: totrans-305
   prefs: []
   type: TYPE_NORMAL
+  zh: 当使用 G1 GC 时，在 JDK 8 日志中可获得更详细的输出：
 - en: '[PRE36]'
   id: totrans-306
   prefs: []
@@ -2151,12 +2266,14 @@
   id: totrans-307
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDK 11 中，包含`age*=trace`在日志配置中即可获得该信息。
 - en: The desired survivor space is similar to the previous example—35 MB—but the
     output also shows the size of all the objects in the survivor space. With 37 MB
     of data to promote, the survivor space is indeed overflowing.
   id: totrans-308
   prefs: []
   type: TYPE_NORMAL
+  zh: 期望的幸存者空间与之前的示例相似——35 MB——但输出还显示了幸存者空间中所有对象的大小。有 37 MB 的数据需要晋升，幸存者空间确实溢出了。
 - en: Whether this situation can be improved depends on the application. If the objects
     are going to live longer than a few more GC cycles, they will eventually end up
     in the old generation anyway, so adjusting the survivor spaces and tenuring threshold
@@ -2166,6 +2283,7 @@
   id: totrans-309
   prefs: []
   type: TYPE_NORMAL
+  zh: 是否可以改善这种情况取决于应用程序。如果对象的生存时间长于几个GC周期，它们最终会进入老年代，因此调整幸存者空间和保留阈值不会真正有所帮助。但是，如果对象在几个GC周期后就会消失，通过使幸存者空间更有效地安排可以获得一些性能。
 - en: If the size of the survivor spaces is increased (by decreasing the survivor
     ratio), memory is taken away from the eden section of the young generation. That
     is where the objects actually are allocated, meaning fewer objects can be allocated
@@ -2173,6 +2291,7 @@
   id: totrans-310
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果增加了幸存者空间的大小（通过减少幸存比率），则会从年轻代的伊甸园部分中腾出内存。这正是对象实际分配的地方，意味着在进行小型GC之前可以分配的对象更少。因此，通常不建议选择这个选项。
 - en: 'Another possibility is to increase the size of the young generation. That can
     be counterproductive in this situation: objects might be promoted less often into
     the old generation, but since the old generation is smaller, the application may
@@ -2180,6 +2299,7 @@
   id: totrans-311
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一个可能性是增加年轻代的大小。在这种情况下可能适得其反：对象可能较少地晋升到老年代，但由于老年代较小，应用程序可能更频繁进行完全GC。
 - en: If the size of the heap can be increased altogether, both the young generation
     and the survivor spaces can get more memory, which will be the best solution.
     A good process is to increase the heap size (or at least the young generation
@@ -2191,6 +2311,7 @@
   id: totrans-312
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果可以增加堆的大小，无论是年轻代还是幸存者空间都可以获得更多内存，这将是最佳解决方案。一个好的过程是增加堆大小（或者至少是年轻代大小），并减少幸存比率。这将增加幸存者空间的大小，而不是增加伊甸园的大小。应用程序最终应该有与之前大致相同数量的年轻代收集。但是，应该有更少的完全GC，因为假设对象在更多GC周期后将不再存活。
 - en: 'If the sizes of the survivor spaces have been adjusted so that they never overflow,
     objects will be promoted to the old generation only after the `MaxTenuringThreshold`
     is reached. That value can be increased to keep the objects in the survivor spaces
@@ -2202,11 +2323,13 @@
   id: totrans-313
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果调整了幸存者空间的大小，使其永远不会溢出，那么只有在达到`MaxTenuringThreshold`后对象才会被晋升到老年代。可以增加该值以使对象在更多年轻代GC周期后仍在幸存者空间中。但要注意，如果增加了保留阈值并且对象在幸存者空间中停留时间更长，那么在未来的年轻代收集期间，幸存者空间可能会溢出并重新开始直接晋升到老年代。
 - en: Quick Summary
   id: totrans-314
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: '**快速总结**'
 - en: Survivor spaces are designed to allow objects (particularly just-allocated objects)
     to remain in the young generation for a few GC cycles. This increases the probability
     the object will be freed before it is promoted to the old generation.
@@ -2214,29 +2337,34 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**幸存者空间**设计用于允许对象（特别是刚分配的对象）在年轻代中存留几个GC周期。这增加了对象在被晋升到老年代之前被释放的概率。'
 - en: If the survivor spaces are too small, objects will promoted directly into the
     old generation, which in turn causes more old GC cycles.
   id: totrans-316
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果幸存者空间太小，对象将直接晋升到老年代，从而导致更多的老年代GC周期。
 - en: The best way to handle that situation is to increase the size of the heap (or
     at least the young generation) and allow the JVM to handle the survivor spaces.
   id: totrans-317
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 处理这种情况的最佳方法是增加堆的大小（或者至少增加年轻代），并允许JVM处理幸存者空间。
 - en: In rare cases, adjusting the tenuring threshold or survivor space sizes can
     prevent promotion of objects into the old generation.
   id: totrans-318
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在罕见情况下，调整保留阈值或幸存者空间大小可以防止对象晋升到老年代。
 - en: Allocating Large Objects
   id: totrans-319
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 分配大对象
 - en: This section describes in detail how the JVM allocates objects. This is interesting
     background information, and it is important to applications that frequently create
     a significant number of large objects. In this context, *large* is a relative
@@ -2245,6 +2373,8 @@
   id: totrans-320
   prefs: []
   type: TYPE_NORMAL
+  zh: 本节详细描述了 JVM 如何分配对象。这是有趣的背景信息，对于频繁创建大量大对象的应用程序是重要的。在这个上下文中，*大*是一个相对的术语；它取决于 JVM
+    内某种类型缓冲区的大小。
 - en: This buffer is known as a *thread-local allocation buffer* (TLAB). TLAB sizing
     is a consideration for all GC algorithms, and G1 GC has an additional consideration
     for very large objects (again, a relative term—but for a 2 GB heap, objects larger
@@ -2255,16 +2385,21 @@
   id: totrans-321
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个缓冲区被称为*线程本地分配缓冲区*（TLAB）。对于所有的 GC 算法，TLAB 的大小都是一个考虑因素，而 G1 GC 还要考虑非常大的对象（再次强调，这是一个相对的术语——对于一个
+    2 GB 的堆来说，大于 512 MB 的对象就算是非常大的）。非常大的对象对 G1 GC 的影响可能很重要——在使用任何收集器时，TLAB 的大小调整是相当不寻常的，但是对于使用
+    G1 时的 GC 区域大小调整则更为常见。
 - en: Thread-local allocation buffers
   id: totrans-322
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 线程本地分配缓冲区
 - en: '[Chapter 5](ch05.html#GC) discusses how objects are allocated within eden;
     this allows for faster allocation (particularly for objects that are quickly discarded).'
   id: totrans-323
   prefs: []
   type: TYPE_NORMAL
+  zh: '[第 5 章](ch05.html#GC) 讨论了对象在 eden 区内的分配方式；这样可以实现更快的分配（特别是对于那些很快被丢弃的对象）。'
 - en: It turns out that one reason allocation in eden is so fast is that each thread
     has a dedicated region where it allocates objects—a thread-local allocation buffer,
     or TLAB. When objects are allocated directly in a shared space such as eden, some
@@ -2274,6 +2409,8 @@
   id: totrans-324
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 eden 区分配如此迅速的一个原因是每个线程都有一个专用的区域来分配对象——即线程本地分配缓冲区，或者称为 TLAB（Thread-Local Allocation
+    Buffer）。当对象直接分配在共享空间，比如 eden 区时，需要一些同步来管理该空间内的空闲指针。通过为每个线程设置其专用的分配区域，线程在分配对象时无需执行任何同步操作。^([3](ch06.html#idm45775553858312))
 - en: 'Usually, the use of TLABs is transparent to developers and end users: TLABs
     are enabled by default, and the JVM manages their sizes and how they are used.
     The important thing to realize about TLABs is that they have a small size, so
@@ -2282,6 +2419,8 @@
   id: totrans-325
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常情况下，开发人员和最终用户对 TLAB 的使用是透明的：TLAB 默认是启用的，JVM 管理它们的大小和使用方式。关于 TLAB 的重要一点是它们的大小很小，因此无法在
+    TLAB 中分配大对象。大对象必须直接从堆中分配，这会因为同步而额外消耗时间。
 - en: As a TLAB becomes full, objects of a certain size can no longer be allocated
     in it. At this point, the JVM has a choice. One option is to “retire” the TLAB
     and allocate a new one for the thread. Since the TLAB is just a section within
@@ -2296,6 +2435,11 @@
   id: totrans-326
   prefs: []
   type: TYPE_NORMAL
+  zh: 当一个 TLAB 变满时，某个大小的对象就无法再在其中分配了。在这种情况下，JVM 有两种选择。一种选择是“退休”该 TLAB 并为该线程分配一个新的
+    TLAB。由于 TLAB 只是 eden 区内的一个部分，在下一次年轻代收集时，退休的 TLAB 将被清理，并且可以随后重新使用。或者 JVM 可以直接在堆上分配对象，并保留现有的
+    TLAB（至少直到线程再次向 TLAB 分配其他对象）。假设一个 TLAB 是 100 KB，已经分配了 75 KB。如果需要新分配 30 KB 的对象，那么可以退休该
+    TLAB，浪费 25 KB 的 eden 空间。或者可以直接从堆上分配 30 KB 的对象，并且希望下一个分配的对象能够适应 TLAB 中仍然空余的 25
+    KB 空间。
 - en: 'Parameters can control this (as discussed later in this section), but the key
     is that the size of the TLAB is crucial. By default, the size of a TLAB is based
     on three factors: the number of threads in the application, the size of eden,
@@ -2303,6 +2447,7 @@
   id: totrans-327
   prefs: []
   type: TYPE_NORMAL
+  zh: 参数可以控制这一点（如本节后面讨论的），但关键在于TLAB的大小。默认情况下，TLAB的大小基于三个因素：应用程序中的线程数、Eden的大小和线程的分配速率。
 - en: 'Hence, two types of applications may benefit from tuning the TLAB parameters:
     applications that allocate a lot of large objects, and applications that have
     a relatively large number of threads compared to the size of eden. By default,
@@ -2311,6 +2456,7 @@
   id: totrans-328
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，两种类型的应用程序可能会从调整TLAB参数中受益：分配大量大对象的应用程序以及与Eden大小相比具有相对较大数量线程的应用程序。默认情况下，TLAB是启用的；可以通过指定`-XX:-UseTLAB`来禁用它们，尽管它们提供了显著的性能提升，但禁用它们始终是一个不好的主意。
 - en: 'Since the calculation of the TLAB size is based in part on the allocation rate
     of the threads, it is impossible to definitively predict the best TLAB size for
     an application. Instead, we can monitor the TLAB allocation to see if any allocations
@@ -2320,21 +2466,25 @@
   id: totrans-329
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于TLAB大小的计算部分基于线程的分配速率，因此无法明确预测应用程序的最佳TLAB大小。相反，我们可以监视TLAB分配，以查看是否有任何分配发生在TLAB之外。如果有大量的分配发生在TLAB之外，我们有两个选择：减少分配的对象大小或调整TLAB大小参数。
 - en: Monitoring the TLAB allocation is another case where Java Flight Recorder is
     much more powerful than other tools. [Figure 6-9](#FigureJFRTLAB) shows a sample
     of the TLAB allocation screen from a JFR recording.
   id: totrans-330
   prefs: []
   type: TYPE_NORMAL
+  zh: 监视TLAB分配是另一个案例，Java Flight Recorder比其他工具更强大。[图6-9](#FigureJFRTLAB)显示了来自JFR记录的TLAB分配屏幕的样本。
 - en: '![jp2e 0609](assets/jp2e_0609.png)'
   id: totrans-331
   prefs: []
   type: TYPE_IMG
+  zh: '![jp2e 0609](assets/jp2e_0609.png)'
 - en: Figure 6-9\. View of TLABs in Java Flight Recorder
   id: totrans-332
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图6-9\. Java Flight Recorder中的TLAB视图
 - en: 'In the 5 seconds selected in this recording, 49 objects were allocated outside
     TLABs; the maximum size of those objects was 48 bytes. Since the minimum TLAB
     size is 1.35 MB, we know that these objects were allocated on the heap only because
@@ -2344,6 +2494,7 @@
   id: totrans-333
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此记录中选择的5秒钟内，有49个对象在TLAB之外分配；这些对象的最大大小为48字节。由于最小的TLAB大小为1.35 MB，我们知道这些对象之所以分配到堆上，是因为在分配时TLAB已经满了：它们并非因为大小而直接在堆上分配。这在年轻代GC发生之前是典型的情况（因为Eden和因此从Eden中划分出的TLAB变满了）。
 - en: The total allocation in this period is 1.59 KB; neither the number of allocations
     nor the size in this example is a cause for concern. Some objects will always
     be allocated outside TLABs, particularly as eden approaches a young collection.
@@ -2352,15 +2503,18 @@
   id: totrans-334
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此期间的总分配为1.59 KB；在这个例子中，分配的数量和大小都不是令人担忧的原因。一些对象总会分配在TLAB之外，特别是当Eden接近年轻代集合时。与[图6-10](#FigureTLABBad)相比，该示例显示大量分配发生在TLAB之外。
 - en: '![jp2e 0610](assets/jp2e_0610.png)'
   id: totrans-335
   prefs: []
   type: TYPE_IMG
+  zh: '![jp2e 0610](assets/jp2e_0610.png)'
 - en: Figure 6-10\. Excessive allocation occurring outside TLABs
   id: totrans-336
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图6-10\. TLAB之外的过度分配发生
 - en: The total memory allocated inside TLABs during this recording is 952.96 MB,
     and the total memory allocated for objects outside TLABs is 568.32 MB. This is
     a case where either changing the application to use smaller objects or tuning
@@ -2371,6 +2525,7 @@
   id: totrans-337
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本次记录中，在TLAB内分配的总内存为952.96 MB，在TLAB外分配的对象总内存为568.32 MB。这是一个情况，可以通过更改应用程序以使用较小的对象或调整JVM以在更大的TLAB中分配这些对象来产生有益影响。请注意，其他选项卡可以显示分配到TLAB之外的实际对象；我们甚至可以安排获取分配这些对象时的堆栈信息。如果TLAB分配存在问题，JFR将快速指出。
 - en: 'Outside JFR, the best way to look at this is to monitor the TLAB allocation
     by adding the `-XX:+PrintTLAB` flag to the command line in JDK 8 or including
     `tlab*=trace` in the log configuration for JDK 11 (which provides the following
@@ -2380,10 +2535,13 @@
   id: totrans-338
   prefs: []
   type: TYPE_NORMAL
+  zh: 在JFR之外，查看TLAB分配的最佳方法是在JDK 8的命令行中添加`-XX:+PrintTLAB`标志或在JDK 11的日志配置中包含`tlab*=trace`（此配置提供以下信息及更多）。然后，在每次young
+    collection时，GC日志将包含两种类型的行：描述每个线程的TLAB使用情况的行，以及描述JVM整体TLAB使用情况的摘要行。
 - en: 'The per thread line looks like this:'
   id: totrans-339
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个线程的行看起来像这样：
 - en: '[PRE37]'
   id: totrans-340
   prefs: []
@@ -2400,11 +2558,14 @@
   id: totrans-341
   prefs: []
   type: TYPE_NORMAL
+  zh: 此输出中的`gc`表示该行在GC期间打印；线程本身是一个常规应用程序线程。该线程的TLAB大小为221 KB。自上次young collection以来，它从堆中分配了八个对象（`slow
+    allocs`）；这占此线程分配总量的1.6%（0.01613），总量为11,058 KB。TLAB中“浪费”的0.1%来自三个方面：当前GC周期开始时，TLAB中有10,336字节空闲；其他（已退休）TLAB中有2,112字节空闲；通过特殊的“快速”分配器分配的字节为0。
 - en: 'After the TLAB data for each thread has been printed, the JVM provides a line
     of summary data (this data is provided in JDK 11 by configuring the log for `tlab*=debug`):'
   id: totrans-342
   prefs: []
   type: TYPE_NORMAL
+  zh: 在每个线程的TLAB数据打印完成后，JVM会提供一行摘要数据（在JDK 11中通过配置`tlab*=debug`日志提供此数据）：
 - en: '[PRE38]'
   id: totrans-343
   prefs: []
@@ -2418,16 +2579,19 @@
   id: totrans-344
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此案例中，自上次young collection以来，有66个线程执行了某种形式的分配。在这些线程中，它们重新填充了其TLAB 3,234次；任何特定线程重新填充其TLAB的最大次数为105次。总体而言，堆中进行了406次分配（由一个线程最多进行了14次），TLAB中的1.1%由已退休TLAB中的空闲空间浪费掉。
 - en: In the per thread data, if threads show many allocations outside TLABs, consider
     resizing them.
   id: totrans-345
   prefs: []
   type: TYPE_NORMAL
+  zh: 在每个线程的数据中，如果线程显示出TLAB外的许多分配，请考虑调整它们的大小。
 - en: Sizing TLABs
   id: totrans-346
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: TLAB大小调整
 - en: Applications that spend a lot of time allocating objects outside TLABs will
     benefit from changes that can move the allocation to a TLAB. If only a few specific
     object types are always allocated outside a TLAB, programmatic changes are the
@@ -2435,6 +2599,7 @@
   id: totrans-347
   prefs: []
   type: TYPE_NORMAL
+  zh: 那些在TLAB外分配大量对象的应用程序将受益于可以将分配移至TLAB的更改。如果只有少数特定对象类型始终在TLAB外分配，则程序更改是最佳解决方案。
 - en: Otherwise—or if programmatic changes are not possible—you can attempt to resize
     the TLABs to fit the application use case. Because the TLAB size is based on the
     size of eden, adjusting the new size parameters will automatically increase the
@@ -2442,6 +2607,7 @@
   id: totrans-348
   prefs: []
   type: TYPE_NORMAL
+  zh: 否则——或者无法进行程序更改——您可以尝试调整TLAB大小以适应应用程序使用情况。由于TLAB大小基于eden的大小，调整新的大小参数将自动增加TLAB的大小。
 - en: The size of the TLABs can be set explicitly using the flag `-XX:TLABSize=*`N`*`
     (the default value, 0, means to use the dynamic calculation previously described).
     That flag sets only the initial size of the TLABs; to prevent resizing at each
@@ -2451,6 +2617,7 @@
   id: totrans-349
   prefs: []
   type: TYPE_NORMAL
+  zh: 可以使用标志`-XX:TLABSize=*`N`*`来显式设置TLAB的大小（默认值0表示使用先前描述的动态计算）。该标志仅设置TLAB的初始大小；为了防止在每次GC时调整大小，请添加`-XX:-ResizeTLAB`（该标志的默认值为`true`）。这是探索调整TLAB性能的最简单（实际上是唯一有用的）选项。
 - en: 'When a new object does not fit in the current TLAB (but would fit within a
     new, empty TLAB), the JVM has a decision to make: whether to allocate the object
     in the heap or whether to retire the current TLAB and allocate a new one. That
@@ -2462,6 +2629,8 @@
   id: totrans-350
   prefs: []
   type: TYPE_NORMAL
+  zh: 当一个新对象不适合当前的TLAB（但适合一个新的空TLAB）时，JVM需要做出决定：是在堆中分配对象，还是淘汰当前的TLAB并分配一个新的TLAB。该决定基于几个参数。在TLAB的日志输出中，`refill
+    waste`值给出了该决策的当前阈值：如果TLAB无法容纳比该值大的新对象，则该新对象将在堆中分配。如果所讨论的对象小于该值，则TLAB将被淘汰。
 - en: 'That value is dynamic, but it begins by default at 1% of the TLAB size—or,
     specifically, at the value specified by `-XX:TLABWasteTargetPercent`=*`N`*. As
     each allocation is done outside the heap, that value is increased by the value
@@ -2474,6 +2643,7 @@
   id: totrans-351
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个值是动态的，但默认从TLAB大小的1%开始——具体来说，从`-XX:TLABWasteTargetPercent`=*`N`*指定的值开始。每次在堆外进行分配时，这个值会增加`-XX:TLABWasteIncrement=`*`N`*的值（默认为4）。这样可以防止线程在TLAB中达到阈值并持续在堆中分配对象：随着目标百分比的增加，TLAB被淘汰的机会也增加。调整`TLABWasteTargetPercent`值还会调整TLAB的大小，因此虽然可以调整此值，但其影响并不总是可预测。
 - en: Finally, when TLAB resizing is in effect, the minimum size of a TLAB can be
     specified with `-XX:MinTLABSize=`*`N`* (the default is 2 KB). The maximum size
     of a TLAB is slightly less than 1 GB (the maximum space that can be occupied by
@@ -2482,22 +2652,27 @@
   id: totrans-352
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，当TLAB调整大小生效时，可以使用`-XX:MinTLABSize=`*`N`*指定TLAB的最小大小（默认为2 KB）。TLAB的最大大小略小于1
+    GB（可以由整数数组占用的最大空间，按照对象对齐目的四舍五入），并且不能更改。
 - en: Quick Summary
   id: totrans-353
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Applications that allocate a lot of large objects may need to tune the TLABs
     (though often using smaller objects in the application is a better approach).
   id: totrans-354
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 分配大量大对象的应用程序可能需要调整TLAB（尽管通常在应用程序中使用较小的对象是更好的方法）。
 - en: Humongous objects
   id: totrans-355
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 巨大对象
 - en: Objects that are allocated outside a TLAB are still allocated within eden when
     possible. If the object cannot fit within eden, it must be allocated directly
     in the old generation. That prevents the normal GC life cycle for that object,
@@ -2507,6 +2682,7 @@
   id: totrans-356
   prefs: []
   type: TYPE_NORMAL
+  zh: 在可能的情况下，分配在TLAB外的对象仍然在伊甸园内分配。如果对象无法适应伊甸园，则必须直接在老年代中分配。这样会阻止该对象的正常GC生命周期，因此如果对象的生命周期很短，则GC会受到负面影响。在这种情况下，除了改变应用程序以避免需要这些短寿命的大对象外，几乎无能为力。
 - en: 'Humongous objects are treated differently in G1 GC, however: G1 will allocate
     them in the old generation if they are bigger than a G1 region. So applications
     that use a lot of humongous objects in G1 GC may need special tuning to compensate
@@ -2514,11 +2690,13 @@
   id: totrans-357
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，在G1 GC中，巨大对象的处理方式不同：如果它们大于一个G1区域，则G1会将它们分配到老年代。因此，在G1 GC中使用大量巨大对象的应用程序可能需要特殊调整来补偿这一点。
 - en: G1 GC region sizes
   id: totrans-358
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: G1 GC区域大小
 - en: 'G1 GC divides the heap into regions, each of which has a fixed size. The region
     size is not dynamic; it is determined at startup based on the minimum size of
     the heap (the value of `Xms`). The minimum region size is 1 MB. If the minimum
@@ -2527,6 +2705,8 @@
   id: totrans-359
   prefs: []
   type: TYPE_NORMAL
+  zh: G1 GC将堆分成具有固定大小的区域。区域大小不是动态的；它在启动时根据堆的最小大小（即`Xms`的值）确定。最小区域大小为1 MB。如果最小堆大小大于2
+    GB，则根据以下公式设置区域的大小（使用对数2为底）：
 - en: '[PRE39]'
   id: totrans-360
   prefs: []
@@ -2539,42 +2719,53 @@
   id: totrans-361
   prefs: []
   type: TYPE_NORMAL
+  zh: 简而言之，区域大小是最小的2的幂，使得初始堆大小被划分时接近2048个区域。这里也使用了一些最小和最大约束条件；区域大小始终至少为1 MB，从不超过32
+    MB。[表6-3](#TableG1RegionSize)总结了所有可能性。
 - en: Table 6-3\. Default G1 region sizes
   id: totrans-362
   prefs: []
   type: TYPE_NORMAL
+  zh: 表6-3。默认G1区域大小
 - en: '| Heap size | Default G1 region size |'
   id: totrans-363
   prefs: []
   type: TYPE_TB
+  zh: '| 堆大小 | 默认G1区域大小 |'
 - en: '| --- | --- |'
   id: totrans-364
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| Less than 4 GB | 1 MB |'
   id: totrans-365
   prefs: []
   type: TYPE_TB
+  zh: '| 少于4 GB | 1 MB |'
 - en: '| Between 4 GB and 8 GB | 2 MB |'
   id: totrans-366
   prefs: []
   type: TYPE_TB
+  zh: '| 4 GB和8 GB之间 | 2 MB |'
 - en: '| Between 8 GB and 16 GB | 4 MB |'
   id: totrans-367
   prefs: []
   type: TYPE_TB
+  zh: '| 8 GB和16 GB之间 | 4 MB |'
 - en: '| Between 16 GB and 32 GB | 8 MB |'
   id: totrans-368
   prefs: []
   type: TYPE_TB
+  zh: '| 16 GB和32 GB之间 | 8 MB |'
 - en: '| Between 32 GB and 64 GB | 16 MB |'
   id: totrans-369
   prefs: []
   type: TYPE_TB
+  zh: '| 32 GB和64 GB之间 | 16 MB |'
 - en: '| Larger than 64 GB | 32 MB |'
   id: totrans-370
   prefs: []
   type: TYPE_TB
+  zh: '| 大于64 GB | 32 MB |'
 - en: The size of a G1 region can be set with the `-XX:G1HeapRegionSize=`*`N`* flag
     (the default is nominally 0, meaning to use the dynamic value just described).
     The value given here should be a power of 2 (e.g., 1 MB or 2 MB); otherwise, it
@@ -2582,11 +2773,14 @@
   id: totrans-371
   prefs: []
   type: TYPE_NORMAL
+  zh: 可以使用`-XX:G1HeapRegionSize=`*`N`*标志设置G1区域的大小（默认值名义上为0，表示使用刚刚描述的动态值）。此处给定的值应为2的幂（例如，1
+    MB或2 MB）；否则，它将被舍入为最接近的2的幂。
 - en: G1 GC allocation of humongous objects
   id: totrans-372
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: G1 GC分配巨大对象
 - en: If the G1 GC region size is 1 MB and a program allocates an array of 2 million
     bytes, the array will not fit within a single G1 GC region. But these humongous
     objects must be allocated in contiguous G1 GC regions. If the G1 GC region size
@@ -2598,12 +2792,16 @@
   id: totrans-373
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果G1 GC的区域大小为1 MB，并且程序分配了一个200万字节的数组，那么该数组将无法放入单个G1 GC区域中。但是这些巨大的对象必须在连续的G1
+    GC区域中分配。如果G1 GC的区域大小为1 MB，那么要分配一个3.1 MB的数组，G1 GC必须在老年代中找到四个区域来分配该数组。（最后一个区域的其余部分将保持空闲，浪费0.9
+    MB的空间。）这会破坏G1 GC通常执行压缩的方式，即根据它们的填充程度释放任意区域。
 - en: In fact, G1 GC defines a *humongous object* as one that is half of the region
     size, so allocating an array of 512 KB (plus 1 byte) will, in this case, trigger
     the humongous allocation we’re discussing.
   id: totrans-374
   prefs: []
   type: TYPE_NORMAL
+  zh: 实际上，G1 GC将*巨大对象*定义为区域大小的一半，因此在这种情况下，分配512 KB（加上1字节）的数组将触发我们正在讨论的巨大分配。
 - en: Because the humongous object is allocated directly in the old generation, it
     cannot be freed during a young collection. So if the object is short-lived, this
     also defeats the generational design of the collector. The humongous object will
@@ -2614,12 +2812,14 @@
   id: totrans-375
   prefs: []
   type: TYPE_NORMAL
+  zh: 因为巨大对象直接分配在老年代中，所以在年轻代收集期间无法释放它。因此，如果对象的生存期较短，这也会破坏收集器的分代设计。巨大对象将在并发G1 GC周期中被收集。好的一面是，巨大对象可以快速释放，因为它是它所占用的区域中唯一的对象。巨大对象在并发周期的清理阶段被释放（而不是在混合GC期间）。
 - en: Increasing the size of a G1 GC region so that all objects the program will allocate
     can fit within a single G1 GC region can make G1 GC more efficient. This means
     having a G1 region size of twice the largest object’s size plus 1 byte.
   id: totrans-376
   prefs: []
   type: TYPE_NORMAL
+  zh: 增加G1 GC区域的大小，以便程序将分配的所有对象都适合单个G1 GC区域，可以使G1 GC更高效。这意味着将G1区域大小设置为最大对象大小的两倍加1字节。
 - en: Humongous allocation used to be a far bigger problem in G1 GC because finding
     the necessary regions to allocate the object would usually require a full GC (and
     because such full GCs were not parallelized). Improvements in G1 GC in JDK 8u60
@@ -2628,22 +2828,26 @@
   id: totrans-377
   prefs: []
   type: TYPE_NORMAL
+  zh: 在JDK 8u60中对G1 GC的改进（以及所有JDK 11版本中）最小化了这个问题，因此它不再是它曾经经常是的关键问题。
 - en: Quick Summary
   id: totrans-378
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: G1 regions are sized in powers of 2, starting at 1 MB.
   id: totrans-379
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: G1区域的大小是以2的幂为单位的，从1 MB开始。
 - en: Heaps that have a very different maximum size than initial size will have too
     many G1 regions; the G1 region size should be increased in that case.
   id: totrans-380
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 堆大小与初始大小非常不同的堆将具有太多的G1区域；在这种情况下，应增加G1区域大小。
 - en: Applications that allocate objects larger than half the size of a G1 region
     should increase the G1 region size so that the objects can fit within a G1 region.
     An application must allocate an object that is at least 512 KB for this to apply
@@ -2652,11 +2856,14 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 应用程序分配大于G1区域一半大小的对象时，应增加G1区域的大小，以便对象可以适应G1区域。为了适应这一点，应用程序必须分配至少512 KB的对象（因为最小的G1区域是1
+    MB）。
 - en: AggressiveHeap
   id: totrans-382
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: AggressiveHeap
 - en: The `AggressiveHeap` flag (by default, `false`), was introduced in an early
     version of Java as an attempt to make it easier to set a variety of command-line
     arguments—arguments that would be appropriate for a very large machine with a
@@ -2666,6 +2873,7 @@
   id: totrans-383
   prefs: []
   type: TYPE_NORMAL
+  zh: '`AggressiveHeap`标志（默认为`false`）最早在Java的早期版本中引入，旨在简化设置各种命令行参数——这些参数适用于运行单个JVM的内存很大的机器。尽管该标志自那些版本以来一直存在，但现在不再推荐使用（尽管官方尚未弃用）。'
 - en: 'The problem with this flag is that it hides the actual tunings it adopts, making
     it hard to figure out what the JVM is setting. Some of the values it sets are
     now set ergonomically based on better information about the machine running the
@@ -2676,88 +2884,109 @@
   id: totrans-384
   prefs: []
   type: TYPE_NORMAL
+  zh: 该标志的问题在于它隐藏了采用的实际调优设置，使得很难确定JVM正在设置的内容。现在，它设置的一些值是根据更好的关于运行JVM的机器的信息以及人体工程学的原则设置的，因此在某些情况下启用此标志会损害性能。我经常看到的命令行中包含此标志，然后稍后会覆盖它设置的值。（顺便说一句，这样做是有效的：命令行中后面的值目前会覆盖前面的值。这种行为没有得到保证。）
 - en: '[Table 6-4](#TableAggressiveHeap) lists all the tunings that are automatically
     set when the `AggressiveHeap` flag is enabled.'
   id: totrans-385
   prefs: []
   type: TYPE_NORMAL
+  zh: '[表 6-4](#TableAggressiveHeap) 列出了启用`AggressiveHeap`标志时自动设置的所有调优项。'
 - en: Table 6-4\. Tunings enabled with `AggressiveHeap`
   id: totrans-386
   prefs: []
   type: TYPE_NORMAL
+  zh: 表6-4\. 使用`AggressiveHeap`启用的调优设置
 - en: '| Flag | Value |'
   id: totrans-387
   prefs: []
   type: TYPE_TB
+  zh: '| 标志 | 值 |'
 - en: '| --- | --- |'
   id: totrans-388
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- |'
 - en: '| `Xmx` | The minimum of half of all memory, or all memory: 160 MB |'
   id: totrans-389
   prefs: []
   type: TYPE_TB
+  zh: '| `Xmx` | 半数内存或整体内存的最小值：160 MB |'
 - en: '| `Xms` | The same as `Xmx` |'
   id: totrans-390
   prefs: []
   type: TYPE_TB
+  zh: '| `Xms` | 与`Xmx`相同 |'
 - en: '| `NewSize` | 3/8 of whatever was set as `Xmx` |'
   id: totrans-391
   prefs: []
   type: TYPE_TB
+  zh: '| `NewSize` | 设定为`Xmx`的3/8 |'
 - en: '| `UseLargePages` | `true` |'
   id: totrans-392
   prefs: []
   type: TYPE_TB
+  zh: '| `UseLargePages` | `true` |'
 - en: '| `ResizeTLAB` | `false` |'
   id: totrans-393
   prefs: []
   type: TYPE_TB
+  zh: '| `ResizeTLAB` | `false` |'
 - en: '| `TLABSize` | 256 KB |'
   id: totrans-394
   prefs: []
   type: TYPE_TB
+  zh: '| `TLABSize` | 256 KB |'
 - en: '| `UseParallelGC` | `true` |'
   id: totrans-395
   prefs: []
   type: TYPE_TB
+  zh: '| `UseParallelGC` | `true` |'
 - en: '| `ParallelGCThreads` | Same as current default |'
   id: totrans-396
   prefs: []
   type: TYPE_TB
+  zh: '| `ParallelGCThreads` | 与当前默认相同 |'
 - en: '| `YoungPLABSize` | 256 KB (default is 4 KB) |'
   id: totrans-397
   prefs: []
   type: TYPE_TB
+  zh: '| `YoungPLABSize` | 256 KB（默认为4 KB） |'
 - en: '| `OldPLABSize` | 8 KB (default is 1 KB) |'
   id: totrans-398
   prefs: []
   type: TYPE_TB
+  zh: '| `OldPLABSize` | 8 KB (默认为1 KB) |'
 - en: '| `CompilationPolicyChoice` | 0 (the current default) |'
   id: totrans-399
   prefs: []
   type: TYPE_TB
+  zh: '| `CompilationPolicyChoice` | 0（当前默认） |'
 - en: '| `ThresholdTolerance` | 100 (default is 10) |'
   id: totrans-400
   prefs: []
   type: TYPE_TB
+  zh: '| `ThresholdTolerance` | 100 (default is 10) |'
 - en: '| `ScavengeBeforeFullGC` | `false` (default is `true`) |'
   id: totrans-401
   prefs: []
   type: TYPE_TB
+  zh: '| `ScavengeBeforeFullGC` | `false`（默认为`true`） |'
 - en: '| `BindGCTaskThreadsToCPUs` | `true` (default is `false`) |'
   id: totrans-402
   prefs: []
   type: TYPE_TB
+  zh: '| `BindGCTaskThreadsToCPUs` | `true`（默认为`false`） |'
 - en: 'Those last six flags are obscure enough that I have not discussed them elsewhere
     in this book. Briefly, they cover these areas:'
   id: totrans-403
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些最后六个标志足够晦涩，以至于我在本书的其他地方没有讨论过它们。简要来说，它们涵盖了以下几个领域：
 - en: PLAB sizing
   id: totrans-404
   prefs: []
   type: TYPE_NORMAL
+  zh: PLAB大小调整
 - en: '*PLABs* are *promotion-local allocation buffers*—these are per thread regions
     used during scavenging the generations in a GC. Each thread can promote into a
     specific PLAB, negating the need for synchronization (analogous to the way TLABs
@@ -2765,20 +2994,24 @@
   id: totrans-405
   prefs: []
   type: TYPE_NORMAL
+  zh: '*PLABs*是*promotion-local allocation buffers*—这些是在GC中清理世代时每个线程使用的区域。每个线程可以晋升到特定的PLAB，从而避免了同步的需要（类似于TLAB的工作方式）。'
 - en: Compilation policies
   id: totrans-406
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译策略
 - en: The JVM ships with alternate JIT compilation algorithms. The current default
     algorithm was, at one time, somewhat experimental, but this is now the recommended
     policy.
   id: totrans-407
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM随附了备用的JIT编译算法。当前默认算法曾在某个时期略显实验性，但现在已成为推荐政策。
 - en: Disabling young GCs before full GCs
   id: totrans-408
   prefs: []
   type: TYPE_NORMAL
+  zh: 禁用young GC在full GC之前
 - en: Setting `ScavengeBeforeFullGC` to `false` means that when a full GC occurs,
     the JVM will not perform a young GC before a full GC. That is usually a bad thing,
     since it means that garbage objects in the young generation (which are eligible
@@ -2788,10 +3021,12 @@
   id: totrans-409
   prefs: []
   type: TYPE_NORMAL
+  zh: 将`ScavengeBeforeFullGC`设置为`false`意味着当发生全 GC 时，JVM 将不会在全 GC 前执行年轻代 GC。通常这是件坏事，因为这意味着年轻代中的垃圾对象（可进行回收）可能会阻止老年代对象的回收。显然，曾经有段时间这个设置是有意义的（至少对于某些基准测试来说），但一般建议是不要更改这个标志。
 - en: Binding GC threads to CPUs
   id: totrans-410
   prefs: []
   type: TYPE_NORMAL
+  zh: 将 GC 线程绑定到 CPU
 - en: Setting the last flag in that list means that each parallel GC thread is bound
     to a particular CPU (using OS-specific calls). In limited circumstances—when the
     GC threads are the only thing running on the machine, and heaps are very large—that
@@ -2800,6 +3035,8 @@
   id: totrans-411
   prefs: []
   type: TYPE_NORMAL
+  zh: 设置列表中的最后一个标志意味着每个并行 GC 线程都绑定到特定的 CPU（使用特定于操作系统的调用）。在有限的情况下——当 GC 线程是机器上唯一运行的东西，并且堆非常大时——这是有意义的。在一般情况下，最好让
+    GC 线程可以在任何可用的 CPU 上运行。
 - en: As with all tunings, your mileage may vary, and if you carefully test the `AggressiveHeap`
     flag and find that it improves performance, then by all means use it. Just be
     aware of what it is doing behind the scenes, and realize that whenever the JVM
@@ -2807,28 +3044,34 @@
   id: totrans-412
   prefs: []
   type: TYPE_NORMAL
+  zh: 和所有的调优一样，你的效果可能有所不同，如果你仔细测试了`AggressiveHeap`标志并发现它能提升性能，那么尽管使用它。只需注意它在幕后所做的事情，并意识到每次
+    JVM 升级时，这个标志的相对优势都需要重新评估。
 - en: Quick Summary
   id: totrans-413
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: The `AggressiveHeap` flag is a legacy attempt to set heap parameters to values
     that make sense for a single JVM running on a very large machine.
   id: totrans-414
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`AggressiveHeap`标志是一个旧版尝试，旨在将堆参数设置为适合单个在非常大的机器上运行的 JVM 的值。'
 - en: Values set by this flag are not adjusted as JVM technology improves, so its
     usefulness in the long run is dubious (even though it still is often used).
   id: totrans-415
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 由该标志设置的值不会随着 JVM 技术的进步而调整，因此从长远来看其实用性是可疑的（尽管它仍然经常被使用）。
 - en: Full Control Over Heap Size
   id: totrans-416
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 完全控制堆大小
 - en: '[“Sizing the Heap”](ch05.html#GCHeapSize) discussed the default values for
     the initial minimum and maximum sizes of the heap. Those values are dependent
     on the amount of memory on the machine as well as the JVM in use, and the data
@@ -2843,6 +3086,8 @@
   id: totrans-417
   prefs: []
   type: TYPE_NORMAL
+  zh: '[“堆大小的设置”](ch05.html#GCHeapSize)讨论了堆的初始最小和最大大小的默认值。这些值取决于机器上的内存量以及使用的 JVM，并且在那里呈现的数据有许多特例情况。如果你对默认堆大小是如何计算的完整细节感兴趣，这一节会详细解释。这些细节包括低级调优标志；在某些情况下，调整这些计算方法可能比简单设置堆大小更为方便。例如，如果你想要运行多个具有共同（但调整过的）舒适性堆大小的
+    JVM，那么这可能是个例外。在大多数情况下，这一节的真正目的是完整解释这些默认值是如何选择的。'
 - en: 'The default sizes are based on the amount of memory on a machine, which can
     be set with the `-XX:MaxRAM=`*`N`* flag. Normally, that value is calculated by
     the JVM by inspecting the amount of memory on the machine. However, the JVM limits
@@ -2854,10 +3099,14 @@
   id: totrans-418
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认大小基于机器上的内存量，可以使用`-XX:MaxRAM=`*`N`*标志设置。通常情况下，JVM 通过检查机器上的内存量来计算该值。然而，JVM 将`MaxRAM`限制为
+    32 位 Windows 服务器的 4 GB 和 64 位 JVM 的 128 GB。最大堆大小是`MaxRAM`的四分之一。这就是为什么默认堆大小会有所不同：如果机器上的物理内存少于`MaxRAM`，则默认堆大小是其四分之一。但即使有数百
+    GB 的 RAM 可用，JVM 默认也只会使用 32 GB：128 GB 的四分之一。
 - en: 'The default maximum heap calculation is actually this:'
   id: totrans-419
   prefs: []
   type: TYPE_NORMAL
+  zh: 实际上，默认的最大堆大小计算如下：
 - en: '[PRE40]'
   id: totrans-420
   prefs: []
@@ -2871,6 +3120,8 @@
   id: totrans-421
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，默认的最大堆大小也可以通过调整 `-XX:MaxRAMFraction=`*`N`* 标志的值来设置，默认为 4。最后，为了保持事情的有趣性，`-XX:ErgoHeapSizeLimit=`*`N`*
+    标志也可以设置为 JVM 应该使用的最大默认值。默认情况下该值为 0（表示忽略）；否则，如果它小于 `MaxRAM` / `MaxRAMFraction`，则使用该限制。
 - en: 'On the other hand, on a machine with a very small amount of physical memory,
     the JVM wants to be sure it leaves enough memory for the operating system. This
     is why the JVM will limit the maximum heap to 96 MB or less on machines with only
@@ -2879,6 +3130,8 @@
   id: totrans-422
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，在物理内存非常少的机器上，JVM 希望确保留足够的内存给操作系统。这就是为什么在只有 192 MB 内存的机器上，JVM 将最大堆限制为 96
+    MB 或更少的原因。这个计算基于 `-XX:MinRAMFraction=`*`N`* 标志的值，默认为 2：
 - en: '[PRE41]'
   id: totrans-423
   prefs: []
@@ -2889,6 +3142,7 @@
   id: totrans-424
   prefs: []
   type: TYPE_NORMAL
+  zh: 初始堆大小的选择类似，尽管复杂度较低。初始堆大小的值确定如下：
 - en: '[PRE42]'
   id: totrans-425
   prefs: []
@@ -2902,27 +3156,33 @@
   id: totrans-426
   prefs: []
   type: TYPE_NORMAL
+  zh: 从默认最小堆大小可以得出结论，`InitialRAMFraction` 标志的默认值为 64。这里的一个注意事项是，如果该值小于 5 MB——或者严格来说小于
+    `-XX:OldSize=`*`N`*（默认为 4 MB）加上 `-XX:NewSize=`*`N`*（默认为 1 MB）所指定的值——那么老年代和新生代大小的总和将用作初始堆大小。
 - en: Quick Summary
   id: totrans-427
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: The calculations for the default initial and maximum heap sizes are fairly straightforward
     on most machines.
   id: totrans-428
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 默认的初始堆大小和最大堆大小的计算在大多数计算机上都很简单。
 - en: Around the edges, these calculations can be quite involved.
   id: totrans-429
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在边缘处，这些计算可能会相当复杂。
 - en: Experimental GC Algorithms
   id: totrans-430
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 实验性 GC 算法
 - en: In JDK 8 and JDK 11 production VMs with multiple CPUs, you’ll use either the
     G1 GC or throughput collector, depending on your application requirements. On
     small machines, you’ll use the serial collector if that is appropriate for your
@@ -2930,16 +3190,19 @@
   id: totrans-431
   prefs: []
   type: TYPE_NORMAL
+  zh: 在具有多个 CPU 的 JDK 8 和 JDK 11 生产 VM 中，您将根据应用程序的要求使用 G1 GC 或吞吐量收集器。在小型机器上，如果适合您的硬件，则将使用串行收集器。这些是支持生产的收集器。
 - en: JDK 12 introduces new collectors. Although these collectors are not necessarily
     production-ready, we’ll take a peek into them for experimental purposes.
   id: totrans-432
   prefs: []
   type: TYPE_NORMAL
+  zh: JDK 12 引入了新的收集器。虽然这些收集器不一定是生产就绪的，但我们会为实验目的来一窥一下它们。
 - en: 'Concurrent Compaction: ZGC and Shenandoah'
   id: totrans-433
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 并发压缩：ZGC 和 Shenandoah
 - en: 'Existing concurrent collectors are not fully concurrent. Neither G1 GC nor
     CMS has concurrent collection of the young generation: freeing the young generation
     requires all application threads to be stopped. And neither of those collectors
@@ -2952,6 +3215,8 @@
   id: totrans-434
   prefs: []
   type: TYPE_NORMAL
+  zh: 现有的并发收集器并非完全并发。无论是 G1 GC 还是 CMS 都没有对年轻代进行并发收集：释放年轻代需要停止所有应用线程。而且这些收集器都不进行并发压缩。在
+    G1 GC 中，老年代在混合 GC 循环中被压缩：在目标区域内，未释放的对象会被压缩到空白区域中。在 CMS 中，老年代在碎片化严重时进行压缩，以便允许新的分配。年轻代的收集也会通过将存活对象移动到幸存者空间或老年代来压缩堆的这部分。
 - en: During compaction, objects move their position in memory. This is the primary
     reason the JVM stops all application threads during that operation—the algorithms
     to update the memory references are much simpler if the application threads are
@@ -2960,6 +3225,7 @@
   id: totrans-435
   prefs: []
   type: TYPE_NORMAL
+  zh: 在压缩期间，对象会在内存中移动它们的位置。这是JVM在此操作期间停止所有应用程序线程的主要原因——如果已知应用程序线程已停止，那么更新内存引用的算法将简单得多。因此，应用程序的暂停时间主要由移动对象和确保对它们的引用是最新的时间所主导。
 - en: Two experimental collectors are designed to address this problem. The first
     is the Z garbage collector, or ZGC; the second is the Shenandoah garbage collector.
     ZGC first appeared in JDK 11; Shenandoah GC first appeared in JDK 12 but has now
@@ -2969,6 +3235,8 @@
   id: totrans-436
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了解决这个问题，设计了两个实验性的收集器。第一个是Z垃圾收集器，或ZGC；第二个是Shenandoah垃圾收集器。ZGC首次出现在JDK 11中；Shenandoah
+    GC首次出现在JDK 12中，但现已被回溯到JDK 8和JDK 11。来自AdoptOpenJDK的JVM构建（或者您自己从源代码编译的构建）包含这两个收集器；来自Oracle的构建仅包含ZGC。
 - en: To use these collectors, you must specify the `-XX:+UnlockExperimentalVMOptions`
     flag (by default, it is `false`). Then you specify either `-XX:+UseZGC` or `-XX:+UseShenandoahGC`
     in place of other GC algorithms. Like other GC algorithms, they have several tunings
@@ -2978,12 +3246,15 @@
   id: totrans-437
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使用这些收集器，必须指定`-XX:+UnlockExperimentalVMOptions`标志（默认情况下为`false`）。然后，您可以使用`-XX:+UseZGC`或`-XX:+UseShenandoahGC`替换其他GC算法。像其他GC算法一样，它们有几个调优选项，但由于算法仍在开发中，所以我们将使用默认参数运行。
+    （并且这两个收集器都旨在以最少的调整运行。）
 - en: Although they take different approaches, both collectors allow concurrent compaction
     of the heap, meaning that objects in the heap can be moved without stopping all
     application threads. This has two main effects.
   id: totrans-438
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管它们采取了不同的方法，但两个收集器都允许堆的并发压缩，这意味着堆中的对象可以在不停止所有应用程序线程的情况下移动。这主要有两个影响。
 - en: First, the heap is no longer generational (i.e., there is no longer a young
     and old generation; there is simply a single heap). The idea behind the young
     generation is that it is faster to collect a small portion of the heap rather
@@ -2995,6 +3266,7 @@
   id: totrans-439
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，堆不再是分代的（即不再有年轻代和老年代；只有一个单一的堆）。年轻代背后的想法是，收集小部分堆比整个堆更快，并且其中许多（理想情况下大多数）对象将是垃圾。因此，年轻代允许在大部分时间内减少暂停时间。如果应用程序线程在收集期间不需要暂停，那么对于年轻代的需求就消失了，因此这些算法不再需要将堆分段。
 - en: The second effect is that the latency of operations performed by the application
     threads can be expected to be reduced (at least in many cases). Consider a REST
     call that normally executes in 200 milliseconds; if that call is interrupted by
@@ -3006,6 +3278,7 @@
   id: totrans-440
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二个影响是可以预期应用程序线程执行的操作的延迟会降低（至少在许多情况下是这样）。考虑一个通常在200毫秒内执行的REST调用；如果该调用由于G1 GC中的年轻代收集而被中断，并且该收集花费了500毫秒，那么用户将看到该REST调用花费了700毫秒。当然，大多数调用不会遇到这种情况，但某些调用会，而这些异常情况将影响系统的整体性能。在不需要停止应用程序线程的情况下，进行并发压缩的收集器不会遇到这些异常情况。
 - en: 'This simplifies the situation somewhat. Recall from the discussion of G1 GC
     that the background threads that marked the free objects in the heap regions sometimes
     had short pauses. So G1 GC has three types of pauses: relatively long pauses for
@@ -3015,12 +3288,14 @@
   id: totrans-441
   prefs: []
   type: TYPE_NORMAL
+  zh: 这在某种程度上简化了情况。回顾一下关于G1 GC的讨论，堆区域中标记自由对象的后台线程有时会有短暂的暂停。因此，G1 GC有三种类型的暂停：相对较长的完全GC暂停（理想情况下，您已经调整得足够好，不会发生这种情况），用于年轻代GC收集的较短暂停（包括释放和压缩部分老年代的混合收集），以及用于标记线程的非常短暂的暂停。
 - en: Both ZGC and Shenandoah have similar pauses that fall into that latter category;
     for short periods of time, all the application threads are stopped. The goal of
     these collectors is to keep those times very short, on the order of 10 milliseconds.
   id: totrans-442
   prefs: []
   type: TYPE_NORMAL
+  zh: ZGC和Shenandoah都有类似的暂停，属于后者的类别；在短时间内，所有应用程序线程都会停止。这些收集器的目标是保持这些时间非常短，大约在10毫秒的量级。
 - en: These collectors can also introduce latency on individual thread operations.
     The details differ between the algorithms, but in a nutshell, access to an object
     by an application thread is guarded by a barrier. If the object happens to be
@@ -3033,11 +3308,13 @@
   id: totrans-443
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些收集器还会在单个线程操作上引入延迟。具体细节因算法而异，但简而言之，应用程序线程访问对象时受到屏障的保护。如果对象恰好正在移动过程中，应用程序线程将在屏障处等待，直到移动完成。（同样，如果应用程序线程正在访问对象，则垃圾收集线程必须在屏障处等待，直到可以重新定位对象。）实际上，这是对对象引用的一种锁定形式，但这个术语使这个过程看起来比实际情况更为重型。总体而言，这对应用程序的吞吐量影响很小。
 - en: Latency effects of concurrent compaction
   id: totrans-444
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 并发压缩的延迟影响
 - en: To get a feel for the overall impact of these algorithms, consider the data
     in [Table 6-5](#TableZGC). This table shows the response times from a REST server
     handling a fixed load of 500 OPS using various collectors. The operation here
@@ -3046,34 +3323,42 @@
   id: totrans-445
   prefs: []
   type: TYPE_NORMAL
+  zh: 要了解这些算法的整体影响，可以考虑一下[表6-5](#TableZGC)中的数据。该表显示了处理固定负载500 OPS的REST服务器使用各种收集器时的响应时间。这里的操作非常快速；它只是分配并保存一个相当大的字节数组（用一个已保存的数组替换，以保持内存压力恒定）。
 - en: Table 6-5\. Latency effects of concurrent compacting collectors
   id: totrans-446
   prefs: []
   type: TYPE_NORMAL
+  zh: 表6-5\. 并发压缩收集器的延迟影响
 - en: '| Collector | Average time | 90th% time | 99th% time | Max time |'
   id: totrans-447
   prefs: []
   type: TYPE_TB
+  zh: '| 收集器 | 平均时间 | 90th%时间 | 99th%时间 | 最大时间 |'
 - en: '| --- | --- | --- | --- | --- |'
   id: totrans-448
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- | --- | --- |'
 - en: '| Throughput GC | 13 ms | 60 ms | 160 ms | 265 ms |'
   id: totrans-449
   prefs: []
   type: TYPE_TB
+  zh: '| 吞吐量GC | 13 ms | 60 ms | 160 ms | 265 ms |'
 - en: '| G1 GC | 5 ms | 10 ms | 35 ms | 87 ms |'
   id: totrans-450
   prefs: []
   type: TYPE_TB
+  zh: '| G1 GC | 5 ms | 10 ms | 35 ms | 87 ms |'
 - en: '| ZGC | 1 ms | 5 ms | 5 ms | 20 ms |'
   id: totrans-451
   prefs: []
   type: TYPE_TB
+  zh: '| ZGC | 1 ms | 5 ms | 5 ms | 20 ms |'
 - en: '| Shenandoah GC | 1 ms | 5 ms | 5 ms | 22 ms |'
   id: totrans-452
   prefs: []
   type: TYPE_TB
+  zh: '| Shenandoah GC | 1 ms | 5 ms | 5 ms | 22 ms |'
 - en: These results are just what we’d expect from the various collectors. The full
     GC times of the throughput collector cause a maximum response time of 265 milliseconds
     and lots of outliers with a response time of more than 50 milliseconds. With G1
@@ -3084,6 +3369,7 @@
   id: totrans-453
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些结果正是我们从各种收集器中所期望的。吞吐量收集器的完全GC时间导致最大响应时间为265毫秒，并且有很多超过50毫秒响应时间的异常情况。使用G1 GC后，这些完全GC时间已经消失，但仍然存在较短的时间用于年轻代收集，导致最大时间为87毫秒，约10毫秒的异常情况。并且使用并发收集器后，这些年轻代收集暂停也消失了，因此最大时间现在约为20毫秒，异常情况只有5毫秒。
 - en: 'One caveat: garbage collection pauses traditionally have been the largest contributor
     to latency outliers like those we’re discussing here. But other causes exist:
     temporary network congestion between server and client, OS scheduling delays,
@@ -3094,11 +3380,13 @@
   id: totrans-454
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个警告：垃圾收集暂停传统上一直是像我们这里讨论的延迟异常的最大贡献者。但是还存在其他原因：服务器和客户端之间的临时网络拥塞，操作系统调度延迟等等。因此，虽然前两种情况中很多异常情况是由并发收集器仍然存在的那几毫秒的短暂暂停造成的，但我们现在正在进入那些其他因素也对总延迟有很大影响的领域。
 - en: Throughput effects of concurrent compacting collectors
   id: totrans-455
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 并发紧凑收集器的吞吐效果
 - en: The throughput effects of these collectors is harder to categorize. Like G1
     GC, these collectors rely on background threads to scan and process the heap.
     So if sufficient CPU cycles are not available for these threads, the collectors
@@ -3108,6 +3396,8 @@
   id: totrans-456
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些收集器的吞吐效果更难以分类。与 G1 GC 一样，这些收集器依赖于后台线程来扫描和处理堆。因此，如果这些线程没有足够的 CPU 周期可用，收集器将经历与之前看到的并发故障相同的情况，并最终进行完整的
+    GC。并发紧凑收集器通常比 G1 GC 后台线程使用更多的后台处理。
 - en: On the other hand, if sufficient CPU is available for those background threads,
     throughput when using these collectors will be higher than the throughput of G1
     GC or the throughput collector. This again is in line with what you saw in [Chapter 5](ch05.html#GC).
@@ -3118,39 +3408,48 @@
   id: totrans-457
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，如果后台线程有足够的 CPU 可用，使用这些收集器时的吞吐量将高于 G1 GC 或吞吐量收集器的吞吐量。这再次符合你在 [第 5 章](ch05.html#GC)
+    中看到的情况。该章节的示例显示，当 G1 GC 将 GC 处理转移到后台线程时，其吞吐量可能高于吞吐量收集器。并发紧凑收集器与吞吐量收集器相比具有相同的优势，而与
+    G1 GC 相比则有类似（但更小）的优势。
 - en: 'No Collection: Epsilon GC'
   id: totrans-458
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 无收集：Epsilon GC
 - en: 'JDK 11 also contains a collector that does nothing: the *epsilon collector*.
     When you use this collector, objects are never freed from the heap, and when the
     heap fills up, you will get an out-of-memory error.'
   id: totrans-459
   prefs: []
   type: TYPE_NORMAL
+  zh: JDK 11 中还包含一个什么都不做的收集器：*epsilon collector*。当你使用这个收集器时，对象从堆中永远不会被释放，当堆填满时，你将会得到内存溢出错误。
 - en: 'Traditional programs will not be able to use this collector, of course. It
     is really designed for internal JDK testing but can conceivably be useful in two
     situations:'
   id: totrans-460
   prefs: []
   type: TYPE_NORMAL
+  zh: 传统的程序当然不能使用这个收集器。它真正设计用于内部 JDK 测试，但在两种情况下可能会有用：
 - en: Very short-lived programs
   id: totrans-461
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 非常短命的程序
 - en: Programs carefully written to reuse memory and never perform new allocations
   id: totrans-462
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 程序要精心编写以重用内存并永远不执行新分配
 - en: That second category is useful in some embedded environments with limited memory.
     That sort of programming is specialized; we won’t consider it here. But the first
     case holds interesting possibilities.
   id: totrans-463
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二种情况在一些内存有限的嵌入式环境中很有用。这种编程是专业的，我们在这里不考虑它。但第一种情况具有有趣的可能性。
 - en: Consider the case of a program that allocates an array list of 4,096 elements,
     each of which is a 0.5 MB byte array. The time to run that program with various
     collectors is shown in [Table 6-6](#TableEpsilonTime). Default GC tunings are
@@ -3158,30 +3457,38 @@
   id: totrans-464
   prefs: []
   type: TYPE_NORMAL
+  zh: 考虑一个程序的情况，它分配了一个包含 4,096 个元素的数组列表，每个元素都是一个 0.5 MB 的字节数组。使用各种收集器运行该程序的时间在 [表 6-6](#TableEpsilonTime)
+    中显示。本示例中使用默认的 GC 调优。
 - en: Table 6-6\. Performance metrics of a small allocation-based program
   id: totrans-465
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 6-6\. 基于小型分配的程序的性能指标
 - en: '| Collector | Time | Heap required |'
   id: totrans-466
   prefs: []
   type: TYPE_TB
+  zh: '| 收集器 | 时间 | 所需堆 |'
 - en: '| --- | --- | --- |'
   id: totrans-467
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- |'
 - en: '| Throughput GC | 2.3 s | 3,072 MB |'
   id: totrans-468
   prefs: []
   type: TYPE_TB
+  zh: '| 吞吐量 GC | 2.3 s | 3,072 MB |'
 - en: '| G1 GC | 3.24 s | 4,096 MB |'
   id: totrans-469
   prefs: []
   type: TYPE_TB
+  zh: '| G1 GC | 3.24 s | 4,096 MB |'
 - en: '| Epsilon | 1.6 s | 2,052 MB |'
   id: totrans-470
   prefs: []
   type: TYPE_TB
+  zh: '| Epsilon | 1.6 s | 2,052 MB |'
 - en: 'Disabling garbage collection is a significant advantage in this case, yielding
     a 30% improvement. And the other collectors require significant memory overhead:
     like the other experimental collectors we’ve seen, the epsilon collector is not
@@ -3194,22 +3501,28 @@
   id: totrans-471
   prefs: []
   type: TYPE_NORMAL
+  zh: 禁用垃圾收集在这种情况下有显著优势，可提高 30% 的性能。而其他收集器需要显著的内存开销：就像我们见过的其他实验性收集器一样，ε 收集器不是分代的（因为对象无法释放，所以不需要设置一个单独的空间来能够快速释放它们）。因此，对于这个生成大约
+    2 GB 对象的测试，ε 收集器所需的总堆空间略高于这个值；我们可以使用 `-Xmx2052m` 运行这种情况。吞吐量收集器需要额外三分之一的内存来容纳其年轻代，而
+    G1 GC 需要更多的内存来设置其所有区域。
 - en: To use this collector, you again specify the `-XX:+UnlockExperimentalVMOptions`
     flag with `-XX:+UseEpsilonGC`.
   id: totrans-472
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使用这个收集器，你需要再次指定 `-XX:+UnlockExperimentalVMOptions` 标志，以及 `-XX:+UseEpsilonGC`。
 - en: Running with this collector is risky unless you are certain that the program
     will never need more memory than you provide it. But in those cases, it can give
     a nice performance boost.
   id: totrans-473
   prefs: []
   type: TYPE_NORMAL
+  zh: 除非你确信程序永远不会需要比你提供的内存更多的内存，否则使用这个收集器是有风险的。但在这些情况下，它可以提供良好的性能提升。
 - en: Summary
   id: totrans-474
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 概述
 - en: The past two chapters have spent a lot of time delving into the details of how
     GC (and its various algorithms) work. If GC is taking longer than you’d like,
     knowing how all of that works should aid you in taking the necessary steps to
@@ -3217,26 +3530,31 @@
   id: totrans-475
   prefs: []
   type: TYPE_NORMAL
+  zh: 过去的两章花了大量时间深入探讨 GC（及其各种算法）的工作细节。如果 GC 消耗的时间超出了你的预期，了解所有这些工作原理应该有助于你采取必要的步骤来改善情况。
 - en: 'Now that you understand all the details, let’s take a step back to determine
     an approach to choosing and tuning a garbage collector. Here’s a quick set of
     questions to ask yourself to help put everything in context:'
   id: totrans-476
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在你已经了解了所有的细节，让我们退后一步来确定选择和调整垃圾收集器的方法。以下是一组快速问题，帮助你把所有内容放在上下文中：
 - en: Can your application tolerate some full GC pauses?
   id: totrans-477
   prefs: []
   type: TYPE_NORMAL
+  zh: 你的应用程序能容忍一些完整 GC 暂停吗？
 - en: If not, G1 GC is the algorithm of choice. Even if you can tolerate some full
     pauses, G1 GC will often be better than parallel GC unless your application is
     CPU bound.
   id: totrans-478
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果不是的话，G1 GC 就是首选算法。即使你可以容忍一些完整暂停，G1 GC 通常比并行 GC 更好，除非你的应用程序受限于 CPU。
 - en: Are you getting the performance you need with the default settings?
   id: totrans-479
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认设置能满足你的性能需求吗？
 - en: Try the default settings first. As GC technology matures, the ergonomic (automatic)
     tuning gets better all the time. If you’re not getting the performance you need,
     make sure that GC is your problem. Look at the GC logs and see how much time you’re
@@ -3246,10 +3564,13 @@
   id: totrans-480
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先尝试默认设置。随着 GC 技术的成熟，自动调整越来越好。如果没有得到所需的性能，请确保 GC 是你的问题。查看 GC 日志，看看你在 GC 中花费的时间以及长时间暂停发生的频率。对于繁忙的应用程序，如果在
+    GC 中花费的时间不到 3%，你不太可能通过调整来获得很大的提升（尽管如果这是你的目标，你可以尝试减少异常值）。
 - en: Are the pause times that you have somewhat close to your goal?
   id: totrans-481
   prefs: []
   type: TYPE_NORMAL
+  zh: 你拥有的暂停时间是否接近你的目标？
 - en: If they are, adjusting the maximum pause time may be all you need. If they aren’t,
     you need to do something else. If the pause times are too large but your throughput
     is OK, you can reduce the size of the young generation (and for full GC pauses,
@@ -3257,10 +3578,13 @@
   id: totrans-482
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果是这样，调整最大暂停时间可能是你所需的全部。如果不是这样，你需要做其他事情。如果暂停时间过长但吞吐量正常，你可以减少年轻代的大小（对于完整的 GC
+    暂停，还有老年代）；你将获得更多但较短的暂停时间。
 - en: Is throughput lagging even though GC pause times are short?
   id: totrans-483
   prefs: []
   type: TYPE_NORMAL
+  zh: 即使 GC 暂停时间很短，吞吐量是否滞后？
 - en: 'You need to increase the size of the heap (or at least the young generation).
     More isn’t always better: bigger heaps lead to longer pause times. Even with a
     concurrent collector, a bigger heap means a bigger young generation by default,
@@ -3269,11 +3593,13 @@
   id: totrans-484
   prefs: []
   type: TYPE_NORMAL
+  zh: 您需要增加堆的大小（或至少是年轻代的大小）。更多并不总是更好：更大的堆会导致更长的暂停时间。即使使用并发收集器，更大的堆默认情况下会导致更大的年轻代，因此您将看到更长的年轻代收集暂停时间。但如果可以的话，请增加堆的大小，或至少增加代的相对大小。
 - en: Are you using a concurrent collector and seeing full GCs due to concurrent-mode
     failures?
   id: totrans-485
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您使用并发收集器，并因并发模式失败而出现全 GC，请问您是否使用了并发收集器并因提升失败而出现全 GC？
 - en: If you have available CPU, try increasing the number of concurrent GC threads
     or starting the background sweep sooner by adjusting `InitiatingHeapOccupancyPercent`.
     For G1, the concurrent cycle won’t start if there are pending mixed GCs; try reducing
@@ -3281,10 +3607,13 @@
   id: totrans-486
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你有可用的 CPU，请尝试增加并行 GC 线程的数量，或通过调整`InitiatingHeapOccupancyPercent`提前启动后台扫描。对于
+    G1 来说，如果有未处理的混合 GC，请尝试减少混合 GC 计数目标，以便并行循环不会启动。
 - en: Are you using a concurrent collector and seeing full GCs due to promotion failures?
   id: totrans-487
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您使用并发收集器，并因提升失败而出现全 GC，请问您是否使用了并发收集器并因提升失败而出现全 GC？
 - en: In G1 GC, an evacuation failure (to-space overflow) indicates that the heap
     is fragmented, but that can usually be solved if G1 GC performs its background
     sweeping sooner and mixed GCs faster. Try increasing the number of concurrent
@@ -3293,19 +3622,26 @@
   id: totrans-488
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 G1 GC 中，疏散失败（到空间溢出）表示堆是碎片化的，但通常情况下，如果 G1 GC 提前执行后台扫描和更快地执行混合 GC，则可以解决此问题。尝试增加并发
+    G1 线程的数量、调整`InitiatingHeapOccupancyPercent`，或减少混合 GC 计数目标。
 - en: ^([1](ch06.html#idm45775554356120-marker)) Actually, 227,893 KB is only 222
     MB. For ease of discussion, I’ll truncate the KBs by 1,000 in this chapter; pretend
     I am a disk manufacturer.
   id: totrans-489
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch06.html#idm45775554356120-marker)) 实际上，227,893 KB 只有 222 MB。为了方便讨论，在本章中，我将以
+    1,000 为单位截断 KB；假装我是一个磁盘制造商。
 - en: ^([2](ch06.html#idm45775554022120-marker)) Similar work could have been done
     to make CMS full GCs run with parallel threads, but G1 GC work was prioritized.
   id: totrans-490
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([2](ch06.html#idm45775554022120-marker)) 类似的工作也可以使 CMS 全 GC 使用并行线程运行，但 G1
+    GC 的工作被优先考虑。
 - en: ^([3](ch06.html#idm45775553858312-marker)) This is a variation of the way thread-local
     variables can prevent lock contention (see [Chapter 9](ch09.html#ThreadPerformance)).
   id: totrans-491
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([3](ch06.html#idm45775553858312-marker)) 这是线程本地变量可以防止锁竞争的一种变体方法（参见[第9章](ch09.html#ThreadPerformance)）。
