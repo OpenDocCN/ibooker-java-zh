@@ -1,127 +1,182 @@
 - en: Chapter 6\. Garbage Collection Algorithms
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第6章 垃圾收集算法
 - en: '[Chapter 5](ch05.html#GC) examined the general behavior of all garbage collectors,
     including JVM flags that apply universally to all GC algorithms: how to select
     heap sizes, generation sizes, logging, and so on. The basic tunings of garbage
     collection suffice for many circumstances. When they do not, it is time to examine
     the specific operation of the GC algorithm in use to determine how its parameters
     can be changed to minimize the impact of GC on the application.'
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: '[第5章](ch05.html#GC)研究了所有垃圾收集器的一般行为，包括适用于所有GC算法的JVM标志：如何选择堆大小、代大小、日志记录等。基本的垃圾收集调优适用于许多情况。当它们不适用时，就需要检查正在使用的GC算法的具体操作，以确定如何更改其参数以最小化对应用程序的影响。'
 - en: The key information needed to tune an individual collector is the data from
     the GC log when that collector is enabled. This chapter starts, then, by looking
     at each algorithm from the perspective of its log output, which allows us to understand
     how the GC algorithm works and how it can be adjusted to work better. Each section
     then includes tuning information to achieve that better performance.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 调整单个收集器所需的关键信息是在启用该收集器时从GC日志中获取的数据。因此，本章从查看每个算法的日志输出的角度开始，这使我们能够理解GC算法的工作原理及如何调整以获得更好的性能。然后，每个部分都包括调优信息以实现更佳的性能。
 - en: This chapter also covers the details of some new, experimental collectors. Those
     collectors may not be 100% solid at the time of this writing but will likely become
     full-fledged, production-worthy collectors by the time the next LTS version of
     Java is released (just as G1 GC began as an experimental collector and is now
     the default in JDK 11).
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章还涵盖了一些新的实验性收集器的详细信息。目前写作时，这些收集器可能不是百分之百稳定的，但很可能会在下一个Java LTS版本发布时成为成熟的、适合生产的收集器（就像G1
+    GC最初是实验性收集器，现在成为JDK 11的默认选择）。
 - en: 'A few unusual cases impact the performance of all GC algorithms: allocation
     of very large objects, objects that are neither short- nor long-lived, and so
     on. Those cases are covered at the end of this chapter.'
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 几种不寻常的情况影响所有GC算法的性能：分配非常大的对象、既不短命也不长寿的对象等。本章末尾将涵盖这些情况。
 - en: Understanding the Throughput Collector
+  id: totrans-5
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解吞吐量收集器
 - en: We’ll start by looking at the individual garbage collectors, beginning with
     the throughput collector. Although we’ve seen that the G1 GC collector is generally
     preferred, the details of the throughput collector are easier and make a better
     foundation for understanding how things work.
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将从查看各个垃圾收集器开始，首先是吞吐量收集器。尽管我们已经看到G1 GC收集器通常更受欢迎，但吞吐量收集器的细节更为简单，更好地奠定了理解工作原理的基础。
 - en: 'Recall from [Chapter 5](ch05.html#GC) that garbage collectors must do three
     basic operations: find unused objects, free their memory, and compact the heap.
     The throughput collector does all of those operations in the same GC cycle; together
     those operations are referred to as a *collection*. These collectors can collect
     either the young generation or the old generation during a single operation.'
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 回顾[第5章](ch05.html#GC)中的内容，垃圾收集器必须执行三个基本操作：找到未使用的对象、释放它们的内存并压缩堆。吞吐量收集器在同一GC周期内执行所有这些操作；这些操作合称为*收集*。这些收集器可以在单个操作期间收集青年代或老年代。
 - en: '[Figure 6-1](#FigureParYoung) shows the heap before and after a young collection.'
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: '[图6-1](#FigureParYoung) 显示了进行年轻代收集前后的堆。'
 - en: '![A diagram of the heap before and after a young collection.](assets/jp2e_0601.png)'
+  id: totrans-9
   prefs: []
   type: TYPE_IMG
+  zh: '![一个堆在进行年轻代收集前后的图表。](assets/jp2e_0601.png)'
 - en: Figure 6-1\. A throughput GC young collection
+  id: totrans-10
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图6-1 吞吐量GC年轻代收集
 - en: 'A young collection occurs when eden has filled up. The young collection moves
     all objects out of eden: some are moved to one of the survivor spaces (S0 in this
     diagram), and some are moved to the old generation, which now contains more objects.
     Many objects, of course, are discarded because they are no longer referenced.'
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 当Eden区填满时，会发生年轻代收集。年轻代收集将所有对象移出Eden区：一些对象移动到一个幸存者空间（本图中的S0），一些对象移动到老年代，从而导致老年代包含更多对象。当然，许多对象因不再被引用而被丢弃。
 - en: Because eden is usually empty after this operation, it may seem unusual to consider
     that it has been compacted, but that’s the effect here.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 因为Eden区在此操作后通常为空，考虑到它已经被压缩，这可能看起来有些不寻常，但这正是其效果。
 - en: 'In the JDK 8 GC log with `PrintGCDetails`, a minor GC of the throughput collector
     appears like this:'
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 在使用`PrintGCDetails`的JDK 8 GC日志中，吞吐量收集器的小GC如下所示：
 - en: '[PRE0]'
+  id: totrans-14
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: This GC occurred 17.806 seconds after the program began. Objects in the young
     generation now occupy 14,463 KB (14 MB, in the survivor space); before the GC,
     they occupied 227,983 KB (227 MB).^([1](ch06.html#idm45775554356120)) The total
     size of the young generation at this point is 264 MB.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 此 GC 在程序开始后的 17.806 秒发生。年轻代中的对象现在占据了 14,463 KB（14 MB，在幸存者空间中）；在 GC 之前，它们占据了
+    227,983 KB（227 MB）。^([1](ch06.html#idm45775554356120)) 此时年轻代的总大小为 264 MB。
 - en: Meanwhile, the overall occupancy of the heap (both young and old generations)
     decreased from 280 MB to 66 MB, and the size of the entire heap at this point
     was 613 MB. The operation took less than 0.02 seconds (the 0.02 seconds of real
     time at the end of the output is 0.0169320 seconds—the actual time—rounded). The
     program was charged for more CPU time than real time because the young collection
     was done by multiple threads (in this configuration, four threads).
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 与此同时，堆的整体占用量（包括年轻代和老年代）从 280 MB 减少到 66 MB，此时整个堆的大小为 613 MB。此操作花费的时间不到 0.02 秒（输出末尾的
+    0.02 秒实际上是 0.0169320 秒，四舍五入）。程序消耗的 CPU 时间比实际时间更多，因为年轻代收集是由多个线程完成的（在此配置中，有四个线程）。
 - en: 'The same log in JDK 11 would look something like this:'
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDK 11 中，相同的日志看起来可能是这样的：
 - en: '[PRE1]'
+  id: totrans-18
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: The information here is the same; it’s just a different format. And this log
     entry has multiple lines; the previous log entry is actually a single line (but
     that doesn’t reproduce in this format). This log also prints out the metaspace
     sizes, but those will never change during a young collection. The metaspace is
     also not included in the total heap size reported on the fifth line of this sample.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的信息是相同的；只是格式不同。这个日志条目有多行；前一个日志条目实际上是一行（但在这种格式中不会重现）。此日志还打印出元空间的大小，但这些在年轻代收集期间永远不会改变。元空间也不包括在此示例的第五行报告的总堆大小中。
 - en: '[Figure 6-2](#FigureParOld) shows the heap before and after a full GC.'
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: '[图 6-2](#FigureParOld)显示了在进行完整的 GC 之前和之后堆的情况。'
 - en: '![A diagram of the heap before and after a full GC.](assets/jp2e_0602.png)'
+  id: totrans-21
   prefs: []
   type: TYPE_IMG
+  zh: '![完整 GC 前后堆的示意图。](assets/jp2e_0602.png)'
 - en: Figure 6-2\. A throughput full GC
+  id: totrans-22
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-2\. 吞吐量完整的 GC
 - en: The old collection frees everything out of the young generation. The only objects
     that remain in the old generation are those that have active references, and all
     of those objects have been compacted so that the beginning of the old generation
     is occupied, and the remainder is free.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 老年代收集器会释放年轻代中的所有内容。只有那些具有活动引用的对象才会留在老年代中，并且所有这些对象都已经被压缩，以便老年代的开始被占用，其余部分为空闲。
 - en: 'The GC log reports that operation like this:'
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: GC 日志报告的操作类似于这样：
 - en: '[PRE2]'
+  id: totrans-25
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: The young generation now occupies 0 bytes (and its size is 339 MB). Note in
     the diagram that means the survivor spaces have been cleared as well. The data
     in the old generation decreased from 457 MB to 392 MB, and hence the entire heap
@@ -131,50 +186,72 @@
     change; I’ll show that a little further on.) Because there is substantially more
     work to do in a full GC, it has taken 1.3 seconds of real time, and 4.4 seconds
     of CPU time (again for four parallel threads).
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，年轻代占用了 0 字节（其大小为 339 MB）。请注意，在图中这意味着幸存者空间也已被清除。老年代中的数据从 457 MB 减少到 392 MB，因此整个堆使用量从
+    473 MB 降至 392 MB。元空间的大小未改变；在大多数完整的 GC 中不会对其进行收集。（如果元空间空间不足，JVM 将运行完整的 GC 来收集它，并且您将看到元空间的大小发生变化；稍后我会展示这一点。）由于在完整的
+    GC 中有大量工作要做，因此实际花费了 1.3 秒的时间，以及 4.4 秒的 CPU 时间（再次为四个并行线程）。
 - en: 'The similar JDK 11 log is this:'
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: JDK 11 中类似的日志如下：
 - en: '[PRE3]'
+  id: totrans-28
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: Quick Summary
+  id: totrans-29
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: 'The throughput collector has two operations: minor collections and full GCs,
     each of which marks, frees, and compacts the target generation.'
+  id: totrans-30
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 吞吐量收集器有两个操作：次要收集和完整的 GC，每个操作都标记、释放和压缩目标代。
 - en: Timings taken from the GC log are a quick way to determine the overall impact
     of GC on an application using these collectors.
+  id: totrans-31
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 从 GC 日志中获取的时间是确定 GC 对使用这些收集器的应用程序的整体影响的快速方法。
 - en: Adaptive and Static Heap Size Tuning
+  id: totrans-32
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 自适应和静态堆大小调整
 - en: Tuning the throughput collector is all about pause times and striking a balance
     between the overall heap size and the sizes of the old and young generations.
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 调整吞吐量收集器关键在于暂停时间，以及在整体堆大小和老年代与年轻代大小之间取得平衡。
 - en: There are two trade-offs to consider here. First, we have the classic programming
     trade-off of time versus space. A larger heap consumes more memory on the machine,
     and the benefit of consuming that memory is (at least to a certain extent) that
     the application will have a higher throughput.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里需要考虑两个权衡。首先，我们有时间与空间之间的经典编程权衡。更大的堆在机器上消耗更多内存，消耗该内存的好处（至少在一定程度上）是应用程序将具有更高的吞吐量。
 - en: The second trade-off concerns the length of time it takes to perform GC. The
     number of full GC pauses can be reduced by increasing the heap size, but that
     may have the perverse effect of increasing average response times because of the
     longer GC times. Similarly, full GC pauses can be shortened by allocating more
     of the heap to the young generation than to the old generation, but that, in turn,
     increases the frequency of the old GC collections.
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二个权衡涉及执行GC所需的时间长度。通过增加堆大小可以减少完全GC暂停的次数，但这可能会因GC时间较长而导致平均响应时间增加。同样，通过将更多的堆分配给年轻代而不是老年代可以缩短完全GC暂停时间，但这反过来会增加老年代GC集合的频率。
 - en: 'The effect of these trade-offs is shown in [Figure 6-3](#FigureGCPauses). This
     graph shows the maximum throughput of the stock REST server running with different
     heap sizes. With a small 256 MB heap, the server is spending a lot of time in
@@ -184,33 +261,48 @@
     isn’t really GC-bound at that point (about 6% of time in GC). The law of diminishing
     returns has crept in: the application can use additional memory to gain throughput,
     but the gains become more limited.'
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些权衡的影响显示在[图 6-3](#FigureGCPauses)中。该图显示了以不同堆大小运行的股票REST服务器的最大吞吐量。对于较小的 256
+    MB 堆，服务器在GC中花费了大量时间（实际上是总时间的 36%）；因此吞吐量受限。随着堆大小的增加，吞吐量迅速增加，直到堆大小设置为 1,500 MB。之后，吞吐量增加速度较慢：此时应用程序并非真正受GC限制（GC
+    时间约占总时间的 6%）。边际收益递减法已悄然而至：应用程序可以使用额外内存以提高吞吐量，但增益变得更有限。
 - en: 'After a heap size of 4,500 MB, the throughput starts to decrease slightly.
     At that point, the application has reached the second trade-off: the additional
     memory has caused much longer GC cycles, and those longer cycles—even though they
     are less frequent—can reduce the overall throughput.'
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 在堆大小达到 4,500 MB 后，吞吐量开始略微下降。此时，应用程序已经达到了第二个权衡：额外的内存导致更长的GC周期，即使这些周期较少，也会降低总体吞吐量。
 - en: The data in this graph was obtained by disabling adaptive sizing in the JVM;
     the minimum and maximum heap sizes were set to the same value. It is possible
     to run experiments on any application and determine the best sizes for the heap
     and for the generations, but it is often easier to let the JVM make those decisions
     (which is what usually happens, since adaptive sizing is enabled by default).
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 此图中的数据是通过在JVM中禁用自适应大小调整来获取的；最小堆和最大堆大小设置为相同值。可以在任何应用程序上运行实验，并确定堆和代的最佳大小，但通常更容易让JVM做出这些决策（这通常是发生的，因为默认情况下启用了自适应大小调整）。
 - en: '![jp2e 0603](assets/jp2e_0603.png)'
+  id: totrans-39
   prefs: []
   type: TYPE_IMG
+  zh: '![jp2e 0603](assets/jp2e_0603.png)'
 - en: Figure 6-3\. Throughput with various heap sizes
+  id: totrans-40
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-3。各种堆大小的吞吐量
 - en: 'Adaptive sizing in the throughput collector will resize the heap (and the generations)
     in order to meet its pause-time goals. Those goals are set with these flags: `-XX:MaxGCPauseMillis=`*`N`*
     and `-XX:GCTimeRatio=`*`N`*.'
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 在吞吐量收集器中，自适应大小调整堆（和代）以满足其暂停时间目标。这些目标是使用以下标志设置的：`-XX:MaxGCPauseMillis=`*`N`*
+    和 `-XX:GCTimeRatio=`*`N`*。
 - en: 'The `MaxGCPauseMillis` flag specifies the maximum pause time that the application
     is willing to tolerate. It might be tempting to set this to 0, or perhaps a small
     value like 50 ms. Be aware that this goal applies to both minor and full GCs.
@@ -219,46 +311,70 @@
     JVM to perform very, very frequent full GCs, and performance will be dismal. So
     be realistic: set the value to something that can be achieved. By default, this
     flag is not set.'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: '`MaxGCPauseMillis` 标志指定应用程序愿意容忍的最大暂停时间。可能会有诱惑将其设置为 0，或者像 50 毫秒这样的小值。请注意，此目标适用于次要GC和完全GC。如果使用非常小的值，应用程序将会得到非常小的老年代：例如可以在
+    50 毫秒内清理的老年代。这将导致JVM执行非常频繁的完全GC，性能将非常糟糕。因此，请保持现实：将该值设置为可以实现的值。默认情况下，此标志未设置。'
 - en: 'The `GCTimeRatio` flag specifies the amount of time you are willing for the
     application to spend in GC (compared to the amount of time its application-level
     threads should run). It is a ratio, so the value for *`N`* takes a little thought.
     The value is used in the following equation to determine the percentage of time
     the application threads should ideally run:'
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: '`GCTimeRatio`标志指定您愿意应用程序在GC中花费的时间量（与其应用级线程运行时间相比）。这是一个比率，因此*`N`*的值需要一些思考。该值在以下方程中使用，以确定应用程序线程理想情况下应该运行的时间百分比：'
 - en: <math alttext="upper T h r o u g h p u t upper G o a l equals 1 minus StartFraction
     1 Over left-parenthesis 1 plus upper G upper C upper T i m e upper R a t i o right-parenthesis
     EndFraction" display="block"><mrow><mi>T</mi> <mi>h</mi> <mi>r</mi> <mi>o</mi>
     <mi>u</mi> <mi>g</mi> <mi>h</mi> <mi>p</mi> <mi>u</mi> <mi>t</mi> <mi>G</mi> <mi>o</mi>
     <mi>a</mi> <mi>l</mi> <mo>=</mo> <mn>1</mn> <mo>-</mo> <mfrac><mn>1</mn> <mrow><mo>(</mo><mn>1</mn><mo>+</mo><mi>G</mi><mi>C</mi><mi>T</mi><mi>i</mi><mi>m</mi><mi>e</mi><mi>R</mi><mi>a</mi><mi>t</mi><mi>i</mi><mi>o</mi><mo>)</mo></mrow></mfrac></mrow></math>
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: <math alttext="upper T h r o u g h p u t upper G o a l equals 1 minus StartFraction
+    1 Over left-parenthesis 1 plus upper G upper C upper T i m e upper R a t i o right-parenthesis
+    EndFraction" display="block"><mrow><mi>T</mi> <mi>h</mi> <mi>r</mi> <mi>o</mi>
+    <mi>u</mi> <mi>g</mi> <mi>h</mi> <mi>p</mi> <mi>u</mi> <mi>t</mi> <mi>G</mi> <mi>o</mi>
+    <mi>a</mi> <mi>l</mi> <mo>=</mo> <mn>1</mn> <mo>-</mo> <mfrac><mn>1</mn> <mrow><mo>(</mo><mn>1</mn><mo>+</mo><mi>G</mi><mi>C</mi><mi>T</mi><mi>i</mi><mi>m</mi><mi>e</mi><mi>R</mi><mi>a</mi><mi>t</mi><mi>i</mi><mi>o</mi><mo>)</mo></mrow></mfrac></mrow></math>
 - en: 'The default value for `GCTimeRatio` is 99\. Plugging that value into the equation
     yields 0.99, meaning that the goal is to spend 99% of time in application processing,
     and only 1% of time in GC. But don’t be confused by how those numbers line up
     in the default case. A `GCTimeRatio` of 95 does not mean that GC should run up
     to 5% of the time: it means that GC should run up to 1.94% of the time.'
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: '`GCTimeRatio`的默认值为99。将该值代入方程得出0.99，意味着目标是在应用程序处理中花费99%的时间，仅在GC中花费1%的时间。但不要被默认情况下这些数字如何对应所迷惑。`GCTimeRatio`为95并不意味着GC应该运行高达5%的时间：它意味着GC应该运行高达1.94%的时间。'
 - en: 'It’s easier to decide the minimum percentage of time you want the application
     to perform work (say, 95%) and then calculate the value of the `GCTimeRatio` from
     this equation:'
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 更容易的做法是决定您希望应用程序执行工作的最低百分比（例如，95%），然后根据以下方程计算`GCTimeRatio`的值：
 - en: <math alttext="upper G upper C upper T i m e upper R a t i o equals StartFraction
     upper T h r o u g h p u t Over left-parenthesis 1 minus upper T h r o u g h p
     u t right-parenthesis EndFraction" display="block"><mrow><mi>G</mi> <mi>C</mi>
     <mi>T</mi> <mi>i</mi> <mi>m</mi> <mi>e</mi> <mi>R</mi> <mi>a</mi> <mi>t</mi> <mi>i</mi>
     <mi>o</mi> <mo>=</mo> <mfrac><mrow><mi>T</mi><mi>h</mi><mi>r</mi><mi>o</mi><mi>u</mi><mi>g</mi><mi>h</mi><mi>p</mi><mi>u</mi><mi>t</mi></mrow>
     <mrow><mo>(</mo><mn>1</mn><mo>-</mo><mi>T</mi><mi>h</mi><mi>r</mi><mi>o</mi><mi>u</mi><mi>g</mi><mi>h</mi><mi>p</mi><mi>u</mi><mi>t</mi><mo>)</mo></mrow></mfrac></mrow></math>
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: <math alttext="upper G upper C upper T i m e upper R a t i o equals StartFraction
+    upper T h r o u g h p u t Over left-parenthesis 1 minus upper T h r o u g h p
+    u t right-parenthesis EndFraction" display="block"><mrow><mi>G</mi> <mi>C</mi>
+    <mi>T</mi> <mi>i</mi> <mi>m</mi> <mi>e</mi> <mi>R</mi> <mi>a</mi> <mi>t</mi> <mi>i</mi>
+    <mi>o</mi> <mo>=</mo> <mfrac><mrow><mi>T</mi><mi>h</mi><mi>r</mi><mi>o</mi><mi>u</mi><mi>g</mi><mi>h</mi><mi>p</mi><mi>u</mi><mi>t</mi></mrow>
+    <mrow><mo>(</mo><mn>1</mn><mo>-</mo><mi>T</mi><mi>h</mi><mi>r</mi><mi>o</mi><mi>u</mi><mi>g</mi><mi>h</mi><mi>p</mi><mi>u</mi><mi>t</mi><mo>)</mo></mrow></mfrac></mrow></math>
 - en: For a throughput goal of 95% (0.95), this equation yields a `GCTimeRatio` of
     19.
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于通过量目标为95%（0.95），该方程得出`GCTimeRatio`为19。
 - en: 'The JVM uses these two flags to set the size of the heap within the boundaries
     established by the initial (`-Xms`) and maximum (`-Xmx`) heap sizes. The `MaxGCPauseMillis`
     flag takes precedence: if it is set, the sizes of the young and old generations
@@ -266,8 +382,10 @@
     size of the heap is increased until the time-ratio goal is met. Once both goals
     are met, the JVM will attempt to reduce the size of the heap so that it ends up
     with the smallest possible heap that meets these two goals.'
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM使用这两个标志在初始（`-Xms`）和最大（`-Xmx`）堆大小建立的边界内设置堆的大小。`MaxGCPauseMillis`标志优先级较高：如果设置了该标志，则调整年轻代和老年代的大小，直到达到暂停时间目标。一旦达到目标，堆的总体大小将增加，直到达到时间比率目标。一旦两个目标都达到，JVM将尝试减少堆的大小，以便最终达到满足这两个目标的最小可能堆大小。
 - en: Because the pause-time goal is not set by default, the usual effect of automatic
     heap sizing is that the heap (and generation) sizes will increase until the `GCTimeRatio`
     goal is met. In practice, though, the default setting of that flag is optimistic.
@@ -277,120 +395,179 @@
     applications end up spending 10% to 15% of their time in GC. GC has a substantial
     impact on the performance of those applications, but the overall performance goals
     are still met.
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: 因为默认情况下未设置暂停时间目标，自动堆大小调整的常见效果是堆（和代数）大小将增加，直到满足`GCTimeRatio`目标。尽管如此，该标志的默认设置实际上是乐观的。当然，您的经验会有所不同，但我更习惯于看到应用程序在GC中花费3%到6%的时间，并表现良好。有时甚至我会在内存严重受限的环境中处理应用程序，这些应用程序最终会在GC中花费10%到15%的时间。GC对这些应用程序的性能有重大影响，但总体性能目标仍然能够达到。
 - en: So the best setting will vary depending on the application goals. In the absence
     of other goals, I start with a time ratio of 19 (5% of time in GC).
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，最佳设置将根据应用程序目标而异。在没有其他目标的情况下，我从时间比率19开始（GC中的时间为5%）。
 - en: '[Table 6-1](#TableGCAutoTuneDefault) shows the effects of this dynamic tuning
     for an application that needs a small heap and does little GC (it is the stock
     REST server that has few long-lived objects).'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: '[表 6-1](https://wiki.example.org/table_gc_autotune_default)展示了这种动态调优对于需要小堆且几乎不进行GC的应用程序的影响（这是具有少量长寿命周期对象的标准REST服务器）。'
 - en: Table 6-1\. Effect of dynamic GC tuning
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 6-1\. 动态GC调优效果
 - en: '| GC settings | End heap size | Percent time in GC | OPS |'
+  id: totrans-54
   prefs: []
   type: TYPE_TB
+  zh: '| GC设置 | 结束堆大小 | GC中的时间百分比 | OPS |'
 - en: '| --- | --- | --- | --- |'
+  id: totrans-55
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- | --- |'
 - en: '| Default | 649 MB | 0.9% | 9.2 |'
+  id: totrans-56
   prefs: []
   type: TYPE_TB
+  zh: '| 默认 | 649 MB | 0.9% | 9.2 |'
 - en: '| `MaxGCPauseMillis=50ms` | 560 MB | 1.0% | 9.2 |'
+  id: totrans-57
   prefs: []
   type: TYPE_TB
+  zh: '| `MaxGCPauseMillis=50ms` | 560 MB | 1.0% | 9.2 |'
 - en: '| `Xms=Xmx=2048m` | 2 GB | 0.04% | 9.2 |'
+  id: totrans-58
   prefs: []
   type: TYPE_TB
+  zh: '| `Xms=Xmx=2048m` | 2 GB | 0.04% | 9.2 |'
 - en: 'By default, the heap will have a 64 MB minimum size and a 2 GB maximum size
     (since the machine has 8 GB of physical memory). In that case, the `GCTimeRatio`
     works just as expected: the heap dynamically resized to 649 MB, at which point
     the application was spending about 1% of total time in GC.'
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，堆的最小大小为 64 MB，最大大小为 2 GB（由于机器具有 8 GB 物理内存）。在这种情况下，`GCTimeRatio` 的工作就如预期的那样：堆动态调整为
+    649 MB，此时应用程序在 GC 中花费的总时间约为总时间的 1%。
 - en: Setting the `MaxGCPauseMillis` flag in this case starts to reduce the size of
     the heap in order to meet that pause-time goal. Because the garbage collector
     has so little work to perform in this example, it succeeds and can still spend
     only 1% of total time in GC, while maintaining the same throughput of 9.2 OPS.
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种情况下设置 `MaxGCPauseMillis` 标志开始减小堆的大小以满足暂停时间目标。因为在此示例中垃圾收集器的工作量很小，所以它成功地仅花费总时间的
+    1% 在 GC 中，同时保持了 9.2 OPS 的吞吐量。
 - en: Finally, notice that more isn’t always better. A full 2 GB heap does mean that
     the application can spend less time in GC, but GC isn’t the dominant performance
     factor here, so the throughput doesn’t increase. As usual, spending time optimizing
     the wrong area of the application has not helped.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，请注意，并非总是越多越好。完整的 2 GB 堆确实意味着应用程序在 GC 中花费的时间较少，但在这里 GC 并非主要的性能因素，因此吞吐量并未增加。通常情况下，花费时间优化应用程序的错误区域并没有帮助。
 - en: If the same application is changed so that the previous 50 requests for each
     user are saved in a global cache (e.g., as a JPA cache would do), the garbage
     collector has to work harder. [Table 6-2](#TableGCAutoTune) shows the trade-offs
     in that situation.
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果将相同的应用程序更改为每个用户在全局缓存中保存先前的 50 个请求（例如，像 JPA 缓存那样），垃圾收集器将需要更加努力。[表 6-2](#TableGCAutoTune)
+    显示了这种情况下的权衡。
 - en: Table 6-2\. Effect of heap occupancy on dynamic GC tuning
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 表 6-2\. 堆占用对动态 GC 调优的影响
 - en: '| GC settings | End heap size | Percent time in GC | OPS |'
+  id: totrans-64
   prefs: []
   type: TYPE_TB
+  zh: '| GC 设置 | 最终堆大小 | GC 时间百分比 | OPS |'
 - en: '| --- | --- | --- | --- |'
+  id: totrans-65
   prefs: []
   type: TYPE_TB
+  zh: '| --- | --- | --- | --- |'
 - en: '| Default | 1.7 GB | 9.3% | 8.4 |'
+  id: totrans-66
   prefs: []
   type: TYPE_TB
+  zh: '| 默认 | 1.7 GB | 9.3% | 8.4 |'
 - en: '| `MaxGCPauseMillis=50ms` | 588 MB | 15.1% | 7.9 |'
+  id: totrans-67
   prefs: []
   type: TYPE_TB
+  zh: '| `MaxGCPauseMillis=50ms` | 588 MB | 15.1% | 7.9 |'
 - en: '| `Xms=Xmx=2048m` | 2 GB | 5.1% | 9.0 |'
+  id: totrans-68
   prefs: []
   type: TYPE_TB
+  zh: '| `Xms=Xmx=2048m` | 2 GB | 5.1% | 9.0 |'
 - en: '| `Xmx=3560M`; `MaxGCRatio=19` | 2.1 GB | 8.8% | 9.0 |'
+  id: totrans-69
   prefs: []
   type: TYPE_TB
+  zh: '| `Xmx=3560M`; `MaxGCRatio=19` | 2.1 GB | 8.8% | 9.0 |'
 - en: In a test that spends a significant amount of time in GC, the GC behavior is
     different. The JVM will never be able to satisfy the 1% throughput goal in this
     test; it tries its best to accommodate the default goal and does a reasonable
     job, using 1.7 GB of space.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 在一个花费大量时间在 GC 中的测试中，GC 的行为是不同的。JVM 永远无法满足此测试的 1% 吞吐量目标；它尽力适应默认目标，并做出了合理的工作，使用了
+    1.7 GB 的空间。
 - en: Application behavior is worse when an unrealistic pause-time goal is given.
     To achieve a 50 ms collection time, the heap is kept to 588 MB, but that means
     that GC now becomes excessively frequent. Consequently, the throughput has decreased
     significantly. In this scenario, the better performance comes from instructing
     the JVM to utilize the entire heap by setting both the initial and maximum sizes
     to 2 GB.
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 当给出一个不切实际的暂停时间目标时，应用程序的行为变得更糟。为了达到 50 ms 的收集时间，堆保持为 588 MB，但这意味着现在 GC 变得过于频繁。因此，吞吐量显著下降。在这种情况下，更好的性能来自于指示
+    JVM 通过将初始大小和最大大小都设置为 2 GB 来利用整个堆。
 - en: Finally, the last line of the table shows what happens when the heap is reasonably
     sized and we set a realistic time-ratio goal of 5%. The JVM itself determined
     that approximately 2 GB was the optimal heap size, and it achieved the same throughput
     as the hand-tuned case.
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，表的最后一行显示了当堆大小合理时会发生的情况，并且我们设置了一个实际的时间比例目标为 5%。JVM 自身确定大约 2 GB 是最佳的堆大小，并且它实现了与手动调优情况相同的吞吐量。
 - en: Quick Summary
+  id: totrans-73
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: Dynamic heap tuning is a good first step for heap sizing. For a wide set of
     applications, that will be all that is needed, and the dynamic settings will minimize
     the JVM’s memory use.
+  id: totrans-74
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 动态堆调整是堆大小调整的良好首步。对于大部分应用程序而言，这将是唯一需要的，动态设置将最小化 JVM 的内存使用。
 - en: It is possible to statically size the heap to get the maximum possible performance.
     The sizes the JVM determines for a reasonable set of performance goals are a good
     first start for that tuning.
+  id: totrans-75
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 可以静态地调整堆大小以获得最大可能的性能。JVM 为一组合理的性能目标确定的大小是调整的良好起点。
 - en: Understanding the G1 Garbage Collector
+  id: totrans-76
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解 G1 垃圾收集器
 - en: 'G1 GC operates on discrete regions within the heap. Each region (there are
     by default around 2,048) can belong to either the old or new generation, and the
     generational regions need not be contiguous. The idea behind having regions in
@@ -400,79 +577,113 @@
     G1 GC can focus on the regions that are mostly garbage and spend only a little
     bit of time emptying those regions. This approach—clearing out only the mostly
     garbage regions—is what gives G1 GC its name: garbage first.'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: G1 GC在堆内操作离散的区域。每个区域（默认约为2,048个）可以属于老年代或新生代，并且代的区域不一定是连续的。在老年代有区域的想法是，当并发后台线程寻找无引用对象时，某些区域将包含比其他区域更多的垃圾。一个区域的实际收集仍然需要停止应用线程，但是G1
+    GC可以专注于主要是垃圾的区域，并且只花一点时间清空这些区域。这种方法——仅清理主要是垃圾的区域——是G1 GC名称的由来：垃圾优先。
 - en: 'That doesn’t apply to the regions in the young generation: during a young GC,
     the entire young generation is either freed or promoted (to a survivor space or
     to the old generation). Still, the young generation is defined in terms of regions,
     in part because it makes resizing the generations much easier if the regions are
     predefined.'
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: 这不适用于年轻代的区域：在年轻代GC期间，整个年轻代要么被释放，要么被晋升（到幸存者空间或老年代）。尽管如此，年轻代是以区域来定义的，部分原因是如果区域预定义，调整大小的代就更容易。
 - en: G1 GC is called a *concurrent collector* because the marking of free objects
     within the old generation happens concurrently with the application threads (i.e.,
     they are left running). But it is not completely concurrent because the marking
     and compacting of the young generation requires stopping all application threads,
     and the compacting of the old generation also occurs while the application threads
     are stopped.
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: G1 GC被称为*并发收集器*，因为在老年代内自由对象的标记与应用线程同时进行（即它们保持运行）。但它并不完全是并发的，因为年轻代的标记和压缩需要停止所有应用线程，并且老年代的压缩也发生在应用线程停止时。
 - en: 'G1 GC has four logical operations:'
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: G1 GC有四个逻辑操作：
 - en: A young collection
+  id: totrans-81
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 年轻代收集
 - en: A background, concurrent marking cycle
+  id: totrans-82
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 背景，并发标记周期
 - en: A mixed collection
+  id: totrans-83
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 混合收集
 - en: If necessary, a full GC
+  id: totrans-84
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果需要，进行完整的GC
 - en: We’ll look at each of these in turn, starting with the G1 GC young collection
     shown in [Figure 6-4](#FigureG1Young).
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将依次查看每个操作，从G1 GC年轻代收集开始，如[图 6-4](#FigureG1Young)所示。
 - en: '![A diagram of the heap before and after a G1 GC young collection.](assets/jp2e_0604.png)'
+  id: totrans-86
   prefs: []
   type: TYPE_IMG
+  zh: '![一个G1 GC young收集之前和之后堆的图示。](assets/jp2e_0604.png)'
 - en: Figure 6-4\. A G1 GC young collection
+  id: totrans-87
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-4\. G1 GC年轻代收集
 - en: Each small square in this figure represents a G1 GC region. The data in each
     region is represented by the black area, and the letter in each region identifies
     the generation to which the region belongs ([E]den, [O]ld generation, [S]urvivor
     space). Empty regions do not belong to a generation; G1 GC uses them arbitrarily
     for whichever generation it deems necessary.
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 此图中每个小方块代表一个G1 GC区域。每个区域的数据由黑色区域表示，区域内的字母标识其属于的代（[E]den，[O]ld generation，[S]urvivor
+    space）。空白区域不属于任何代；G1 GC根据需要任意使用它们。
 - en: The G1 GC young collection is triggered when eden fills up (in this case, after
     filling four regions). After the collection, eden is empty (though regions are
     assigned to it, which will begin to fill up with data as the application proceeds).
     At least one region is assigned to the survivor space (partially filled in this
     example), and some data has moved into the old generation.
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 当Eden填满时（在本例中，填满了四个区域），触发G1 GC年轻代收集。收集后，Eden为空（尽管区域被分配给它，随着应用程序的进行，这些区域将开始填充数据）。至少有一个区域被分配给了幸存者空间（在此示例中部分填充），并且一些数据已经移动到了老年代。
 - en: The GC log illustrates this collection a little differently in G1 than in other
     collectors. The JDK 8 example log was taken using `PrintGCDetails`, but the details
     in the log for G1 GC are more verbose. The examples show only a few of the important
     lines.
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 在G1中，GC日志对这个收集过程的描述与其他收集器有些不同。JDK 8的示例日志使用了`PrintGCDetails`，但是G1 GC的日志细节更加详细。这些示例只展示了一些重要的行。
 - en: 'Here is the standard collection of the young generation:'
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是年轻代的标准收集过程：
 - en: '[PRE4]'
+  id: totrans-92
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: Collection of the young generation took 0.23 seconds of real time, during which
     the GC threads consumed 0.85 seconds of CPU time. 1,286 MB of objects were moved
     out of eden (which was adaptively resized to 1,212 MB); 74 MB of that was moved
@@ -482,74 +693,108 @@
     might have been moved to the old generation, and if the survivor space were full,
     some objects from eden would have been promoted directly to the old generation—in
     those cases, the size of the old generation would increase.
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 年轻代的收集在真实时间中花费了0.23秒，其中GC线程消耗了0.85秒的CPU时间。共移出了1,286 MB的对象从伊甸园（自适应调整大小为1,212
+    MB），其中74 MB移至存活区（其大小从78 M增至152 MB），其余对象被释放。我们通过观察堆总占用减少了1,212 MB来确认它们已被释放。在一般情况下，一些存活区的对象可能会被移至老年代，如果存活区满了，一些来自伊甸园的对象则会直接晋升到老年代——在这些情况下，老年代的大小会增加。
 - en: 'The similar log in JDK 11 looks like this:'
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: JDK 11中类似的日志如下：
 - en: '[PRE5]'
+  id: totrans-95
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: A concurrent G1 GC cycle begins and ends as shown in [Figure 6-5](#FigureG1Concurrent).
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 并发的G1 GC周期开始和结束如[图 6-5](#FigureG1Concurrent)所示。
 - en: '![A diagram of the heap before and after a G1 concurrent cycle.](assets/jp2e_0605.png)'
+  id: totrans-97
   prefs: []
   type: TYPE_IMG
+  zh: '![一个展示G1并发周期前后堆的图表。](assets/jp2e_0605.png)'
 - en: Figure 6-5\. Concurrent collection performed by G1 GC
+  id: totrans-98
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: Figure 6-5\. G1 GC执行的并发收集
 - en: 'This diagram presents three important things to observe. First, the young generation
     has changed its occupancy: there will be at least one (and possibly more) young
     collections during the concurrent cycle. Hence, the eden regions before the marking
     cycle have been completely freed, and new eden regions have started to be allocated.'
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 该图表显示了三个要观察的重要点。首先，年轻代已经改变了其占用：在并发周期内可能会有至少一个（甚至更多）年轻代收集。因此，在标记周期之前的伊甸园区域已经完全释放，并且开始分配新的伊甸园区域。
 - en: Second, some regions are now marked with an X. Those regions belong to the old
     generation (and note that they still contain data)—they are regions that the marking
     cycle has determined contain mostly garbage.
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: 其次，现在一些区域被标记为X。这些区域属于老年代（请注意它们仍然包含数据）——这些是标记周期确定包含大部分垃圾的区域。
 - en: 'Finally, notice that the old generation (consisting of the regions marked with
     an O or an X) is actually more occupied after the cycle has completed. That’s
     because the young generation collections that occurred during the marking cycle
     promoted data into the old generation. In addition, the marking cycle doesn’t
     actually free any data in the old generation: it merely identifies regions that
     are mostly garbage. Data from those regions is freed in a later cycle.'
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，请注意，老年代（由带有O或X标记的区域组成）在周期完成后实际上更加占用。这是因为标记周期期间发生的年轻代收集将数据晋升到了老年代。此外，标记周期实际上并不释放老年代中的任何数据：它只是识别大部分是垃圾的区域。这些区域的数据将在稍后的周期中释放。
 - en: The G1 GC concurrent cycle has several phases, some of which stop all application
     threads, and some of which do not. The first phase is called *initial-mark* (in
     JDK 8) or *concurrent start* (in JDK 11). That phase stops all application threads—partly
     because it also executes a young collection, and it sets up the next phases of
     the cycle.
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: G1 GC的并发周期有几个阶段，有些会停止所有应用线程，有些则不会。第一个阶段称为*initial-mark*（在JDK 8中）或*concurrent
+    start*（在JDK 11中）。该阶段停止所有应用线程——部分因为它也执行了年轻代收集，并设置了周期的后续阶段。
 - en: 'In JDK 8, that looks like this:'
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 在JDK 8中，看起来是这样的：
 - en: '[PRE6]'
+  id: totrans-104
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'And in JDK 11:'
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 并在JDK 11中：
 - en: '[PRE7]'
+  id: totrans-106
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: As in a regular young collection, the application threads were stopped (for
     0.28 seconds), and the young generation was emptied (so eden ends with a size
     of 0). 71 MB of data was moved from the young generation to the old generation.
     That’s a little difficult to tell in JDK 8 (it is 2,093 – 3,242 + 1,220); the
     JDK 11 output shows that more clearly.
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 就像普通的年轻代收集一样，应用线程被停止（持续0.28秒），并且年轻代被清空（因此伊甸园最终大小为0）。从年轻代移动了71 MB的数据到老年代。在JDK
+    8中有些难以理解（为2,093 - 3,242 + 1,220）；而JDK 11的输出更清晰地显示了这一点。
 - en: 'On the other hand, the JDK 11 output contains references to a few things we
     haven’t discussed yet. First is that the sizes are in regions and not in MB. We’ll
     discuss region sizes later in this chapter, but in this example, the region size
     is 1 MB. In addition, JDK 11 mentions a new area: humongous regions. That is part
     of the old generation and is also discussed later in this chapter.'
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
 - en: 'The initial-mark or concurrent start log message announces that the background
@@ -560,14 +805,18 @@
     collection (which was just a regular young collection), even though the pause
     was only slightly longer. (Fortunately, there were spare CPU cycles on the machine
     for the parallel G1 threads, or the pause would have been longer.)'
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
 - en: 'Next, G1 GC scans the root region:'
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE8]'
+  id: totrans-111
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'This takes 0.58 seconds, but it doesn’t stop the application threads; it uses
     only the background threads. However, this phase cannot be interrupted by a young
     collection, so having available CPU cycles for those background threads is crucial.
@@ -575,17 +824,21 @@
     young collection (which has stopped all the application threads) must wait for
     the root scanning to complete. In effect, this means a longer-than-usual pause
     to collect the young generation. That situation is shown in the GC log like this:'
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE9]'
+  id: totrans-113
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'The GC pause here starts before the end of the root region scanning. In JDK
     8, the interleaved output in the GC log indicates that the young collection had
     to pause for the root region scanning to complete before it proceeded. In JDK
     11, that’s a little more difficult to detect: you have to notice that the timestamp
     of the end of the root region scanning is exactly the same at which the next young
     collection begins.'
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
 - en: In either case, it is impossible to know exactly how long the young collection
@@ -596,18 +849,23 @@
     about 100 ms longer than the average duration of other pauses in this log. (If
     this occurs frequently, it is an indication that G1 GC needs to be better tuned,
     as discussed in the next section.)
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
 - en: 'After the root region scanning, G1 GC enters a concurrent marking phase. This
     happens completely in the background; a message is printed when it starts and
     ends:'
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE10]'
+  id: totrans-117
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: Concurrent marking can be interrupted, so young collections may occur during
     this phase (so there will be lots of GC output where the ellipses are).
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
 - en: 'Also note that in the JDK 11 example, the output has the same GC entry—20—as
@@ -616,33 +874,49 @@
     scanning is considered one operation. We’re splitting the discussion into more
     fine-grained, logical operations, since, for example, the root scanning can introduce
     a pause when the concurrent marking cannot.'
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 还请注意，在 JDK 11 示例中，输出具有与根区域扫描发生时相同的 GC 记录—20—。我们正在更细化地分解操作，而不像 JDK 日志将整个后台扫描视为一个操作。例如，当并发标记不能时，根扫描可能会引入暂停。
 - en: 'The marking phase is followed by a remarking phase and a normal cleanup phase:'
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 标记阶段后是重新标记阶段和正常的清理阶段：
 - en: '[PRE11]'
+  id: totrans-121
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'These phases stop the application threads, though usually for a short time.
     Next an additional cleanup phase happens concurrently:'
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些阶段会停止应用程序线程，尽管通常只是短暂的时间。接下来会同时进行额外的清理阶段：
 - en: '[PRE12]'
+  id: totrans-123
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: And with that, the normal G1 GC background marking cycle is complete—insofar
     as finding the garbage goes, at least. But very little has actually been freed
     yet. A little memory was reclaimed in the cleanup phase, but all G1 GC has really
     done at this point is to identify old regions that are mostly garbage and can
     be reclaimed (the ones marked with an X in [Figure 6-5](#FigureG1Concurrent)).
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 而常规的 G1 GC 后台标记周期完成了——至少在找到垃圾方面如此。但实际上，很少有内存被释放。在清理阶段中回收了一点内存，但到目前为止，G1 GC 真正做的只是识别出大部分是垃圾并可以回收的旧区域（在
+    [图 6-5](#FigureG1Concurrent) 中用 X 标记的区域）。
 - en: Now G1 GC executes a series of mixed GCs. They are called *mixed* because they
     perform the normal young collection but also collect some of the marked regions
     from the background scan. The effect of a mixed GC is shown in [Figure 6-6](#FigureG1Mixed).
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在 G1 GC 执行一系列混合 GC。它们被称为“混合”是因为它们执行了正常的年轻代收集，同时也收集了后台扫描中的一些标记区域。混合 GC 的效果显示在
+    [图 6-6](#FigureG1Mixed) 中。
 - en: As is usual for a young collection, G1 GC has completely emptied eden and adjusted
     the survivor spaces. Additionally, two of the marked regions have been collected.
     Those regions were known to contain mostly garbage, so a large part of them was
@@ -650,39 +924,57 @@
     data was moved from the young generation into regions in the old generation).
     This is how G1 GC compacts the old generation—moving the objects like this is
     essentially compacting the heap as G1 GC goes along.
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 就像对于年轻代的收集一样，G1 GC 已经完全清空了 Eden 区并调整了幸存者空间。此外，两个标记的区域已被收集。这些区域已知主要包含垃圾，因此它们的大部分被释放了。这些区域中的任何存活数据都被移到另一个区域（就像从年轻代中的区域移到老年代的区域中的存活数据一样）。这就是
+    G1 GC 如何压缩老年代的方式——在执行时移动对象实质上是压缩堆。
 - en: '![A diagram of the heap before and after a G1 GC mixed collection.](assets/jp2e_0606.png)'
+  id: totrans-127
   prefs: []
   type: TYPE_IMG
+  zh: '![G1 GC 混合收集前后堆的示意图。](assets/jp2e_0606.png)'
 - en: Figure 6-6\. Mixed GC performed by G1 GC
+  id: totrans-128
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-6\. G1 GC 执行的混合 GC
 - en: 'The mixed GC operation usually looks like this in the log:'
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 混合 GC 操作通常在日志中看起来是这样的：
 - en: '[PRE13]'
+  id: totrans-130
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: Notice that the entire heap usage has been reduced by more than just the 1,222
     MB removed from eden. That difference (16 MB) seems small, but remember that some
     of the survivor space was promoted into the old generation at the same time; in
     addition, each mixed GC cleans up only a portion of the targeted old generation
     regions. As we continue, you’ll see that it is important to make sure that the
     mixed GCs clean up enough memory to prevent future concurrent failures.
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，整个堆的使用情况已经减少了不止从 Eden 中移除的 1,222 MB。这个差异（16 MB）看起来很小，但要记住，同时一些幸存者空间被提升到老年代；此外，每个混合
+    GC 仅清理了目标老年代区域的一部分。随着我们的继续，你会发现确保混合 GC 清理足够的内存以防止未来并发故障是很重要的。
 - en: In JDK 11, the first mixed GC is labeled `Prepared Mixed` and immediately follows
     the concurrent cleanup.
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 JDK 11 中，第一个混合 GC 被标记为 `Prepared Mixed` 并紧随并发清理之后。
 - en: The mixed GC cycles will continue until (almost) all of the marked regions have
     been collected, at which point G1 GC will resume regular young GC cycles. Eventually,
     G1 GC will start another concurrent cycle to determine which regions in the old
     generation should be freed next.
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 混合 GC 循环将继续，直到几乎所有标记的区域都被收集，此时 G1 GC 将恢复常规的年轻代 GC 周期。最终，G1 GC 将开始另一个并发周期，确定应该释放老年代的哪些区域。
 - en: 'Although a mixed GC cycle usually says `(Mixed)` for the GC cause, the young
     collections are sometimes labeled normally following a concurrent cycle (i.e.,
     `G1 Evacuation Pause`). If the concurrent cycle found regions in the old generation
@@ -691,117 +983,167 @@
     of the collector. Logically, though, it is: objects are being freed from the young
     generation or promoted into the old generation, and at the same time garbage objects
     (regions, really) are being freed from the old generation.'
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然混合 GC 循环通常在 GC 原因中标记为`(Mixed)`，但有时在并发循环后（即`G1 Evacuation Pause`）会正常标记年轻代收集。如果并发循环发现老年代中可以完全释放的区域，则这些区域会在常规的年轻代撤离暂停期间被回收。技术上来说，这不是收集器实现中的混合循环。但从逻辑上讲，是的：对象从年轻代被释放或晋升到老年代，同时垃圾对象（实际上是区域）从老年代被释放。
 - en: If all goes well, that’s the entire set of GC activities you’ll see in your
     GC log. But there are some failure cases to consider.
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果一切顺利，这就是您在 GC 日志中看到的所有 GC 活动集。但还有一些失败案例需要考虑。
 - en: 'Sometimes you’ll observe a full GC in the log, which is an indication that
     more tuning (including, possibly, more heap space) will benefit the application
     performance. This is triggered primarily four times:'
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 有时您会在日志中观察到完整 GC，这表明需要更多调整（包括可能增加堆空间）以提高应用程序性能。主要触发这种情况的是四次：
 - en: Concurrent mode failure
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 并发模式失败
 - en: 'G1 GC starts a marking cycle, but the old generation fills up before the cycle
     is completed. In that case, G1 GC aborts the marking cycle:'
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: G1 GC 启动标记周期，但在完成周期之前，老年代已满。在这种情况下，G1 GC 中止标记周期：
 - en: '[PRE14]'
+  id: totrans-139
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: This failure means that heap size should be increased, the G1 GC background
     processing must begin sooner, or the cycle must be tuned to run more quickly (e.g.,
     by using additional background threads). Details on how to do that follow.
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 这意味着应该增加堆大小，必须尽快开始 G1 GC 后台处理，或者必须调整周期以更快运行（例如使用额外的后台线程）。如何执行这些操作的详细信息如下。
 - en: Promotion failure
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 晋升失败
 - en: 'G1 GC has completed a marking cycle and has started performing mixed GCs to
     clean up the old regions. Before it can clean enough space, too many objects are
     promoted from the young generation, and so the old generation still runs out of
     space. In the log, a full GC immediately follows a mixed GC:'
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: G1 GC 已完成标记周期，并开始执行混合 GC 来清理老区域。在清理足够空间之前，从年轻代晋升的对象太多，因此老年代仍然空间不足。在日志中，混合 GC
+    立即跟随完整 GC：
 - en: '[PRE15]'
+  id: totrans-143
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: This failure means the mixed collections need to happen more quickly; each young
     collection needs to process more regions in the old generation.
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种失败意味着混合收集需要更快地进行；每个年轻代收集需要处理更多老年代的区域。
 - en: Evacuation failure
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 撤离失败
 - en: 'When performing a young collection, there isn’t enough room in the survivor
     spaces and the old generation to hold all the surviving objects. This appears
     in the GC logs as a specific kind of young GC:'
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 在进行年轻代收集时，幸存空间和老年代中没有足够的空间来容纳所有幸存对象。这会在 GC 日志中出现作为特定类型的年轻代 GC：
 - en: '[PRE16]'
+  id: totrans-147
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: 'This is an indication that the heap is largely full or fragmented. G1 GC will
     attempt to compensate, but you can expect this to end badly: the JVM will resort
     to performing a full GC. The easy way to overcome this is to increase the heap
     size, though possible solutions are given in [“Advanced Tunings”](#advance-tunings-sec).'
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 这表明堆大部分已满或碎片化。G1 GC 会尝试补偿，但可能会最终执行完整的 GC。简单的解决方法是增加堆大小，虽然[“高级调整”](#advance-tunings-sec)中提供了其他可能的解决方案。
 - en: Humongous allocation failure
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 巨大分配失败
 - en: 'Applications that allocate very large objects can trigger another kind of full
     GC in G1 GC; see [“G1 GC allocation of humongous objects”](#HumongousObjects)
     for more details (including how to avoid it). In JDK 8, it isn’t possible to diagnose
     this situation without resorting to special logging parameters, but in JDK 11
     that is shown with this log:'
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: 分配非常大对象的应用程序可能会触发 G1 GC 中的另一种完整 GC；详细信息请参见[“G1 GC 分配巨大对象”](#HumongousObjects)（包括如何避免）。在
+    JDK 8 中，除非使用特殊的日志参数，否则无法诊断这种情况，但在 JDK 11 中，可以通过此日志显示：
 - en: '[PRE17]'
+  id: totrans-151
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: Metadata GC threshold
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 元数据 GC 阈值
 - en: 'As I’ve mentioned, the metaspace is essentially a separate heap and is collected
     independently of the main heap. It is not collected via G1 GC, but still when
     it needs to be collected in JDK 8, G1 GC will perform a full GC (immediately preceded
     by a young collection) on the main heap:'
+  id: totrans-153
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE18]'
+  id: totrans-154
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: In JDK 11, the metaspace can be collected/resized without requiring a full GC.
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
 - en: Quick Summary
+  id: totrans-156
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: G1 has multiple cycles (and phases within the concurrent cycle). A well-tuned
     JVM running G1 should experience only young, mixed, and concurrent GC cycles.
+  id: totrans-157
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Small pauses occur for some of the G1 concurrent phases.
+  id: totrans-158
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: G1 should be tuned if necessary to avoid full GC cycles.
+  id: totrans-159
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Tuning G1 GC
+  id: totrans-160
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: The major goal in tuning G1 GC is to make sure that no concurrent mode or evacuation
     failures end up requiring a full GC. The techniques used to prevent a full GC
     can also be used when frequent young GCs must wait for a root region scan to complete.
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
 - en: Tuning to prevent a full collection is critical in JDK 8, because when G1 GC
@@ -811,28 +1153,35 @@
     with the throughput collector). This difference is one reason it is preferable
     to update to JDK 11 if you are using G1 GC (though a JDK 8 application that avoids
     full GCs will perform just fine).
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
 - en: Secondarily, tuning can minimize the pauses that occur along the way.
+  id: totrans-163
   prefs: []
   type: TYPE_NORMAL
 - en: 'These are the options to prevent a full GC:'
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
 - en: Increase the size of the old generation either by increasing the heap space
     overall or by adjusting the ratio between the generations.
+  id: totrans-165
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Increase the number of background threads (assuming there is sufficient CPU).
+  id: totrans-166
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Perform G1 GC background activities more frequently.
+  id: totrans-167
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Increase the amount of work done in mixed GC cycles.
+  id: totrans-168
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -840,6 +1189,7 @@
     it shouldn’t have to be tuned that much. To that end, G1 GC is primarily tuned
     via a single flag: the same `-XX:MaxGCPauseMillis=`*`N`* flag that was used to
     tune the throughput collector.'
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
 - en: 'When used with G1 GC (and unlike the throughput collector), that flag does
@@ -848,6 +1198,7 @@
     young-to-old ratio, adjusting the heap size, starting the background processing
     sooner, changing the tenuring threshold, and (most significantly) processing more
     or fewer old generation regions during a mixed GC cycle.'
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
 - en: 'Some trade-offs apply here: if that value is reduced, the young size will contract
@@ -855,68 +1206,97 @@
     addition, the number of old generation regions that can be collected during a
     mixed GC will decrease to meet the pause-time goal, which increases the chances
     of a concurrent mode failure.'
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
 - en: If setting a pause-time goal does not prevent the full GCs from happening, these
     various aspects can be tuned individually. Tuning the heap sizes for G1 GC is
     accomplished in the same way as for other GC algorithms.
+  id: totrans-172
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果设置暂停时间目标不能防止发生全局 GC，可以分别调整这些不同的方面。为 G1 GC 调整堆大小的方法与其他 GC 算法相同。
 - en: Tuning the G1 background threads
+  id: totrans-173
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: '**调整 G1 背景线程**'
 - en: 'You can consider the concurrent marking of G1 GC to be in a race with the application
     threads: G1 GC must clear out the old generation faster than the application is
     promoting new data into it. To make that happen, try increasing the number of
     background marking threads (assuming sufficient CPU is available on the machine).'
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可以将 G1 GC 的并发标记视为与应用程序线程的竞争：G1 GC 必须更快地清除旧一代，以防止应用程序将新数据提升到其中。要实现这一点，可以尝试增加后台标记线程的数量（假设机器上有足够的
+    CPU 可用）。
 - en: 'Two sets of threads are used by G1 GC. The first set is controlled via the
     `-XX:ParallelGCThreads=*N*` flag that you first saw in [Chapter 5](ch05.html#GC).
     That value affects the number of threads used for phases when application threads
     are stopped: young and mixed collections, and the phases of the concurrent remark
     cycle where threads must be stopped. The second flag is `-XX:ConcGCThreads=*N*`,
     which affects the number of threads used for the concurrent remarking.'
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: G1 GC 使用两组线程。第一组线程由 `-XX:ParallelGCThreads=*N*` 标志控制，你在 [第 5 章](ch05.html#GC)
+    中首次看到了这个标志。该值影响停止应用程序线程时使用的线程数：年轻和混合收集以及必须停止线程的并发备注周期的阶段。第二个标志是 `-XX:ConcGCThreads=*N*`，它影响用于并发备注的线程数。
 - en: 'The default value for the `ConcGCThreads` flag is defined as follows:'
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ConcGCThreads` 标志的默认值定义如下：'
 - en: '[PRE19]'
+  id: totrans-177
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: This division is integer-based, so there will be one background scanning thread
     for up to five parallel threads, two background scanning threads for between six
     and nine parallel threads, and so on.
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个划分是基于整数的，因此将有一个后台扫描线程对应五个并行线程，两个后台扫描线程对应六到九个并行线程，依此类推。
 - en: Increasing the number of background scanning threads will make the concurrent
     cycle shorter, which should make it easier for G1 GC to finish freeing the old
     generation during the mixed GC cycles before other threads have filled it again.
     As always, this assumes that the CPU cycles are available; otherwise, the scanning
     threads will take CPU away from the application and effectively introduce pauses
     in it, as you saw when we compared the serial collector to G1 GC in [Chapter 5](ch05.html#GC).
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: 增加后台扫描线程的数量将使并发周期变短，这应该会使 G1 GC 在混合 GC 周期结束前更容易释放旧一代，而不会被其他线程再次填满。一如既往，这假设 CPU
+    周期是可用的；否则，扫描线程将从应用程序中取走 CPU，并有效地引入暂停，就像我们在 [第 5 章](ch05.html#GC) 中将串行收集器与 G1 GC
+    进行比较时看到的那样。
 - en: Tuning G1 GC to run more (or less) frequently
+  id: totrans-180
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: '**调整 G1 GC 的运行频率（更频繁或更少）**'
 - en: G1 GC can also win its race if it starts the background marking cycle earlier.
     That cycle begins when the heap hits the occupancy ratio specified by `-XX:InitiatingHeapOccupancyPercent=`*`N`*,
     which has a default value of 45\. This percentage refers to the entire heap, not
     just the old generation.
+  id: totrans-181
   prefs: []
   type: TYPE_NORMAL
+  zh: G1 GC 也可以在更早地开始后台标记周期时赢得竞争。该周期从堆达到由 `-XX:InitiatingHeapOccupancyPercent=`*`N`*
+    指定的占用率开始，其默认值为 45。此百分比指的是整个堆，而不仅仅是旧一代。
 - en: The `InitiatingHeapOccupancyPercent` value is constant; G1 GC never changes
     that number as it attempts to meet its pause-time goals. If that value is set
     too high, the application will end up performing full GCs because the concurrent
     phases don’t have enough time to complete before the rest of the heap fills up.
     If that value is too small, the application will perform more background GC processing
     than it might otherwise.
+  id: totrans-182
   prefs: []
   type: TYPE_NORMAL
+  zh: '`InitiatingHeapOccupancyPercent` 值是恒定的；G1 GC 在尝试满足其暂停时间目标时不会更改该数字。如果该值设置得太高，应用程序将执行全局
+    GC，因为并发阶段没有足够的时间来完成，而其余堆已经填满。如果该值太小，应用程序将执行比通常更多的后台 GC 处理。'
 - en: At some point, of course, those background threads will have to run, so presumably
     the hardware has enough CPU to accommodate them. Still, a significant penalty
     can result from running them too frequently, because more small pauses will occur
@@ -924,36 +1304,52 @@
     add up quickly, so performing background sweeping too frequently for G1 GC should
     be avoided. Check the size of the heap after a concurrent cycle, and make sure
     that the `InitiatingHeapOccupancyPercent` value is set higher than that.
+  id: totrans-183
   prefs: []
   type: TYPE_NORMAL
+  zh: 当然，那些后台线程在某个时候需要运行，因此硬件应该有足够的 CPU 来容纳它们。但是，如果运行太频繁，可能会导致严重的惩罚，因为那些停止应用程序线程的并发阶段将会有更多的小暂停。这些暂停会迅速积累，因此应该避免对
+    G1 GC 进行过于频繁的后台扫描。在并发循环后检查堆的大小，并确保 `InitiatingHeapOccupancyPercent` 的值高于该值。
 - en: Tuning G1 GC mixed GC cycles
+  id: totrans-184
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 调整 G1 GC 混合 GC 循环
 - en: After a concurrent cycle, G1 GC cannot begin a new concurrent cycle until all
     previously marked regions in the old generation have been collected. So another
     way to make G1 GC start a marking cycle earlier is to process more regions in
     a mixed GC cycle (so that there will end up being fewer mixed GC cycles).
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 在并发循环之后，G1 GC 不能开始新的并发循环，直到旧代中所有先前标记的区域都已被收集。因此，使 G1 GC 更早开始标记循环的另一种方法是在混合 GC
+    循环中处理更多区域（这样最终混合 GC 循环将减少）。
 - en: 'The amount of work a mixed GC does depends on three factors. The first is how
     many regions were found to be mostly garbage in the first place. There is no way
     to directly affect that: a region is declared eligible for collection during a
     mixed GC if it is 85% garbage.'
+  id: totrans-186
   prefs: []
   type: TYPE_NORMAL
+  zh: 混合 GC 所做的工作量取决于三个因素。第一个因素是在第一次检测中发现的大部分垃圾的区域数量。没有直接影响这一点的方法：在混合 GC 中，如果一个区域的垃圾量达到
+    85%，则宣布其可收集。
 - en: The second factor is the maximum number of mixed GC cycles over which G1 GC
     will process those regions, which is specified by the value of the flag `-XX:G1Mixed``GCCountTarget=`*`N`*.
     The default value for that is 8; reducing that value can help overcome promotion
     failures (at the expense of longer pause times during the mixed GC cycle).
+  id: totrans-187
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二个因素是 G1 GC 处理这些区域的最大混合 GC 循环数，由标志 `-XX:G1Mixed``GCCountTarget=`*`N`* 指定。默认值为
+    8；减少该值有助于克服晋升失败（但会延长混合 GC 循环的暂停时间）。
 - en: On the other hand, if mixed GC pause times are too long, that value can be increased
     so that less work is done during the mixed GC. Just be sure that increasing that
     number does not delay the next G1 GC concurrent cycle too long, or a concurrent
     mode failure may result.
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，如果混合 GC 暂停时间过长，可以增加该值，以减少混合 GC 过程中的工作量。只需确保增加该数字不会过长延迟下一个 G1 GC 并发循环，否则可能会导致并发模式失败。
 - en: Finally, the third factor is the maximum desired length of a GC pause (i.e.,
     the value specified by `MaxGCPauseMillis`). The number of mixed cycles specified
     by the `G1MixedGCCountTarget` flag is an upper bound; if time is available within
@@ -962,91 +1358,136 @@
     the `MaxGCPauseMillis` flag allows more old generation regions to be collected
     during each mixed GC, which in turn can allow G1 GC to begin the next concurrent
     cycle sooner.
+  id: totrans-189
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，第三个因素是 GC 暂停的最大期望长度（即由 `MaxGCPauseMillis` 指定的值）。由 `G1MixedGCCountTarget`
+    标志指定的混合循环数是一个上限；如果在暂停目标时间内有时间，则 G1 GC 将收集超过已标记的旧代区域的八分之一（或者指定的任何值）。增加 `MaxGCPauseMillis`
+    标志的值允许在每个混合 GC 中收集更多旧代区域，从而允许 G1 GC 更早开始下一个并发循环。
 - en: Quick Summary
+  id: totrans-190
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 快速总结
 - en: G1 GC tuning should begin by setting a reasonable pause-time target.
+  id: totrans-191
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: G1 GC 调优应始于设定合理的暂停时间目标。
 - en: 'If full GCs are still an issue after that and the heap size cannot be increased,
     specific tunings can be applied for specific failure:'
+  id: totrans-192
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果这样做后仍然存在全 GC 问题，并且无法增加堆大小，则可以针对特定失败应用特定调整：
 - en: To make the background threads run more frequently, adjust `InitiatingHeapOccupancyPercent`.
+  id: totrans-193
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 要使后台线程更频繁运行，请调整 `InitiatingHeapOccupancyPercent`。
 - en: If additional CPU is available, adjust the number of threads via the `ConcGCThreads`
     flag.
+  id: totrans-194
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果有额外的 CPU 可用，通过 `ConcGCThreads` 标志调整线程数。
 - en: To prevent promotion failures, decrease the size of `G1MixedGCCountTarget`.
+  id: totrans-195
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 为防止晋升失败，减少 `G1MixedGCCountTarget` 的大小。
 - en: Understanding the CMS Collector
+  id: totrans-196
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 了解 CMS 收集器
 - en: Although the CMS collector is deprecated, it is still available in current JDK
     builds. So this section covers how to tune it, as well as why it has been deprecated.
+  id: totrans-197
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管 CMS 收集器已被弃用，但它仍然在当前 JDK 构建中可用。因此，本节介绍了如何调优它以及它为何被弃用的原因。
 - en: 'CMS has three basic operations:'
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
+  zh: CMS 有三个基本操作：
 - en: Collecting the young generation (stopping all application threads)
+  id: totrans-199
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 收集年轻代（停止所有应用程序线程）
 - en: Running a concurrent cycle to clean data out of the old generation
+  id: totrans-200
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 运行并发循环以清理老年代中的数据
 - en: Performing a full GC to compact the old generation, if necessary
+  id: totrans-201
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 执行全局 GC 以压缩老年代（如有必要）
 - en: A CMS collection of the young generation appears in [Figure 6-7](#FigureCMSYoung).
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 [图 6-7](#FigureCMSYoung) 中展示了年轻代的 CMS 收集。
 - en: '![A diagram of the heap before and after a CMS young collection.](assets/jp2e_0607.png)'
+  id: totrans-203
   prefs: []
   type: TYPE_IMG
+  zh: '![CMS 年轻代收集前后堆的图示。](assets/jp2e_0607.png)'
 - en: Figure 6-7\. Young collection performed by CMS
+  id: totrans-204
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-7\. CMS 执行的年轻代收集
 - en: 'A CMS young collection is similar to a throughput young collection: data is
     moved from eden into one survivor space (and into the old generation if the survivor
     space fills up).'
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: CMS 年轻代收集类似于吞吐量年轻代收集：数据从伊甸园移动到一个幸存者空间（如果幸存者空间填满则移入老年代）。
 - en: 'The GC log entry for CMS is also similar (I’ll show only the JDK 8 log format):'
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: CMS 的 GC 日志条目也类似（我仅展示 JDK 8 的日志格式）：
 - en: '[PRE20]'
+  id: totrans-207
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: The size of the young generation is presently 629 MB; after collection, 69 MB
     of it remains (in a survivor space). Similarly, the size of the entire heap is
     2,027 MB—772 MB of which is occupied after the collection. The entire process
     took 0.12 seconds, though the parallel GC threads racked up 0.42 seconds in CPU
     usage.
+  id: totrans-208
   prefs: []
   type: TYPE_NORMAL
+  zh: 当前年轻代的大小为 629 MB；收集后，其中有 69 MB 保留在幸存者空间。同样，整个堆的大小为 2,027 MB，在收集后占用了 772 MB。整个过程耗时
+    0.12 秒，尽管并行 GC 线程累计 CPU 使用时间为 0.42 秒。
 - en: A concurrent cycle is shown in [Figure 6-8](#FigureCMSConcurrent).
+  id: totrans-209
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 [图 6-8](#FigureCMSConcurrent) 中展示了一个并发循环。
 - en: 'CMS starts a concurrent cycle based on the occupancy of the heap. When it is
     sufficiently full, the background threads that cycle through the heap and remove
     objects are started. At the end of the cycle, the heap looks like the bottom row
@@ -1055,73 +1496,107 @@
     from eden into the old generation, the JVM will attempt to use those free areas
     to hold the objects. Often those objects won’t fit into one of the free areas,
     which is why after the CMS cycle, the high-water mark of the heap is larger.'
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: CMS 根据堆的占用情况启动并发循环。当堆充分填满时，会启动背景线程遍历堆并移除对象。循环结束时，堆看起来像图中的底部行所示。请注意，老年代没有压缩：有些区域分配了对象，有些是空闲区域。当年轻代收集将对象从伊甸园移入老年代时，JVM
+    将尝试使用这些空闲区域来容纳对象。通常这些对象无法完全放入一个空闲区域，这就是为什么在 CMS 循环之后，堆的高水位标记更大的原因。
 - en: '![A diagram of the heap before and after a CMS concurrent cycle.](assets/jp2e_0608.png)'
+  id: totrans-211
   prefs: []
   type: TYPE_IMG
+  zh: '![CMS 并发循环前后堆的图示。](assets/jp2e_0608.png)'
 - en: Figure 6-8\. Concurrent collection performed by CMS
+  id: totrans-212
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 6-8\. CMS 执行的并发收集
 - en: In the GC log, this cycle appears as a number of phases. Although a majority
     of the concurrent cycle uses background threads, some phases introduce short pauses
     where all application threads are stopped.
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 GC 日志中，此周期显示为多个阶段。尽管大多数并发循环使用后台线程，某些阶段会引入短暂的暂停，停止所有应用程序线程。
 - en: 'The concurrent cycle starts with an initial-mark phase, which stops all the
     application threads:'
+  id: totrans-214
   prefs: []
   type: TYPE_NORMAL
+  zh: 并发循环从初始标记阶段开始，停止所有应用程序线程：
 - en: '[PRE21]'
+  id: totrans-215
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: This phase is responsible for finding all the GC root objects in the heap. The
     first set of numbers shows that objects currently occupy 702 MB of 1,398 MB of
     the old generation, while the second set shows that the occupancy of the entire
     2,027 MB heap is 772 MB. The application threads were stopped for a period of
     0.08 seconds during this phase of the CMS cycle.
+  id: totrans-216
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个阶段负责在堆中找到所有的 GC 根对象。第一组数字显示，目前占用老年代的 702 MB，总共 1,398 MB，而第二组数字显示整个 2,027 MB
+    堆的占用为 772 MB。在 CMS 周期的这个阶段，应用程序线程停止了 0.08 秒。
 - en: 'The next phase is the mark phase, and it does not stop the application threads.
     The phase is represented in the GC log by these lines:'
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个阶段是标记阶段，不会停止应用程序线程。GC 日志中的这些行代表这个阶段：
 - en: '[PRE22]'
+  id: totrans-218
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: The mark phase took 0.83 seconds (and 1.11 seconds of CPU time). Since it is
     just a marking phase, it hasn’t done anything to the heap occupancy, so no data
     is shown about that. If there were data, it would likely show a growth in the
     heap from objects allocated in the young generation during those 0.83 seconds,
     since the application threads have continued to execute.
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 标记阶段花费了0.83秒（和1.11秒的CPU时间）。由于这只是一个标记阶段，它对堆占用并没有做任何操作，因此关于此方面的数据未显示。如果有数据的话，可能会显示在这0.83秒内，由于应用线程继续执行，年轻代中分配对象导致堆的增长。
 - en: 'Next comes a preclean phase, which also runs concurrently with the application
     threads:'
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: 再来是预清理阶段，该阶段也与应用线程并发运行：
 - en: '[PRE23]'
+  id: totrans-221
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: 'The next phase is a remark phase, but it involves several operations:'
+  id: totrans-222
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个阶段是备注阶段，但它涉及几个操作：
 - en: '[PRE24]'
+  id: totrans-223
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: Wait, didn’t CMS just execute a preclean phase? What’s up with this abortable
     preclean phase?
+  id: totrans-224
   prefs: []
   type: TYPE_NORMAL
+  zh: 等等，CMS刚执行了一个预清理阶段？那么这个可中止的预清理阶段又是什么？
 - en: The abortable preclean phase is used because the remark phase (which, strictly
     speaking, is the final entry in this output) is not concurrent—it will stop all
     the application threads. CMS wants to avoid the situation where a young generation
     collection occurs and is immediately followed by a remark phase, in which case
     the application threads would be stopped for two back-to-back pause operations.
     The goal here is to minimize pause lengths by preventing back-to-back pauses.
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用可中止的预清理阶段是因为备注阶段（严格来说，在输出中是最后一个条目）不是并发的——它将停止所有应用线程。CMS希望避免年轻代收集紧随备注阶段之后发生的情况，这种情况下，应用线程将因连续的暂停操作而停止。这里的目标是通过防止连续暂停来最小化暂停长度。
 - en: Hence, the abortable preclean phase waits until the young generation is about
     50% full. In theory, that is halfway between young generation collections, giving
     CMS the best chance to avoid those back-to-back pauses. In this example, the abortable
@@ -1133,14 +1608,20 @@
     though that is the only way the phase is stopped). Then, finally, CMS executes
     the remark phase, which pauses the application threads for 0.18 seconds (the application
     threads were not paused during the abortable preclean phase).
+  id: totrans-226
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，可中止的预清理阶段会等待年轻代填满约50%。理论上，这是在年轻代收集之间的一半，为CMS避免连续出现暂停提供了最佳机会。在此示例中，可中止的预清理阶段从90.8秒开始，并等待大约1.5秒以进行常规年轻代收集（在日志的92.392秒处）。CMS使用过去的行为来计算下一次可能发生的年轻代收集时间——在这种情况下，CMS计算大约在4.2秒后会发生年轻代收集。因此在2.1秒后（在94.4秒时），CMS结束了预清理阶段（虽然这是唯一停止该阶段的方法，但CMS称其为“中止”该阶段）。然后，最后，CMS执行了备注阶段，导致应用线程暂停了0.18秒（在可中止的预清理阶段期间应用线程没有暂停）。
 - en: 'Next comes another concurrent phase—the sweep phase:'
+  id: totrans-227
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来是另一个并发阶段——扫描阶段：
 - en: '[PRE25]'
+  id: totrans-228
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: This phase took 0.82 seconds and ran concurrently with the application threads.
     It also happened to be interrupted by a young collection. This young collection
     had nothing to do with the sweep phase, but it is left in here as an example that
@@ -1149,41 +1630,58 @@
     changed during the concurrent collection—there may have been an arbitrary number
     of young collections during the sweep phase (and there will have been at least
     one young collection because of the abortable preclean phase).
+  id: totrans-229
   prefs: []
   type: TYPE_NORMAL
+  zh: 此阶段花费了0.82秒，并与应用线程并发运行。它还碰巧被一个年轻代收集中断了。这个年轻代收集与扫描阶段无关，但作为一个例子留在这里，显示年轻代收集可以与老年代收集阶段同时发生。在[图6-8](#FigureCMSConcurrent)中，请注意在并发收集期间年轻代的状态发生了变化——在扫描阶段期间可能发生了任意数量的年轻代收集（由于可中止的预清理阶段至少会有一次年轻代收集）。
 - en: 'Next comes the concurrent reset phase:'
+  id: totrans-230
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来是并发重置阶段：
 - en: '[PRE26]'
+  id: totrans-231
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: 'That is the last of the concurrent phases; the CMS cycle is complete, and the
     unreferenced objects found in the old generation are now free (resulting in the
     heap shown in [Figure 6-8](#FigureCMSConcurrent)). Unfortunately, the log doesn’t
     provide any information about how many objects were freed; the reset line doesn’t
     give any information about the heap occupancy. To get an idea of that, look to
     the next young collection:'
+  id: totrans-232
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是并发阶段的最后一步；CMS周期完成了，老年代中发现的未引用对象现在是自由的（导致堆中显示的情况见[图 6-8](#FigureCMSConcurrent)）。不幸的是，日志没有提供任何有关释放了多少对象的信息；重置行也没有提供堆占用的信息。要了解这一点，请看下一个年轻收集：
 - en: '[PRE27]'
+  id: totrans-233
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: Now compare the occupancy of the old generation at 89.853 seconds (before the
     CMS cycle began), which was roughly 703 MB (the entire heap occupied 772 MB at
     that point, which included 69 MB in the survivor space, so the old generation
     consumed the remaining 703 MB). In the collection at 98.049 seconds, the old generation
     occupies about 504 MB; the CMS cycle therefore cleaned up about 199 MB of memory.
+  id: totrans-234
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在比较老年代在89.853秒时的占用情况（CMS周期开始之前），大约是703 MB（此时整个堆占用了772 MB，其中包括69 MB在幸存者空间，因此老年代消耗了剩余的703
+    MB）。在98.049秒的收集中，老年代占用约504 MB；因此CMS周期清理了大约199 MB的内存。
 - en: 'If all goes well, these are the only cycles that CMS will run and the only
     log messages that will appear in the CMS GC log. But there are three more messages
     to look for, which indicate that CMS ran into a problem. The first is a concurrent
     mode failure:'
+  id: totrans-235
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果一切顺利，这些将是CMS运行的唯一周期，也是CMS GC日志中出现的唯一日志消息。但是还有三条更多的消息需要注意，这些消息表明CMS遇到了问题。第一条是并发模式失败：
 - en: '[PRE28]'
+  id: totrans-236
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: When a young collection occurs and there isn’t enough room in the old generation
     to hold all the objects that are expected to be promoted, CMS executes what is
     essentially a full GC. All application threads are stopped, and the old generation
@@ -1191,29 +1689,41 @@
     that kept the application threads paused for a full 5.6 seconds. That operation
     is single-threaded, which is one reason it takes so long (and one reason concurrent
     mode failures are worse as the heap grows).
+  id: totrans-237
   prefs: []
   type: TYPE_NORMAL
+  zh: 当发生年轻收集并且老年代没有足够空间来容纳预期晋升的所有对象时，CMS执行的基本上是完整GC。所有应用程序线程都会停止，并且老年代中的任何死对象都会被清理，将其占用减少到1,366
+    MB —— 这个操作使应用程序线程暂停了整整5.6秒。这个操作是单线程的，这也是它执行时间如此之长的一个原因（并且也是堆增长时并发模式失败变得更糟糕的一个原因）。
 - en: This concurrent mode failure is a major reason CMS is deprecated. G1 GC can
     have a concurrent mode failure, but when it reverts to a full GC, that full GC
     occurs in parallel in JDK 11 (though not in JDK 8). A CMS full GC will take many
     times longer to execute because it must execute in a single thread.^([2](ch06.html#idm45775554022120))
+  id: totrans-238
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种并发模式失败是CMS被弃用的一个主要原因。G1 GC可能会发生并发模式失败，但是当它转回到完整GC时，在JDK 11中会并行执行该完整GC（尽管在JDK
+    8中不会）。CMS完整GC执行时间会长很多倍，因为它必须在单线程中执行。^([2](ch06.html#idm45775554022120))
 - en: 'The second problem occurs when there is enough room in the old generation to
     hold the promoted objects but the free space is fragmented and so the promotion
     fails:'
+  id: totrans-239
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二个问题发生在老年代有足够空间来容纳晋升的对象，但是空闲空间碎片化，所以晋升失败：
 - en: '[PRE29]'
+  id: totrans-240
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: 'Here, CMS started a young collection and assumed that space existed to hold
     all the promoted objects (otherwise, it would have declared a concurrent mode
     failure). That assumption proved incorrect: CMS couldn’t promote the objects because
     the old generation was fragmented (or, much less likely, because the amount of
     memory to be promoted was bigger than CMS expected).'
+  id: totrans-241
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，CMS启动了一个年轻的收集，并假设存在空间来容纳所有晋升的对象（否则，它会声明并发模式失败）。这一假设被证明是不正确的：CMS无法晋升对象，因为老年代是碎片化的（或者，少见的情况是，要晋升的内存量大于CMS预期的量）。
 - en: 'As a result, in the middle of the young collection (when all threads were already
     stopped), CMS collected and compacted the entire old generation. The good news
     is that with the heap compacted, fragmentation issues have been solved (at least
@@ -1223,40 +1733,50 @@
     at this point appears as it did at the end of the throughput collector’s full
     GC ([Figure 6-2](#FigureParOld)): the young generation is completely empty, and
     the old generation has been compacted.'
+  id: totrans-242
   prefs: []
   type: TYPE_NORMAL
 - en: 'Finally, the CMS log may show a full GC without any of the usual concurrent
     GC messages:'
+  id: totrans-243
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE30]'
+  id: totrans-244
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: This occurs when the metaspace has filled up and needs to be collected. CMS
     does not collect the metaspace, so if it fills up, a full GC is needed to discard
     any unreferenced classes. [“Advanced Tunings”](#advance-tunings-sec) shows how
     to overcome this issue.
+  id: totrans-245
   prefs: []
   type: TYPE_NORMAL
 - en: Quick Summary
+  id: totrans-246
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: CMS has several GC operations, but the expected operations are minor GCs and
     concurrent cycles.
+  id: totrans-247
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Concurrent mode failures and promotion failures in CMS are expensive; CMS should
     be tuned to avoid these as much as possible.
+  id: totrans-248
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: By default, CMS does not collect metaspace.
+  id: totrans-249
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Tuning to Solve Concurrent Mode Failures
+  id: totrans-250
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -1266,6 +1786,7 @@
     time to perform a collection in the young generation, CMS calculates that it doesn’t
     have enough room to promote those objects to the old generation and instead collects
     the old generation first.'
+  id: totrans-251
   prefs: []
   type: TYPE_NORMAL
 - en: 'The old generation initially fills up by placing the objects right next to
@@ -1275,29 +1796,36 @@
     scanning the old generation and freeing objects before the remainder (30%) of
     the old generation fills up. If the concurrent cycle loses the race, CMS will
     experience a concurrent mode failure.'
+  id: totrans-252
   prefs: []
   type: TYPE_NORMAL
 - en: 'We can attempt to avoid this failure in multiple ways:'
+  id: totrans-253
   prefs: []
   type: TYPE_NORMAL
 - en: Make the old generation larger, either by shifting the proportion of the new
     generation to the old generation or by adding more heap space altogether.
+  id: totrans-254
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Run the background thread more often.
+  id: totrans-255
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Use more background threads.
+  id: totrans-256
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: If more memory is available, the better solution is to increase the size of
     the heap. Otherwise, change the way the background threads operate.
+  id: totrans-257
   prefs: []
   type: TYPE_NORMAL
 - en: Running the background thread more often
+  id: totrans-258
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -1305,13 +1833,16 @@
     the concurrent cycle starts when 60% of the old generation is filled, CMS has
     a better chance of finishing than if the cycle starts when 70% of the old generation
     is filled. The easiest way to achieve that is to set both these flags:'
+  id: totrans-259
   prefs: []
   type: TYPE_NORMAL
 - en: '`-XX:CMSInitiatingOccupancyFraction=`*`N`*'
+  id: totrans-260
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`-XX:+UseCMSInitiatingOccupancyOnly`'
+  id: totrans-261
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -1319,18 +1850,21 @@
     determines when to start the background thread based only on the percentage of
     the old generation that is filled. (Note that unlike G1 GC, the occupancy ratio
     here is only the old generation and not the entire heap.)'
+  id: totrans-262
   prefs: []
   type: TYPE_NORMAL
 - en: By default, the `UseCMSInitiatingOccupancyOnly` flag is `false`, and CMS uses
     a more complex algorithm to determine when to start the background thread. If
     the background thread needs to be started earlier, it’s better to start it the
     simplest way possible and set the `UseCMSInitiatingOccupancyOnly` flag to `true`.
+  id: totrans-263
   prefs: []
   type: TYPE_NORMAL
 - en: 'Tuning the value of the `CMSInitiatingOccupancyFraction` may require a few
     iterations. If `UseCMSInitiatingOccupancyOnly` is enabled, the default value for
     `CMSInitiatingOccupancyFraction` is 70: the CMS cycle starts when the old generation
     is 70% occupied.'
+  id: totrans-264
   prefs: []
   type: TYPE_NORMAL
 - en: 'A better value for that flag for a given application can be found in the GC
@@ -1338,21 +1872,26 @@
     the concurrent mode failure in the log, and then look back to when the most recent
     CMS cycle started. The `CMS-initial-mark` line will show how full the old generation
     was when the CMS cycle started:'
+  id: totrans-265
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE31]'
+  id: totrans-266
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE31]'
 - en: In this example, that works out to about 50% (702 MB out of 1,398 MB). That
     was not soon enough, so the `CMSInitiatingOccupancyFraction` needs to be set to
     something lower than 50\. (Although the default value for that flag is 70, this
     example started the CMS threads when the old generation was 50% full because the
     `UseCMS``InitiatingOccupancyOnly` flag was not set.)
+  id: totrans-267
   prefs: []
   type: TYPE_NORMAL
 - en: The temptation here is just to set the value to 0 or another small number so
     that the background CMS cycle runs all the time. That’s usually discouraged, but
     as long as you are aware of the trade-offs being made, it may work out fine.
+  id: totrans-268
   prefs: []
   type: TYPE_NORMAL
 - en: 'The first trade-off comes in CPU time: the CMS background thread(s) will run
@@ -1360,12 +1899,14 @@
     will consume 100% of a CPU. There will also be very short bursts when multiple
     CMS threads run and the total CPU on the box spikes as a result. If these threads
     are running needlessly, that wastes CPU resources.'
+  id: totrans-269
   prefs: []
   type: TYPE_NORMAL
 - en: On the other hand, it isn’t necessarily a problem to use those CPU cycles. The
     background CMS threads have to run sometimes, even in the best case. Hence, the
     machine must always have enough CPU cycles available to run those CMS threads.
     So when sizing the machine, you must plan for that CPU usage.
+  id: totrans-270
   prefs: []
   type: TYPE_NORMAL
 - en: The second trade-off is far more significant and has to do with pauses. As the
@@ -1377,13 +1918,16 @@
     and the reduced chance of a concurrent mode failure. But continually running the
     background GC pauses will likely lead to excessive overall pauses, which will,
     in the end, ultimately reduce the performance of the application.
+  id: totrans-271
   prefs: []
   type: TYPE_NORMAL
 - en: Unless those trade-offs are acceptable, take care not to set the `CMSInitiatingOccupancyFraction`
     higher than the amount of live data in the heap, plus at least 10% to 20%.
+  id: totrans-272
   prefs: []
   type: TYPE_NORMAL
 - en: Adjusting the CMS background threads
+  id: totrans-273
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -1391,48 +1935,60 @@
     experiences a concurrent mode failure and extra CPU cycles are available, the
     number of those background threads can be increased by setting the `-XX:ConcGCThreads=`*`N`*
     flag. CMS sets this flag differently than G1 GC; it uses this calculation:'
+  id: totrans-274
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE32]'
+  id: totrans-275
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE32]'
 - en: So CMS increases the value of `ConcGCThreads` one step earlier than does G1
     GC.
+  id: totrans-276
   prefs: []
   type: TYPE_NORMAL
 - en: Quick Summary
+  id: totrans-277
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: Avoiding concurrent mode failures is the key to achieving the best possible
     performance with CMS.
+  id: totrans-278
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: The simplest way to avoid those failures (when possible) is to increase the
     size of the heap.
+  id: totrans-279
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Otherwise, the next step is to start the concurrent background threads sooner
     by adjusting `CMSInitiatingOccupancy​Frac⁠tion`.
+  id: totrans-280
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Tuning the number of background threads can also help.
+  id: totrans-281
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Advanced Tunings
+  id: totrans-282
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: This section on tunings covers some fairly unusual situations. Even though these
     situations are not encountered frequently, many of the low-level details of the
     GC algorithms are explained in this section.
+  id: totrans-283
   prefs: []
   type: TYPE_NORMAL
 - en: Tenuring and Survivor Spaces
+  id: totrans-284
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -1444,12 +2000,14 @@
     will be unlucky: they will have been just created and in use, so they can’t be
     freed—but they aren’t going to live long enough to justify moving them to the
     old generation.'
+  id: totrans-285
   prefs: []
   type: TYPE_NORMAL
 - en: This is the reason that the young generation is divided into two survivor spaces
     and eden. This setup allows objects to have additional chances to be collected
     while still in the young generation, rather than being promoted into (and filling
     up) the old generation.
+  id: totrans-286
   prefs: []
   type: TYPE_NORMAL
 - en: When the young generation is collected and the JVM finds an object that is still
@@ -1462,6 +2020,7 @@
     spaces are also referred to as the *to* and *from* spaces; during each collection,
     objects are moved out of the from space and into the to space. *from* and *to*
     are simply pointers that switch between the two survivor spaces on every collection.)
+  id: totrans-287
   prefs: []
   type: TYPE_NORMAL
 - en: Clearly this cannot continue forever, or nothing would ever be moved into the
@@ -1471,37 +2030,47 @@
     into the old generation. Second, there is a limit to the number of GC cycles during
     which an object can remain in the survivor spaces. That limit is called the *tenuring
     threshold*.
+  id: totrans-288
   prefs: []
   type: TYPE_NORMAL
 - en: 'Tunings can affect each of those situations. The survivor spaces take up part
     of the allocation for the young generation, and like other areas of the heap,
     the JVM sizes them dynamically. The initial size of the survivor spaces is determined
     by the `-XX:InitialSurvivorRatio=`*`N`* flag, which is used in this equation:'
+  id: totrans-289
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE33]'
+  id: totrans-290
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE33]'
 - en: For the default initial survivor ratio of 8, each survivor space will occupy
     10% of the young generation.
+  id: totrans-291
   prefs: []
   type: TYPE_NORMAL
 - en: 'The JVM may increase the survivor spaces size to a maximum determined by the
     setting of the `-XX:MinSurvivorRatio=`*`N`* flag. That flag is used in this equation:'
+  id: totrans-292
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE34]'
+  id: totrans-293
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE34]'
 - en: By default, this value is 3, meaning the maximum size of a survivor space will
     be 20% of the young generation. Note again that the value is a ratio, so the minimum
     value of the ratio gives the maximum size of the survivor space. The name is hence
     a little counterintuitive.
+  id: totrans-294
   prefs: []
   type: TYPE_NORMAL
 - en: To keep the survivor spaces at a fixed size, set the `SurvivorRatio` to the
     desired value and disable the `UseAdaptiveSizePolicy` flag (though remember that
     disabling adaptive sizing will apply to the old and new generations as well).
+  id: totrans-295
   prefs: []
   type: TYPE_NORMAL
 - en: The JVM determines whether to increase or decrease the size of the survivor
@@ -1509,6 +2078,7 @@
     a GC. The survivor spaces will be resized so that they are, by default, 50% full
     after a GC. That value can be changed with the `-XX:TargetSurvivorRatio=`*`N`*
     flag.
+  id: totrans-296
   prefs: []
   type: TYPE_NORMAL
 - en: Finally, there is the question of how many GC cycles an object will remain ping-ponging
@@ -1520,33 +2090,41 @@
     between 1 and the value specified by the `-XX:MaxTenuringThreshold=`*`N`* flag;
     for the throughput and G1 GC collectors, the default maximum threshold is 15,
     and for CMS it is 6.
+  id: totrans-297
   prefs: []
   type: TYPE_NORMAL
 - en: Given all that, which values might be tuned under which circumstances? It is
     helpful to look at the tenuring statistics; these are not printed using the GC
     logging commands we’ve used so far.
+  id: totrans-298
   prefs: []
   type: TYPE_NORMAL
 - en: In JDK 8, the tenuring distribution can be added to the GC log by including
     the flag `-XX:+PrintTenuringDistribution` (which is `false` by default). In JDK
     11, it is added by including `age*=debug` or `age*=trace` to the `Xlog` argument.
+  id: totrans-299
   prefs: []
   type: TYPE_NORMAL
 - en: The most important thing to look for is whether the survivor spaces are so small
     that during a minor GC, objects are promoted directly from eden into the old generation.
     The reason to avoid that is short-lived objects will end up filling the old generation,
     causing full GCs to occur too frequently.
+  id: totrans-300
   prefs: []
   type: TYPE_NORMAL
 - en: 'In GC logs taken with the throughput collector, the only hint for that condition
     is this line:'
+  id: totrans-301
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE35]'
+  id: totrans-302
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE35]'
 - en: The JDK 11 log with `age*=debug` is similar; it will print the desired survivor
     size during the collection.
+  id: totrans-303
   prefs: []
   type: TYPE_NORMAL
 - en: 'The desired size for a single survivor space here is 39 MB out of a young generation
@@ -1557,20 +2135,26 @@
     it is directly promoting most objects to the old generation anyway, so it has
     minimized the tenuring threshold. This application is probably promoting directly
     to the old generation without fully using the survivor spaces.'
+  id: totrans-304
   prefs: []
   type: TYPE_NORMAL
 - en: 'When G1 GC is used, more-informative output is obtained in the JDK 8 log:'
+  id: totrans-305
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE36]'
+  id: totrans-306
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE36]'
 - en: In JDK 11, that information comes by including `age*=trace` in the logging configuration.
+  id: totrans-307
   prefs: []
   type: TYPE_NORMAL
 - en: The desired survivor space is similar to the previous example—35 MB—but the
     output also shows the size of all the objects in the survivor space. With 37 MB
     of data to promote, the survivor space is indeed overflowing.
+  id: totrans-308
   prefs: []
   type: TYPE_NORMAL
 - en: Whether this situation can be improved depends on the application. If the objects
@@ -1579,18 +2163,21 @@
     won’t really help. But if the objects would go away after just a few more GC cycles,
     some performance can be gained by arranging for the survivor spaces to be more
     efficient.
+  id: totrans-309
   prefs: []
   type: TYPE_NORMAL
 - en: If the size of the survivor spaces is increased (by decreasing the survivor
     ratio), memory is taken away from the eden section of the young generation. That
     is where the objects actually are allocated, meaning fewer objects can be allocated
     before incurring a minor GC. So that option is usually not recommended.
+  id: totrans-310
   prefs: []
   type: TYPE_NORMAL
 - en: 'Another possibility is to increase the size of the young generation. That can
     be counterproductive in this situation: objects might be promoted less often into
     the old generation, but since the old generation is smaller, the application may
     do full GCs more often.'
+  id: totrans-311
   prefs: []
   type: TYPE_NORMAL
 - en: If the size of the heap can be increased altogether, both the young generation
@@ -1601,6 +2188,7 @@
     up having roughly the same number of young collections as before. It should have
     fewer full GCs, though, since fewer objects will be promoted into the old generation
     (again, assuming that the objects will no longer be live after a few more GC cycles).
+  id: totrans-312
   prefs: []
   type: TYPE_NORMAL
 - en: 'If the sizes of the survivor spaces have been adjusted so that they never overflow,
@@ -1611,34 +2199,41 @@
     in the survivor space during future young collections: it is then more likely
     that the survivor space will overflow and start promoting directly into the old
     generation again.'
+  id: totrans-313
   prefs: []
   type: TYPE_NORMAL
 - en: Quick Summary
+  id: totrans-314
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: Survivor spaces are designed to allow objects (particularly just-allocated objects)
     to remain in the young generation for a few GC cycles. This increases the probability
     the object will be freed before it is promoted to the old generation.
+  id: totrans-315
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: If the survivor spaces are too small, objects will promoted directly into the
     old generation, which in turn causes more old GC cycles.
+  id: totrans-316
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: The best way to handle that situation is to increase the size of the heap (or
     at least the young generation) and allow the JVM to handle the survivor spaces.
+  id: totrans-317
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: In rare cases, adjusting the tenuring threshold or survivor space sizes can
     prevent promotion of objects into the old generation.
+  id: totrans-318
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Allocating Large Objects
+  id: totrans-319
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -1647,6 +2242,7 @@
     a significant number of large objects. In this context, *large* is a relative
     term; it depends, as you’ll see, on the size of a particular kind of buffer within
     the JVM.
+  id: totrans-320
   prefs: []
   type: TYPE_NORMAL
 - en: This buffer is known as a *thread-local allocation buffer* (TLAB). TLAB sizing
@@ -1656,14 +2252,17 @@
     sizing (to overcome somewhat large objects when using any collector) is fairly
     unusual, but G1 GC region sizing (to overcome very large objects when using G1)
     is more common.
+  id: totrans-321
   prefs: []
   type: TYPE_NORMAL
 - en: Thread-local allocation buffers
+  id: totrans-322
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
 - en: '[Chapter 5](ch05.html#GC) discusses how objects are allocated within eden;
     this allows for faster allocation (particularly for objects that are quickly discarded).'
+  id: totrans-323
   prefs: []
   type: TYPE_NORMAL
 - en: It turns out that one reason allocation in eden is so fast is that each thread
@@ -1672,6 +2271,7 @@
     synchronization is required to manage the free-space pointers within that space.
     By setting up each thread with its own dedicated allocation area, the thread needn’t
     perform any synchronization when allocating objects.^([3](ch06.html#idm45775553858312))
+  id: totrans-324
   prefs: []
   type: TYPE_NORMAL
 - en: 'Usually, the use of TLABs is transparent to developers and end users: TLABs
@@ -1679,6 +2279,7 @@
     The important thing to realize about TLABs is that they have a small size, so
     large objects cannot be allocated within a TLAB. Large objects must be allocated
     directly from the heap, which requires extra time because of the synchronization.'
+  id: totrans-325
   prefs: []
   type: TYPE_NORMAL
 - en: As a TLAB becomes full, objects of a certain size can no longer be allocated
@@ -1692,12 +2293,14 @@
     KB of eden space. Or the 30 KB object can be allocated directly from the heap,
     and the thread can hope that the next object that is allocated will fit in the
     25 KB of space that is still free within the TLAB.
+  id: totrans-326
   prefs: []
   type: TYPE_NORMAL
 - en: 'Parameters can control this (as discussed later in this section), but the key
     is that the size of the TLAB is crucial. By default, the size of a TLAB is based
     on three factors: the number of threads in the application, the size of eden,
     and the allocation rate of threads.'
+  id: totrans-327
   prefs: []
   type: TYPE_NORMAL
 - en: 'Hence, two types of applications may benefit from tuning the TLAB parameters:
@@ -1705,6 +2308,7 @@
     a relatively large number of threads compared to the size of eden. By default,
     TLABs are enabled; they can be disabled by specifying `-XX:-UseTLAB`, although
     they give such a performance boost that disabling them is always a bad idea.'
+  id: totrans-328
   prefs: []
   type: TYPE_NORMAL
 - en: 'Since the calculation of the TLAB size is based in part on the allocation rate
@@ -1713,17 +2317,21 @@
     occur outside the TLABs. If a significant number of allocations occur outside
     of TLABs, we have two choices: reduce the size of the object being allocated or
     adjust the TLAB sizing parameters.'
+  id: totrans-329
   prefs: []
   type: TYPE_NORMAL
 - en: Monitoring the TLAB allocation is another case where Java Flight Recorder is
     much more powerful than other tools. [Figure 6-9](#FigureJFRTLAB) shows a sample
     of the TLAB allocation screen from a JFR recording.
+  id: totrans-330
   prefs: []
   type: TYPE_NORMAL
 - en: '![jp2e 0609](assets/jp2e_0609.png)'
+  id: totrans-331
   prefs: []
   type: TYPE_IMG
 - en: Figure 6-9\. View of TLABs in Java Flight Recorder
+  id: totrans-332
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
@@ -1733,6 +2341,7 @@
     the TLAB was full at the time of allocation: they were not allocated directly
     in the heap because of their size. That is typical immediately before a young
     GC occurs (as eden—and hence the TLABs carved out of eden—becomes full).'
+  id: totrans-333
   prefs: []
   type: TYPE_NORMAL
 - en: The total allocation in this period is 1.59 KB; neither the number of allocations
@@ -1740,12 +2349,15 @@
     be allocated outside TLABs, particularly as eden approaches a young collection.
     Compare that example to [Figure 6-10](#FigureTLABBad), which shows a great deal
     of allocation occurring outside the TLABs.
+  id: totrans-334
   prefs: []
   type: TYPE_NORMAL
 - en: '![jp2e 0610](assets/jp2e_0610.png)'
+  id: totrans-335
   prefs: []
   type: TYPE_IMG
 - en: Figure 6-10\. Excessive allocation occurring outside TLABs
+  id: totrans-336
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
@@ -1756,6 +2368,7 @@
     Note that other tabs can display the actual objects that were allocated out the
     TLAB; we can even arrange to get the stacks from when those objects were allocated.
     If there is a problem with TLAB allocation, JFR will pinpoint it quickly.
+  id: totrans-337
   prefs: []
   type: TYPE_NORMAL
 - en: 'Outside JFR, the best way to look at this is to monitor the TLAB allocation
@@ -1764,14 +2377,18 @@
     information plus more). Then, at every young collection, the GC log will contain
     two kinds of lines: a line for each thread describing the TLAB usage for that
     thread, and a summary line describing the overall TLAB usage of the JVM.'
+  id: totrans-338
   prefs: []
   type: TYPE_NORMAL
 - en: 'The per thread line looks like this:'
+  id: totrans-339
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE37]'
+  id: totrans-340
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE37]'
 - en: 'The `gc` in this output means that the line was printed during GC; the thread
     itself is a regular application thread. The size of this thread’s TLAB is 221
     KB. Since the last young collection, it allocated eight objects from the heap
@@ -1780,27 +2397,34 @@
     which comes from three things: 10,336 bytes were free in the TLAB when the current
     GC cycle started; 2,112 bytes were free in other (retired) TLABs, and 0 bytes
     were allocated via a special “fast” allocator.'
+  id: totrans-341
   prefs: []
   type: TYPE_NORMAL
 - en: 'After the TLAB data for each thread has been printed, the JVM provides a line
     of summary data (this data is provided in JDK 11 by configuring the log for `tlab*=debug`):'
+  id: totrans-342
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE38]'
+  id: totrans-343
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE38]'
 - en: In this case, 66 threads performed some sort of allocation since the last young
     collection. Among those threads, they refilled their TLABs 3,234 times; the most
     any particular thread refilled its TLAB was 105\. Overall, 406 allocations were
     made to the heap (with a maximum of 14 done by one thread), and 1.1% of the TLABs
     were wasted from the free space in retired TLABs.
+  id: totrans-344
   prefs: []
   type: TYPE_NORMAL
 - en: In the per thread data, if threads show many allocations outside TLABs, consider
     resizing them.
+  id: totrans-345
   prefs: []
   type: TYPE_NORMAL
 - en: Sizing TLABs
+  id: totrans-346
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -1808,12 +2432,14 @@
     benefit from changes that can move the allocation to a TLAB. If only a few specific
     object types are always allocated outside a TLAB, programmatic changes are the
     best solution.
+  id: totrans-347
   prefs: []
   type: TYPE_NORMAL
 - en: Otherwise—or if programmatic changes are not possible—you can attempt to resize
     the TLABs to fit the application use case. Because the TLAB size is based on the
     size of eden, adjusting the new size parameters will automatically increase the
     size of the TLABs.
+  id: totrans-348
   prefs: []
   type: TYPE_NORMAL
 - en: The size of the TLABs can be set explicitly using the flag `-XX:TLABSize=*`N`*`
@@ -1822,6 +2448,7 @@
     GC, add `-XX:-ResizeTLAB` (the default for that flag is `true`). This is the easiest
     (and, frankly, the only useful) option for exploring the performance of adjusting
     the TLABs.
+  id: totrans-349
   prefs: []
   type: TYPE_NORMAL
 - en: 'When a new object does not fit in the current TLAB (but would fit within a
@@ -1832,6 +2459,7 @@
     accommodate a new object that is larger than that value, the new object will be
     allocated in the heap. If the object in question is smaller than that value, the
     TLAB will be retired.'
+  id: totrans-350
   prefs: []
   type: TYPE_NORMAL
 - en: 'That value is dynamic, but it begins by default at 1% of the TLAB size—or,
@@ -1843,6 +2471,7 @@
     increases. Adjusting the `TLABWasteTargetPercent` value also adjusts the size
     of the TLAB, so while it is possible to play with this value, its effect is not
     always predictable.'
+  id: totrans-351
   prefs: []
   type: TYPE_NORMAL
 - en: Finally, when TLAB resizing is in effect, the minimum size of a TLAB can be
@@ -1850,18 +2479,22 @@
     of a TLAB is slightly less than 1 GB (the maximum space that can be occupied by
     an array of integers, rounded down for object alignment purposes) and cannot be
     changed.
+  id: totrans-352
   prefs: []
   type: TYPE_NORMAL
 - en: Quick Summary
+  id: totrans-353
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: Applications that allocate a lot of large objects may need to tune the TLABs
     (though often using smaller objects in the application is a better approach).
+  id: totrans-354
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Humongous objects
+  id: totrans-355
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -1871,15 +2504,18 @@
     so if it is short-lived, GC is negatively affected. There’s little to do in that
     case other than change the application so that it doesn’t need those short-lived
     huge objects.
+  id: totrans-356
   prefs: []
   type: TYPE_NORMAL
 - en: 'Humongous objects are treated differently in G1 GC, however: G1 will allocate
     them in the old generation if they are bigger than a G1 region. So applications
     that use a lot of humongous objects in G1 GC may need special tuning to compensate
     for that.'
+  id: totrans-357
   prefs: []
   type: TYPE_NORMAL
 - en: G1 GC region sizes
+  id: totrans-358
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -1888,51 +2524,66 @@
     the heap (the value of `Xms`). The minimum region size is 1 MB. If the minimum
     heap size is greater than 2 GB, the size of the regions will be set according
     to this formula (using log base 2):'
+  id: totrans-359
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE39]'
+  id: totrans-360
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE39]'
 - en: In short, the region size is the smallest power of 2 such that there are close
     to 2,048 regions when the initial heap size is divided. Some minimum and maximum
     constraints are in use here too; the region size is always at least 1 MB and never
     more than 32 MB. [Table 6-3](#TableG1RegionSize) sorts out all the possibilities.
+  id: totrans-361
   prefs: []
   type: TYPE_NORMAL
 - en: Table 6-3\. Default G1 region sizes
+  id: totrans-362
   prefs: []
   type: TYPE_NORMAL
 - en: '| Heap size | Default G1 region size |'
+  id: totrans-363
   prefs: []
   type: TYPE_TB
 - en: '| --- | --- |'
+  id: totrans-364
   prefs: []
   type: TYPE_TB
 - en: '| Less than 4 GB | 1 MB |'
+  id: totrans-365
   prefs: []
   type: TYPE_TB
 - en: '| Between 4 GB and 8 GB | 2 MB |'
+  id: totrans-366
   prefs: []
   type: TYPE_TB
 - en: '| Between 8 GB and 16 GB | 4 MB |'
+  id: totrans-367
   prefs: []
   type: TYPE_TB
 - en: '| Between 16 GB and 32 GB | 8 MB |'
+  id: totrans-368
   prefs: []
   type: TYPE_TB
 - en: '| Between 32 GB and 64 GB | 16 MB |'
+  id: totrans-369
   prefs: []
   type: TYPE_TB
 - en: '| Larger than 64 GB | 32 MB |'
+  id: totrans-370
   prefs: []
   type: TYPE_TB
 - en: The size of a G1 region can be set with the `-XX:G1HeapRegionSize=`*`N`* flag
     (the default is nominally 0, meaning to use the dynamic value just described).
     The value given here should be a power of 2 (e.g., 1 MB or 2 MB); otherwise, it
     is rounded down to the nearest power of 2.
+  id: totrans-371
   prefs: []
   type: TYPE_NORMAL
 - en: G1 GC allocation of humongous objects
+  id: totrans-372
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -1944,11 +2595,13 @@
     will remain empty, wasting 0.9 MB of space.) This defeats the way G1 GC normally
     performs compaction, which is to free arbitrary regions based on how full they
     are.
+  id: totrans-373
   prefs: []
   type: TYPE_NORMAL
 - en: In fact, G1 GC defines a *humongous object* as one that is half of the region
     size, so allocating an array of 512 KB (plus 1 byte) will, in this case, trigger
     the humongous allocation we’re discussing.
+  id: totrans-374
   prefs: []
   type: TYPE_NORMAL
 - en: Because the humongous object is allocated directly in the old generation, it
@@ -1958,11 +2611,13 @@
     object can be freed quickly because it is the only object in the regions it occupies.
     Humongous objects are freed during the cleanup phase of the concurrent cycle (rather
     than during a mixed GC).
+  id: totrans-375
   prefs: []
   type: TYPE_NORMAL
 - en: Increasing the size of a G1 GC region so that all objects the program will allocate
     can fit within a single G1 GC region can make G1 GC more efficient. This means
     having a G1 region size of twice the largest object’s size plus 1 byte.
+  id: totrans-376
   prefs: []
   type: TYPE_NORMAL
 - en: Humongous allocation used to be a far bigger problem in G1 GC because finding
@@ -1970,18 +2625,22 @@
     because such full GCs were not parallelized). Improvements in G1 GC in JDK 8u60
     (and in all JDK 11 builds) minimize this issue so it isn’t necessarily the critical
     problem it sometimes used to be.
+  id: totrans-377
   prefs: []
   type: TYPE_NORMAL
 - en: Quick Summary
+  id: totrans-378
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: G1 regions are sized in powers of 2, starting at 1 MB.
+  id: totrans-379
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Heaps that have a very different maximum size than initial size will have too
     many G1 regions; the G1 region size should be increased in that case.
+  id: totrans-380
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -1989,10 +2648,12 @@
     should increase the G1 region size so that the objects can fit within a G1 region.
     An application must allocate an object that is at least 512 KB for this to apply
     (since the smallest G1 region is 1 MB).
+  id: totrans-381
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: AggressiveHeap
+  id: totrans-382
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -2002,6 +2663,7 @@
     lot of memory running a single JVM. Although the flag has been carried forward
     since those versions and is still present, it is no longer recommended (though
     it is not yet officially deprecated).
+  id: totrans-383
   prefs: []
   type: TYPE_NORMAL
 - en: 'The problem with this flag is that it hides the actual tunings it adopts, making
@@ -2011,85 +2673,110 @@
     command lines that include this flag and then later override values that it sets.
     (For the record, that works: later values in the command line currently override
     earlier values. That behavior is not guaranteed.)'
+  id: totrans-384
   prefs: []
   type: TYPE_NORMAL
 - en: '[Table 6-4](#TableAggressiveHeap) lists all the tunings that are automatically
     set when the `AggressiveHeap` flag is enabled.'
+  id: totrans-385
   prefs: []
   type: TYPE_NORMAL
 - en: Table 6-4\. Tunings enabled with `AggressiveHeap`
+  id: totrans-386
   prefs: []
   type: TYPE_NORMAL
 - en: '| Flag | Value |'
+  id: totrans-387
   prefs: []
   type: TYPE_TB
 - en: '| --- | --- |'
+  id: totrans-388
   prefs: []
   type: TYPE_TB
 - en: '| `Xmx` | The minimum of half of all memory, or all memory: 160 MB |'
+  id: totrans-389
   prefs: []
   type: TYPE_TB
 - en: '| `Xms` | The same as `Xmx` |'
+  id: totrans-390
   prefs: []
   type: TYPE_TB
 - en: '| `NewSize` | 3/8 of whatever was set as `Xmx` |'
+  id: totrans-391
   prefs: []
   type: TYPE_TB
 - en: '| `UseLargePages` | `true` |'
+  id: totrans-392
   prefs: []
   type: TYPE_TB
 - en: '| `ResizeTLAB` | `false` |'
+  id: totrans-393
   prefs: []
   type: TYPE_TB
 - en: '| `TLABSize` | 256 KB |'
+  id: totrans-394
   prefs: []
   type: TYPE_TB
 - en: '| `UseParallelGC` | `true` |'
+  id: totrans-395
   prefs: []
   type: TYPE_TB
 - en: '| `ParallelGCThreads` | Same as current default |'
+  id: totrans-396
   prefs: []
   type: TYPE_TB
 - en: '| `YoungPLABSize` | 256 KB (default is 4 KB) |'
+  id: totrans-397
   prefs: []
   type: TYPE_TB
 - en: '| `OldPLABSize` | 8 KB (default is 1 KB) |'
+  id: totrans-398
   prefs: []
   type: TYPE_TB
 - en: '| `CompilationPolicyChoice` | 0 (the current default) |'
+  id: totrans-399
   prefs: []
   type: TYPE_TB
 - en: '| `ThresholdTolerance` | 100 (default is 10) |'
+  id: totrans-400
   prefs: []
   type: TYPE_TB
 - en: '| `ScavengeBeforeFullGC` | `false` (default is `true`) |'
+  id: totrans-401
   prefs: []
   type: TYPE_TB
 - en: '| `BindGCTaskThreadsToCPUs` | `true` (default is `false`) |'
+  id: totrans-402
   prefs: []
   type: TYPE_TB
 - en: 'Those last six flags are obscure enough that I have not discussed them elsewhere
     in this book. Briefly, they cover these areas:'
+  id: totrans-403
   prefs: []
   type: TYPE_NORMAL
 - en: PLAB sizing
+  id: totrans-404
   prefs: []
   type: TYPE_NORMAL
 - en: '*PLABs* are *promotion-local allocation buffers*—these are per thread regions
     used during scavenging the generations in a GC. Each thread can promote into a
     specific PLAB, negating the need for synchronization (analogous to the way TLABs
     work).'
+  id: totrans-405
   prefs: []
   type: TYPE_NORMAL
 - en: Compilation policies
+  id: totrans-406
   prefs: []
   type: TYPE_NORMAL
 - en: The JVM ships with alternate JIT compilation algorithms. The current default
     algorithm was, at one time, somewhat experimental, but this is now the recommended
     policy.
+  id: totrans-407
   prefs: []
   type: TYPE_NORMAL
 - en: Disabling young GCs before full GCs
+  id: totrans-408
   prefs: []
   type: TYPE_NORMAL
 - en: Setting `ScavengeBeforeFullGC` to `false` means that when a full GC occurs,
@@ -2098,9 +2785,11 @@
     for collection) can prevent objects in the old generation from being collected.
     Clearly, there was a time when that setting made sense (at least for certain benchmarks),
     but the general recommendation is not to change that flag.
+  id: totrans-409
   prefs: []
   type: TYPE_NORMAL
 - en: Binding GC threads to CPUs
+  id: totrans-410
   prefs: []
   type: TYPE_NORMAL
 - en: Setting the last flag in that list means that each parallel GC thread is bound
@@ -2108,29 +2797,35 @@
     GC threads are the only thing running on the machine, and heaps are very large—that
     makes sense. In the general case, it is better if GC threads can run on any available
     CPU.
+  id: totrans-411
   prefs: []
   type: TYPE_NORMAL
 - en: As with all tunings, your mileage may vary, and if you carefully test the `AggressiveHeap`
     flag and find that it improves performance, then by all means use it. Just be
     aware of what it is doing behind the scenes, and realize that whenever the JVM
     is upgraded, the relative benefit of this flag will need to be reevaluated.
+  id: totrans-412
   prefs: []
   type: TYPE_NORMAL
 - en: Quick Summary
+  id: totrans-413
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: The `AggressiveHeap` flag is a legacy attempt to set heap parameters to values
     that make sense for a single JVM running on a very large machine.
+  id: totrans-414
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Values set by this flag are not adjusted as JVM technology improves, so its
     usefulness in the long run is dubious (even though it still is often used).
+  id: totrans-415
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Full Control Over Heap Size
+  id: totrans-416
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -2145,6 +2840,7 @@
     multiple JVMs with a common (but adjusted) set of ergonomic heap sizes. For the
     most part, the real goal of this section is to complete the explanation of how
     those default values are chosen.'
+  id: totrans-417
   prefs: []
   type: TYPE_NORMAL
 - en: 'The default sizes are based on the amount of memory on a machine, which can
@@ -2155,19 +2851,24 @@
     can vary: if the physical memory on a machine is less than `MaxRAM`, the default
     heap size is one-quarter of that. But even if hundreds of gigabytes of RAM are
     available, the most the JVM will use by default is 32 GB: one-quarter of 128 GB.'
+  id: totrans-418
   prefs: []
   type: TYPE_NORMAL
 - en: 'The default maximum heap calculation is actually this:'
+  id: totrans-419
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE40]'
+  id: totrans-420
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE40]'
 - en: Hence, the default maximum heap can also be set by adjusting the value of the
     `-XX:MaxRAMFraction=`*`N`* flag, which defaults to 4\. Finally, just to keep things
     interesting, the `-XX:ErgoHeapSizeLimit=`*`N`* flag can also be set to a maximum
     default value that the JVM should use. That value is 0 by default (meaning to
     ignore it); otherwise, that limit is used if it is smaller than `MaxRAM` / `MaxRAMFraction`.
+  id: totrans-421
   prefs: []
   type: TYPE_NORMAL
 - en: 'On the other hand, on a machine with a very small amount of physical memory,
@@ -2175,39 +2876,50 @@
     is why the JVM will limit the maximum heap to 96 MB or less on machines with only
     192 MB of memory. That calculation is based on the value of the `-XX:MinRAMFraction=`*`N`*
     flag, which defaults to 2:'
+  id: totrans-422
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE41]'
+  id: totrans-423
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE41]'
 - en: 'The initial heap size choice is similar, though it has fewer complications.
     The initial heap size value is determined like this:'
+  id: totrans-424
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE42]'
+  id: totrans-425
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE42]'
 - en: As can be concluded from the default minimum heap sizes, the default value of
     the `InitialRAMFraction` flag is 64\. The one caveat here occurs if that value
     is less than 5 MB—or, strictly speaking, less than the values specified by `-XX:OldSize=`*`N`*
     (which defaults to 4 MB) plus `-XX:NewSize=`*`N`* (which defaults to 1 MB). In
     that case, the sum of the old and new sizes is used as the initial heap size.
+  id: totrans-426
   prefs: []
   type: TYPE_NORMAL
 - en: Quick Summary
+  id: totrans-427
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: The calculations for the default initial and maximum heap sizes are fairly straightforward
     on most machines.
+  id: totrans-428
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Around the edges, these calculations can be quite involved.
+  id: totrans-429
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Experimental GC Algorithms
+  id: totrans-430
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -2215,13 +2927,16 @@
     G1 GC or throughput collector, depending on your application requirements. On
     small machines, you’ll use the serial collector if that is appropriate for your
     hardware. Those are the production-supported collectors.
+  id: totrans-431
   prefs: []
   type: TYPE_NORMAL
 - en: JDK 12 introduces new collectors. Although these collectors are not necessarily
     production-ready, we’ll take a peek into them for experimental purposes.
+  id: totrans-432
   prefs: []
   type: TYPE_NORMAL
 - en: 'Concurrent Compaction: ZGC and Shenandoah'
+  id: totrans-433
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -2234,6 +2949,7 @@
     becomes too fragmented to allow new allocations. Collections of the young generation
     also compact that portion of the heap by moving surviving objects into the survivor
     spaces or the old generation.'
+  id: totrans-434
   prefs: []
   type: TYPE_NORMAL
 - en: During compaction, objects move their position in memory. This is the primary
@@ -2241,6 +2957,7 @@
     to update the memory references are much simpler if the application threads are
     known to be stopped. So the pause times of an application are dominated by the
     time spent moving objects and making sure references to them are up-to-date.
+  id: totrans-435
   prefs: []
   type: TYPE_NORMAL
 - en: Two experimental collectors are designed to address this problem. The first
@@ -2249,6 +2966,7 @@
     been backported to JDK 8 and JDK 11. JVM builds from AdoptOpenJDK (or that you
     compile yourself from source) contain both collectors; builds that come from Oracle
     contain only ZGC.
+  id: totrans-436
   prefs: []
   type: TYPE_NORMAL
 - en: To use these collectors, you must specify the `-XX:+UnlockExperimentalVMOptions`
@@ -2257,11 +2975,13 @@
     knobs, but these are changing as the algorithms are in development, so for now
     we’ll run with the default arguments. (And both collectors have the goal of running
     with minimal tuning.)
+  id: totrans-437
   prefs: []
   type: TYPE_NORMAL
 - en: Although they take different approaches, both collectors allow concurrent compaction
     of the heap, meaning that objects in the heap can be moved without stopping all
     application threads. This has two main effects.
+  id: totrans-438
   prefs: []
   type: TYPE_NORMAL
 - en: First, the heap is no longer generational (i.e., there is no longer a young
@@ -2272,6 +2992,7 @@
     application threads don’t need to be paused during collection, the need for the
     young generation disappears, and so these algorithms no longer need to segment
     the heap into generations.
+  id: totrans-439
   prefs: []
   type: TYPE_NORMAL
 - en: The second effect is that the latency of operations performed by the application
@@ -2282,6 +3003,7 @@
     situation, but some will, and these outliers will affect the overall performance
     of the system. Without the need to stop the application threads, the concurrent
     compacting collectors will not see these same outliers.
+  id: totrans-440
   prefs: []
   type: TYPE_NORMAL
 - en: 'This simplifies the situation somewhat. Recall from the discussion of G1 GC
@@ -2290,11 +3012,13 @@
     a full GC (well, ideally you’ve tuned well enough for that not to happen), shorter
     pauses for a young GC collection (including a mixed collection that frees and
     compacts some of the old generation), and very short pauses for the marking threads.'
+  id: totrans-441
   prefs: []
   type: TYPE_NORMAL
 - en: Both ZGC and Shenandoah have similar pauses that fall into that latter category;
     for short periods of time, all the application threads are stopped. The goal of
     these collectors is to keep those times very short, on the order of 10 milliseconds.
+  id: totrans-442
   prefs: []
   type: TYPE_NORMAL
 - en: These collectors can also introduce latency on individual thread operations.
@@ -2306,9 +3030,11 @@
     In effect, this is a form of locking on the object reference, but that term makes
     this process seem far more heavyweight than it actually is. In general, this has
     a small effect on the application throughput.
+  id: totrans-443
   prefs: []
   type: TYPE_NORMAL
 - en: Latency effects of concurrent compaction
+  id: totrans-444
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -2317,27 +3043,35 @@
     handling a fixed load of 500 OPS using various collectors. The operation here
     is very fast; it simply allocates and saves a fairly large byte array (replacing
     an existing presaved array to keep memory pressure constant).
+  id: totrans-445
   prefs: []
   type: TYPE_NORMAL
 - en: Table 6-5\. Latency effects of concurrent compacting collectors
+  id: totrans-446
   prefs: []
   type: TYPE_NORMAL
 - en: '| Collector | Average time | 90th% time | 99th% time | Max time |'
+  id: totrans-447
   prefs: []
   type: TYPE_TB
 - en: '| --- | --- | --- | --- | --- |'
+  id: totrans-448
   prefs: []
   type: TYPE_TB
 - en: '| Throughput GC | 13 ms | 60 ms | 160 ms | 265 ms |'
+  id: totrans-449
   prefs: []
   type: TYPE_TB
 - en: '| G1 GC | 5 ms | 10 ms | 35 ms | 87 ms |'
+  id: totrans-450
   prefs: []
   type: TYPE_TB
 - en: '| ZGC | 1 ms | 5 ms | 5 ms | 20 ms |'
+  id: totrans-451
   prefs: []
   type: TYPE_TB
 - en: '| Shenandoah GC | 1 ms | 5 ms | 5 ms | 22 ms |'
+  id: totrans-452
   prefs: []
   type: TYPE_TB
 - en: These results are just what we’d expect from the various collectors. The full
@@ -2347,6 +3081,7 @@
     young collections, yielding a maximum time of 87 ms and outliers of Tabout 10
     ms. And with the concurrent collectors, those young collection pauses have disappeared
     so that the maximum times are now around 20 ms and the outliers only 5 ms.
+  id: totrans-453
   prefs: []
   type: TYPE_NORMAL
 - en: 'One caveat: garbage collection pauses traditionally have been the largest contributor
@@ -2356,9 +3091,11 @@
     of those short pauses of a few milliseconds that the concurrent collectors still
     have, we’re now entering the realm where those other things also have a large
     impact on the total latency.'
+  id: totrans-454
   prefs: []
   type: TYPE_NORMAL
 - en: Throughput effects of concurrent compacting collectors
+  id: totrans-455
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -2368,6 +3105,7 @@
     will experience the same sort of concurrent failure we’ve seen before and end
     up doing a full GC. The concurrent compacting collectors will typically use even
     more background processing than the G1 GC background threads.
+  id: totrans-456
   prefs: []
   type: TYPE_NORMAL
 - en: On the other hand, if sufficient CPU is available for those background threads,
@@ -2377,57 +3115,71 @@
     throughput collector when it offloads GC processing to background threads. The
     concurrent compacting collectors have that same advantage over the throughput
     collector, and a similar (but smaller) advantage over G1 GC.
+  id: totrans-457
   prefs: []
   type: TYPE_NORMAL
 - en: 'No Collection: Epsilon GC'
+  id: totrans-458
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: 'JDK 11 also contains a collector that does nothing: the *epsilon collector*.
     When you use this collector, objects are never freed from the heap, and when the
     heap fills up, you will get an out-of-memory error.'
+  id: totrans-459
   prefs: []
   type: TYPE_NORMAL
 - en: 'Traditional programs will not be able to use this collector, of course. It
     is really designed for internal JDK testing but can conceivably be useful in two
     situations:'
+  id: totrans-460
   prefs: []
   type: TYPE_NORMAL
 - en: Very short-lived programs
+  id: totrans-461
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Programs carefully written to reuse memory and never perform new allocations
+  id: totrans-462
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: That second category is useful in some embedded environments with limited memory.
     That sort of programming is specialized; we won’t consider it here. But the first
     case holds interesting possibilities.
+  id: totrans-463
   prefs: []
   type: TYPE_NORMAL
 - en: Consider the case of a program that allocates an array list of 4,096 elements,
     each of which is a 0.5 MB byte array. The time to run that program with various
     collectors is shown in [Table 6-6](#TableEpsilonTime). Default GC tunings are
     used in this example.
+  id: totrans-464
   prefs: []
   type: TYPE_NORMAL
 - en: Table 6-6\. Performance metrics of a small allocation-based program
+  id: totrans-465
   prefs: []
   type: TYPE_NORMAL
 - en: '| Collector | Time | Heap required |'
+  id: totrans-466
   prefs: []
   type: TYPE_TB
 - en: '| --- | --- | --- |'
+  id: totrans-467
   prefs: []
   type: TYPE_TB
 - en: '| Throughput GC | 2.3 s | 3,072 MB |'
+  id: totrans-468
   prefs: []
   type: TYPE_TB
 - en: '| G1 GC | 3.24 s | 4,096 MB |'
+  id: totrans-469
   prefs: []
   type: TYPE_TB
 - en: '| Epsilon | 1.6 s | 2,052 MB |'
+  id: totrans-470
   prefs: []
   type: TYPE_TB
 - en: 'Disabling garbage collection is a significant advantage in this case, yielding
@@ -2439,18 +3191,22 @@
     just over that; we can run that case with `-Xmx2052m`. The throughput collector
     needs one-third more memory to hold its young generation, while G1 GC needs even
     more memory to set up all its regions.'
+  id: totrans-471
   prefs: []
   type: TYPE_NORMAL
 - en: To use this collector, you again specify the `-XX:+UnlockExperimentalVMOptions`
     flag with `-XX:+UseEpsilonGC`.
+  id: totrans-472
   prefs: []
   type: TYPE_NORMAL
 - en: Running with this collector is risky unless you are certain that the program
     will never need more memory than you provide it. But in those cases, it can give
     a nice performance boost.
+  id: totrans-473
   prefs: []
   type: TYPE_NORMAL
 - en: Summary
+  id: totrans-474
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -2458,22 +3214,27 @@
     GC (and its various algorithms) work. If GC is taking longer than you’d like,
     knowing how all of that works should aid you in taking the necessary steps to
     improve things.
+  id: totrans-475
   prefs: []
   type: TYPE_NORMAL
 - en: 'Now that you understand all the details, let’s take a step back to determine
     an approach to choosing and tuning a garbage collector. Here’s a quick set of
     questions to ask yourself to help put everything in context:'
+  id: totrans-476
   prefs: []
   type: TYPE_NORMAL
 - en: Can your application tolerate some full GC pauses?
+  id: totrans-477
   prefs: []
   type: TYPE_NORMAL
 - en: If not, G1 GC is the algorithm of choice. Even if you can tolerate some full
     pauses, G1 GC will often be better than parallel GC unless your application is
     CPU bound.
+  id: totrans-478
   prefs: []
   type: TYPE_NORMAL
 - en: Are you getting the performance you need with the default settings?
+  id: totrans-479
   prefs: []
   type: TYPE_NORMAL
 - en: Try the default settings first. As GC technology matures, the ergonomic (automatic)
@@ -2482,18 +3243,22 @@
     spending in GC and how frequently the long pauses occur. For a busy application,
     if you’re spending 3% or less time in GC, you’re not going to get a lot out of
     tuning (though you can always try to reduce outliers if that is your goal).
+  id: totrans-480
   prefs: []
   type: TYPE_NORMAL
 - en: Are the pause times that you have somewhat close to your goal?
+  id: totrans-481
   prefs: []
   type: TYPE_NORMAL
 - en: If they are, adjusting the maximum pause time may be all you need. If they aren’t,
     you need to do something else. If the pause times are too large but your throughput
     is OK, you can reduce the size of the young generation (and for full GC pauses,
     the old generation); you’ll get more, but shorter, pauses.
+  id: totrans-482
   prefs: []
   type: TYPE_NORMAL
 - en: Is throughput lagging even though GC pause times are short?
+  id: totrans-483
   prefs: []
   type: TYPE_NORMAL
 - en: 'You need to increase the size of the heap (or at least the young generation).
@@ -2501,19 +3266,23 @@
     concurrent collector, a bigger heap means a bigger young generation by default,
     so you’ll see longer pause times for young collections. But if you can, increase
     the heap size, or at least the relative sizes of the generations.'
+  id: totrans-484
   prefs: []
   type: TYPE_NORMAL
 - en: Are you using a concurrent collector and seeing full GCs due to concurrent-mode
     failures?
+  id: totrans-485
   prefs: []
   type: TYPE_NORMAL
 - en: If you have available CPU, try increasing the number of concurrent GC threads
     or starting the background sweep sooner by adjusting `InitiatingHeapOccupancyPercent`.
     For G1, the concurrent cycle won’t start if there are pending mixed GCs; try reducing
     the mixed GC count target.
+  id: totrans-486
   prefs: []
   type: TYPE_NORMAL
 - en: Are you using a concurrent collector and seeing full GCs due to promotion failures?
+  id: totrans-487
   prefs: []
   type: TYPE_NORMAL
 - en: In G1 GC, an evacuation failure (to-space overflow) indicates that the heap
@@ -2521,18 +3290,22 @@
     sweeping sooner and mixed GCs faster. Try increasing the number of concurrent
     G1 threads, adjusting `InitiatingHeapOccupancyPercent`, or reducing the mixed
     GC count target.
+  id: totrans-488
   prefs: []
   type: TYPE_NORMAL
 - en: ^([1](ch06.html#idm45775554356120-marker)) Actually, 227,893 KB is only 222
     MB. For ease of discussion, I’ll truncate the KBs by 1,000 in this chapter; pretend
     I am a disk manufacturer.
+  id: totrans-489
   prefs: []
   type: TYPE_NORMAL
 - en: ^([2](ch06.html#idm45775554022120-marker)) Similar work could have been done
     to make CMS full GCs run with parallel threads, but G1 GC work was prioritized.
+  id: totrans-490
   prefs: []
   type: TYPE_NORMAL
 - en: ^([3](ch06.html#idm45775553858312-marker)) This is a variation of the way thread-local
     variables can prevent lock contention (see [Chapter 9](ch09.html#ThreadPerformance)).
+  id: totrans-491
   prefs: []
   type: TYPE_NORMAL

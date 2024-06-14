@@ -1,0 +1,2375 @@
+- en: Chapter 5\. An Introduction to Garbage Collection
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第五章。垃圾收集简介
+- en: This chapter covers the basics of garbage collection within the JVM. Short of
+    rewriting code, tuning the garbage collector is the most important thing that
+    can be done to improve the performance of a Java application.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章介绍了JVM中垃圾收集的基础知识。除了重写代码外，调整垃圾收集器是提高Java应用程序性能最重要的事情。
+- en: Because the performance of Java applications depends heavily on garbage collection
+    technology, it is not surprising that quite a few collectors are available. The
+    OpenJDK has three collectors suitable for production, another that is deprecated
+    in JDK 11 but still quite popular in JDK 8, and some experimental collectors that
+    will (ideally) be production-ready in future releases. Other Java implementations
+    such as Open J9 or the Azul JVM have their own collectors.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因为Java应用程序的性能严重依赖垃圾收集技术，所以有相当多的收集器可供选择。OpenJDK有三个适合生产环境的收集器，另一个在JDK 11中已经弃用但在JDK
+    8中仍然非常流行，并且一些实验性的收集器将来会（理想情况下）成为生产就绪版本的一部分。其他Java实现如Open J9或Azul JVM有它们自己的收集器。
+- en: The performance characteristics of all these collectors are quite different;
+    we will focus only on those that come with OpenJDK. Each is covered in depth in
+    the next chapter. However, they share basic concepts, so this chapter provides
+    a basic overview of how the collectors operate.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所有这些收集器的性能特征都是非常不同的；我们只会关注OpenJDK提供的那些。每个收集器在下一章中都会进行深入讲解。然而，它们共享基本概念，因此本章提供了收集器操作的基本概述。
+- en: Garbage Collection Overview
+  id: totrans-4
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 垃圾收集概述
+- en: 'One of the most attractive features of programming in Java is that developers
+    needn’t explicitly manage the life cycle of objects: objects are created when
+    needed, and when the object is no longer in use, the JVM automatically frees the
+    object. If, like me, you spend a lot of time optimizing the memory use of Java
+    programs, this whole scheme might seem like a weakness instead of a feature (and
+    the amount of time I’ll spend covering GC might seem to lend credence to that
+    position). Certainly it can be considered a mixed blessing, but I still recall
+    the difficulties of tracking down null pointers and dangling pointers in other
+    languages. I’d strongly argue that tuning garbage collectors is far easier (and
+    less time-consuming) than tracking down pointer bugs.'
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在Java编程中最具吸引力的功能之一是开发人员无需显式管理对象的生命周期：对象在需要时创建，在对象不再使用时，JVM会自动释放对象。如果像我一样，你花费了大量时间优化Java程序的内存使用，那么整个方案可能看起来像是一个弱点而不是一个功能（我花在垃圾收集上的时间似乎支持了这种观点）。当然，这可以被认为是一种两面性的祝福，但我仍然记得在其他语言中追踪空指针和悬空指针的困难。我强烈认为调整垃圾收集器比追踪指针错误更容易（也更省时）。
+- en: At a basic level, GC consists of finding objects that are in use and freeing
+    the memory associated with the remaining objects (those that are not in use).
+    This is sometimes described as finding objects that no longer have any references
+    to them (implying that references are tracked via a count). That sort of reference
+    counting is insufficient, though. Given a linked list of objects, each object
+    in the list (except the head) will be pointed to by another object in the list—but
+    if nothing refers to the head of the list, the entire list is not in use and can
+    be freed. And if the list is circular (e.g., the tail of the list points to the
+    head), every object in the list has a reference to it—even though no object in
+    the list can actually be used, since no objects reference the list itself.
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在基本水平上，GC的工作包括找出正在使用的对象并释放剩余对象（即那些未被使用的对象）所关联的内存。有时候，这被描述为找出不再具有任何引用的对象（暗示引用是通过计数来跟踪的）。然而，仅仅依靠引用计数是不够的。假设有一个对象链表，列表中的每个对象（除了头部）都会被列表中的另一个对象指向，但是如果没有任何东西指向列表的头部，整个列表就不再被使用并且可以被释放。如果列表是循环的（例如，列表的尾部指向头部），列表中的每个对象都有一个引用指向它，即使列表中没有任何对象实际可用，因为没有对象引用列表本身。
+- en: So references cannot be tracked dynamically via a count; instead, the JVM must
+    periodically search the heap for unused objects. It does this by starting with
+    objects that are GC roots, which are objects that are accessible from outside
+    the heap. That primarily includes thread stacks and system classes. Those objects
+    are always reachable, so then the GC algorithm scans all objects that are reachable
+    via one of the root objects. Objects that are reachable via a GC root are live
+    objects; the remaining unreachable objects are garbage (even if they maintain
+    references to live objects or to each other).
+  id: totrans-7
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所以引用不能通过计数动态跟踪；相反，JVM 必须定期搜索堆中未使用的对象。它通过从GC根对象开始搜索来实现这一点，GC根对象是从堆外部可访问的对象。这主要包括线程堆栈和系统类。这些对象总是可达的，因此GC算法扫描所有通过一个根对象可达的对象。通过GC根可达的对象是活动对象；其余的不可达对象是垃圾（即使它们保持对活动对象或彼此的引用）。
+- en: When the GC algorithm finds unused objects, the JVM can free the memory occupied
+    by those objects and use it to allocate additional objects. However, it is usually
+    insufficient simply to keep track of that free memory and use it for future allocations;
+    at some point, memory must be compacted to prevent memory fragmentation.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当GC算法找到未使用的对象时，JVM 可以释放这些对象占用的内存，并用于分配其他对象。然而，简单地跟踪这些空闲内存并将其用于将来的分配通常是不够的；在某些时刻，必须压缩内存以防止内存碎片化。
+- en: 'Consider the case of a program that allocates an array of 1,000 bytes, then
+    one of 24 bytes, and repeats that process in a loop. When that process fills up
+    the heap, it will appear like the top row in [Figure 5-1](#FigureGCHeap): the
+    heap is full, and the allocations of the array sizes are interleaved.'
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 考虑一个程序的情况，它分配了一个 1,000 字节的数组，然后是一个 24 字节的数组，并在循环中重复这个过程。当这个过程填满堆时，它会看起来像[图 5-1](#FigureGCHeap)中的顶行：堆已满，并且这些数组大小的分配交错进行。
+- en: 'When the heap is full, the JVM will free the unused arrays. Say that all the
+    24-byte arrays are no longer in use, and the 1,000-byte arrays are still all in
+    use: that yields the second row in [Figure 5-1](#FigureGCHeap). The heap has free
+    areas within it, but it can’t allocate anything larger than 24 bytes—unless the
+    JVM moves all the 1,000-byte arrays so that they are contiguous, leaving all the
+    free memory in a region where it can be allocated as needed (the third row in
+    [Figure 5-1](#FigureGCHeap)).'
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当堆满时，JVM 将释放未使用的数组。假设所有的 24 字节数组不再使用，而 1,000 字节数组仍然全部使用：这将产生[图 5-1](#FigureGCHeap)中的第二行。堆内有空闲区域，但不能分配大于
+    24 字节的任何内容，除非JVM将所有 1,000 字节数组移动到连续位置，使所有空闲内存留在一个区域，以便根据需要进行分配（[图 5-1](#FigureGCHeap)中的第三行）。
+- en: 'The implementations are a little more detailed, but the performance of GC is
+    dominated by these basic operations: finding unused objects, making their memory
+    available, and compacting the heap. Different collectors take different approaches
+    to these operations, particularly compaction: some algorithms delay compaction
+    until absolutely necessary, some compact entire sections of the heap at a time,
+    and some compact the heap by relocating small amounts of memory at a time. These
+    different approaches are why different algorithms have different performance characteristics.'
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实现稍微详细些，但GC的性能主要受这些基本操作的影响：查找未使用的对象，使它们的内存可用，并压缩堆。不同的收集器对这些操作采取不同的方法，尤其是压缩：一些算法推迟压缩直到绝对必要时，一些一次性压缩堆的整个部分，还有一些通过逐步重定位少量内存来压缩堆。这些不同的方法是不同算法具有不同性能特征的原因。
+- en: '![jp2e 0501](assets/jp2e_0501.png)'
+  id: totrans-12
+  prefs: []
+  type: TYPE_IMG
+  zh: '![jp2e 0501](assets/jp2e_0501.png)'
+- en: Figure 5-1\. Idealized GC heap during collection
+  id: totrans-13
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图 5-1\. 在收集期间理想化的GC堆
+- en: 'It is simpler to perform these operations if no application threads are running
+    while the garbage collector is running. Java programs are typically heavily multithreaded,
+    and the garbage collector itself often runs multiple threads. This discussion
+    considers two logical groups of threads: those performing application logic (often
+    called *mutator threads*, since they are mutating objects as part of the application
+    logic) and those performing GC. When GC threads track object references or move
+    objects around in memory, they must make sure that application threads are not
+    using those objects. This is particularly true when GC moves objects around: the
+    memory location of the object changes during that operation, and hence no application
+    threads can be accessing the object.'
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当垃圾收集器运行时，如果没有应用程序线程在运行，则执行这些操作会更简单。Java程序通常是重度多线程的，而垃圾收集器本身通常也会运行多个线程。本讨论考虑了两个逻辑线程组：执行应用逻辑的线程（通常称为*变异线程*，因为它们正在变异对象作为应用逻辑的一部分）和执行GC的线程。当GC线程跟踪对象引用或在内存中移动对象时，它们必须确保应用程序线程不在使用这些对象。当GC移动对象时尤其如此：对象在该操作期间的内存位置会发生变化，因此在此期间不应用程序线程可以访问该对象。
+- en: The pauses when all application threads are stopped are called *stop-the-world
+    pauses*. These pauses generally have the greatest impact on the performance of
+    an application, and minimizing those pauses is one important consideration when
+    tuning GC.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当所有应用程序线程停止时的暂停称为*停止-世界暂停*。这些暂停通常对应用程序的性能产生最大影响，减少这些暂停是调整GC时的一个重要考虑因素。
+- en: Generational Garbage Collectors
+  id: totrans-16
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 分代垃圾收集器
+- en: Though the details differ somewhat, most garbage collectors work by splitting
+    the heap into generations. These are called the *old (or tenured) generation*
+    and the *young generation*. The young generation is further divided into sections
+    known as *eden* and the *survivor spaces* (though sometimes, eden is incorrectly
+    used to refer to the entire young generation).
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管细节略有不同，但大多数垃圾收集器的工作方式是将堆分成代。这些被称为*老（或终身）代*和*年轻代*。年轻代进一步分为称为*伊甸园*和*幸存者空间*的部分（尽管有时，伊甸园被错误地用来指代整个年轻代）。
+- en: 'The rationale for having separate generations is that many objects are used
+    for a very short period of time. Take, for example, the loop in the stock price
+    calculation that sums the square of the difference of price from the average price
+    (part of the calculation of standard deviation):'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 单独分代的原因是许多对象仅被使用很短的时间。例如，在股票价格计算中的循环中，该循环对平均价格的价格差的平方进行求和（标准差计算的一部分）：
+- en: '[PRE0]'
+  id: totrans-19
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'Like many Java classes, the `BigDecimal` class is immutable: the object represents
+    a particular number and cannot be changed. When arithmetic is performed on the
+    object, a new object is created (and often, the previous object with the previous
+    value is then discarded). When this simple loop is executed for a year’s worth
+    of stock prices (roughly 250 iterations), 750 `BigDecimal` objects are created
+    to store the intermediate values just in this loop. Those objects are discarded
+    on the next iteration of the loop. Within `add()` and other methods, the JDK library
+    code creates even more intermediate `BigDecimal` (and other) objects. In the end,
+    a lot of objects are created and discarded quickly in this small amount of code.'
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 像许多Java类一样，`BigDecimal`类是不可变的：该对象表示特定数字，不能更改。对对象执行算术运算时，会创建一个新对象（通常情况下，之前的对象及其先前的值随后会被丢弃）。当这个简单循环被执行一年的股票价格（大约250次迭代）时，就在这个循环中创建了750个用于存储中间值的`BigDecimal`对象。这些对象在循环的下一次迭代中被丢弃。在`add()`和其他方法中，JDK库代码甚至创建了更多的中间`BigDecimal`（和其他）对象。最终，在这段小代码中会快速创建和丢弃很多对象。
+- en: This kind of operation is common in Java, so the garbage collector is designed
+    to take advantage of the fact that many (and sometimes most) objects are only
+    used temporarily. This is where the generational design comes in. Objects are
+    first allocated in the young generation, which is a subset of the entire heap.
+    When the young generation fills up, the garbage collector will stop all the application
+    threads and empty out the young generation. Objects that are no longer in use
+    are discarded, and objects that are still in use are moved elsewhere. This operation
+    is called a *minor GC* or a *young GC*.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种操作在Java中很常见，因此垃圾收集器设计得充分利用了许多（有时是大多数）对象仅用于临时的事实。这就是代际设计的用武之地。对象首先分配在年轻代中，这是整个堆的子集。当年轻代填满时，垃圾收集器会停止所有应用线程并清空年轻代。不再使用的对象被丢弃，仍在使用的对象则被移动到其他地方。这个操作称为*minor
+    GC*或*young GC*。
+- en: This design has two performance advantages. First, because the young generation
+    is only a portion of the entire heap, processing it is faster than processing
+    the entire heap. The application threads are stopped for a much shorter period
+    of time than if the entire heap were processed at once. You probably see a trade-off
+    there, since it also means that the application threads are stopped more frequently
+    than they would be if the JVM waited to perform GC until the entire heap were
+    full; that trade-off will be explored in more detail later in this chapter. For
+    now, though, it is almost always a big advantage to have the shorter pauses even
+    though they will be more frequent.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种设计有两个性能优势。首先，因为年轻代只是整个堆的一部分，处理速度比整个堆快得多。应用线程停止的时间要比一次性处理整个堆时短得多。尽管这意味着应用线程会更频繁地停止，而不是等到整个堆填满再执行GC，这个权衡将在本章后面更详细地探讨。但是目前来看，即使更频繁，有更短的暂停时间几乎总是一个巨大的优势。
+- en: 'The second advantage arises from the way objects are allocated in the young
+    generation. Objects are allocated in eden (which encompasses the vast majority
+    of the young generation). When the young generation is cleared during a collection,
+    all objects in eden are either moved or discarded: objects that are not in use
+    can be discarded, and objects in use are moved either to one of the survivor spaces
+    or to the old generation. Since all surviving objects are moved, the young generation
+    is automatically compacted when it is collected: at the end of the collection,
+    eden and one of the survivor spaces are empty, and the objects that remain in
+    the young generation are compacted within the other survivor space.'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第二个优势来自对象在年轻代分配的方式。对象首先分配在Eden区（它占据了年轻代的绝大部分）。当进行垃圾收集时，年轻代被清空：Eden区中的所有对象要么被移动，要么被丢弃：不再使用的对象可以被丢弃，而仍在使用的对象则移动到其中一个幸存区或老年代。由于所有幸存下来的对象都会被移动，因此当年轻代被收集时，它会自动压缩：在收集结束时，Eden区和一个幸存区为空，而仍留在年轻代中的对象则在另一个幸存区内被紧凑地排列。
+- en: Common GC algorithms have stop-the-world pauses during collection of the young
+    generation.
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 常见的GC算法在收集年轻代时会有停止应用线程的暂停。
+- en: As objects are moved to the old generation, eventually it too will fill up,
+    and the JVM will need to find any objects within the old generation that are no
+    longer in use and discard them. This is where GC algorithms have their biggest
+    differences. The simpler algorithms stop all application threads, find the unused
+    objects, free their memory, and then compact the heap. This process is called
+    a *full GC*, and it generally causes a relatively long pause for the application
+    threads.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当对象被移动到老年代时，最终老年代也会填满，JVM需要找到老年代中不再使用的对象并丢弃它们。这是GC算法差异最大的地方。简单的算法会停止所有应用线程，找到未使用的对象，释放它们的内存，然后压缩堆。这个过程称为*full
+    GC*，通常会导致应用线程相对较长的暂停。
+- en: On the other hand, it is possible—though more computationally complex—to find
+    unused objects while application threads are running. Because the phase where
+    they scan for unused objects can occur without stopping application threads, these
+    algorithms are called *concurrent collectors*. They are also called *low-pause*
+    (and sometimes, incorrectly, *pauseless*) collectors since they minimize the need
+    to stop all the application threads. Concurrent collectors also take different
+    approaches to compacting the old generation.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，当应用程序线程正在运行时，可以找到未使用的对象，尽管这可能会更加计算复杂。因为扫描未使用对象的阶段可以在不停止应用程序线程的情况下进行，所以这些算法被称为*并发收集器*。它们也被称为*低暂停*（有时不正确地称为*无暂停*）收集器，因为它们最大程度地减少了停止所有应用程序线程的需求。并发收集器还采用不同的方法来压缩老年代。
+- en: When using a concurrent collector, an application will typically experience
+    fewer (and much shorter) pauses. The biggest trade-off is that the application
+    will use more CPU overall. Concurrent collectors can also be more difficult to
+    tune in order to get their best performance (though in JDK 11, tuning concurrent
+    collectors like the G1 GC is much easier than in previous releases, which reflects
+    the engineering progress that has been made since the concurrent collectors were
+    first introduced).
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用并发收集器时，应用程序通常会经历更少（且更短）的暂停。最大的权衡是应用程序总体上将使用更多的 CPU。并发收集器也可能更难调整以获得最佳性能（尽管在
+    JDK 11 中，调整像 G1 GC 这样的并发收集器要比以前的版本更容易，这反映了自并发收集器首次引入以来所取得的工程进展）。
+- en: 'As you consider which garbage collector is appropriate for your situation,
+    think about the overall performance goals that must be met. Trade-offs exist in
+    every situation. In an application (such as a REST server) measuring the response
+    time of individual requests, consider these points:'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在考虑哪种垃圾收集器适合您的情况时，请考虑必须满足的总体性能目标。在每种情况下都存在权衡。在度量单个请求的响应时间的应用程序（如 REST 服务器）中，请考虑以下几点：
+- en: The individual requests will be impacted by pause times—and more importantly
+    by long pause times for full GCs. If minimizing the effect of pauses on response
+    times is the goal, a concurrent collector may be more appropriate.
+  id: totrans-29
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 单个请求将受暂停时间的影响，尤其是全局 GC 的长暂停时间。如果最小化暂停对响应时间的影响是目标，则并发收集器可能更合适。
+- en: If the average response time is more important than the outliers (i.e., the
+    90th%) response time), a nonconcurrent collector may yield better results.
+  id: totrans-30
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果平均响应时间比异常值（即 90th%）响应时间更重要，那么非并发收集器可能会产生更好的结果。
+- en: The benefit of avoiding long pause times with a concurrent collector comes at
+    the expense of extra CPU usage. If your machine lacks the spare CPU cycles needed
+    by a concurrent collector, a nonconcurrent collector may be the better choice.
+  id: totrans-31
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用并发收集器避免长暂停时间的好处是需要额外的 CPU 使用。如果您的计算机缺乏并发收集器所需的空闲 CPU 循环，则非并发收集器可能是更好的选择。
+- en: 'Similarly, the choice of garbage collector in a batch application is guided
+    by the following trade-off:'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 同样，在批处理应用程序中选择垃圾收集器的选择受以下权衡的指导：
+- en: If enough CPU is available, using the concurrent collector to avoid full GC
+    pauses will allow the job to finish faster.
+  id: totrans-33
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果有足够的 CPU 可用，使用并发收集器来避免全局 GC 暂停将有助于更快地完成任务。
+- en: If CPU is limited, the extra CPU consumption of the concurrent collector will
+    cause the batch job to take more time.
+  id: totrans-34
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果 CPU 受限，那么并发收集器的额外 CPU 消耗将导致批处理作业需要更多时间。
+- en: Quick Summary
+  id: totrans-35
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: GC algorithms generally divide the heap into old and young generations.
+  id: totrans-36
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: GC 算法通常将堆分为老年代和年轻代。
+- en: GC algorithms generally employ a stop-the-world approach to clearing objects
+    from the young generation, which is usually a quick operation.
+  id: totrans-37
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: GC 算法通常采用停止-世界方法来清除来自年轻代的对象，这通常是一个快速操作。
+- en: Minimizing the effect of performing GC in the old generation is a trade-off
+    between pause times and CPU usage.
+  id: totrans-38
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 最小化在老年代执行 GC 的影响是暂停时间和 CPU 使用之间的权衡。
+- en: GC Algorithms
+  id: totrans-39
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: GC 算法
+- en: OpenJDK 12 provides a variety of GC algorithms with varying degrees of support
+    in earlier releases. [Table 5-1](#TableGCAlgorithms) lists these algorithms and
+    their status in OpenJDK and Oracle Java releases.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: OpenJDK 12 提供了各种 GC 算法，在早期版本中的支持程度各不相同。[Table 5-1](#TableGCAlgorithms) 列出了这些算法及其在
+    OpenJDK 和 Oracle Java 发布版中的状态。
+- en: Table 5-1\. Support level of various GC algorithms^([a](ch05.html#idm45775555035960))
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表 5-1\. 各种 GC 算法的支持级别^([a](ch05.html#idm45775555035960))
+- en: '| GC algorithm | Support in JDK 8 | Support in JDK 11 | Support in JDK 12 |'
+  id: totrans-42
+  prefs: []
+  type: TYPE_TB
+  zh: '| GC 算法 | JDK 8 中的支持 | JDK 11 中的支持 | JDK 12 中的支持 |'
+- en: '| --- | --- | --- | --- |'
+  id: totrans-43
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- | --- |'
+- en: '| Serial GC | S | S | S |'
+  id: totrans-44
+  prefs: []
+  type: TYPE_TB
+  zh: '| 串行GC | S | S | S |'
+- en: '| Throughput (Parallel) GC | S | S | S |'
+  id: totrans-45
+  prefs: []
+  type: TYPE_TB
+  zh: '| 吞吐量（并行）GC | S | S | S |'
+- en: '| G1 GC | S | S | S |'
+  id: totrans-46
+  prefs: []
+  type: TYPE_TB
+  zh: '| G1 GC | S | S | S |'
+- en: '| Concurrent Mark-Sweep (CMS) | S | D | D |'
+  id: totrans-47
+  prefs: []
+  type: TYPE_TB
+  zh: '| 并发标记-清除（CMS） | S | D | D |'
+- en: '| ZGC | - | E | E |'
+  id: totrans-48
+  prefs: []
+  type: TYPE_TB
+  zh: '| ZGC | - | E | E |'
+- en: '| Shenandoah | E2 | E2 | E2 |'
+  id: totrans-49
+  prefs: []
+  type: TYPE_TB
+  zh: '| Shenandoah | E2 | E2 | E2 |'
+- en: '| Epsilon GC | - | E | E |'
+  id: totrans-50
+  prefs: []
+  type: TYPE_TB
+  zh: '| Epsilon GC | - | E | E |'
+- en: '| ^([a](ch05.html#idm45775555035960-marker)) (S: Fully Supported D: Deprecated
+    E: Experimental E2: Experimental; in OpenJDK builds but not Oracle builds) |'
+  id: totrans-51
+  prefs: []
+  type: TYPE_TB
+  zh: '| ^([a](ch05.html#idm45775555035960-marker)) （S: 完全支持 D: 已弃用 E: 实验性 E2: 实验性；在OpenJDK版本中但不在Oracle版本中）
+    |'
+- en: A brief description of each algorithm follows; [Chapter 6](ch06.html#Collectors)
+    provides more details on tuning them individually.
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来是每种算法的简要描述；[第6章](ch06.html#Collectors)提供了有关单独调优它们的更多详细信息。
+- en: The serial garbage collector
+  id: totrans-53
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 串行垃圾收集器
+- en: 'The *serial garbage collector* is the simplest of the collectors. This is the
+    default collector if the application is running on a client-class machine (32-bit
+    JVMs on Windows) or on a single-processor machine. At one point, the serial collector
+    seemed like it was destined for the trash can, but containerization has changed
+    that: virtual machines and Docker containers with one core (even a hyper-threaded
+    core that appears as two CPUs) have made this algorithm more relevant again.'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*串行垃圾收集器*是所有收集器中最简单的一种。如果应用程序在客户端类机器上运行（Windows上的32位JVM）或单处理器机器上运行，则默认使用此收集器。曾经，串行收集器似乎注定要被丢弃，但容器化技术改变了这一点：具有一个核心（甚至是看起来像两个CPU的超线程核心）的虚拟机和Docker容器使得这种算法再次变得更为重要。'
+- en: The serial collector uses a single thread to process the heap. It will stop
+    all application threads as the heap is processed (for either a minor or full GC).
+    During a full GC, it will fully compact the old generation.
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 串行收集器使用单个线程处理堆。在处理堆时（无论是进行部分GC还是完全GC），它将停止所有应用程序线程。在完全GC期间，它将完全压缩老年代。
+- en: The serial collector is enabled by using the `-XX:+UseSerialGC` flag (though
+    usually it is the default in those cases where it might be used). Note that unlike
+    with most JVM flags, the serial collector is not disabled by changing the plus
+    sign to a minus sign (i.e., by specifying `-XX:-UseSerialGC`). On systems where
+    the serial collector is the default, it is disabled by specifying a different
+    GC algorithm.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`-XX:+UseSerialGC`标志可以启用串行收集器（尽管通常在可能使用它的情况下它是默认的）。请注意，与大多数JVM标志不同，串行收集器不会通过将加号改为减号（即指定`-XX:-UseSerialGC`）来禁用。在串行收集器是默认收集器的系统上，可以通过指定不同的GC算法来禁用它。
+- en: The throughput collector
+  id: totrans-57
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 吞吐量收集器
+- en: In JDK 8, the *throughput collector* is the default collector for any 64-bit
+    machine with two or more CPUs. The throughput collector uses multiple threads
+    to collect the young generation, which makes minor GCs much faster than when the
+    serial collector is used. This uses multiple threads to process the old generation
+    as well. Because it uses multiple threads, the throughput collector is often called
+    the *parallel collector*.
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在JDK 8中，*吞吐量收集器*是任何具有两个或更多CPU的64位机器的默认收集器。吞吐量收集器使用多个线程来收集年轻代，这使得部分GC比使用串行收集器更快。它也使用多个线程来处理老年代。由于使用多个线程，吞吐量收集器通常被称为*并行收集器*。
+- en: The throughput collector stops all application threads during both minor and
+    full GCs, and it fully compacts the old generation during a full GC. Since it
+    is the default in most situations where it would be used, it needn’t be explicitly
+    enabled. To enable it where necessary, use the flag `-XX:+UseParallelGC`.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 吞吐量收集器在部分GC和完全GC期间停止所有应用程序线程，并在完全GC期间完全压缩老年代。由于在大多数使用场景中，它是默认的收集器，因此不需要显式启用。如有必要，在需要时可以使用标志`-XX:+UseParallelGC`来启用它。
+- en: Note that old versions of the JVM enabled parallel collection in the young and
+    old generations separately, so you might see references to the flag `-XX:+UseParallelOldGC`.
+    This flag is obsolete (though it still functions, and you could disable this flag
+    to collect only the young generation in parallel if for some reason you really
+    wanted to).
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，JVM的旧版本允许在年轻代和老年代分别启用并行收集，因此您可能会看到关于标志`-XX:+UseParallelOldGC`的引用。尽管这个标志已经过时（虽然它仍然有效，并且出于某种原因，如果您真的想要，您可以禁用此标志以仅并行收集年轻代），但是可以禁用它以仅在年轻代并行收集。
+- en: The G1 GC collector
+  id: totrans-61
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: G1 GC收集器
+- en: The *G1 GC* (or *garbage first garbage collector*) uses a concurrent collection
+    strategy to collect the heap with minimal pauses. It is the default collector
+    in JDK 11 and later for 64-bit JVMs on machines with two or more CPUs.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*G1 GC*（或*垃圾优先垃圾收集器*）使用并发收集策略来在尽可能小的暂停时间内收集堆。对于具有两个或更多 CPU 的 64 位 JVM，它是 JDK
+    11 及更高版本的默认收集器。'
+- en: G1 GC divides the heap into regions, but it still considers the heap to have
+    two generations. Some of those regions make up the young generation, and the young
+    generation is still collected by stopping all application threads and moving all
+    objects that are alive into the old generation or the survivor spaces. (This occurs
+    using multiple threads.
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: G1 GC 将堆划分为多个区域，但仍然将堆视为具有两个代。其中一些区域组成年轻代，年轻代仍然通过停止所有应用程序线程并将所有存活对象移动到老年代或存活区域来进行收集。（这是使用多个线程进行的。）
+- en: In G1 GC, the old generation is processed by background threads that don’t need
+    to stop the application threads to perform most of their work. Because the old
+    generation is divided into regions, G1 GC can clean up objects from the old generation
+    by copying from one region into another, which means that it (at least partially)
+    compacts the heap during normal processing. This helps keep G1 GC heaps from becoming
+    fragmented, although that is still possible.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 G1 GC 中，老年代由后台线程处理，这些线程不需要停止应用程序线程来执行大部分工作。因为老年代被划分为区域，所以 G1 GC 可以通过从一个区域复制到另一个区域来清理老年代的对象，这意味着它（至少部分地）在正常处理中压缩堆。这有助于保持
+    G1 GC 堆不会变得碎片化，尽管这仍然可能发生。
+- en: 'The trade-off for avoiding the full GC cycles is CPU time: the (multiple) background
+    threads G1 GC uses to process the old generation must have CPU cycles available
+    at the same time the application threads are running.'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 避免完全 GC 周期的折衷是 CPU 时间：G1 GC 使用的（多个）后台线程在应用程序线程运行时必须有可用的 CPU 周期来处理老年代。
+- en: G1 GC is enabled by specifying the flag `-XX:+UseG1GC`. In most cases, it is
+    the default in JDK 11, and it is functional in JDK 8 as well—particularly in later
+    builds of JDK 8, which contains many important bug fixes and performance enhancements
+    that have been back-ported from later releases. Still, as you’ll see when we explore
+    G1 GC in depth, one major performance feature is missing from G1 GC in JDK 8 that
+    can make it unsuitable for that release.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过指定标志 `-XX:+UseG1GC` 启用 G1 GC。在 JDK 11 中，它通常是默认的，在 JDK 8 中也可以使用——特别是在 JDK 8
+    的后期版本中，它包含了从较新版本中后移植的许多重要的错误修复和性能增强。但是，当我们深入探讨 G1 GC 时，您会发现 JDK 8 中缺少的一个主要性能特性，这可能使其不适合该版本。
+- en: The CMS collector
+  id: totrans-67
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: CMS 收集器
+- en: The *CMS collector* was the first concurrent collector. Like other algorithms,
+    CMS stops all application threads during a minor GC, which it performs with multiple
+    threads.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*CMS 收集器* 是第一个并发收集器。与其他算法一样，CMS 在执行次要 GC 时会停止所有应用程序线程，并使用多个线程执行。'
+- en: CMS is officially deprecated in JDK 11 and beyond, and its use in JDK 8 is discouraged.
+    From a practical standpoint, the major flaw in CMS is that it has no way to compact
+    the heap during its background processing. If the heap becomes fragmented (which
+    is likely to happen at some point), CMS must stop all application threads and
+    compact the heap, which defeats the purpose of a concurrent collector. Between
+    that and the advent of G1 GC, CMS is no longer recommended.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: CMS 在 JDK 11 及更高版本中已正式弃用，并且在 JDK 8 中不建议使用。从实际的角度来看，CMS 的主要缺陷是它在后台处理过程中没有一种方法来压缩堆。如果堆变得碎片化（这在某些时候很可能发生），CMS
+    必须停止所有应用程序线程并压缩堆，这违背了并发收集器的初衷。鉴于这一点和 G1 GC 的出现，CMS 不再推荐使用。
+- en: CMS is enabled by specifying the flag `-XX:+UseConcMarkSweepGC`, which is `false`
+    by default. Historically, CMS used to require setting the `-XX:+UseParNewGC` flag
+    as well (otherwise, the young generation would be collected by a single thread),
+    though that is obsolete.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: CMS 是通过指定标志 `-XX:+UseConcMarkSweepGC` 启用的，默认情况下为 `false`。历史上，CMS 还需要设置 `-XX:+UseParNewGC`
+    标志（否则，年轻代将由单个线程收集），尽管这已经过时。
+- en: Experimental collectors
+  id: totrans-71
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 实验性收集器
+- en: Garbage collection continues to be fertile ground for JVM engineers, and the
+    latest versions of Java come with the three experimental algorithms mentioned
+    earlier. I’ll have more to say about those in the next chapter; for now, let’s
+    continue with a look at choosing among the three collectors supported in production
+    environments.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 垃圾收集在 JVM 工程师中仍然是一个富有成效的领域，而最新版本的 Java 提供了前面提到的三种实验性算法。在下一章中我将详细介绍它们；现在，让我们继续看看在生产环境中选择三种支持的收集器之间的差异。
+- en: Quick Summary
+  id: totrans-73
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: The supported GC algorithms take different approaches toward minimizing the
+    effect of GC on an application.
+  id: totrans-74
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 支持的 GC 算法采用不同的方法来最小化 GC 对应用程序的影响。
+- en: The serial collector makes sense (and is the default) when only one CPU is available
+    and extra GC threads would interfere with the application.
+  id: totrans-75
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 当只有一个 CPU 可用且额外的 GC 线程会干扰应用程序时，串行收集器是合理的（并且是默认的）。
+- en: The throughput collector is the default in JDK 8; it maximizes the total throughput
+    of an application but may subject individual operations to long pauses.
+  id: totrans-76
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 吞吐量收集器是 JDK 8 的默认选项；它最大化应用程序的总吞吐量，但可能会使个别操作出现长时间的暂停。
+- en: G1 GC is the default in JDK 11 and beyond; it concurrently collects the old
+    generation while application threads are running, potentially avoiding full GCs.
+    Its design makes it less likely to experience full GCs than CMS.
+  id: totrans-77
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: G1 GC 是 JDK 11 及更高版本的默认选项；它在应用程序线程运行时并发地收集老年代，有可能避免全局垃圾回收。其设计使得它比 CMS 更不太可能经历全局垃圾回收。
+- en: The CMS collector can concurrently collect the old generation while application
+    threads are running. If enough CPU is available for its background processing,
+    this can avoid full GC cycles for the application. It is deprecated in favor of
+    G1 GC.
+  id: totrans-78
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: CMS（Concurrent Mark-Sweep）垃圾收集器可以在应用程序线程运行时并发地收集老年代。如果有足够的 CPU 可用于后台处理，这可以避免应用程序的全局垃圾回收周期。它已被
+    G1 GC 所取代。
+- en: Choosing a GC Algorithm
+  id: totrans-79
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 选择 GC 算法
+- en: The choice of a GC algorithm depends in part on the hardware available, in part
+    on what the application looks like, and in part on the performance goals for the
+    application. In JDK 11, G1 GC is often the better choice; in JDK 8, the choice
+    will depend on your application.
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 选择 GC 算法部分取决于可用的硬件，部分取决于应用程序的外观，部分取决于应用程序的性能目标。在 JDK 11 中，G1 GC 通常是更好的选择；在 JDK
+    8 中，选择将取决于你的应用程序。
+- en: We will start with the rule of thumb that G1 GC is the better choice, but there
+    are exceptions to every rule. In the case of garbage collection, these exceptions
+    involve the number of CPU cycles the application needs relative to the available
+    hardware, and the amount of processing the background G1 GC threads need to perform.
+    If you are using JDK 8, the ability of G1 GC to avoid a full GC will also be a
+    key consideration. When G1 GC is not the better choice, the decision between the
+    throughput and serial collectors is based on the number of CPUs on the machine.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将从一个经验法则开始，即 G1 GC 是更好的选择，但每个规则都有例外。在垃圾回收的情况下，这些例外涉及到应用程序相对于可用硬件需要的 CPU 循环数，以及后台
+    G1 GC 线程需要执行的处理量。如果你使用 JDK 8，G1 GC 避免全局垃圾回收的能力也将是一个关键考虑因素。当 G1 GC 不是更好的选择时，吞吐量和串行收集器之间的选择取决于机器上的
+    CPU 数量。
+- en: When to use (and not use) the serial collector
+  id: totrans-82
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 何时使用（以及何时不使用）串行收集器
+- en: On a machine with a single CPU, the JVM defaults to using the serial collector.
+    This includes virtual machines with one CPU, and Docker containers that are limited
+    to one CPU. If you limit your Docker container to a single CPU in early versions
+    of JDK 8, it will still use the throughput collector by default. In that environment,
+    you should explore using the serial collector (even though you’ll have to set
+    it manually).
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在只有一个 CPU 的机器上，JVM 默认使用串行收集器。这包括只有一个 CPU 的虚拟机，以及被限制为一个 CPU 的 Docker 容器。如果你在
+    JDK 8 的早期版本中将 Docker 容器限制为一个 CPU，它仍将默认使用吞吐量收集器。在这种环境中，你应该考虑使用串行收集器（即使你需要手动设置）。
+- en: In these environments, the serial collector is usually a good choice, but at
+    times G1 GC will give better results. This example is also a good starting point
+    for understanding the general trade-offs involved in choosing a GC algorithm.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这些环境中，串行收集器通常是一个不错的选择，但有时 G1 GC 会产生更好的结果。这个例子也是理解选择 GC 算法所涉及的一般权衡的一个很好的起点。
+- en: The trade-off between G1 GC and other collectors involves having available CPU
+    cycles for G1 GC background threads, so let’s start with a CPU-intensive batch
+    job. In a batch job, the CPU will be 100% busy for a long time, and in that case
+    the serial collector has a marked advantage.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: G1 GC 和其他收集器之间的权衡包括为 G1 GC 后台线程提供可用的 CPU 循环，所以我们先从一个 CPU 密集型的批处理作业开始。在批处理作业中，CPU
+    将长时间地处于 100% 忙碌状态，这种情况下串行收集器有明显的优势。
+- en: '[Table 5-2](#TableHardwareBatch) lists the time required for a single thread
+    to compute stock histories for 100,000 stocks over a period of three years.'
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[表 5-2](#TableHardwareBatch) 列出了一个单线程计算 10 万只股票在三年内历史记录所需的时间。'
+- en: Table 5-2\. Processing time on a single CPU for different GC algorithms
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表 5-2\. 不同 GC 算法在单个 CPU 上的处理时间
+- en: '| GC algorithm | Elapsed time | Time paused for GC |'
+  id: totrans-88
+  prefs: []
+  type: TYPE_TB
+  zh: '| GC算法 | 总经过时间 | 用于GC暂停的时间 |'
+- en: '| --- | --- | --- |'
+  id: totrans-89
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- |'
+- en: '| Serial | 434 seconds | 79 seconds |'
+  id: totrans-90
+  prefs: []
+  type: TYPE_TB
+  zh: '| 串行 | 434秒 | 79秒 |'
+- en: '| Throughput | 503 seconds | 144 seconds |'
+  id: totrans-91
+  prefs: []
+  type: TYPE_TB
+  zh: '| 吞吐量 | 503秒 | 144秒 |'
+- en: '| G1 GC | 501 seconds | 97 seconds |'
+  id: totrans-92
+  prefs: []
+  type: TYPE_TB
+  zh: '| G1 GC | 501秒 | 97秒 |'
+- en: The advantage of the single-threaded garbage collection is most readily apparent
+    when we compare the serial collector to the throughput collector. The time spent
+    doing the actual calculation is the elapsed time minus the time spent paused for
+    GC. In the serial and throughput collectors, that time is essentially the same
+    (roughly 355 seconds), but the serial collector wins because it spends much less
+    time paused for garbage collection. In particular, the serial collector takes
+    on average 505 ms for a full GC, whereas the throughput collector requires 1,392
+    ms. The throughput collector has a fair amount of overhead in its algorithm—that
+    overhead is worthwhile when two or more threads are processing the heap, but it
+    just gets in the way when only a single thread is available.
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 单线程垃圾收集的优势最明显的是当我们将串行收集器与吞吐量收集器进行比较时。用于实际计算的时间是总经过时间减去用于GC暂停的时间。在串行和吞吐量收集器中，这段时间基本相同（大约355秒），但串行收集器胜出的原因是它在进行垃圾收集时的暂停时间要少得多。具体来说，串行收集器进行一次完全GC的平均时间为505毫秒，而吞吐量收集器则需要1,392毫秒。吞吐量收集器在其算法中有相当多的开销——当两个或更多线程处理堆时，这种开销是值得的，但当只有一个线程可用时，它只会妨碍操作。
+- en: Now compare the serial collector to G1 GC. If we eliminate the pause time when
+    running with G1 GC, the application takes 404 seconds for its calculation—but
+    we know from the other examples that it should take only 355 seconds. What accounts
+    for the other 49 seconds?
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在将串行收集器与G1 GC进行比较。如果我们在使用G1 GC时消除暂停时间，应用程序进行计算需要404秒，但我们知道从其他示例中，实际只需要355秒。其他的49秒来自于什么？
+- en: 'The calculation thread can utilize all available CPU cycles. At the same time,
+    background G1 GC threads need CPU cycles for their work. Because there isn’t enough
+    CPU to satisfy both, they end up sharing the CPU: the calculation thread will
+    run some of the time, and a background G1 GC thread will run some of the time.
+    The net effect is the calculation thread cannot run for 49 seconds because a “background”
+    G1 GC thread is occupying the CPU.'
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 计算线程可以利用所有可用的CPU周期。同时，后台的G1 GC线程需要CPU周期来完成它们的工作。因为没有足够的CPU来满足两者的需求，它们最终会共享CPU：计算线程会运行一段时间，而后台的G1
+    GC线程会运行一段时间。最终的效果是，计算线程因为一个“后台”G1 GC线程占用CPU而无法运行49秒。
+- en: That’s what I mean when I say that when you choose G1 GC, sufficient CPU is
+    needed for its background threads to run. With a long-running application thread
+    taking the only available CPU, G1 GC isn’t a good choice. But what about something
+    different, like a microservice running simple REST requests on the constrained
+    hardware? [Table 5-3](#TableHardwareInteractive) shows the response time for a
+    web server that is handling roughly 11 requests per second on its single CPU,
+    which takes roughly 50% of the available CPU cycles.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是我说当你选择G1 GC时，需要足够的CPU供其后台线程运行的意思。对于长时间运行的应用程序线程占用唯一可用的CPU的情况，G1 GC并不是一个好选择。但如果换成一些不同的情况，比如在受限硬件上运行简单的REST请求的微服务呢？[表格 5-3](#TableHardwareInteractive)
+    展示了一个Web服务器处理大约每秒11个请求，使用单个CPU，大约占用了可用CPU周期的50%的响应时间。
+- en: Table 5-3\. Response times for a single CPU with different GC algorithms
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表格 5-3\. 使用不同GC算法的单个CPU的响应时间
+- en: '| GC algorithm | Average response time | 90th% response time | 99th% response
+    time | CPU utilization |'
+  id: totrans-98
+  prefs: []
+  type: TYPE_TB
+  zh: '| GC算法 | 平均响应时间 | 90th% 响应时间 | 99th% 响应时间 | CPU利用率 |'
+- en: '| --- | --- | --- | --- | --- |'
+  id: totrans-99
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- | --- | --- |'
+- en: '| Serial | 0.10 second | 0.18 second | 0.69 second | 53% |'
+  id: totrans-100
+  prefs: []
+  type: TYPE_TB
+  zh: '| 串行 | 0.10秒 | 0.18秒 | 0.69秒 | 53% |'
+- en: '| Throughput | 0.16 second | 0.18 second | 1.40 seconds | 49% |'
+  id: totrans-101
+  prefs: []
+  type: TYPE_TB
+  zh: '| 吞吐量 | 0.16秒 | 0.18秒 | 1.40秒 | 49% |'
+- en: '| G1 GC | 0.13 second | 0.28 second | 0.40 second | 48% |'
+  id: totrans-102
+  prefs: []
+  type: TYPE_TB
+  zh: '| G1 GC | 0.13秒 | 0.28秒 | 0.40秒 | 48% |'
+- en: The default (serial) algorithm still has the best average time, by 30%. Again,
+    that’s because the collections of the young generation by the serial collector
+    are generally faster than those of the other algorithms, so an average request
+    is delayed less by the serial collector.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 默认（串行）算法仍然具有最佳的平均时间，比其他算法快30%。同样，这是因为串行收集器对于年轻代的收集通常比其他算法快，因此平均请求由串行收集器延迟较少。
+- en: Some unlucky requests will get interrupted by a full GC of the serial collector.
+    In this experiment, the average time for a full GC by the serial collector took
+    592 milliseconds, and some took as long as 730 milliseconds. The result is that
+    1% of the requests took almost 700 milliseconds.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一些不幸的请求会被串行收集器的完整GC打断。在这个实验中，串行收集器进行完整GC的平均时间为592毫秒，最长的甚至达到了730毫秒。结果是1%的请求几乎花费了700毫秒。
+- en: That’s still better than the throughput collector can do. The full GCs of the
+    throughput collector averaged 1,192 milliseconds with a 1,510-millisecond maximum.
+    Hence the 99th% response time of the throughput collector is twice that of the
+    serial collector. And the average time is skewed by those outliers as well.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这仍然优于吞吐量收集器的表现。吞吐量收集器的完整GC平均为1,192毫秒，最大为1,510毫秒。因此，吞吐量收集器的第99th%响应时间是串行收集器的两倍。而且平均时间也因这些异常值而偏差。
+- en: G1 GC sits somewhere in the middle. In terms of average response time, it is
+    worse than the serial collector, because the simpler serial collector algorithm
+    is faster. In this case, that applies primarily to the minor GCs, which took on
+    average 86 milliseconds for the serial collector but required 141 milliseconds
+    for G1 GC. So an average request will get delayed longer in the G1 GC case.
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: G1 GC位于中间某处。就平均响应时间而言，它比串行收集器更差，因为更简单的串行收集器算法更快。在这种情况下，主要适用于小GC，串行收集器平均需要86毫秒，而G1
+    GC则需要141毫秒。因此，在G1 GC的情况下，平均请求会被延迟更长时间。
+- en: Still, G1 GC has a 99th% response time that is significantly less than that
+    of the serial collector. In this example, G1 GC was able to avoid full GCs, so
+    it had none of the more than 500-millisecond delays of the serial collector.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管如此，G1 GC的99th%响应时间明显低于串行收集器。在这个示例中，G1 GC能够避免完整GC，因此没有了串行收集器超过500毫秒的延迟。
+- en: 'There’s a choice of what to optimize here: if average response time is the
+    most important goal, the (default) serial collector is the better choice. If you
+    want to optimize for the 99th% response time, G1 GC wins. It’s a judgment call,
+    but to me, the 30 ms difference in the average time is not as important as the
+    300 ms difference in the 99th% time—so in this case G1 GC makes sense over the
+    platform’s default collector.'
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里有一个优化的选择：如果平均响应时间是最重要的目标，那么（默认的）串行收集器是更好的选择。如果你想要优化第99th%响应时间，G1 GC胜出。这是一个判断的问题，但对我来说，平均时间的30毫秒差异不如第99th%时间的300毫秒差异重要—因此在这种情况下，G1
+    GC比平台的默认收集器更合理。
+- en: This example is GC intensive; in particular, the non-concurrent collectors each
+    have to perform a significant amount of full GC operations. If we tweak the test
+    such that all objects can be collected without requiring a full GC, the serial
+    algorithm can match G1 GC, as [Table 5-4](#TableHardwareInteractiveNoFull) shows.
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个示例对GC的消耗很大；特别是非并发收集器需要执行大量的完整GC操作。如果我们调整测试，使得所有对象都可以在不需要完整GC的情况下被收集，那么串行算法可以与G1
+    GC相匹配，如[表5-4](#TableHardwareInteractiveNoFull)所示。
+- en: Table 5-4\. Response times for a single CPU with different GC algorithms (no
+    full GCs)
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表5-4\. 单CPU使用不同GC算法的响应时间（无完整GC）
+- en: '| GC algorithm | Average response time | 90th% response time | 99th% response
+    time | CPU utilization |'
+  id: totrans-111
+  prefs: []
+  type: TYPE_TB
+  zh: '| GC算法 | 平均响应时间 | 第90th%响应时间 | 第99th%响应时间 | CPU利用率 |'
+- en: '| --- | --- | --- | --- | --- |'
+  id: totrans-112
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- | --- | --- |'
+- en: '| Serial | 0.05 second | 0.08 second | 0.11 second | 53% |'
+  id: totrans-113
+  prefs: []
+  type: TYPE_TB
+  zh: '| 串行 | 0.05秒 | 0.08秒 | 0.11秒 | 53% |'
+- en: '| Throughput | 0.08 second | 0.09 second | 0.13 second | 49% |'
+  id: totrans-114
+  prefs: []
+  type: TYPE_TB
+  zh: '| 吞吐量 | 0.08秒 | 0.09秒 | 0.13秒 | 49% |'
+- en: '| G1 GC | 0.05 second | 0.08 second | 0.11 second | 52% |'
+  id: totrans-115
+  prefs: []
+  type: TYPE_TB
+  zh: '| G1 GC | 0.05秒 | 0.08秒 | 0.11秒 | 52% |'
+- en: Because there are no full GCs, the advantage of the serial collector to G1 GC
+    is eliminated. When there is little GC activity, the numbers are all in the same
+    range, and all the collectors perform about the same. On the other hand, having
+    no full GCs is pretty unlikely, and that’s the case where the serial collector
+    will do best. Given sufficient CPU cycles, G1 GC will generally be better even
+    where the serial collector is the default.
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因为没有完整GC，串行收集器相对于G1 GC的优势被消除了。当GC活动较少时，所有数字都在同一范围内，并且所有收集器的表现几乎相同。另一方面，没有完整GC的情况相当罕见，这是串行收集器表现最佳的情况。在足够的CPU周期下，G1
+    GC通常会比默认的串行收集器更好。
+- en: Single hyper-threaded CPU hardware
+  id: totrans-117
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 单超线程CPU硬件
+- en: What about a single-core machine or Docker container where the CPU is hyper-threaded
+    (and hence appears to the JVM as a two-CPU machine)? In that case, the JVM will
+    not use the serial collector by default—it thinks there are two CPUs, so it will
+    default to the throughput collector in JDK 8 and G1 GC in JDK 11. But it turns
+    out that the serial collector is often advantageous on this hardware as well.
+    [Table 5-5](#TableGC1SerialHyperThread) shows what happens when we run the previous
+    batch experiment on a single hyper-threaded CPU.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么单核机器或Docker容器如何？ 在这种情况下，CPU是超线程的（因此在JVM看来是一个双CPU的机器），JVM不会默认使用串行收集器——它认为有两个CPU，因此在JDK
+    8中会默认使用吞吐量收集器，在JDK 11中会使用G1 GC。 但事实证明，串行收集器在这种硬件上通常也是有利的。 [表5-5](#TableGC1SerialHyperThread)显示了在单个超线程CPU上运行前一批次实验时发生的情况。
+- en: Table 5-5\. Processing time on a single hyper-threaded CPU for different GC
+    algorithms
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表5-5\. 在单个超线程CPU上使用不同GC算法的处理时间
+- en: '| GC algorithm | Elapsed time | Time paused for GC |'
+  id: totrans-120
+  prefs: []
+  type: TYPE_TB
+  zh: '| GC算法 | 经过时间 | 垃圾回收暂停时间 |'
+- en: '| --- | --- | --- |'
+  id: totrans-121
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- |'
+- en: '| Serial | 432 seconds | 82 seconds |'
+  id: totrans-122
+  prefs: []
+  type: TYPE_TB
+  zh: '| 串行 | 432秒 | 82秒 |'
+- en: '| Throughput | 478 seconds | 117 seconds |'
+  id: totrans-123
+  prefs: []
+  type: TYPE_TB
+  zh: '| 吞吐量 | 478秒 | 117秒 |'
+- en: '| G1 GC | 476 seconds | 72 seconds |'
+  id: totrans-124
+  prefs: []
+  type: TYPE_TB
+  zh: '| G1 GC | 476秒 | 72秒 |'
+- en: The serial collector won’t run multiple threads, so its times are essentially
+    unchanged from our previous test. The other algorithms have improved, but not
+    by as much as we might hope—the throughput collector will run two threads, but
+    instead of cutting the pause time in half, the pause time has been reduced by
+    about 20%. Similarly, G1 GC still cannot get enough CPU cycles for its background
+    threads.
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 串行收集器不会运行多个线程，因此其时间与我们之前的测试基本上没有变化。 其他算法有所改进，但并不像我们希望的那样多——吞吐量收集器将运行两个线程，但暂停时间并没有减半，而是减少了约20%。
+    同样，G1 GC仍然无法为其后台线程获取足够的CPU周期。
+- en: So at least in this case—a long-running batch job with frequent garbage collection—the
+    default choice by the JVM will be incorrect, and the application will be better
+    off using the serial collector despite the presence of “two” CPUs. If there were
+    two actual CPUs (i.e., two cores), things would be different. The throughput collector
+    would take only 72 seconds for its operations, which is less than the time required
+    by the serial collector. At that point, the usefulness of the serial collector
+    wanes, so we’ll drop it from future examples.
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所以至少在这种情况下——长时间运行的批处理作业并频繁进行垃圾收集时——JVM的默认选择是错误的，应用程序最好使用串行收集器，尽管存在“两个”CPU。 如果有两个实际的CPU（即两个核心），情况会有所不同。
+    吞吐量收集器仅需要72秒来完成操作，这比串行收集器所需的时间少。 在这一点上，串行收集器的实用性就会减弱，所以我们将在未来的示例中放弃它。
+- en: 'One other point about the serial collector: an application with a very small
+    heap (say, 100 MB) may still perform better with the serial collector regardless
+    of the number of cores that are available.'
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 串行收集器有一个额外的要点：即使应用程序的堆非常小（比如100 MB），使用串行收集器仍然可能表现更好，而与可用的核心数量无关。
+- en: When to use the throughput collector
+  id: totrans-128
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 何时使用吞吐量收集器
+- en: When a machine has multiple CPUs available, more-complex interactions can occur
+    between GC algorithms, but at a basic level, the trade-offs between G1 GC and
+    the throughput collector are the same as we’ve just seen. For example, [Table 5-6](#TableGC1Batch)
+    shows how our sample application works when running either two or four application
+    threads on a machine with four cores (where the cores are not hyper-threaded).
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当一台机器有多个可用的CPU时，GC算法之间可能会发生更复杂的交互，但在基本水平上，G1 GC和吞吐量收集器之间的权衡与我们刚刚看到的相同。 例如，[表5-6](#TableGC1Batch)显示了我们的样本应用程序在具有四个核心的机器上运行两个或四个应用程序线程时的工作情况（其中核心不是超线程的）。
+- en: Table 5-6\. Batch processing time with different GC algorithms
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表5-6\. 使用不同GC算法进行批处理的时间
+- en: '| Application threads | G1 GC | Throughput |'
+  id: totrans-131
+  prefs: []
+  type: TYPE_TB
+  zh: '| 应用程序线程 | G1 GC | 吞吐量 |'
+- en: '| --- | --- | --- |'
+  id: totrans-132
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- |'
+- en: '| Two | 410 seconds (60.8%) | 446 seconds (59.7%) |'
+  id: totrans-133
+  prefs: []
+  type: TYPE_TB
+  zh: '| 两 | 410秒（60.8%） | 446秒（59.7%） |'
+- en: '| Four | 513 seconds (99.5%) | 536 seconds (99.5%) |'
+  id: totrans-134
+  prefs: []
+  type: TYPE_TB
+  zh: '| 四 | 513秒（99.5%） | 536秒（99.5%） |'
+- en: The times in this table are the number of seconds required to run the test,
+    and the CPU utilization of the machine is shown in parentheses. When there are
+    two application threads, G1 GC is significantly faster than the throughput collector.
+    The main reason is that the throughput collector spent 35 seconds paused for full
+    GCs. G1 GC was able to avoid those collections, at the (relatively slight) increase
+    in CPU time.
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表中的时间是运行测试所需的秒数，并显示了机器的CPU利用率。当有两个应用程序线程时，G1 GC比吞吐量收集器显著更快。主要原因是吞吐量收集器花了35秒暂停进行完全GC。G1
+    GC能够避免这些收集，虽然会（相对轻微地）增加CPU时间。
+- en: Even when there are four application threads, G1 still wins in this example.
+    Here, the throughput collector paused the application threads for a total of 176
+    seconds. G1 GC paused the application threads for only 88 seconds. The G1 GC background
+    threads did need to compete with the application threads for CPU cycles, which
+    took about 65 seconds away from the application threads. That still meant G1 GC
+    was 23 seconds faster.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即使有四个应用程序线程，G1在这个例子中仍然胜出。在这里，吞吐量收集器总共暂停了应用程序线程176秒。而G1 GC仅暂停了应用程序线程88秒。G1 GC后台线程确实需要与应用程序线程竞争CPU周期，这让应用程序线程少了大约65秒。这仍意味着G1
+    GC快了23秒。
+- en: 'When the elapsed time of an application is key, the throughput collector will
+    be advantageous when it spends less time pausing the application threads than
+    G1 GC does. That happens when one or more of these things occur:'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当应用程序的经过时间至关重要时，吞吐量收集器将比G1 GC更有优势，因为它暂停应用程序线程的时间少于G1 GC。这种情况发生在以下一种或多种情况：
+- en: There are no (or few) full GCs. Full GC pauses can easily dominate the pause
+    times of an application, but if they don’t occur in the first place, the throughput
+    collector is no longer at a disadvantage.
+  id: totrans-138
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 没有（或很少）进行完全GC。完全GC暂停很容易支配应用程序的暂停时间，但如果它们根本不发生，那么吞吐量收集器就不再处于劣势。
+- en: The old generation is generally full, causing the background G1 GC threads to
+    work more.
+  id: totrans-139
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 老年代通常是满的，导致后台的G1 GC线程工作更多。
+- en: The G1 GC threads are starved for CPU.
+  id: totrans-140
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: G1 GC线程饥饿于CPU。
+- en: In the next chapter, which details how the various algorithms work, the reasons
+    behind these points will be clearer (as well as ways to tune the collectors around
+    them). For now, we’ll look at a few examples that prove the point.
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来详细介绍各种算法如何工作以及这些要点背后的原因的章节中，将更清楚地解释这些内容（以及围绕它们调整收集器的方法）。现在，我们将看一些例子来证明这一点。
+- en: 'First, let’s look at the data in [Table 5-7](#TableG1GCBatchFull). This test
+    is the same code we used before for batch jobs with long calculations, though
+    it has a few modifications: multiple application threads are doing calculations
+    (two, in this case), the old generation is seeded with objects to keep it 65%
+    full, and almost all objects can be collected directly from the young generation.
+    This test is run on a system with four CPUs (not hyper-threaded) so that there
+    is sufficient CPU for the G1 GC background threads to run.'
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们看一下表格5-7中的数据。这个测试与我们之前用于长计算批处理作业的代码相同，尽管有一些修改：多个应用程序线程正在进行计算（在这种情况下为两个），老年代以对象为种子保持65%满，几乎所有对象都可以直接从年轻代收集。这个测试在一个具有四个CPU（非超线程）的系统上运行，以确保后台的G1
+    GC线程有足够的CPU资源运行。
+- en: Table 5-7\. Batch processing with long-lived objects
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表5-7。带有长寿命对象的批处理
+- en: '| Metric | G1 GC | Throughput |'
+  id: totrans-144
+  prefs: []
+  type: TYPE_TB
+  zh: '| 指标 | G1 GC | 吞吐量 |'
+- en: '| --- | --- | --- |'
+  id: totrans-145
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- |'
+- en: '| Elapsed time | 212 seconds | 193 seconds |'
+  id: totrans-146
+  prefs: []
+  type: TYPE_TB
+  zh: '| 经过时间 | 212秒 | 193秒 |'
+- en: '| CPU usage | 67% | 51% |'
+  id: totrans-147
+  prefs: []
+  type: TYPE_TB
+  zh: '| CPU使用率 | 67% | 51% |'
+- en: '| Young GC pauses | 30 seconds | 13.5 seconds |'
+  id: totrans-148
+  prefs: []
+  type: TYPE_TB
+  zh: '| 年轻代GC暂停 | 30秒 | 13.5秒 |'
+- en: '| Full GC pauses | 0 seconds | 1.5 seconds |'
+  id: totrans-149
+  prefs: []
+  type: TYPE_TB
+  zh: '| 完全GC暂停 | 0秒 | 1.5秒 |'
+- en: Because so few objects are promoted to the old generation, the throughput collector
+    paused the application threads for only 15 seconds, and only 1.5 seconds of that
+    was to collect the old generation.
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于只有少量对象被晋升到老年代，吞吐量收集器仅暂停了应用程序线程15秒，其中只有1.5秒用于收集老年代。
+- en: Although the old generation doesn’t get many new objects promoted into it, the
+    test seeds the old generation such that the G1 GC threads will scan it for garbage.
+    This makes more work for the background GC threads, and it causes G1 GC to perform
+    more work collecting the young generation in an attempt to compensate for the
+    fuller old generation. The end result is that G1 GC paused the application for
+    30 seconds during the two-thread test—more than the throughput collector did.
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管老年代没有许多新对象被晋升进去，但测试种子会为老年代添加垃圾以便 G1 GC 线程扫描。这会给后台 GC 线程增加更多工作量，并导致 G1 GC 为了补偿老年代的填充而在收集年轻代时做更多工作。最终结果是，在两线程测试中，G1
+    GC 使应用程序暂停了 30 秒——比吞吐量收集器更多。
+- en: 'Another example: when there isn’t sufficient CPU for the G1 GC background thread
+    to run, the throughput collector will perform better, as [Table 5-8](#TableG1BatchCPU)
+    shows.'
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个例子：当 G1 GC 后台线程没有足够的 CPU 运行时，吞吐量收集器的表现会更好，正如 [表 5-8](#TableG1BatchCPU) 所示。
+- en: Table 5-8\. Batch processing with busy CPUs
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表 5-8. 忙碌 CPU 下的批处理
+- en: '| Metric | G1 GC | Throughput |'
+  id: totrans-154
+  prefs: []
+  type: TYPE_TB
+  zh: '| 指标 | G1 GC | 吞吐量 |'
+- en: '| --- | --- | --- |'
+  id: totrans-155
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- |'
+- en: '| Elapsed time | 287 seconds | 267 seconds |'
+  id: totrans-156
+  prefs: []
+  type: TYPE_TB
+  zh: '| 经过时间 | 287 秒 | 267 秒 |'
+- en: '| CPU usage | 99% | 99% |'
+  id: totrans-157
+  prefs: []
+  type: TYPE_TB
+  zh: '| CPU 使用率 | 99% | 99% |'
+- en: '| Young GC pauses | 80 seconds | 63 seconds |'
+  id: totrans-158
+  prefs: []
+  type: TYPE_TB
+  zh: '| 年轻代 GC 暂停 | 80 秒 | 63 秒 |'
+- en: '| Full GC pauses | 0 seconds | 37 seconds |'
+  id: totrans-159
+  prefs: []
+  type: TYPE_TB
+  zh: '| 全 GC 暂停 | 0 秒 | 37 秒 |'
+- en: 'This is really no different than the case with a single CPU: the competition
+    for CPU cycles between the G1 GC background threads and the application threads
+    means that the application threads were effectively paused even when GC pauses
+    weren’t happening.'
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实际上，这与单 CPU 的情况没有什么不同：G1 GC 后台线程与应用程序线程之间的 CPU 周期竞争意味着，即使没有 GC 暂停发生，应用程序线程也会被有效暂停。
+- en: If we’re more interested in interactive processing and response times, the throughput
+    collector has a harder time beating G1 GC. If your server is short of CPU cycles
+    such that the G1 GC and application threads compete for CPU, then G1 GC will yield
+    worse response times (similar to the cases we’ve already seen). If the server
+    is tuned such that there are no full GCs, then G1 GC and the throughput collector
+    will generally turn out similar results. But the more full GCs that the throughput
+    collector has, the better the G1 GC average, 90th%, and 99th% response times will
+    be.
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们更关心交互处理和响应时间，那么吞吐量收集器要比 G1 GC 更难胜过。如果您的服务器缺少 CPU 周期，以至于 G1 GC 和应用程序线程争夺
+    CPU，那么 G1 GC 的响应时间将更差（与我们已经看到的情况类似）。如果服务器调优得没有全 GC，则 G1 GC 和吞吐量收集器通常会产生类似的结果。但是吞吐量收集器有更多的全
+    GC，G1 GC 的平均、90th% 和 99th% 响应时间就会更好。
+- en: Quick Summary
+  id: totrans-162
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: G1 GC is currently the better algorithm to choose for a majority of applications.
+  id: totrans-163
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 目前对于大多数应用程序来说，G1 GC 是更好的算法选择。
+- en: The serial collector makes sense when running CPU-bound applications on a machine
+    with a single CPU, even if that single CPU is hyper-threaded. G1 GC will still
+    be better on such hardware for jobs that are not CPU-bound.
+  id: totrans-164
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在单 CPU 机器上运行 CPU 密集型应用程序时，串行收集器是有道理的，即使该单 CPU 是超线程的。对于那些不是 CPU 密集型的作业，G1 GC
+    在这样的硬件上仍然更好。
+- en: The throughput collector makes sense on multi-CPU machines running jobs that
+    are CPU bound. Even for jobs that are not CPU bound, the throughput collector
+    can be the better choice if it does relatively few full GCs or if the old generation
+    is generally full.
+  id: totrans-165
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对于 CPU 密集型作业在多 CPU 机器上，吞吐量收集器是合理的选择。即使对于不是 CPU 密集型的作业，如果它相对较少进行全 GC 或者老年代通常是满的，吞吐量收集器可能也是更好的选择。
+- en: Basic GC Tuning
+  id: totrans-166
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 基本 GC 调优
+- en: Although GC algorithms differ in the way they process the heap, they share basic
+    configuration parameters. In many cases, these basic configurations are all that
+    is needed to run an application.
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管 GC 算法在处理堆的方式上有所不同，它们共享基本的配置参数。在许多情况下，这些基本配置就足以运行一个应用程序。
+- en: Sizing the Heap
+  id: totrans-168
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 调整堆大小
+- en: The first basic tuning for GC is the size of the application’s heap. Advanced
+    tunings affect the size of the heap’s generations; as a first step, this section
+    will discuss setting the overall heap size.
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: GC 的第一个基本调优是应用程序堆大小。高级调优会影响堆的代大小；作为第一步，本节将讨论设置整体堆大小。
+- en: Like most performance issues, choosing a heap size is a matter of balance. If
+    the heap is too small, the program will spend too much time performing GC and
+    not enough time performing application logic. But simply specifying a very large
+    heap isn’t necessarily the answer either. The time spent in GC pauses is dependent
+    on the size of the heap, so as the size of the heap increases, the duration of
+    those pauses also increases. The pauses will occur less frequently, but their
+    duration will make the overall performance lag.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 像大多数性能问题一样，选择堆大小是一个权衡问题。如果堆太小，程序将花费太多时间执行 GC，而不是足够的时间执行应用程序逻辑。但是仅仅指定一个非常大的堆也不一定是答案。GC
+    暂停的时间取决于堆大小，因此随着堆大小的增加，这些暂停的持续时间也会增加。暂停的频率会减少，但其持续时间将使整体性能下降。
+- en: A second danger arises when very large heaps are used. Computer operating systems
+    use virtual memory to manage the physical memory of the machine. A machine may
+    have 8 GB of physical RAM, but the OS will make it appear as if much more memory
+    is available. The amount of virtual memory is subject to the OS configuration,
+    but say the OS makes it look like there is 16 GB of memory. The OS manages that
+    by a process called *swapping* (or *paging*, though there is a technical difference
+    between those two terms that isn’t important for this discussion). You can load
+    programs that use up to 16 GB of memory, and the OS will copy inactive portions
+    of those programs to disk. When those memory areas are needed, the OS will copy
+    them from disk to RAM (usually, it will first need to copy something from RAM
+    to disk to make room).
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当使用非常大的堆时，还会出现第二个危险。计算机操作系统使用虚拟内存管理机器的物理内存。一台机器可能有 8GB 的物理RAM，但操作系统会使其看起来可用的内存量要多得多。虚拟内存的量取决于操作系统的配置，但假设操作系统看起来有
+    16GB 内存。操作系统通过称为*交换*（或*分页*，尽管这两个术语之间有技术上的区别，但对本讨论并不重要）的过程来管理这一点。您可以加载使用高达 16GB
+    内存的程序，操作系统将不活动部分的程序复制到磁盘。当需要这些内存区域时，操作系统将其从磁盘复制到RAM（通常，它首先需要将某些内容从RAM复制到磁盘以腾出空间）。
+- en: This process works well for a system running lots of applications, because most
+    of the applications are not active at the same time. It does not work so well
+    for Java applications. If a Java program with a 12 GB heap is run on this system,
+    the OS can handle it by keeping 8 GB of the heap in RAM and 4 GB on disk (that
+    simplifies the situation a little, since other programs will use part of RAM).
+    The JVM won’t know about this; the swapping is transparently handled by the OS.
+    Hence, the JVM will happily fill up all 12 GB of heap it has been told to use.
+    This causes a severe performance penalty as the OS swaps data from disk to RAM
+    (which is an expensive operation to begin with).
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个过程对于运行大量应用程序的系统效果很好，因为大多数应用程序不会同时活动。但对于 Java 应用程序来说，效果不佳。如果在此系统上运行具有 12GB
+    堆的 Java 程序，则操作系统可以通过将 8GB 的堆保持在内存中，将 4GB 保存在磁盘上来处理（这简化了情况，因为其他程序将使用部分内存）。JVM 不会知道这一点；交换由操作系统透明处理。因此，JVM
+    将愉快地填充其被告知使用的全部 12GB 堆。这会导致严重的性能损失，因为操作系统将数据从磁盘交换到RAM（这本身是一个昂贵的操作）。
+- en: Worse, the one time this swapping is guaranteed to occur is during a full GC,
+    when the JVM must access the entire heap. If the system is swapping during a full
+    GC, pauses will be an order of magnitude longer than they would otherwise be.
+    Similarly, when you use G1 GC and the background thread sweeps through the heap,
+    it will likely fall behind because of the long waits for data to be copied from
+    disk to main memory—resulting in an expensive concurrent mode failure.
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更糟糕的是，保证发生交换的唯一时机是在进行全局垃圾收集（GC）时，此时 JVM 必须访问整个堆。如果系统在进行全局 GC 期间发生交换，暂停时间将比通常情况下长上一个数量级。同样地，当使用
+    G1 GC 时，后台线程在堆中扫描时，由于长时间等待数据从磁盘复制到主存储器，很可能会滞后，导致昂贵的并发模式失败。
+- en: 'Hence, the first rule in sizing a heap is never to specify a heap that is larger
+    than the amount of physical memory on the machine—and if multiple JVMs are running,
+    that applies to the sum of all their heaps. You also need to leave some room for
+    the native memory of the JVM, as well as some memory for other applications: typically,
+    at least 1 GB of space for common OS profiles.'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，调整堆大小的第一个原则是永远不要指定比机器上的物理内存更大的堆大小——如果有多个 JVM 运行，这也适用于所有堆的总和。您还需要为 JVM 的本机内存留出一些空间，并为其他应用程序留出一些内存空间：通常至少需要为常见操作系统配置留出
+    1GB 的空间。
+- en: 'The size of the heap is controlled by two values: an initial value (specified
+    with `-Xms`*`N`*) and a maximum value (`-Xmx`*`N`*). The defaults vary depending
+    on the operating system, the amount of system RAM, and the JVM in use. The defaults
+    can be affected by other flags on the command line as well; heap sizing is one
+    of the JVM’s core ergonomic tunings.'
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 堆的大小由两个值控制：初始值（使用 `-Xms`*`N`* 指定）和最大值（`-Xmx`*`N`*）。默认值因操作系统、系统 RAM 量和使用的 JVM
+    而异。默认值也可能受命令行上其他标志的影响；堆大小是 JVM 的核心人机工程调整之一。
+- en: The goal of the JVM is to find a “reasonable” default initial value for the
+    heap based on the system resources available to it, and to grow the heap up to
+    a “reasonable” maximum if (and only if) the application needs more memory (based
+    on how much time it spends performing GC). Absent some of the advanced tuning
+    flags and details discussed later in this and the next chapters, the default values
+    for the initial and maximum sizes are given in [Table 5-9](#TableGCHeap). The
+    JVM will round these values down slightly for alignment purposes; the GC logs
+    that print the sizes will show that the values are not exactly equal to the numbers
+    in this table.
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JVM 的目标是根据可用于其的系统资源找到“合理”的默认堆初始值，并在应用程序需要更多内存时（根据其执行 GC 的时间）将堆增长到“合理”的最大值。在本章和下一章稍后讨论的一些高级调整标志和细节缺失时，初始和最大大小的默认值在
+    [表 5-9](#TableGCHeap) 中给出。JVM 将略微向下舍入这些值以对齐目的；打印大小的 GC 日志将显示这些值与本表中的数字不完全相等。
+- en: Table 5-9\. Default heap sizes
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表 5-9\. 默认堆大小
+- en: '| Operating system and JVM | Initial heap (`Xms`) | Maximum heap (`Xmx`) |'
+  id: totrans-178
+  prefs: []
+  type: TYPE_TB
+  zh: '| 操作系统和 JVM | 初始堆（`Xms`） | 最大堆（`Xmx`） |'
+- en: '| --- | --- | --- |'
+  id: totrans-179
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- |'
+- en: '| Linux | Min (512 MB, 1/64 of physical memory) | Min (32 GB, 1/4 of physical
+    memory) |'
+  id: totrans-180
+  prefs: []
+  type: TYPE_TB
+  zh: '| Linux | 最小值（512 MB，物理内存的 1/64） | 最小值（32 GB，物理内存的 1/4） |'
+- en: '| macOS | 64 MB | Min (1 GB, 1/4 of physical memory) |'
+  id: totrans-181
+  prefs: []
+  type: TYPE_TB
+  zh: '| macOS | 64 MB | 最小值（1 GB，物理内存的 1/4） |'
+- en: '| Windows 32-bit client JVMs | 16 MB | 256 MB |'
+  id: totrans-182
+  prefs: []
+  type: TYPE_TB
+  zh: '| Windows 32 位客户端 JVMs | 16 MB | 256 MB |'
+- en: '| Windows 64-bit server JVMs | 64 MB | Min (1 GB, 1/4 of physical memory) |'
+  id: totrans-183
+  prefs: []
+  type: TYPE_TB
+  zh: '| Windows 64 位服务器 JVMs | 64 MB | 最小值（1 GB，物理内存的 1/4） |'
+- en: On a machine with less than 192 MB of physical memory, the maximum heap size
+    will be half of the physical memory (96 MB or less).
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在物理内存少于 192 MB 的计算机上，最大堆大小将是物理内存的一半（96 MB 或更少）。
+- en: 'Note that the values in [Table 5-9](#TableGCHeap) are one of those tunings
+    that will be incorrect for Docker containers in versions of JDK 8 prior to update
+    192 that specify a memory limit: the JVM will use the total amount of memory on
+    the machine to calculate the default sizes. In later JDK 8 versions and JDK 11,
+    the JVM will use the memory limit of the container.'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，[表 5-9](#TableGCHeap)中的数值是那些在 Docker 容器中 JDK 8 版本更新到 192 之前指定内存限制的情况下将会不正确的调整：JVM
+    将使用机器上的总内存来计算默认大小。在之后的 JDK 8 版本和 JDK 11 中，JVM 将使用容器的内存限制。
+- en: Having an initial and maximum size for the heap allows the JVM to tune its behavior
+    depending on the workload. If the JVM sees that it is doing too much GC with the
+    initial heap size, it will continually increase the heap until the JVM is doing
+    the “correct” amount of GC, or until the heap hits its maximum size.
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为堆设置初始值和最大值允许 JVM 根据工作负载调整其行为。如果 JVM 发现初始堆大小的 GC 过多，它将不断增加堆大小，直到 JVM 执行“正确”的
+    GC 量，或者直到堆达到其最大大小。
+- en: 'For applications that don’t need a large heap, that means a heap size doesn’t
+    need to be set at all. Instead, you specify the performance goals for the GC algorithm:
+    the pause times you are willing to tolerate, the percentage of time you want to
+    spend in GC, and so on. The details will depend on the GC algorithm used and are
+    discussed in the next chapter (though even then, the defaults are chosen such
+    that for a wide range of applications, those values needn’t be tuned either).'
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于不需要大型堆的应用程序，这意味着根本不需要设置堆大小。相反，您指定 GC 算法的性能目标：您愿意容忍的暂停时间、您想要在 GC 中花费的时间百分比等。细节取决于所使用的
+    GC 算法，并将在下一章讨论（尽管即使在那种情况下，也选择了默认值，以便对于广泛的应用程序范围，这些值也无需调整）。
+- en: In a world where JVMs run in isolated containers, you will usually need to specify
+    a maximum heap. On a virtual machine running primarily a single JVM, the default
+    initial heap will be only one-quarter of the memory assigned to the virtual machine.
+    Similarly, in a JDK 11 Docker container with a memory limit, you typically want
+    the heap to consume most of that memory (leaving headroom as mentioned earlier).
+    The defaults here are better tailored to systems running a mix of applications
+    rather than containers dedicated to a specific JVM.
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在JVM运行在隔离容器中的世界中，通常需要指定最大堆。在主要运行单个JVM的虚拟机上，默认的初始堆大小只有分配给虚拟机的内存的四分之一。同样，在带有内存限制的JDK
+    11 Docker容器中，通常希望堆消耗大部分内存（留出前面提到的余地）。这里的默认值更适合运行多个应用程序的系统，而不是专门为特定JVM的容器。
+- en: 'No hard-and-fast rule determines the size for the maximum heap value (other
+    than not specifying a size larger than the machine can support). A good rule of
+    thumb is to size the heap so that it is 30% occupied after a full GC. To calculate
+    this, run the application until it has reached a steady-state configuration: a
+    point at which it has loaded anything it caches, has created a maximum number
+    of client connections, and so on. Then connect to the application with `jconsole`,
+    force a full GC, and observe how much memory is used when the full GC completes.
+    (Alternately, for throughput GC, you can consult the GC log if it is available.)
+    If you take that approach, make sure to size your container (if applicable) to
+    have an additional 0.5–1 GB of memory for nonheap needs of the JVM.'
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 没有明确的规则决定最大堆值的大小（除非不指定大于机器支持的大小）。一个好的经验法则是调整堆大小，使其在完整GC后占用30%。要计算这一点，请运行应用程序直到达到稳定状态配置：即已加载任何缓存，已创建最大数量的客户端连接等。然后使用`jconsole`连接到应用程序，强制进行完整GC，并观察完整GC完成时使用的内存量。（或者，对于吞吐量GC，如果可用，可以查阅GC日志。）如果采用这种方法，请确保调整容器（如果适用）以获得额外的0.5–1
+    GB内存，用于JVM的非堆需求。
+- en: 'Be aware that automatic sizing of the heap occurs even if you explicitly set
+    the maximum size: the heap will start at its default initial size, and the JVM
+    will grow the heap in order to meet the performance goals of the GC algorithm.
+    There isn’t necessarily a memory penalty for specifying a larger heap than is
+    needed: it will grow only enough to meet the GC performance goals.'
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，即使显式设置了最大大小，堆的自动调整大小也会发生：堆将从其默认初始大小开始，并且JVM将增加堆以满足GC算法的性能目标。指定比所需更大的堆不一定会带来内存惩罚：它只会增长到足以满足GC性能目标的程度。
+- en: On the other hand, if you know exactly what size heap the application needs,
+    you may as well set both the initial and maximum values of the heap to that value
+    (e.g., `-Xms4096m` `-Xmx4096m`). That makes GC slightly more efficient, because
+    it never needs to figure out whether the heap should be resized.
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，如果您确切地知道应用程序需要多大的堆大小，您可以将堆的初始值和最大值都设置为该值（例如，`-Xms4096m` `-Xmx4096m`）。这样可以使GC稍微更高效，因为它永远不需要弄清楚是否应调整堆的大小。
+- en: Quick Summary
+  id: totrans-192
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: The JVM will attempt to find a reasonable minimum and maximum heap size based
+    on the machine it is running on.
+  id: totrans-193
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: JVM将尝试根据其运行的机器找到合理的最小和最大堆大小。
+- en: Unless the application needs a larger heap than the default, consider tuning
+    the performance goals of a GC algorithm (given in the next chapter) rather than
+    fine-tuning the heap size.
+  id: totrans-194
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 除非应用程序需要比默认更大的堆，否则请考虑调整GC算法的性能目标（在下一章节中给出）而不是微调堆大小。
+- en: Sizing the Generations
+  id: totrans-195
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 分配代大小
+- en: Once the heap size has been determined, the JVM must decide how much of the
+    heap to allocate to the young generation and how much to allocate to the old generation.
+    The JVM usually does this automatically and usually does a good job in determining
+    the optimal ratio between young and old generations. In some cases, you might
+    hand-tune these values, though mostly this section is here to provide an understanding
+    of how garbage collection works.
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦确定了堆大小，JVM必须决定将堆的多少分配给年轻代和多少分配给老年代。JVM通常会自动执行此操作，并且通常在确定年轻代和老年代之间的最佳比率方面表现良好。在某些情况下，您可能需要手动调整这些值，尽管大多数情况下，本节的目的是提供垃圾收集工作原理的理解。
+- en: 'The performance implication of different generation sizes should be clear:
+    if there is a relatively larger young generation, young GC pause times will increase,
+    but the young generation will be collected less often, and fewer objects will
+    be promoted into the old generation. But on the other hand, because the old generation
+    is relatively smaller, it will fill up more frequently and do more full GCs. Striking
+    a balance is key.'
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不同代大小的性能影响应该很明显：如果年轻代相对较大，则年轻代的GC暂停时间将增加，但年轻代的收集频率将减少，并且升级到老年代的对象将减少。但另一方面，因为老年代相对较小，它会更频繁地填满并执行更多的全GC。在这里找到平衡是关键。
+- en: Different GC algorithms attempt to strike this balance in different ways. However,
+    all GC algorithms use the same set of flags to set the sizes of the generations;
+    this section covers those common flags.
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不同的GC算法尝试以不同方式找到这种平衡。但是，所有GC算法都使用相同的一组标志来设置代的大小；本节介绍了这些通用标志。
+- en: 'The command-line flags to tune the generation sizes all adjust the size of
+    the young generation; the old generation gets everything that is left over. A
+    variety of flags can be used to size the young generation:'
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 调整代大小的命令行标志都会调整年轻代的大小；老年代会得到剩余的一切。可以使用多种标志来设置年轻代的大小：
+- en: '`-XX:NewRatio=`*`N`*'
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`-XX:NewRatio=`*`N`*'
+- en: Set the ratio of the young generation to the old generation.
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 设置年轻代和老年代的比例。
+- en: '`-XX:NewSize=`*`N`*'
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`-XX:NewSize=`*`N`*'
+- en: Set the initial size of the young generation.
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 设置年轻代的初始大小。
+- en: '`-XX:MaxNewSize=`*`N`*'
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`-XX:MaxNewSize=`*`N`*'
+- en: Set the maximum size of the young generation.
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 设置年轻代的最大大小。
+- en: '`-Xmn`*`N`*'
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`-Xmn`*`N`*'
+- en: Shorthand for setting both `NewSize` and `MaxNewSize` to the same value.
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 设置`NewSize`和`MaxNewSize`为相同值的快捷方式。
+- en: 'The young generation is first sized by the `NewRatio`, which has a default
+    value of 2\. Parameters that affect the sizing of heap spaces are generally specified
+    as ratios; the value is used in an equation to determine the percentage of space
+    affected. The `NewRatio` value is used in this formula:'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 年轻代首先由`NewRatio`大小设定，其默认值为2。影响堆空间大小设定的参数通常指定为比率；该值在一个方程中用于确定受影响空间的百分比。`NewRatio`值在以下公式中使用：
+- en: '[PRE1]'
+  id: totrans-209
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: Plugging in the initial size of the heap and the `NewRatio` yields the value
+    that becomes the setting for the young generation. By default, then, the young
+    generation starts out at 33% of the initial heap size.
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将堆的初始大小和`NewRatio`代入计算得到的值将成为年轻代的设置。因此，默认情况下，年轻代从初始堆大小的33%开始。
+- en: Alternately, the size of the young generation can be set explicitly by specifying
+    the `NewSize` flag. If that option is set, it will take precedence over the value
+    calculated from the `NewRatio`. There is no default for this flag since the default
+    is to calculate it from `NewRatio`.
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 或者，可以通过指定`NewSize`标志来显式设置年轻代的大小。如果设置了此选项，则它将优先于从`NewRatio`计算出的值。该标志没有默认值，因为默认情况下是从`NewRatio`计算出的。
+- en: As the heap expands, the young generation size will expand as well, up to the
+    maximum size specified by the `MaxNewSize` flag. By default, that maximum is also
+    set using the `NewRatio` value, though it is based on the maximum (rather than
+    initial) heap size.
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随着堆的扩展，年轻代的大小也会扩展，直到由`MaxNewSize`标志指定的最大大小。默认情况下，该最大值也是使用`NewRatio`值设置的，尽管它基于最大（而非初始）堆大小。
+- en: Tuning the young generation by specifying a range for its minimum and maximum
+    sizes ends up being fairly difficult. When a heap size is fixed (by setting `-Xms`
+    equal to `-Xmx`), it is usually preferable to use `-Xmn` to specify a fixed size
+    for the young generation as well. If an application needs a dynamically sized
+    heap and requires a larger (or smaller) young generation, then focus on setting
+    the `NewRatio` value.
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过指定年轻代的最小和最大大小来调整年轻代的性能最终会变得相当困难。当堆大小固定时（通过将`-Xms`设置为`-Xmx`），通常最好使用`-Xmn`来指定年轻代的固定大小。如果应用程序需要动态大小的堆并需要更大（或更小）的年轻代，则专注于设置`NewRatio`值。
+- en: Adaptive sizing
+  id: totrans-214
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 自适应大小调整
+- en: 'The sizes of the heap, the generations, and the survivor spaces can vary during
+    execution as the JVM attempts to find the optimal performance according to its
+    policies and tunings. This is a best-effort solution, and it relies on past performance:
+    the assumption is that future GC cycles will look similar to the GC cycles in
+    the recent past. That turns out to be a reasonable assumption for many workloads,
+    and even if the allocation rate suddenly changes, the JVM will readapt its sizes
+    based on the new information.'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 堆大小、代的大小和幸存者空间的大小可以在执行过程中变化，因为JVM尝试根据其策略和调整找到最佳性能。这是一种尽力而为的解决方案，并且依赖于过去的性能：假设未来的GC周期将与最近过去的GC周期类似。对于许多工作负载来说，这是一个合理的假设，即使分配速率突然发生变化，JVM也将根据新信息重新调整其大小。
+- en: Adaptive sizing provides benefits in two important ways. First, it means that
+    small applications don’t need to worry about overspecifying the size of their
+    heap. Consider the administrative command-line programs used to adjust the operations
+    of things like a Java NoSQL server—those programs are usually short-lived and
+    use minimal memory resources. These applications will use 64 (or 16) MB of heap
+    even though the default heap could grow to 1 GB. Because of adaptive sizing, applications
+    like that don’t need to be specifically tuned; the platform defaults ensure that
+    they will not use a large amount of memory.
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 自适应大小以两种重要方式提供优势。首先，这意味着小型应用程序无需担心过度指定其堆大小。考虑用于调整Java NoSQL服务器等事务操作的管理命令行程序——这些程序通常存在时间较短，并且使用最小的内存资源。即使默认堆大小可以增长到1
+    GB，这些应用程序也将使用64（或16）MB的堆。由于自适应大小，像这样的应用程序无需进行特定调整；平台默认值确保它们不会使用大量内存。
+- en: Second, it means that many applications don’t really need to worry about tuning
+    their heap size at all—or if they need a larger heap than the platform default,
+    they can just specify that larger heap and forget about the other details. The
+    JVM can autotune the heap and generation sizes to use an optimal amount of memory,
+    given the GC algorithm’s performance goals. Adaptive sizing is what allows that
+    autotuning to work.
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第二，这意味着许多应用程序实际上根本不需要担心调整其堆大小——或者如果它们需要比平台默认值更大的堆，则可以指定更大的堆并忘记其他细节。 JVM可以自动调整堆和代的大小，以使用最佳内存量，考虑到GC算法的性能目标。自适应大小是使自动调整工作的原因。
+- en: Still, adjusting the sizes takes a small amount of time—which occurs for the
+    most part during a GC pause. If you have taken the time to finely tune GC parameters
+    and the size constraints of the application’s heap, adaptive sizing can be disabled.
+    Disabling adaptive sizing is also useful for applications that go through markedly
+    different phases, if you want to optimally tune GC for one of those phases.
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，调整大小需要一小部分时间——这在大部分情况下发生在GC暂停期间。如果您花时间精细调整GC参数和应用程序堆大小的大小约束，则可以禁用自适应大小。禁用自适应大小对于经历明显不同阶段的应用程序也很有用，如果您想要为这些阶段中的一个最佳调整GC。
+- en: At a global level, adaptive sizing can be disabled by turning off the `-XX:-UseAdaptiveSizePolicy`
+    flag (which is `true` by default). With the exception of the survivor spaces (which
+    are examined in detail in the next chapter), adaptive sizing is also effectively
+    turned off if the minimum and maximum heap sizes are set to the same value, and
+    the initial and maximum sizes of the new generation are set to the same value.
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在全局级别，可以通过关闭`-XX:-UseAdaptiveSizePolicy`标志（默认为`true`）来禁用自适应大小。除了年轻代的幸存者空间（在下一章中详细讨论），如果将最小堆大小和最大堆大小设置为相同值，并且新生代的初始大小和最大大小设置为相同值，则自适应大小也将有效地关闭。
+- en: To see how the JVM is resizing the spaces in an application, set the `-XX:+PrintAdaptiveSizePolicy`
+    flag. When a GC is performed, the GC log will contain information detailing how
+    the various generations were resized during a collection.
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要查看JVM如何调整应用程序中的空间大小，请设置`-XX:+PrintAdaptiveSizePolicy`标志。当执行GC时，GC日志将包含详细信息，详细说明在集合期间如何调整各代的大小。
+- en: Quick Summary
+  id: totrans-221
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: Within the overall heap size, the sizes of the generations are controlled by
+    how much space is allocated to the young generation.
+  id: totrans-222
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在整体堆大小内部，各代的大小受到分配给年轻代的空间量的控制。
+- en: The young generation will grow in tandem with the overall heap size, but it
+    can also fluctuate as a percentage of the total heap (based on the initial and
+    maximum size of the young generation).
+  id: totrans-223
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 年轻代将与整体堆大小同步增长，但也可以作为总堆大小的百分比而波动（基于年轻代的初始大小和最大大小）。
+- en: Adaptive sizing controls how the JVM alters the ratio of young generation to
+    old generation within the heap.
+  id: totrans-224
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 自适应调整控制 JVM 在堆内调整年轻代与老年代比例的方式。
+- en: Adaptive sizing should generally be kept enabled, since adjusting those generation
+    sizes is how GC algorithms attempt to meet their pause-time goals.
+  id: totrans-225
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 通常应保持启用自适应调整，因为调整这些代大小是 GC 算法尝试实现其暂停时间目标的方式。
+- en: For finely tuned heaps, adaptive sizing can be disabled for a small performance
+    boost.
+  id: totrans-226
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对于精细调整的堆，可以禁用自适应调整以获得小幅性能提升。
+- en: Sizing Metaspace
+  id: totrans-227
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 元空间大小
+- en: When the JVM loads classes, it must keep track of certain metadata about those
+    classes. This occupies a separate heap space called the *metaspace*. In older
+    JVMs, this was handled by a different implementation called *permgen*.
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当 JVM 加载类时，必须跟踪这些类的某些元数据。这占用了称为 *元空间* 的独立堆空间。在旧版 JVM 中，这是由称为 *永久代* 的不同实现处理的。
+- en: 'To end users, the metaspace is opaque: we know that it holds a bunch of class-related
+    data and that in certain circumstances the size of that region needs to be tuned.'
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于最终用户而言，元空间是不透明的：我们知道它保存了大量与类相关的数据，并且在某些情况下需要调整该区域的大小。
+- en: Note that the metaspace does not hold the actual instance of the class (the
+    `Class` objects), or reflection objects (e.g., `Method` objects); those are held
+    in the regular heap. Information in the metaspace is used only by the compiler
+    and JVM runtime, and the data it holds is referred to as *class metadata*.
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，元空间不保存类的实际实例（`Class` 对象）或反射对象（例如，`Method` 对象）；这些对象保存在常规堆中。元空间中的信息仅供编译器和
+    JVM 运行时使用，并且它所保存的数据被称为 *类元数据*。
+- en: 'There isn’t a good way to calculate in advance the amount of space a particular
+    program needs for its metaspace. The size will be proportional to the number of
+    classes it uses, so bigger applications will need bigger areas. This is another
+    area where changes in JDK technology have made life easier: tuning the permgen
+    used to be fairly common, but tuning the metaspace is fairly rare these days.
+    The main reason is that the default values for the size of the metaspace are very
+    generous. [Table 5-10](#TablePermGen) lists the default initial and maximum sizes.'
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 预先计算特定程序所需的元空间大小并没有一个很好的方法。其大小与使用的类数量成比例，因此更大的应用程序将需要更大的空间。这是 JDK 技术变化使生活更轻松的另一个领域：调整永久代曾经相当常见，但现在调整元空间则相对罕见。主要原因是元空间大小的默认值非常慷慨。[Table 5-10](#TablePermGen)
+    列出了默认的初始和最大大小。
+- en: Table 5-10\. Default sizes of the metaspace
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表 5-10\. 元空间的默认大小
+- en: '| JVM | Default initial size | Default maximum size |'
+  id: totrans-233
+  prefs: []
+  type: TYPE_TB
+  zh: '| JVM | 默认初始大小 | 默认最大大小 |'
+- en: '| --- | --- | --- |'
+  id: totrans-234
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- |'
+- en: '| 32-bit client JVM | 12 MB | Unlimited |'
+  id: totrans-235
+  prefs: []
+  type: TYPE_TB
+  zh: '| 32 位客户端 JVM | 12 MB | 无限制 |'
+- en: '| 32-bit server JVM | 16 MB | Unlimited |'
+  id: totrans-236
+  prefs: []
+  type: TYPE_TB
+  zh: '| 32 位服务器 JVM | 16 MB | 无限制 |'
+- en: '| 64-bit JVM | 20.75 MB | Unlimited |'
+  id: totrans-237
+  prefs: []
+  type: TYPE_TB
+  zh: '| 64 位 JVM | 20.75 MB | 无限制 |'
+- en: The metaspace behaves similarly to a separate instance of the regular heap.
+    It is sized dynamically based on an initial size (`-XX:MetaspaceSize=`*`N`*) and
+    will increase as needed to a maximum size (`-XX:MaxMetaspaceSize=`*`N`*).
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 元空间类似于常规堆的单独实例。它的大小根据初始大小（`-XX:MetaspaceSize=`*`N`*）动态设置，并会根据需要增加到最大大小（`-XX:MaxMetaspaceSize=`*`N`*）。
+- en: Resizing the metaspace requires a full GC, so it is an expensive operation.
+    If there are a lot of full GCs during the startup of a program (as it is loading
+    classes), it is often because permgen or metaspace is being resized, so increasing
+    the initial size is a good idea to improve startup in that case. Servers, for
+    example, typically specify an initial metaspace size of 128 MB, 192 MB, or more.
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 调整元空间大小需要进行完整的 GC，因此这是一个昂贵的操作。如果在程序启动时（加载类时）出现大量的完整 GC，往往是因为正在调整永久代或元空间的大小，因此增加初始大小是改善这种情况下启动性能的好方法。例如，服务器通常指定初始元空间大小为
+    128 MB、192 MB 或更大。
+- en: Java classes can be eligible for GC just like anything else. This is a common
+    occurrence in an application server, which creates new classloaders every time
+    an application is deployed (or redeployed). The old classloaders are then unreferenced
+    and eligible for GC, as are any classes that they defined. Meanwhile, the new
+    classes of the application will have new metadata, and so there must be room in
+    the metaspace for that. This often causes a full GC because the metaspace needs
+    to grow (or discard old metadata).
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Java类与其他任何东西一样都可以符合GC的条件。在应用服务器中，这种情况经常发生，每次部署（或重新部署）应用程序时会创建新的类加载器。然后，旧的类加载器将不再被引用，并且符合GC的条件，任何它们定义的类也是如此。与此同时，应用程序的新类将具有新的元数据，因此元空间必须有足够的空间。这通常会导致完全GC，因为元空间需要增长（或丢弃旧的元数据）。
+- en: 'One reason to limit the size of the metaspace is to guard against a classloader
+    leak: when the application server (or other program like an IDE) continually defines
+    new classloaders and classes while maintaining references to the old classloaders.
+    This has the potential to fill up the metaspace and consume a lot of memory on
+    the machine. On the other hand, the actual classloader and class objects in that
+    case are also still in the main heap—and that heap is likely to fill up and cause
+    an `OutOfMemoryError` before the memory occupied by the metaspace becomes a problem.'
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 限制元空间大小的一个原因是防止类加载器泄漏：当应用服务器（或类似IDE的其他程序）不断定义新的类加载器和类，并保持对旧类加载器的引用时，会填满元空间并在机器上消耗大量内存的潜力。另一方面，在这种情况下，实际的类加载器和类对象也仍然在主堆中，并且在元空间的内存成为问题之前，主堆很可能会填满并导致
+    `OutOfMemoryError`。
+- en: Heap dumps (see [Chapter 7](ch07.html#Memory)) can be used to diagnose what
+    classloaders exist, which in turn can help determine if a classloader leak is
+    filling up metaspace. Otherwise, `jmap` can be used with the argument `-clstats`
+    to print out information about the classloaders.
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 堆转储（参见 [第7章](ch07.html#Memory)）可用于诊断存在哪些类加载器，从而有助于确定是否有类加载器泄漏填满了元空间。否则，可以使用
+    `jmap` 并带有参数 `-clstats` 打印有关类加载器的信息。
+- en: Quick Summary
+  id: totrans-243
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速摘要
+- en: The metaspace holds class metadata (not class objects) and behaves like a separate
+    heap.
+  id: totrans-244
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 元空间保存类元数据（而不是类对象），并表现得像一个单独的堆。
+- en: The initial size of this region can be based on its usage after all classes
+    have been loaded. That will slightly speed up startup.
+  id: totrans-245
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 此区域的初始大小可以基于加载所有类后的使用情况。这将稍微加快启动速度。
+- en: Applications that define and discard a lot of classes will see an occasional
+    full GC when the metaspace fills up and old classes are removed. This is particularly
+    common for a development environment.
+  id: totrans-246
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 定义和丢弃大量类的应用程序将在元空间填满并且旧类被移除时偶尔会看到完全GC。这在开发环境中尤其常见。
+- en: Controlling Parallelism
+  id: totrans-247
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 控制并行性
+- en: 'All GC algorithms except the serial collector use multiple threads. The number
+    of these threads is controlled by the `-XX:ParallelGCThreads=`*`N`* flag. The
+    value of this flag affects the number of threads used for the following operations:'
+  id: totrans-248
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除串行收集器外，所有GC算法均使用多线程。这些线程的数量由 `-XX:ParallelGCThreads=`*`N`* 标志控制。此标志的值影响以下操作所使用的线程数量：
+- en: Collection of the young generation when using `-XX:+UseParallelGC`
+  id: totrans-249
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 当年轻一代使用 `-XX:+UseParallelGC` 时的收集
+- en: Collection of the old generation when using `-XX:+UseParallelGC`
+  id: totrans-250
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 当使用 `-XX:+UseParallelGC` 时老年代的收集
+- en: Collection of the young generation when using `-XX:+UseG1GC`
+  id: totrans-251
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 当使用 `-XX:+UseG1GC` 时年轻一代的收集
+- en: Stop-the-world phases of G1 GC (though not full GCs)
+  id: totrans-252
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: G1 GC 的停止-世界阶段（尽管不是完全GC）
+- en: 'Because these GC operations stop all application threads from executing, the
+    JVM attempts to use as many CPU resources as it can in order to minimize the pause
+    time. By default, that means the JVM will run one thread for each CPU on a machine,
+    up to eight. Once that threshold has been reached, the JVM adds a new thread for
+    only every 1.6 CPUs. So the total number of threads (where *`N`* is the number
+    of CPUs) on a machine with more than eight CPUs is shown here:'
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因为这些GC操作会停止所有应用程序线程的执行，所以JVM会尽可能使用尽可能多的CPU资源以最小化暂停时间。默认情况下，这意味着JVM将在每台机器上的CPU上运行一个线程，最多八个。一旦达到这个阈值，JVM将为每1.6个CPU添加一个新线程。因此，在具有超过八个CPU的机器上，显示的总线程数（其中
+    *`N`* 是CPU数）如下：
+- en: '[PRE2]'
+  id: totrans-254
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: Sometimes this number is too large. An application using a small heap (say,
+    1 GB) on a machine with eight CPUs will be slightly more efficient with four or
+    six threads dividing up that heap. On a 128-CPU machine, 83 GC threads is too
+    many for all but the largest heaps.
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有时候这个数目过大。在一个拥有八个CPU的机器上，使用小堆（比如1 GB）的应用程序，如果将堆分配给四到六个线程，会稍微提高效率。在拥有128个CPU的机器上，83个GC线程对于除了最大堆之外的其他情况来说都太多了。
+- en: If you run the JVM inside a Docker container that has a CPU limit, that CPU
+    limit is used for this calculation.
+  id: totrans-256
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果在具有CPU限制的Docker容器中运行JVM，则该CPU限制将用于此计算。
+- en: Additionally, if more than one JVM is running on the machine, it is a good idea
+    to limit the total number of GC threads among all JVMs. When they run, the GC
+    threads are quite efficient, and each will consume 100% of a single CPU (this
+    is why the average CPU usage for the throughput collector was higher than expected
+    in previous examples). In machines with eight or fewer CPUs, GC will consume 100%
+    of the CPU on the machine. On machines with more CPUs and multiple JVMs, too many
+    GC threads will still be running in parallel.
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，如果一台机器上运行多个JVM，限制所有JVM的总GC线程数是个好主意。当它们运行时，GC线程非常高效，每个线程将占用单CPU的100%（这就是为什么吞吐量收集器的平均CPU使用率比预期高的原因）。在拥有八个或更少CPU的机器上，GC将占用机器CPU的100%。在拥有更多CPU和多个JVM的机器上，太多的GC线程仍将并行运行。
+- en: Take the example of a 16-CPU machine running four JVMs; each JVM will have by
+    default 13 GC threads. If all four JVMs execute GC at the same time, the machine
+    will have 52 CPU-hungry threads contending for CPU time. That results in a fair
+    amount of contention; limiting each JVM to four GC threads will be more efficient.
+    Even though it may be unlikely for all four JVMs to perform a GC operation at
+    the same time, one JVM executing GC with 13 threads means that the application
+    threads in the remaining JVMs now have to compete for CPU resources on a machine
+    where 13 of 16 CPUs are 100% busy executing GC tasks. Giving each JVM four GC
+    threads provides a better balance in this case.
+  id: totrans-258
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设一台拥有16个CPU的机器上运行四个JVM实例；每个JVM默认会有13个GC线程。如果这四个JVM同时执行GC操作，那么机器将有52个耗CPU的线程竞争CPU时间。这会导致相当多的竞争；将每个JVM的GC线程限制为四个将更有效率。即使四个JVM不太可能同时执行GC操作，但其中一个JVM使用13个线程执行GC意味着其余JVM中的应用线程现在必须在16个CPU中有13个正在忙于执行GC任务的机器上竞争CPU资源。在这种情况下，为每个JVM提供四个GC线程提供了更好的平衡。
+- en: Note that this flag does not set the number of background threads used by G1
+    GC (though it does affect that). Details are given in the next chapter.
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，此标志不会设置G1 GC使用的后台线程数（尽管它确实会影响）。详细信息请参见下一章节。
+- en: Quick Summary
+  id: totrans-260
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速总结
+- en: The basic number of threads used by all GC algorithms is based on the number
+    of CPUs on a machine.
+  id: totrans-261
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 所有GC算法使用的基本线程数都基于机器上的CPU数。
+- en: When multiple JVMs are run on a single machine, that number will be too high
+    and must be reduced.
+  id: totrans-262
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 当单台机器上运行多个JVM时，线程数会过高，必须进行减少。
+- en: GC Tools
+  id: totrans-263
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: GC工具
+- en: Since GC is central to the performance of Java, many tools monitor its performance.
+    The best way to see the effect that GC has on the performance of an application
+    is to become familiar with the GC log, which is a record of every GC operation
+    during the program’s execution.
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于GC对Java性能至关重要，许多工具都监控其性能。了解GC日志的效果对于了解应用程序性能的影响是最佳方式，GC日志记录了程序执行期间每次GC操作。
+- en: 'The details in the GC log vary depending on the GC algorithm, but the basic
+    management of the log is the same for all algorithms. The log management is not
+    the same, however, between JDK 8 and subsequent releases: JDK 11 uses a different
+    set of command-line arguments to enable and manage the GC log. We’ll discuss the
+    management of GC logs here, and more details on the contents of the log are given
+    in the algorithm-specific tuning sections in the next chapter.'
+  id: totrans-265
+  prefs: []
+  type: TYPE_NORMAL
+  zh: GC日志中的详细信息根据GC算法而异，但日志的基本管理对所有算法都是相同的。然而，GC日志的管理在JDK 8和后续版本中并不相同：JDK 11使用一组不同的命令行参数来启用和管理GC日志。我们将在此讨论GC日志的管理，并在下一章节的特定于算法的调优部分详细介绍日志内容。
+- en: Enabling GC Logging in JDK 8
+  id: totrans-266
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 在JDK 8中启用GC日志记录。
+- en: JDK 8 provides multiple ways to enable the GC log. Specifying either of the
+    flags `-verbose:gc` or `-XX:+PrintGC` will create a simple GC log (the flags are
+    aliases for each other, and by default the log is disabled). The `-XX:+PrintGCDetails`
+    flag will create a log with much more information. This flag is recommended (it
+    is also `false` by default); it is often too difficult to diagnose what is happening
+    with GC using only the simple log.
+  id: totrans-267
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JDK 8提供多种启用GC日志的方法。指定`-verbose:gc`或`-XX:+PrintGC`中的任何一个标志都将创建一个简单的GC日志（这些标志是彼此的别名，默认情况下日志是禁用的）。`-XX:+PrintGCDetails`标志将创建一个包含更多信息的日志。推荐使用该标志（默认情况下也是`false`）；仅使用简单日志很难诊断GC发生的情况。
+- en: In conjunction with the detailed log, it is recommended to include `-XX:+PrintGCTimeStamps`
+    or `-XX:+PrintGCDateStamps` so that the time between GC operations can be determined.
+    The difference in those two arguments is that the timestamps are relative to 0
+    (based on when the JVM starts), while the date stamps are an actual date string.
+    That makes the date stamps ever-so-slightly less efficient as the dates are formatted,
+    though it is an infrequent enough operation that its effect is unlikely to be
+    noticed.
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 配合详细的日志，建议包含`-XX:+PrintGCTimeStamps`或`-XX:+PrintGCDateStamps`，以确定GC操作之间的时间。这两个参数的区别在于，时间戳是相对于0的（基于JVM启动时），而日期时间戳则是实际的日期字符串。由于日期时间戳需要格式化日期，稍微效率略低一些，尽管这是一个不太频繁的操作，但其影响不太可能被注意到。
+- en: The GC log is written to standard output, though that location can (and usually
+    should) be changed with the `-Xloggc:`*`filename`* flag. Using `-Xloggc` automatically
+    enables the simple GC log unless `PrintGCDetails` has also been enabled.
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: GC日志被写入标准输出，尽管可以（并且通常应该）使用`-Xloggc:`*`filename`*标志来更改其位置。使用`-Xloggc`会自动启用简单的GC日志，除非也启用了`PrintGCDetails`。
+- en: 'The amount of data that is kept in the GC log can be limited using log rotation;
+    this is useful for a long-running server that might otherwise fill up its disk
+    with logs over several months. Logfile rotation is controlled with these flags:
+    `-XX:+UseGCLogFileRotation` `-XX:NumberOfGCLogFiles=`*`N`* `-XX:GCLogFileSize=*N*`.
+    By default, `UseGCLogFileRotation` is disabled. When that flag is enabled, the
+    default number of files is 0 (meaning unlimited), and the default logfile size
+    is 0 (meaning unlimited). Hence, values must be specified for all these options
+    in order for log rotation to work as expected. Note that a logfile size will be
+    rounded up to 8 KB for values less than that.'
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以通过日志轮换来限制GC日志中保留的数据量；这对于长时间运行的服务器非常有用，否则可能会在几个月内用日志填满磁盘。日志文件轮换由以下标志控制：`-XX:+UseGCLogFileRotation`
+    `-XX:NumberOfGCLogFiles=`*`N`* `-XX:GCLogFileSize=*N*`。默认情况下，`UseGCLogFileRotation`是禁用的。当启用该标志时，默认文件数为0（意味着无限制），默认日志文件大小为0（意味着无限制）。因此，为了使日志轮换按预期工作，必须为所有这些选项指定值。注意，文件大小将会向上舍入至8
+    KB，以避免小于此值的问题。
+- en: 'Putting that all together, a useful set of flags for logging is as follows:'
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将所有这些内容整合在一起，用于日志记录的一组有用标志如下：
+- en: '[PRE3]'
+  id: totrans-272
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: That will log GC events with timestamps to correlate to other logs and limit
+    the retained logs to 64 MB in eight files. This logging is minimal enough that
+    it can be enabled even on production systems.
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将记录带有时间戳的GC事件，以便与其他日志进行关联，并将保留的日志限制在8个文件中的64 MB。这种日志记录足够精简，甚至可以在生产系统上启用。
+- en: Enabling GC Logging in JDK 11
+  id: totrans-274
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 在JDK 11中启用GC日志记录
+- en: 'JDK 11 and later versions use Java’s new unified logging feature. This means
+    that all logging—GC related or not—is enabled via the flag `-Xlog`. Then you append
+    various options to that flag that control how the logging should be performed.
+    In order to specify logging similar to the long example from JDK 8, you would
+    use this flag:'
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JDK 11及更高版本使用Java的新统一日志记录功能。这意味着所有的日志记录（包括与GC相关的和其他的）都是通过`-Xlog`标志启用的。然后你可以附加各种选项来控制日志记录的行为。为了指定类似JDK
+    8中长示例的日志记录，你需要使用以下标志：
+- en: '[PRE4]'
+  id: totrans-276
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: The colons divide the command into four sections. You can run `java -Xlog:help:`
+    to get more information on the available options, but here’s how they map for
+    this string.
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 冒号将命令分成四个部分。你可以运行`java -Xlog:help:`来获取更多有关可用选项的信息，但以下是它们在这个字符串中的映射。
+- en: The first section (`gc*`) specifies which modules should enable logging; we
+    are enabling logging for all GC modules. There are options to log only a particular
+    section (e.g., `gc+age` will log information about the tenuring of an object,
+    a topic covered in the next chapter). Those specific modules often have limited
+    output at the default logging level, so you might use something like `gc*,gc+age=debug`
+    to log basic (info-level) messages from all *gc* modules and debug-level messages
+    from the tenuring code. Typically, logging all modules at info level is fine.
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一部分（`gc*`）指定了应该启用日志记录的模块；我们启用了所有 GC 模块的日志记录。有一些选项可以仅记录特定的部分（例如 `gc+age` 将记录关于对象老化的信息，这是下一章节中讨论的一个主题）。这些特定的模块通常在默认日志级别下的输出有限，因此您可能会使用类似
+    `gc*,gc+age=debug` 的方式来记录所有 *gc* 模块的基本（info 级别）消息以及老化代码的调试级别消息。通常，以 info 级别记录所有模块是可以接受的。
+- en: The second section sets the destination of the logfile.
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第二部分设置了日志文件的目标位置。
+- en: 'The third section (`time`) is a decorator: that decorator says to log messages
+    with a time-of-day stamp, the same as we specified for JDK 8\. Multiple decorators
+    can be specified.'
+  id: totrans-280
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第三部分（`time`）是一个装饰器：这个装饰器指示将消息记录为带有时间戳的形式，与我们为 JDK 8 指定的方式相同。可以指定多个装饰器。
+- en: Finally, the fourth section specifies output options; in this case, we’ve said
+    to rotate logs when they hit 8 MB, keeping eight logs altogether.
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，第四部分指定了输出选项；在这种情况下，我们说当日志文件达到 8 MB 时进行日志轮转，总共保留八个日志文件。
+- en: 'One thing to note: log rotation is handled slightly differently between JDK
+    8 and JDK 11\. Say that we have specified a log name of *gc.log* and that three
+    files should be retained. In JDK 8, the logs will be written this way:'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 值得注意的是：在 JDK 8 和 JDK 11 之间，日志轮转处理稍有不同。假设我们指定了一个名为 *gc.log* 的日志文件，并且应该保留三个文件。在
+    JDK 8 中，日志会被记录如下：
+- en: Start logging to *gc.log.0.current*.
+  id: totrans-283
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 开始记录到 *gc.log.0.current*。
+- en: When full, rename that to *gc.log.0* and start logging to *gc.log.1.current*.
+  id: totrans-284
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当日志文件满时，将其重命名为 *gc.log.0* 并开始记录到 *gc.log.1.current*。
+- en: When full, rename that to *gc.log.1* and start logging to *gc.log.2.current*.
+  id: totrans-285
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当日志文件满时，将其重命名为 *gc.log.1* 并开始记录到 *gc.log.2.current*。
+- en: When full, rename that to *gc.log.2*, remove *gc.log.0*, and start logging to
+    a new *gc.log.0.current*.
+  id: totrans-286
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当日志文件满时，将其重命名为 *gc.log.2*，移除 *gc.log.0*，并开始记录到一个新的 *gc.log.0.current*。
+- en: Repeat this cycle.
+  id: totrans-287
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 重复这个周期。
+- en: 'In JDK 11, the logs will be written this way:'
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 JDK 11 中，日志会按照以下方式记录：
+- en: Start logging to *gc.log*.
+  id: totrans-289
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 开始记录到 *gc.log*。
+- en: When that is full, rename it to *gc.log.0* and start a new *gc.log*.
+  id: totrans-290
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当日志文件满时，将其重命名为 *gc.log.0* 并开始一个新的 *gc.log*。
+- en: When that is full, rename it to *gc.log.1* and start a new *gc.log*.
+  id: totrans-291
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当日志文件满时，将其重命名为 *gc.log.1* 并开始一个新的 *gc.log*。
+- en: When that is full, rename it to *gc.log.2* and start a new *gc.log*.
+  id: totrans-292
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当日志文件满时，将其重命名为 *gc.log.2* 并开始一个新的 *gc.log*。
+- en: When that is full, rename it to *gc.log.0*, removing the old *gc.log.0*, and
+    start a new *gc.log*.
+  id: totrans-293
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当日志文件满时，将其重命名为 *gc.log.0*，移除旧的 *gc.log.0*，并开始一个新的 *gc.log*。
+- en: 'If you are wondering why we specified seven logs to retain in the previous
+    JDK 11 command, this is why: there will be eight active files in this case. Also
+    note in either case that the number appended to the file doesn’t mean anything
+    about the order in which the files were created. The numbers are reused in a cycle,
+    so there is some order, but the oldest logfile could be any one in the set.'
+  id: totrans-294
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你想知道为什么在之前的 JDK 11 命令中我们指定了保留七个日志文件，这就是原因：在这种情况下将有八个活动文件。无论如何，请注意，文件名称中附加的数字并不代表文件创建的顺序。这些数字在一个循环中重复使用，因此有一定的顺序，但是最旧的日志文件可以是任何一个。
+- en: 'The *gc* log contains a lot of information specific to each collector, so we’ll
+    step through the details in the next chapter. Parsing the logs for aggregate information
+    about your application is also useful: how many pauses it had, how long they took
+    on average and in total, and so on.'
+  id: totrans-295
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*gc* 日志包含了与每个收集器相关的大量信息，因此我们将在下一章节详细介绍这些细节。解析日志以获取关于应用程序的汇总信息也很有用：例如它有多少次暂停，平均暂停时间以及总暂停时间等。'
+- en: Unfortunately, not a lot of good open source tools are available to parse logfiles.
+    As with profilers, commercial vendors have stepped in to provide support, like
+    the offerings from jClarity (Censum) and [GCeasy](https://www.gceasy.io). The
+    latter has a free service for basic log parsing.
+  id: totrans-296
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不幸的是，并没有很多优秀的开源工具可以解析日志文件。与分析器一样，商业厂商提供了支持，例如来自 jClarity（Censum）和 [GCeasy](https://www.gceasy.io)
+    的服务。后者提供了基本日志解析的免费服务。
+- en: For real-time monitoring of the heap, use `jvisualvm` or `jconsole`. The Memory
+    panel of `jconsole` displays a real-time graph of the heap, as shown in [Figure 5-4](#FigureJConsoleMemory).
+  id: totrans-297
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于堆的实时监控，请使用`jvisualvm`或`jconsole`。`jconsole`的内存面板显示堆的实时图表，如[图5-4](#FigureJConsoleMemory)所示。
+- en: '![A graph of heap occupancy over GC cycles](assets/jp2e_0504.png)'
+  id: totrans-298
+  prefs: []
+  type: TYPE_IMG
+  zh: '![一张显示堆占用量随GC周期变化的图表](assets/jp2e_0504.png)'
+- en: Figure 5-4\. Real-time heap display
+  id: totrans-299
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 图5-4\. 实时堆显示
+- en: This particular view shows the entire heap, which is periodically cycling between
+    using about 100 MB and 160 MB. `jconsole` can instead display only eden, the survivor
+    spaces, the old generation, or the permanent generation. If I’d selected eden
+    as the region to chart, it would have shown a similar pattern, as eden fluctuated
+    between 0 MB and 60 MB (and, as you can guess, that means if I’d charted the old
+    generation, it would have been essentially a flat line at 100 MB).
+  id: totrans-300
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此视图显示整个堆，它定期在使用约100 MB和160 MB之间循环。`jconsole`也可以只显示Eden区、幸存者空间、老年代或永久代。如果我选择Eden作为要绘制的区域，它将显示类似的模式，因为Eden在0
+    MB和60 MB之间波动（而且，您可以猜到，这意味着如果我选择了老年代绘制，它将基本上是100 MB的平直线）。
+- en: For a scriptable solution, `jstat` is the tool of choice. `jstat` provides nine
+    options to print different information about the heap; `jstat -options` will provide
+    the full list. One useful option is `-gcutil`, which displays the time spent in
+    GC as well as the percentage of each GC area that is currently filled. Other options
+    to `jstat` will display the GC sizes in terms of KB.
+  id: totrans-301
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于可脚本化的解决方案，`jstat`是首选工具。`jstat`提供九个选项来打印关于堆的不同信息；`jstat -options`将提供完整列表。一个有用的选项是`-gcutil`，它显示在GC中花费的时间以及当前填充的每个GC区域的百分比。`jstat`的其他选项将以KB为单位显示GC大小。
+- en: 'Remember that `jstat` takes an optional argument—the number of milliseconds
+    to repeat the command—so it can monitor over time the effect of GC in an application.
+    Here is some sample output repeated every second:'
+  id: totrans-302
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记住，`jstat`可以带一个可选参数——重复执行命令的毫秒数——以便在应用程序中随时间监视GC的效果。以下是每秒重复的一些示例输出：
+- en: '[PRE5]'
+  id: totrans-303
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: When monitoring of process ID 23461 started, the program had already performed
+    98 collections of the young generation (`YGC`), which took a total of 1.985 seconds
+    (`YGCT`). It had also performed eight full GCs (`FGC`) requiring 2.397 seconds
+    (`FGCT`); hence the total time in GC (`GCT`) was 4.382 seconds.
+  id: totrans-304
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当监视进程ID 23461启动时，程序已经执行了98次年轻代收集（`YGC`），总计耗时1.985秒（`YGCT`）。此外，它还执行了8次完全GC（`FGC`），总共需要2.397秒（`FGCT`）；因此GC总时间（`GCT`）为4.382秒。
+- en: 'All three sections of the young generation are displayed here: the two survivor
+    spaces (`S0` and `S1`) and eden (`E`). The monitoring started just as eden was
+    filling up (99.12% full), so in the next second there was a young collection:
+    eden reduced to 5.55% full, the survivor spaces switched places, and a small amount
+    of memory was promoted to the old generation (`O`), which increased to using 60.98%
+    of its space. As is typical, little or no change occurred in the permanent generation
+    (`P`) because all necessary classes have already been loaded by the application.'
+  id: totrans-305
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此处显示了年轻代的所有三个部分：两个幸存者空间（`S0`和`S1`）和Eden区（`E`）。监控开始时，Eden正在填满（99.12%），因此在下一秒会进行年轻代收集：Eden减少到5.55%的使用率，幸存者空间交换位置，并且少量内存被提升到老年代（`O`），其使用率增至60.98%。像往常一样，永久代（`P`）几乎没有变化，因为应用程序已加载了所有必要的类。
+- en: If you’ve forgotten to enable GC logging, this is a good substitute to watch
+    how GC operates over time.
+  id: totrans-306
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果您忘记启用GC日志记录，这是一个良好的替代方法，以观察GC如何随时间运行。
+- en: Quick Summary
+  id: totrans-307
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 快速概述
+- en: GC logs are the key piece of data required to diagnose GC issues; they should
+    be collected routinely (even on production servers).
+  id: totrans-308
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: GC日志是诊断GC问题所需的关键数据；它们应定期收集（即使在生产服务器上）。
+- en: A better GC logfile is obtained with the `PrintGCDetails` flag.
+  id: totrans-309
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用`PrintGCDetails`标志可以获得更好的GC日志文件。
+- en: Programs to parse and understand GC logs are readily available; they are helpful
+    in summarizing the data in the GC log.
+  id: totrans-310
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 提供用于解析和理解GC日志的程序是现成的；它们有助于总结GC日志中的数据。
+- en: '`jstat` can provide good visibility into GC for a live program.'
+  id: totrans-311
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`jstat`可以为实时程序提供良好的GC可见性。'
+- en: Summary
+  id: totrans-312
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 概要
+- en: Performance of the garbage collector is one key feature of the overall performance
+    of any Java application. For many applications, though, the only tuning required
+    is to select the appropriate GC algorithm and, if needed, to increase the heap
+    size of the application. Adaptive sizing will then allow the JVM to autotune its
+    behavior to provide good performance using the given heap.
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 垃圾收集器的性能是任何 Java 应用程序整体性能的关键特性之一。对于许多应用程序而言，唯一需要调整的是选择合适的 GC 算法，并且如果需要的话，增加应用程序的堆大小。自适应调整将允许
+    JVM 自动调整其行为，以利用给定的堆提供良好的性能。
+- en: More-complex applications will require additional tuning, particularly for specific
+    GC algorithms. If the simple GC settings in this chapter do not provide the performance
+    an application requires, consult the tunings.
+  id: totrans-314
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更复杂的应用程序将需要额外的调整，特别是针对特定的 GC 算法。如果本章中的简单 GC 设置无法提供应用程序所需的性能，请查阅调整建议。
