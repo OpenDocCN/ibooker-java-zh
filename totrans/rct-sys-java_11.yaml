@@ -1,15 +1,20 @@
 - en: Chapter 8\. HTTP with Reactive in Mind
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第 8 章\. 反应式 HTTP
 - en: Even when building a reactive system, HTTP is unavoidable. HTTP is a prevalent
     protocol, and REST, for instance, is a well-known approach to designing services
     and APIs. The problem with HTTP, as mentioned in [Chapter 4](ch04.html#reactive-systems),
     is the request/response interaction scheme that leads to undesirable time coupling.
     Also, to implement space decoupling, you often need proxies that would route the
     requests or advanced service discovery and load-balancing mechanism.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 即使构建反应式系统，HTTP 也是不可避免的。HTTP 是一种普遍的协议，例如 REST 是一种设计服务和 API 的众所周知的方法。关于 HTTP 的问题，如
+    [第 4 章](ch04.html#reactive-systems) 所述，是导致不期望的时间耦合的请求/响应交互方案。此外，要实现空间解耦，通常需要代理来路由请求或先进的服务发现和负载平衡机制。
 - en: 'But let’s face it: we need to be pragmatic, and HTTP has plenty of great features.
     We recommend using HTTP at the edge of your system (the places interacting with
     external entities), as shown in [Figure 8-1](#image:architecture-http) For example,
@@ -17,32 +22,47 @@
     external services. Besides, we often use HTTP at the various integration points
     with other external services, such as consuming services exposed using a REST
     API.'
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 但让我们面对现实：我们需要务实，而且 HTTP 有很多强大的特性。我们建议在系统的边缘使用 HTTP（与外部实体交互的地方），如 [图 8-1](#image:architecture-http)
+    所示。例如，HTTP 经常用于前端层，以便轻松地向其他外部服务提供可消费的 API。此外，我们经常在与其他外部服务的各种集成点使用 HTTP，例如使用 REST
+    API 消费服务。
 - en: Integrating HTTP should not prevent or limit the responsiveness of the reactive
     system you are building. As a consequence, we need to implement this integration
     carefully. It’s not rare to see a system using a so-called asynchronous HTTP client,
     which can do more harm than provide benefits as it may rely on a hidden thread
     pool.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 集成 HTTP 不应该阻止或限制您正在构建的反应式系统的响应能力。因此，我们需要仔细实现这种集成。看到使用所谓的异步 HTTP 客户端的系统并不罕见，但这可能比提供好处更有害，因为它可能依赖于隐藏的线程池。
 - en: '![Using HTTP at the edge of a reactive system](assets/rsij_0801.png)'
+  id: totrans-4
   prefs: []
   type: TYPE_IMG
+  zh: '![在反应式系统的边缘使用 HTTP](assets/rsij_0801.png)'
 - en: Figure 8-1\. Using HTTP at the edge of a reactive system
+  id: totrans-5
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 8-1\. 在反应式系统的边缘使用 HTTP
 - en: This chapter explores the features Quarkus offers to expose HTTP endpoints and
     the ways we can implement these endpoints. In [Figure 8-1](#image:architecture-http),
     this part is circled with a dotted line; the right side, HTTP service consumption,
     is covered in [Chapter 12](ch12.html#http-client).
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章探讨了 Quarkus 提供的功能来公开 HTTP 端点以及我们可以实现这些端点的方法。在 [图 8-1](#image:architecture-http)
+    中，这一部分用虚线圈出；右侧的 HTTP 服务消费在 [第 12 章](ch12.html#http-client) 中有所涵盖。
 - en: The Journey of an HTTP Request
+  id: totrans-7
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: HTTP 请求的旅程
 - en: To understand the benefits of using Quarkus to handle HTTP in a reactive way,
     we need to look under the hood. As shown in [Chapter 6](ch06.html#quarkus-reactive),
     Quarkus is based on a reactive engine, so every facet of Quarkus benefits from
@@ -51,137 +71,206 @@
     Quarkus applications, the code was not benefiting from all the features that engine
     provides. Let’s see how Quarkus handles HTTP requests and where we can unleash
     the power of the reactive engine.
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 要理解使用 Quarkus 以反应式方式处理 HTTP 的好处，我们需要深入了解。如 [第 6 章](ch06.html#quarkus-reactive)
+    所示，Quarkus 基于反应式引擎，因此 Quarkus 的每个方面都从该引擎中受益，提供异步和非阻塞特性。当然，这也包括 HTTP。然而，虽然我们在以前的
+    Quarkus 应用程序中实现了 HTTP 端点，但代码并没有从引擎提供的所有功能中受益。让我们看看 Quarkus 如何处理 HTTP 请求，以及我们在哪里可以释放反应式引擎的力量。
 - en: To handle HTTP requests, you need an HTTP server. This server listens on a specific
     port (8080, in the case of Quarkus) and waits for incoming connections. When the
     server receives a new connection, it reads the frame and assembles the HTTP request.
     Typically, the server parses the HTTP method (for example, `GET` or `POST`), the
     invoked path, the body, and so on. Several frames can compose an HTTP request,
     and large bodies are split among multiple frames.
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 要处理 HTTP 请求，您需要一个 HTTP 服务器。该服务器监听特定端口（例如 Quarkus 中的 8080）并等待传入连接。当服务器接收到新连接时，它读取帧并组装
+    HTTP 请求。通常，服务器解析 HTTP 方法（例如 `GET` 或 `POST`）、调用的路径、正文等。多个帧可以组成一个 HTTP 请求，大型正文则分割成多个帧。
 - en: Once the HTTP request is assembled, Quarkus determines how to handle it. It
     checks for *interceptors* (to handle security or logging concerns) and looks for
     the endpoint that can process the request. This lookup is based on the path, but
     can also include content type negotiation. Once the endpoint method is found,
     Quarkus invokes the method, and it’s up to the method to process the request.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦 HTTP 请求被组装，Quarkus 就确定如何处理它。它检查 *拦截器*（处理安全或日志记录问题）并寻找可以处理请求的端点。此查找基于路径，但也可以包括内容类型协商。一旦找到端点方法，Quarkus
+    调用该方法，方法负责处理请求。
 - en: Let’s imagine that we call a synchronous method and that the result of the method
     is the payload of the HTTP response. Quarkus captures that result and builds an
     HTTP response. It then writes the response into the appropriate HTTP connection,
     encoding content accordingly.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设我们调用一个同步方法，并且方法的结果是 HTTP 响应的有效载荷。Quarkus 捕获该结果并构建 HTTP 响应。然后将响应写入适当的 HTTP
+    连接，根据内容进行编码。
 - en: So far, so good—but not very reactive, right? One of the essential pieces in
     this exchange is the HTTP service. The HTTP server used by Quarkus is nonblocking,
     highly efficient, and concurrent. It’s powered by Vert.x and handles the HTTP
     interaction by using the I/O thread. So, it follows the reactive approach we explained
     previously in [Figure 4-1](ch04.html#image:reactive-systems) and can handle multiple
     HTTP connections using few threads.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，一切都很好，但是不够*响应式*，对吧？在这个交换中，一个重要的部分是 HTTP 服务。Quarkus 使用的 HTTP 服务器是非阻塞的、高效的和并发的。它由
+    Vert.x 提供支持，并通过使用 I/O 线程处理 HTTP 交互。因此，它遵循我们之前在 [图 4-1](ch04.html#image:reactive-systems)
+    中解释的反应式方法，并且可以使用少量线程处理多个 HTTP 连接。
 - en: Once this HTTP server receives a request, the server delegates that request
     to Quarkus to handle the lookup. This *routing* layer builds the chain of responsibility
     that handles the request (typically the interceptors and the endpoint) and invokes
     it. In the case of a JAX-RS endpoint, the routing layer would delegate the lookup
     to the JAX-RS framework and wait for the JAX-RS response to be computed.
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦这个 HTTP 服务器接收到请求，服务器将请求委托给 Quarkus 处理查找。这个 *路由* 层构建处理请求的责任链（通常是拦截器和端点），并调用它。在
+    JAX-RS 端点的情况下，路由层会将查找委托给 JAX-RS 框架，并等待计算 JAX-RS 响应。
 - en: But, wait—are we still on the I/O thread? If so, how can we prevent the user
     endpoint from blocking the I/O thread inadvertently? Fortunately, Quarkus has
     a routing layer that decides how the request must be handled ([Figure 8-2](#image:routing)).
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 但是，等等——我们还在 I/O 线程上吗？如果是这样，我们如何防止用户端点无意中阻塞 I/O 线程？幸运的是，Quarkus 有一个路由层，决定如何处理请求（[图 8-2](#image:routing)）。
 - en: '![Quarkus Routing Layer](assets/rsij_0802.png)'
+  id: totrans-15
   prefs: []
   type: TYPE_IMG
+  zh: '![Quarkus 路由层](assets/rsij_0802.png)'
 - en: Figure 8-2\. Quarkus routing layer
+  id: totrans-16
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 8-2\. Quarkus 路由层
 - en: In the previous Quarkus application we used in [Chapter 2](ch02.html#quarkus),
     the requests were always dispatched on a worker thread, avoiding any risk of blocking.
     It was not ideal in terms of reactive principles. Let’s see what Quarkus can do
     to improve this situation.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们在 [第 2 章](ch02.html#quarkus) 中使用的前一个 Quarkus 应用程序中，请求总是在工作线程上分派，避免任何阻塞的风险。从反应式原则的角度来看并不理想。让我们看看
+    Quarkus 能做什么来改善这种情况。
 - en: Say Hello to RESTEasy Reactive!
+  id: totrans-18
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 与 RESTEasy Reactive 打个招呼！
 - en: 'In the previous application we used in [Chapter 2](ch02.html#quarkus), we relied
     on *classic* RESTEasy, which follows the old-school model of associating a thread
     to each request. However, as we have seen before, that model does not scale and
     lacks responsiveness. Fortunately, Quarkus offers an alternative: *RESTEasy Reactive*.
     It’s the same development model, except that this variant is aware of the reactive
     engine and relies on it.'
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们在 [第 2 章](ch02.html#quarkus) 中使用的前一个应用程序中，我们依赖于*经典* RESTEasy，它遵循将线程与每个请求关联的老式模型。然而，正如我们之前所见，该模型不具备可伸缩性和响应性。幸运的是，Quarkus
+    提供了一种替代方案：*RESTEasy Reactive*。这是相同的开发模型，但此变体意识到响应式引擎并依赖于它。
 - en: 'Let’s have a look and experiment with the features offered by RESTEasy Reactive.
     Go to [*https://code.quarkus.io*](https://code.quarkus.io) and select the following
     extensions:'
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们来看看并尝试使用 RESTEasy Reactive 提供的功能。请访问 [*https://code.quarkus.io*](https://code.quarkus.io)
+    并选择以下扩展：
 - en: RESTEasy Reactive
+  id: totrans-21
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: RESTEasy Reactive
 - en: RESTEasy Reactive Jackson
+  id: totrans-22
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: RESTEasy Reactive Jackson
 - en: Then, click “Generate your application” and unzip it.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，点击“生成您的应用程序”并解压它。
 - en: The reactive version is quite similar to the classic RESTEasy version. [Example 8-1](#rr::resource)
     shows the generated HTTP endpoint. You may notice the introduction of the `@NonBlocking`
     annotation. This is one of the essential differences with classic RESTEasy; RESTEasy
     Reactive can dispatch the requests on the I/O thread.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 响应式版本与经典的 RESTEasy 版本非常相似。[Example 8-1](#rr::resource) 展示了生成的 HTTP 端点。您可能会注意到引入了
+    `@NonBlocking` 注解。这是与经典 RESTEasy 的一个重要区别；RESTEasy Reactive 可以在 I/O 线程上分派请求。
 - en: Example 8-1\. An HTTP endpoint using RESTEasy Reactive
+  id: totrans-25
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-1\. 使用 RESTEasy Reactive 的 HTTP 端点。
 - en: '[PRE0]'
+  id: totrans-26
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'Let’s run this application using `mvn quarkus:dev`, and point your browser
     to [*http://localhost:8080/hello-resteasy-reactive*](http://localhost:8080/hello-resteasy-reactive).
     You should see this:'
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们使用 `mvn quarkus:dev` 运行这个应用程序，并将浏览器指向 [*http://localhost:8080/hello-resteasy-reactive*](http://localhost:8080/hello-resteasy-reactive)。您应该会看到这个：
 - en: '[PRE1]'
+  id: totrans-28
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: OK, well, that’s nothing fancy, and not very attractive so far.
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 好吧，那还算不上什么花哨的东西，到目前为止也不是很吸引人。
 - en: First, let’s enhance our endpoint and, in addition to Hello RESTEasy Reactive,
     add the name of the thread handling the request ([Example 8-2](#rr::resource-thread)).
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，让我们增强我们的端点，并且除了 Hello RESTEasy Reactive 外，还要添加处理请求的线程名称（[Example 8-2](#rr::resource-thread)）。
 - en: Example 8-2\. Requests are processed on the I/O thread
+  id: totrans-31
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-2\. 请求在 I/O 线程上处理。
 - en: '[PRE2]'
+  id: totrans-32
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Because Quarkus runs in dev mode, there is no need to restart the application,
     as it will auto-update itself. Refresh your browser and you should see something
     like [Example 8-3](#output-indicating-thread-8-3).
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 因为 Quarkus 在开发模式下运行，所以无需重新启动应用程序，它会自动更新自身。刷新您的浏览器，您应该会看到类似于 [Example 8-3](#output-indicating-thread-8-3)
+    的内容。
 - en: Example 8-3\. Output of the application indicating the thread used for the processing
+  id: totrans-34
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-3\. 应用程序输出，指示处理的线程。
 - en: '[PRE3]'
+  id: totrans-35
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: The endpoint method is invoked from the I/O thread!^([1](ch08.html#idm45358825012512))
     Much more reactive, but…wait…how do we handle blocking logic now? With RESTEasy
     Reactive, you can use the `@NonBlocking` and `@Blocking` annotations to indicate
@@ -189,59 +278,89 @@
     Let’s illustrate this. Create another endpoint method with the same code as the
     `hello` method, but target a different path and without the `@NonBlocking` annotation,
     as illustrated in [Example 8-4](#rr::resource-blocking).
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 端点方法是从 I/O 线程调用的！^([1](ch08.html#idm45358825012512)) 更具响应性，但是...等等...现在如何处理阻塞逻辑？使用
+    RESTEasy Reactive，您可以使用 `@NonBlocking` 和 `@Blocking` 注解指示希望请求在哪个线程上处理。^([2](ch08.html#idm45358825016128))
+    让我们来举个例子。创建另一个端点方法，与 `hello` 方法相同的代码，但是针对不同的路径，并且没有 `@NonBlocking` 注解，如 [Example 8-4](#rr::resource-blocking)
+    所示。
 - en: Example 8-4\. Requests are processed on a worker thread when `@Blocking` is
     used
+  id: totrans-37
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-4\. 当使用 `@Blocking` 时，请求会在工作线程上处理。
 - en: '[PRE4]'
+  id: totrans-38
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Refresh your browser again, and voilà:'
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 再次刷新您的浏览器，voilà：
 - en: '[PRE5]'
+  id: totrans-40
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: What Happens If I Block the I/O Thread Inadvertently?
+  id: totrans-41
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 如果无意中阻塞了 I/O 线程会发生什么？
 - en: Quarkus will warn you if you attempt to block an I/O thread for too long or
     if you try to execute a blocking operation from an I/O thread.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您尝试在 I/O 线程中阻塞时间过长，或者尝试从 I/O 线程执行阻塞操作，Quarkus 将会警告您。
 - en: 'RESTEasy Reactive proposes a set of defaults to avoid having to use the `@NonBlocking`
     annotation:'
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: RESTEasy Reactive 提供了一组默认值，以避免必须使用 `@NonBlocking` 注解：
 - en: Method returning an object, such as `String` in the previous example, is executed
     on a worker thread, except if the `@NonBlocking` annotation is used. In this case,
     the method uses an I/O thread.
+  id: totrans-44
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 返回对象的方法，比如前面例子中的 `String`，会在工作线程上执行，除非使用了 `@NonBlocking` 注解。在这种情况下，方法会使用 I/O
+    线程。
 - en: Method returning `Uni` is executed on an I/O thread, except if the method is
     annotated with `@Blocking`. In this case, the method uses a worker thread.
+  id: totrans-45
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 返回 `Uni` 的方法在 I/O 线程上执行，除非方法标注有 `@Blocking`。在这种情况下，方法会使用工作线程。
 - en: Method returning `Multi` is executed on an I/O thread, except if the method
     is annotated with `@Blocking`. In this case, the method uses a worker thread.
+  id: totrans-46
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 返回 `Multi` 的方法在 I/O 线程上执行，除非方法标注有 `@Blocking`。在这种情况下，方法会使用工作线程。
 - en: What’s the Benefit?
+  id: totrans-47
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 这有什么好处呢？
 - en: By dispatching the request on the I/O thread, you are allowing the application
     to handle the request in a reactive manner. You are not only embracing the reactive
     principles, but also increasing the throughput of your application.
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过在 I/O 线程上分派请求，您可以以响应式方式处理请求。这不仅是在采纳响应式原则，还可以增加应用程序的吞吐量。
 - en: Let’s have a deeper look at the throughput difference. We will compare *classic*
     and *reactive* RESTEasy by using [wrk](https://oreil.ly/kkvBU). This benchmark
     is far from being irreproachable (we run everything on the same machine); it’s
@@ -250,59 +369,89 @@
     and measuring the response time. In *chapter-8/simple-benchmark/classic*, you
     get the version using RESTEasy *classic*. In *chapter-8/simple-benchmark/reactive*,
     you get the RESTEasy *reactive* variant.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们更深入地看一下吞吐量的差异。我们将通过使用[wrk](https://oreil.ly/kkvBU)比较*经典*和*响应式*RESTEasy。这个基准测试远非无懈可击（我们在同一台机器上运行所有内容）；它只是为了说明好处。还请注意，结果可能因机器而异。该基准测试只是同时调用一个*hello*端点并测量响应时间。在*chapter-8/simple-benchmark/classic*中，你会得到使用RESTEasy
+    *classic*的版本。在*chapter-8/simple-benchmark/reactive*中，你会得到RESTEasy *reactive*的变体。
 - en: First, go into *chapter-8/simple-benchmark/classic*, build the application using
     `mvn package`, and run it using *java -jar target/quarkus-app/quarkus-run.jar*.
     Once the application is started in another terminal, run [Example 8-5](#usewrk-8-5).
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，进入*chapter-8/simple-benchmark/classic*，使用`mvn package`构建应用程序，然后使用`java -jar
+    target/quarkus-app/quarkus-run.jar`运行它。一旦应用程序在另一个终端中启动，请运行[示例 8-5](#usewrk-8-5)。
 - en: Example 8-5\. Use `wrk` to stress the application endpoint
+  id: totrans-51
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-5\. 使用`wrk`来压力测试应用程序端点
 - en: '[PRE6]'
+  id: totrans-52
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: This command hammers the *hello* endpoint for 40 seconds, using 10 threads and
     50 connections. This is a simple test, but it will give us an idea of the benefits.
     You should get a report with the result in the terminal. For us, we got the result
     in [Example 8-6](#benchmark-8-6).
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个命令在40秒内使用10个线程和50个连接锤击*hello*端点。这是一个简单的测试，但它会给我们一个好处的概念。你应该在终端中得到一个报告。对我们来说，我们在[示例 8-6](#benchmark-8-6)中得到了结果。
 - en: Example 8-6\. Benchmark result
+  id: totrans-54
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-6\. 基准测试结果
 - en: '[PRE7]'
+  id: totrans-55
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: Close the application, and build and run the version using RESTEasy Reactive,
     as shown in [Example 8-7](#buildrun-8-7).
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
+  zh: 关闭应用程序，并使用RESTEasy Reactive构建和运行版本，如[示例 8-7](#buildrun-8-7)所示。
 - en: Example 8-7\. Build and run a reactive application
+  id: totrans-57
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-7\. 构建和运行响应式应用程序
 - en: '[PRE8]'
+  id: totrans-58
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: Run the same `wrk` command in another terminal ([Example 8-8](#usewrk-8-8)).
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 在另一个终端中运行相同的`wrk`命令（[示例 8-8](#usewrk-8-8)）。
 - en: Example 8-8\. Use `wrk` to stress the application endpoint
+  id: totrans-60
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-8\. 使用`wrk`来压力测试应用程序端点
 - en: '[PRE9]'
+  id: totrans-61
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'Now, let’s compare the number of requests per second: 29,000 for classic RESTEasy
     versus 84,000 for RESTEasy Reactive. RESTEasy Reactive provides almost three times
     more throughput.'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们比较每秒请求数：经典RESTEasy为29,000，而RESTEasy Reactive为84,000。RESTEasy Reactive提供了几乎三倍的吞吐量。
 - en: So far, we compared a reactive framework against a blocking one. But what about
     the `@Blocking` annotation, which instructs Quarkus to call the endpoint with
     a worker thread? Would `@Blocking` reduce the performance gain? Well, let’s test
@@ -310,41 +459,62 @@
     uses RESTEasy Reactive but without the `@NonBlocking` annotation. So, it invokes
     the method on a worker thread. Let’s run our benchmark against that version, as
     shown in [Example 8-9](#build-and-run-reactive-blocking).
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们比较了一个响应式框架与一个阻塞框架。但是关于`@Blocking`注解呢？它指示Quarkus使用工作线程调用端点。`@Blocking`会减少性能增益吗？好吧，让我们来测试一下。在*chapter-8/simple-benchmark/reactive-blocking*中，应用程序的变体使用RESTEasy
+    Reactive，但没有`@NonBlocking`注解。因此，它在工作线程上调用方法。让我们针对该版本运行我们的基准测试，如[示例 8-9](#build-and-run-reactive-blocking)所示。
 - en: Example 8-9\. Build and run reactive blocking applications
+  id: totrans-64
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-9\. 构建和运行响应式阻塞应用程序
 - en: '[PRE10]'
+  id: totrans-65
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: In another terminal, run the `wrk` command ([Example 8-10](#stress-8-10)).
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 在另一个终端中运行`wrk`命令（[示例 8-10](#stress-8-10)）。
 - en: Example 8-10\. Stress the application endpoint by using `wrk`
+  id: totrans-67
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-10\. 使用`wrk`来压力测试应用程序端点
 - en: '[PRE11]'
+  id: totrans-68
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: Even when using a worker thread, the application serves 50,000 requests per
     second. That’s more than 1.5 times the throughput of RESTEasy classic.
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 即使使用工作线程，该应用程序每秒服务50,000个请求。这比RESTEasy经典的吞吐量高出1.5倍。
 - en: RESTEasy Reactive offers a solid and highly concurrent alternative to the traditional
     one-thread-per-request approach. And, thanks to the `@Blocking` and `@NonBlocking`
     annotations, you can even use it when dealing with asynchronous and synchronous
     logic. At the end of this chapter, you will see how RESTEasy Reactive produces
     a reactive score of your endpoint. Next, we will look at this integration because
     returning Hello is nice, but it’s rarely enough.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: RESTEasy Reactive 提供了一个坚实且高度并发的替代传统的一线程每请求方法。 并且，由于 `@Blocking` 和 `@NonBlocking`
+    注解，即使在处理异步和同步逻辑时，您也可以使用它。 在本章的最后，您将看到 RESTEasy Reactive 如何生成端点的响应分数。 接下来，我们将查看此集成，因为仅返回
+    Hello 是不够的。
 - en: Asynchronous Endpoints Returning Uni
+  id: totrans-71
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 异步端点返回 Uni
 - en: One way to avoid the temptation to write blocking code is to design your HTTP
     endpoint method to return a `Uni` instance. `Uni` represents an asynchronous computation
     that may not have produced a result yet. When an endpoint returns a `Uni` instance,
@@ -353,47 +523,72 @@
     HTTP response conveys that failure as an HTTP internal server error, bad request,
     or not found error, depending on the failure. While *waiting* for the outcome
     of the `Uni`, the thread can be used to handle other requests.
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 避免写阻塞代码的一种方法是设计您的 HTTP 端点方法以返回 `Uni` 实例。 `Uni` 表示一个可能尚未生成结果的异步计算。 当端点返回 `Uni`
+    实例时，Quarkus 订阅它，当 `Uni` 发出结果时，将此结果写入 HTTP 响应中。 如果不幸的是，`Uni` 发出失败，HTTP 响应会传达该失败作为
+    HTTP 内部服务器错误、错误请求或未找到的错误，具体取决于失败原因。 在等待 `Uni` 结果的同时，线程可以用于处理其他请求。
 - en: There’s no need to use `@NonBlocking` when returning a `Uni`. RESTEasy Reactive
     recognizes it and automatically considers it nonblocking. Let’s see how this works
     in practice. In this example, we will use the Vert.x filesystem asynchronous API.
     Of course, Quarkus offers other more convenient ways to serve files, but this
     is just to illustrate the purpose.
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 返回 `Uni` 时无需使用 `@NonBlocking`。 RESTEasy Reactive 会识别它并自动将其视为非阻塞。 让我们看看实际情况如何。
+    在此示例中，我们将使用 Vert.x 文件系统异步 API。 当然，Quarkus 提供了其他更便捷的文件服务方式，但这只是为了说明目的。
 - en: Note
+  id: totrans-74
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 注意
 - en: You can find the related code in the *chapter-8/mutiny-integration-examples*
     directory.
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以在 *chapter-8/mutiny-integration-examples* 目录中找到相关的代码。
 - en: As we said in [Chapter 6](ch06.html#quarkus-reactive), Quarkus is based on Vert.x.
     If you add the `quarkus-vertx` extension, you get access to the *managed* Vert.x
     instance, as shown in [Example 8-11](#inject-vertx-8-11).
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如我们在 [Chapter 6](ch06.html#quarkus-reactive) 中所说，Quarkus 基于 Vert.x。 如果添加 `quarkus-vertx`
+    扩展，您将访问 *managed* Vert.x 实例，如 [Example 8-11](#inject-vertx-8-11) 所示。
 - en: Example 8-11\. Inject the Vert.x instance
+  id: totrans-77
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-11\. 注入 Vert.x 实例
 - en: '[PRE12]'
+  id: totrans-78
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: Be sure to import `io.vertx.mutiny.core.Vertx`. Note that we inject the Mutiny
     variant of Vert.x. This variant exposes all the Vert.x API using Mutiny, which
     is convenient in Quarkus. So, reading a file can be done as in [Example 8-12](#rr::fs).
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 确保导入 `io.vertx.mutiny.core.Vertx`。 注意，我们注入了 Mutiny 版本的 Vert.x。 此变体使用 Mutiny
+    暴露所有 Vert.x API，在 Quarkus 中非常方便。 因此，读取文件可以像在 [Example 8-12](#rr::fs) 中一样完成。
 - en: Example 8-12\. Read a file with the Vert.x filesystem API
+  id: totrans-80
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-12\. 使用 Vert.x 文件系统 API 读取文件
 - en: '[PRE13]'
+  id: totrans-81
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: Accessing the filesystem is, in most cases, a blocking operation. However, thanks
     to the Vert.x API, we get a nonblocking variant, already providing a `Uni` instance!
     But it’s a `Uni<Buffer>`, and to get `String`, we need to transform the emitted
@@ -401,174 +596,268 @@
     reads a file specified with a *path*. This operation returns `Uni`. When the content
     is ready to be consumed, `Uni` emits `Buffer` as an item, and we transform `Buffer`
     into a `String` object. All this, without blocking the thread!
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 访问文件系统在大多数情况下是一个阻塞操作。 但是，由于 Vert.x API，我们获得了一个非阻塞的变体，已经提供了 `Uni` 实例！ 但它是 `Uni<Buffer>`，为了获得
+    `String`，我们需要转换发出的结果。^([3](ch08.html#idm45358824653424)) 换句话说，[Example 8-12](#rr::fs)
+    读取指定路径的文件。 此操作返回 `Uni`。 当内容准备好被消耗时，`Uni` 发出 `Buffer` 作为项目，并且我们将 `Buffer` 转换为 `String`
+    对象。 所有这些都不会阻塞线程！
 - en: But that’s not all! We can return that `Uni` directly and let Quarkus subscribe
     and handle the heavy lifting for us, as illustrated in [Example 8-13](#rr::fs-uni).
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 但这还不是全部！ 我们可以直接返回该 `Uni` 并让 Quarkus 订阅和处理我们的重活，正如在 [Example 8-13](#rr::fs-uni)
+    中所示。
 - en: Example 8-13\. Return a file read with the Vert.x filesystem API (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  id: totrans-84
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-13\. 使用Vert.x文件系统API返回已读取的文件（*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*）
 - en: '[PRE14]'
+  id: totrans-85
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: Quarkus subscribes to the returned `Uni` and sends the emitted item to the HTTP
     response. If the `Uni` emits a failure, it sends an HTTP error.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: Quarkus订阅返回的`Uni`并将发出的项发送到HTTP响应。如果`Uni`发出故障，则发送HTTP错误。
 - en: Let’s see this in action. Start the application, located in *chapter-8/mutiny-integration-examples*,
     with `mvn quarkus:dev` and invoke the endpoint by using [Example 8-14](#retrieve-8-14).
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 看看它在实际中是如何运作的。使用`mvn quarkus:dev`启动位于*chapter-8/mutiny-integration-examples*中的应用程序，并使用[示例 8-14](#retrieve-8-14)调用端点。
 - en: Example 8-14\. Retrieve the lorem file
+  id: totrans-88
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-14\. 检索lorem文件
 - en: '[PRE15]'
+  id: totrans-89
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: Most Quarkus APIs have reactive variants using Mutiny, such as the mailer service,
     database access (we will look at Hibernate Reactive in [Chapter 9](ch09.html#data)),
     messaging, templating, gRPC, and so on. Besides, the Mutiny variant of Vert.x
     gives you access to a vast reactive ecosystem ranging from network protocols (DNS,
     TCP, UDP, HTTP), to messaging (Apache Kafka, AMQP, RabbitMQ, MQTT) via data accesses
     and web utilities.
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 大多数Quarkus API都有使用Mutiny的响应式变体，如邮件服务、数据库访问（我们将在[第9章](ch09.html#data)中查看Hibernate
+    Reactive）、消息传递、模板化、gRPC等。此外，Vert.x的Mutiny变体还使您能够访问广泛的响应式生态系统，涵盖网络协议（DNS、TCP、UDP、HTTP）、消息传递（Apache
+    Kafka、AMQP、RabbitMQ、MQTT）、数据访问和Web实用程序等。
 - en: Dealing with Failure and Customizing the Response
+  id: totrans-91
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 处理故障和自定义响应
 - en: Just because a method is asynchronous doesn’t mean it cannot fail. For example,
     the file we are trying to serve may not be available, so we need to handle such
     a failure. But, first, let’s see what Quarkus does by default.
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 就因为一个方法是异步的并不意味着它不能失败。例如，我们要服务的文件可能不可用，所以我们需要处理这样的故障。但首先，让我们看看Quarkus默认做了什么。
 - en: Let’s add an example with a failing operation with the following endpoint (as
     shown in [Example 8-15](#rr::fs-fail)).
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们添加一个带有失败操作的示例，使用以下端点（如[示例 8-15](#rr::fs-fail)所示）。
 - en: Example 8-15\. Read a missing file with the Vert.x filesystem API (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  id: totrans-94
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-15\. 使用Vert.x文件系统API读取丢失的文件（*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*）
 - en: '[PRE16]'
+  id: totrans-95
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: Invoke the endpoint by using [Example 8-16](#endpoint-8-16).
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用[示例 8-16](#endpoint-8-16)调用端点。
 - en: Example 8-16\. Propagation of failures
+  id: totrans-97
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-16\. 失败传播
 - en: '[PRE17]'
+  id: totrans-98
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: Quarkus returns `500 Internal Server Error`. This makes sense; there’s clearly
     a bug in our code.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: Quarkus返回`500 Internal Server Error`。这是有道理的；我们的代码中明显存在错误。
 - en: Let’s see what we can do. As you have seen in [Chapter 7](ch07.html#mutiny),
     `Uni` provides failure-handling capabilities that we can use here. [Example 8-17](#rr::fs-recover)
     shows how we can recover with a simple message.
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看看我们能做些什么。正如您在[第7章](ch07.html#mutiny)中看到的那样，`Uni`提供了我们可以在这里使用的故障处理能力。[示例 8-17](#rr::fs-recover)显示了我们如何通过简单的消息进行恢复。
 - en: Example 8-17\. Recover on failure (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  id: totrans-101
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-17\. 失败恢复（*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*）
 - en: '[PRE18]'
+  id: totrans-102
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: This returns `oops`, as you can see in [Example 8-18](#failure-recovery-8-18).
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 此返回`oops`，如您在[示例 8-18](#failure-recovery-8-18)中所见。
 - en: Example 8-18\. Failure recovery
+  id: totrans-104
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-18\. 失败恢复
 - en: '[PRE19]'
+  id: totrans-105
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: We can also customize the HTTP response and return a proper `404 Not Found`
     error ([Example 8-19](#rr::fs-404)).
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们还可以自定义HTTP响应并返回合适的`404 Not Found`错误（[示例 8-19](#rr::fs-404)）。
 - en: Example 8-19\. Response customization (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  id: totrans-107
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-19\. 响应定制（*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*）
 - en: '[PRE20]'
+  id: totrans-108
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: The signature of the endpoint is a bit different. Instead of returning `Uni<String>`,
     we return `Uni<Response>`. The emitted item (`Response`) represents the HTTP response
     we want to send back. In [Example 8-20](#customize-8-20), we set that on any failure
     we return a `404 Not Found`.
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 端点的签名有些不同。我们不再返回`Uni<String>`，而是返回`Uni<Response>`。发出的项（`Response`）代表我们要发送回的HTTP响应。在[示例 8-20](#customize-8-20)中，我们设置任何故障时返回`404
+    Not Found`。
 - en: Example 8-20\. Customize the HTTP response
+  id: totrans-110
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-20\. 自定义HTTP响应
 - en: '[PRE21]'
+  id: totrans-111
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: Note
+  id: totrans-112
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 注意
 - en: You can use `Response` to customize the response—for example, by adding headers.
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以使用`Response`来自定义响应，例如添加头部。
 - en: An alternative is to register an exception mapper for the `FileSystemException`,
     as illustrated in [Example 8-21](#rr::exception-mapper).
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一种选择是为`FileSystemException`注册异常映射器，如[示例 8-21](#rr::exception-mapper)所示。
 - en: Example 8-21\. Declare an exception mapper (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
+  id: totrans-115
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-21\. 声明异常映射器 (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/MutinyExampleResource.java*)
 - en: '[PRE22]'
+  id: totrans-116
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: With such a mapper defined, Quarkus captures the failure emitted by `Uni` and
     invokes the mapper to produce the appropriate `Response`.
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 定义了这样的映射器后，Quarkus 会捕获由 `Uni` 发出的失败，并调用映射器生成相应的 `Response`。
 - en: And what about time-out? While the chances of having a time-out when reading
     from the filesystem are relatively low, it becomes much more critical when dealing
     with a remote service. Handle time-out as shown in [Example 8-22](#rr::timeout).
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 那么超时呢？当从文件系统读取时出现超时的可能性相对较低时，但当处理远程服务时，它变得更加关键。如何处理超时请参见 [示例 8-22](#rr::timeout)。
 - en: Example 8-22\. Handling timeout
+  id: totrans-119
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-22\. 处理超时
 - en: '[PRE23]'
+  id: totrans-120
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: You can specify the exception to emit in this case, and if you need, register
     an exception mapper.
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可以指定在这种情况下要发出的异常，并且如果需要，注册异常映射器。
 - en: When implementing an HTTP endpoint with RESTEasy Reactive, ask yourself if you
     can use the Mutiny integration to compose asynchronous actions and fully benefit
     from the performance and efficiency of the reactive engine of Quarkus. Of course,
     you can use `@Blocking`, but there is a cost to consider.
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 当使用 RESTEasy Reactive 实现 HTTP 端点时，请问自己是否可以使用 Mutiny 集成来组合异步操作，并充分利用 Quarkus
+    的响应式引擎的性能和效率。当然，你可以使用 `@Blocking`，但需要考虑成本。
 - en: Streaming Data
+  id: totrans-123
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 流式数据
 - en: Returning `Uni` is perfect when we have a single piece of data to send into
     the response. But what about *streams*?
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们有单个数据要发送到响应中时，返回 `Uni` 是完美的。但是对于 *流* 呢？
 - en: In addition to `Uni`, Quarkus lets you return a `Multi` instance. Quarkus subscribes
     to the returned `Multi` and writes the items emitted by this `Multi`, one by one,
     into the HTTP response. It’s an efficient way to deal with streams and limit the
@@ -576,94 +865,140 @@
     in memory. Indeed, Quarkus uses HTTP *chunked* responses by setting the [`Transfer-Encoding
     header`](https://oreil.ly/QcHFs) when dealing with `Multi`. That feature from
     HTTP allows writing into the response chunk after chunk.
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了 `Uni`，Quarkus 还允许你返回一个 `Multi` 实例。Quarkus 订阅返回的 `Multi`，并将该 `Multi` 发出的项目逐个写入
+    HTTP 响应中。这是一种处理流并限制应用程序内存消耗的有效方式，因为你无需将整个内容缓冲到内存中。确实，当处理 `Multi` 时，Quarkus 使用
+    HTTP *分块* 响应通过设置 [`Transfer-Encoding header`](https://oreil.ly/QcHFs) 写入响应的块。
 - en: As with `Uni`, a method retuning a `Multi` is considered nonblocking by default.
     There’s no need to use `@NonBlocking`.
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 和 `Uni` 一样，返回 `Multi` 的方法默认被认为是非阻塞的。无需使用 `@NonBlocking`。
 - en: 'But when returning `Multi`, we need to ask ourselves: What envelope do we want?
     Do we want to stream bytes? Do we want to send a JSON array instead? Or maybe
     individual events using Server-Sent Events? Quarkus supports all these, and that’s
     what we are going to see in this section.'
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 但是，当返回 `Multi` 时，我们需要问自己：我们想要什么封装？我们想要流字节吗？我们想要发送 JSON 数组吗？或者使用服务器发送事件发送单个事件？Quarkus
+    支持所有这些，这就是我们将在本节中看到的内容。
 - en: Raw Streaming
+  id: totrans-128
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 原始流
 - en: Let’s start with *raw* streaming, basically no envelope. This model is great
     for writing large payloads in response, as we can write them chunk by chunk, in
     order.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从 *原始* 流开始，基本上没有封装。这种模型非常适合在响应中写入大量有效负载，因为我们可以逐块逐块地写入它们。
 - en: 'Raw streaming is straightforward with Quarkus and RESTEasy Reactive: just return
     `Multi`. Let’s look at an example. You have probably heard about the book *War
     and Peace*. It’s what we would call a brick, more than 1,200 pages! Let’s say
     that we want to accumulate the full content of *War and Peace* and return it in
     an HTTP response as a single batch. It’s doable, but let’s make the book easy
     to digest by streaming the content ([Example 8-23](#rr::stream)).'
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用 Quarkus 和 RESTEasy Reactive 进行原始流非常简单：只需返回 `Multi`。让我们来看一个例子。你可能听说过书 *战争与和平*。它是我们所说的一本厚书，有超过
+    1200 页！假设我们想要累积 *战争与和平* 的全部内容，并将其作为单个批次在 HTTP 响应中返回。这是可行的，但让我们通过流式传输内容使书籍易于理解
+    ([示例 8-23](#rr::stream))。
 - en: Example 8-23\. Stream responses (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  id: totrans-131
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-23\. 流响应 (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
 - en: '[PRE24]'
+  id: totrans-132
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: This code opens the book text from the filesystem, using the Vert.x filesystem
     API, and reads it chunk by chunk. `AsyncFile::toMulti` is responsible for reading
     the file (and `AsyncFile`) and emitting the content chunk by chunk. As we did
     previously in [Example 8-13](#rr::fs-uni), we transform the content into UTF-8
     strings.
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 此代码使用Vert.x文件系统 API 从文件系统打开书籍文本，并逐块读取。`AsyncFile::toMulti` 负责读取文件（和`AsyncFile`），逐块发出内容。就像我们之前在[示例 8-13](#rr::fs-uni)中所做的那样，我们将内容转换为UTF-8字符串。
 - en: You can find this code in *chapter-8/mutiny-integration-examples*. Run the application
     by using `mvn quarkus:dev` and then test it with [Example 8-24](#consume-chunked-responses-8-24).
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以在*chapter-8/mutiny-integration-examples*中找到此代码。使用`mvn quarkus:dev`运行应用程序，然后使用[示例 8-24](#consume-chunked-responses-8-24)测试它。
 - en: Example 8-24\. Consume chunked responses
+  id: totrans-135
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-24\. 消耗分块响应
 - en: '[PRE25]'
+  id: totrans-136
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: '[![1](assets/1.png)](#co_http_with_reactive_in_mind_CO1-1)'
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](assets/1.png)](#co_http_with_reactive_in_mind_CO1-1)'
 - en: '`-N` instructs `curl` to read the response chunk by chunk (it disables the
     buffering).'
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: '`-N` 指示`curl`逐块读取响应（禁用缓冲）。'
 - en: We get the content, but it’s hard to see that it was sent as a set of chunks.
     Let’s update the endpoint to send a chunk every second ([Example 8-25](#rr::stream-pace)).
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们得到了内容，但很难看出它是作为一组块发送的。让我们更新端点，每秒发送一个块 ([示例 8-25](#rr::stream-pace))。
 - en: Example 8-25\. Pace streamed responses (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  id: totrans-140
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-25\. 以节奏流式传输响应 (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
 - en: '[PRE26]'
+  id: totrans-141
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: '[Example 8-25](#rr::stream-pace) combines two streams. First, it creates a
     periodic stream, emitting a tick every second (`ticks`). Then it retrieves the
     stream reading the book (`book`). The combination creates a stream of tuples that
     will be emitted every second. Each tuple contains a tick (`getItem1`) and the
     chunk (`getItem2`). We just need to forward the chunk, dropping the tick.'
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: '[示例 8-25](#rr::stream-pace) 结合了两个流。首先，它创建一个周期性流，每秒发出一个tick (`ticks`)。然后，它检索读取书籍的流
+    (`book`)。这种组合创建了一个元组流，每秒发出一次。每个元组包含一个tick (`getItem1`) 和一个块 (`getItem2`)。我们只需转发块，忽略tick。'
 - en: Now, rerun the `curl` command, and you will see the content appearing chunk
     by chunk every second. Don’t wait until the end because there are many chunks;
     just hit Ctrl-C to interrupt.
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，重新运行`curl`命令，您将看到每秒按块出现的内容。不要等到结束，因为有很多块；只需按Ctrl-C中断即可。
 - en: Streaming JSON Array
+  id: totrans-144
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 流式 JSON 数组
 - en: The *War and Peace* example is interesting for binary content or simple text,
     but you may want to send a more structured response, such as a JSON array. Imagine
     you are building a response that is a JSON array, but a potentially large one.
@@ -673,205 +1008,307 @@
     receiving the data may be able to start processing the items immediately. To stream
     a JSON array, you need to adapt the produced content type. In the previous example,
     we just used `text/plain`. To create a JSON array, we need to set it to `application/json`.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: '*《战争与和平》* 的示例对于二进制内容或简单文本非常有趣，但您可能希望发送更结构化的响应，例如 JSON 数组。想象一下，您正在构建一个响应，它是一个
+    JSON 数组，但可能很大。每个项都是一个 JSON 对象。您可以在内存中构建该结构并一次性刷新所有内容，但逐个推送 JSON 对象可能更有效。首先，这种方法可以节省一些内存，而接收数据的客户端可能能够立即开始处理项目。要流式传输
+    JSON 数组，您需要调整生成的内容类型。在前面的示例中，我们只使用了`text/plain`。要创建 JSON 数组，我们需要将其设置为`application/json`。'
 - en: Tip
+  id: totrans-146
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 提示
 - en: We recommend using the `MediaType` class that provides constants for the most
     common content types. A typo can quickly become a debugging nightmare.
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们建议使用`MediaType`类，该类为最常见的内容类型提供常量。一个拼写错误很快就会变成调试的噩梦。
 - en: Let’s imagine we have a bunch of books. Each `Book` has an ID, a title, and
     a list of authors ([Example 8-26](#rr::book)).
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设我们有一堆书。每本`Book`都有一个ID、一个标题和一个作者列表（[示例 8-26](#rr::book)）。
 - en: Example 8-26\. The `Book` structure (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  id: totrans-149
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-26\. `Book` 结构 (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
 - en: '[PRE27]'
+  id: totrans-150
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: Let’s imagine we have a *service* that lets us retrieve our collection of books
     as a `Multi`. In other words, we have a service offering the API in [Example 8-27](#rr::book-service).
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设我们有一个*服务*，可以让我们将我们的书籍集合作为`Multi`检索出来。换句话说，我们有一个在[示例 8-27](#rr::book-service)中提供API的服务。
 - en: Example 8-27\. Stream books API
+  id: totrans-152
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-27\. 流书籍 API
 - en: '[PRE28]'
+  id: totrans-153
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: To build a JSON array from this method, we can return an instance of `Multi`
     produced by the `getBooks` method ([Example 8-28](#rr::book-stream)).
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 要从此方法构建JSON数组，我们可以返回由`getBooks`方法生成的`Multi`实例（[示例 8-28](#rr::book-stream)）。
 - en: Example 8-28\. Stream books (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  id: totrans-155
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-28\. 流书籍（*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*）
 - en: '[PRE29]'
+  id: totrans-156
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: If you call this endpoint by using the command in [Example 8-29](#consume-stream-of-books),
     you will get all the books.
+  id: totrans-157
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您使用[示例 8-29](#consume-stream-of-books)中的命令调用此端点，您将获取所有的书籍。
 - en: Example 8-29\. Consume the stream of books
+  id: totrans-158
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-29\. 消费书籍流
 - en: '[PRE30]'
+  id: totrans-159
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: The result is a well-formed JSON array containing our books, serialized as JSON
     objects. But, again, it’s hard to see that it was streamed. We can use the same
     approach as we did before to limit the emission to one per second, as in [Example 8-30](#rr::stream-book-page).
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 结果是一个格式良好的JSON数组，包含我们的书籍，以JSON对象的形式进行序列化。但是，再次看到它是如何流式传输的却很难。我们可以像之前限制每秒发射一次的方法一样使用相同的方法来限制发射，例如[示例 8-30](#rr::stream-book-page)。
 - en: Example 8-30\. Produce a book every second (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  id: totrans-161
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-30\. 每秒产生一本书（*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*）
 - en: '[PRE31]'
+  id: totrans-162
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE31]'
 - en: With this code, if you rerun the `curl` command, you will see the items appearing
     one by one.
+  id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用这段代码，如果您重新运行`curl`命令，您将看到逐个显示项目。
 - en: Using Server-Sent-Events
+  id: totrans-164
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用服务器发送事件（Server-Sent-Events）
 - en: Raw streams and JSON arrays are helpful for bounded streams. But, sometimes,
     we have to deal with unbounded ones.
+  id: totrans-165
   prefs: []
   type: TYPE_NORMAL
+  zh: 原始流和JSON数组对有界流很有帮助。但有时，我们必须处理无界流。
 - en: '[Server-Sent Events](https://oreil.ly/NjQNL) (SSE) was designed with this use
     case in mind. It provides a way to stream potentially unbounded structured data
     using HTTP.'
+  id: totrans-166
   prefs: []
   type: TYPE_NORMAL
+  zh: '[服务器发送事件](https://oreil.ly/NjQNL)（SSE）是为此用例设计的。它提供了一种使用HTTP流式传输可能无界结构化数据的方式。'
 - en: To produce an SSE response, you set the produced content type to `text/event-stream`.
     Let’s try this. Imagine we want to stream events from a financial market. Each
     event is a `Quote` containing the name of a company and the new stock value ([Example 8-31](#rr::quote)).
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 要生成SSE响应，您需要将生成的内容类型设置为`text/event-stream`。让我们尝试一下。假设我们要从金融市场流事件。每个事件都是包含公司名称和新股票价值的`Quote`（[示例 8-31](#rr::quote)）。
 - en: Example 8-31\. The `Quote` structure (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  id: totrans-168
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-31\. `Quote`结构（*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*）
 - en: '[PRE32]'
+  id: totrans-169
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE32]'
 - en: Now, let’s imagine a service emitting a `Quote` every second to represent the
     fluctuation of the market. We can produce an SSE response by returning that stream
     directly ([Example 8-32](#rr::stream-quotes)).
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们想象一个服务每秒发出一个`Quote`以代表市场的波动。我们可以通过直接返回该流来生成一个SSE响应（[示例 8-32](#rr::stream-quotes)）。
 - en: Example 8-32\. Stream quotes (*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*)
+  id: totrans-171
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-32\. 流式引用（*chapter-8/mutiny-integration-examples/src/main/java/org/acme/StreamResource.java*）
 - en: '[PRE33]'
+  id: totrans-172
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE33]'
 - en: By setting the produced content to SSE, Quarkus writes the response accordingly.
     Each individual `Quote` is encoded to JSON automatically ([Example 8-33](#consume-sse-8-33)).
+  id: totrans-173
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过将生成的内容设置为SSE，Quarkus相应地编写响应。每个单独的`Quote`都会自动编码为JSON（[示例 8-33](#consume-sse-8-33)）。
 - en: Example 8-33\. Consume the SSE response
+  id: totrans-174
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 8-33\. 消费SSE响应
 - en: '[PRE34]'
+  id: totrans-175
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE34]'
 - en: A client reading SSE, such as a [JavaScript `EventSource`](https://oreil.ly/scARA),
     can process the quotes one by one as they come.
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: 读取SSE的客户端，例如[JavaScript `EventSource`](https://oreil.ly/scARA)，可以逐个处理事件。
 - en: Reactive Score
+  id: totrans-177
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 响应式评分
 - en: So far, we have looked at various features of RESTEasy Reactive and Quarkus.
     But what about tooling around Reactive?
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们已经看过RESTEasy Reactive和Quarkus的各种功能。但是反应式周围的工具呢？
 - en: We already experienced dev mode, which made us highly productive, but there
     is more. RESTEasy Reactive produces a *reactive score* for your endpoints, indicating
     how *responsive* the endpoints are.
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们已经体验过开发模式，这使我们非常高效，但这还不是全部。RESTEasy Reactive 为您的端点生成一个*响应得分*，指示端点的*响应性*如何。
 - en: To compute this score, RESTEasy Reactive looks at the execution model (typically,
     an endpoint using worker threads will get a lower score), instantiation scheme
     (favoring singleton over request-based instantiation), the usage of marshaller
     and reflection-based mechanisms (such as object mapper), and so on.
+  id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: 要计算此分数，RESTEasy Reactive 查看执行模型（通常，使用工作线程的端点将获得较低的分数）、实例化方案（偏好单例而不是基于请求的实例化）、以及使用的编组器和基于反射的机制（例如对象映射器）等。
 - en: Let’s look at the score in an example. In *chapter-8/reactive-scores*, an application
     contains a bunch of endpoints using various features. Launch the application in
     dev mode by using `mvn quarkus:dev`, and then open a browser.
+  id: totrans-181
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们通过一个示例来看一下分数。在*chapter-8/reactive-scores*中，一个应用程序包含一堆使用各种功能的端点。通过使用`mvn quarkus:dev`在开发模式下启动应用程序，然后打开浏览器。
 - en: Tip
+  id: totrans-182
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 提示
 - en: This reactive score page is part of the Quarkus dev console. Each extension
     can contribute to the dev console. In dev mode, access the dev console using [*http://localhost:8080/q/dev*](http://localhost:8080/q/dev).
     In our example, you can navigate to [*http://localhost:8080/q/swagger-ui/*](http://localhost:8080/q/swagger-ui/)
     to try all the defined endpoints.
+  id: totrans-183
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个响应式分数页面是 Quarkus dev 控制台的一部分。每个扩展都可以向 dev 控制台做出贡献。在开发模式下，使用[*http://localhost:8080/q/dev*](http://localhost:8080/q/dev)访问
+    dev 控制台。在我们的示例中，您可以导航到[*http://localhost:8080/q/swagger-ui/*](http://localhost:8080/q/swagger-ui/)来尝试所有定义的端点。
 - en: You can see scores going from 50/100 (rather bad) to 100/100 (excellent!) in
     our application ([Figure 8-3](#image:scores)). You can click each method to understand
     the given score. This feature is handy when trying to improve the concurrency
     and the efficiency of your application. If you realize that you have a bottleneck,
     check the score and try to improve it. The effect on your application will be
     immediate.
+  id: totrans-184
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以看到在我们的应用程序中分数从 50/100（相当差）到 100/100（优秀！）的变化（[图 8-3](#image:scores)）。您可以单击每个方法来了解给定的分数。当尝试提高应用程序的并发性和效率时，此功能非常有用。如果您意识到存在瓶颈，请检查分数并尝试改进。对您的应用程序的影响将是立竿见影的。
 - en: '![Endpoint Scores](assets/rsij_0803.png)'
+  id: totrans-185
   prefs: []
   type: TYPE_IMG
+  zh: '![端点分数](assets/rsij_0803.png)'
 - en: Figure 8-3\. Endpoint scores
+  id: totrans-186
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 8-3\. 端点分数
 - en: Summary
+  id: totrans-187
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 概要
 - en: HTTP is unavoidable. Although it does not enforce reactive principles, Quarkus
     offers a way to expose HTTP APIs without renouncing to those reactive principles.
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: HTTP 是不可避免的。虽然它不强制执行响应式原则，但 Quarkus 提供了一种在不放弃这些响应式原则的情况下公开 HTTP API 的方法。
 - en: Thanks to RESTEasy Reactive, you get a familiar declarative development model
     that is a lot more efficient and performant. We only scratched the surface. RESTEasy
     Reactive also supports Bean Validation to automatically validate the incoming
     payloads or OpenAPI to describe your API.
+  id: totrans-189
   prefs: []
   type: TYPE_NORMAL
+  zh: 多亏了 RESTEasy Reactive，您获得了一个熟悉的声明式开发模型，这个模型更高效且性能更好。我们只是触及了表面。RESTEasy Reactive
+    还支持 Bean Validation 以自动验证传入的有效负载或 OpenAPI 来描述您的 API。
 - en: 'You may wonder how to consume HTTP endpoints. This is covered in [Chapter 12](ch12.html#http-client).
     But, there is one aspect we didn’t discuss yet: data and how to reactively access
     data stores. This is the topic of the next chapter.'
+  id: totrans-190
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可能想知道如何消费 HTTP 端点。这在[第 12 章](ch12.html#http-client)中有所涵盖。但是，有一个方面我们还没有讨论：数据以及如何反应性地访问数据存储。这是下一章的主题。
 - en: ^([1](ch08.html#idm45358825012512-marker)) Vert.x event loop threads are I/O
     threads.
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([1](ch08.html#idm45358825012512-marker)) Vert.x 事件循环线程是 I/O 线程。
 - en: ^([2](ch08.html#idm45358825016128-marker)) Methods returning instances of `Multi`
     or `Uni` are automatically considered nonblocking if not specified otherwise.
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([2](ch08.html#idm45358825016128-marker)) 如果未另有说明，则返回 `Multi` 或 `Uni` 实例的方法自动被视为非阻塞的。
 - en: ^([3](ch08.html#idm45358824653424-marker)) `Buffer` is a convenient way to represent
     a bag of bytes in Vert.x.
+  id: totrans-193
   prefs: []
   type: TYPE_NORMAL
+  zh: ^([3](ch08.html#idm45358824653424-marker)) `Buffer` 是在 Vert.x 中表示字节包的一种方便方式。

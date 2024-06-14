@@ -1,17 +1,24 @@
 - en: Chapter 9\. Accessing Data Reactively
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第 9 章。反应式访问数据
 - en: In [Chapter 5](ch05.html#reactive-programming), we explained the scalability
     and robustness problems in the use of blocking I/O for applications. This chapter
     focuses on interacting with databases and how Quarkus ensures that the data layers
     of an application stack can be asynchronous and utilize nonblocking I/O too.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[第 5 章](ch05.html#reactive-programming)中，我们解释了在应用程序中使用阻塞 I/O 的可伸缩性和鲁棒性问题。本章重点讨论与数据库交互以及
+    Quarkus 如何确保应用程序堆栈的数据层可以是异步的，并且也能利用非阻塞 I/O。
 - en: The Problem with Data Access
+  id: totrans-2
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 数据访问的问题
 - en: Accessing relational data previously involved blocking I/O while communicating
     with a database. As already discussed in [Chapter 5](ch05.html#reactive-programming),
     we want to avoid blocking I/O in our applications, at any level of the stack.
@@ -21,42 +28,59 @@
     Let’s say we’ve developed a small database application; we’ve all developed many
     of those over the years. We often refer to them as *CRUD* applications because
     they provide create, read, update, and delete operations for records in a database.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 以前访问关系数据涉及使用阻塞 I/O，同时与数据库通信。正如在[第 5 章](ch05.html#reactive-programming)中已讨论的那样，我们希望在应用程序的任何堆栈层次上都避免使用阻塞
+    I/O。与数据库的交互通常需要相当长的时间才能完成，具体取决于涉及的记录数量，这对我们的应用程序产生了更大的影响，使用阻塞 I/O 访问数据库！这是什么意思？让我们说我们开发了一个小型数据库应用程序；多年来我们开发了许多这样的应用程序。我们经常将它们称为*CRUD*应用程序，因为它们为数据库中的记录提供了创建、读取、更新和删除操作。
 - en: Every exposed endpoint in our API needs to interact with the database. We will
     ignore caches and how they reduce the number of requests made to a database in
     certain situations. With each endpoint method calling the database, every execution
     performs blocking I/O, reducing concurrency.
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们 API 中的每个暴露的端点都需要与数据库进行交互。我们将忽略缓存以及它们在某些情况下减少向数据库发出的请求次数的方式。每个端点方法调用数据库时，每次执行都执行阻塞
+    I/O，从而降低并发性。
 - en: Why are we forced to use blocking I/O when interacting with databases? APIs
     for interacting with databases, such as Open Database Connectivity (ODBC) and
     Java Database Connectivity (JDBC), were designed with a synchronous and blocking
     approach. The Java Persistence API (JPA), which came many years later, though
     coalescing the object-relational mapping (ORM) landscape around a common API,
     was still designed on the existing synchronous and blocking behavior of JDBC.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 当与数据库交互时，为什么我们被迫使用阻塞 I/O？与数据库交互的 API，如开放数据库连接 (ODBC) 和 Java 数据库连接 (JDBC)，设计时采用了同步和阻塞的方法。而
+    Java 持久化 API (JPA)，虽然在许多年后统一了对象关系映射 (ORM) 的 API，但仍然基于 JDBC 现有的同步和阻塞行为设计。
 - en: Without a reactive programming approach to data access, the entirety of an application
     stack can never be truly reactive. An application could be reactive only up to
     a point. Though still beneficial, concurrency and throughput are still prevented
     from reaching their full potential concurrency.
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 没有采用反应式编程方法来访问数据，整个应用程序堆栈永远无法真正做到反应式。应用程序可能仅在某一点上是反应式的。尽管仍然有益，但并发性和吞吐量仍然无法充分发挥其潜力。
 - en: That’s a lot of words explaining how database access with JDBC and JPA is not
     reactive, and therefore blocking, but what does that access look like? As you
     saw in [“The Imperative Model”](ch06.html#quarkus-reactive::imperative-model)
     with application logic, it’s a similar problem for the database interaction, as
     illustrated in [Figure 9-1](#image:database-blocking-client).
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里有很多话解释了 JDBC 和 JPA 访问数据库不是反应式的，因此是阻塞的，但实际访问是什么样子呢？正如您在[“命令模型”](ch06.html#quarkus-reactive::imperative-model)中看到的应用程序逻辑一样，对于数据库交互也是一个类似的问题，如图[9-1](#image:database-blocking-client)所示。
 - en: '![Blocking database client](assets/rsij_0901.png)'
+  id: totrans-8
   prefs: []
   type: TYPE_IMG
+  zh: '![阻塞数据库客户端](assets/rsij_0901.png)'
 - en: Figure 9-1\. Blocking database client
+  id: totrans-9
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 9-1。阻塞数据库客户端
 - en: When we’re communicating with a database over JDBC, or the higher abstraction
     JPA, the JDBC driver uses a request-and-response interaction. However, as shown
     in [Figure 9-1](#image:database-blocking-client), the JDBC driver blocks the thread
@@ -64,14 +88,17 @@
     for each database interaction. Depending on how you’ve configured database connection
     pooling, it’s possible to run out of threads for an application before reaching
     the maximum number of database connections.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
 - en: When dealing with a large number of database records to search or retrieve,
     and network latency between our application and the database, a problem with thread
     starvation or resource utilization will likely occur.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
 - en: Nonblocking Interactions with Relational Databases
+  id: totrans-12
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -79,17 +106,21 @@
     for PostgreSQL, MySQL, IBM Db2, Oracle, and Microsoft SQL Server, Java applications
     are now able to interact with databases in an asynchronous manner with nonblocking
     I/O.
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
 - en: How are things different with these new clients compared to JDBC? When using
     nonblocking database clients, we’re able to avoid a blocked thread, as shown in
     [Figure 9-2](#image:database-non-blocking-client).
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
 - en: '![Nonblocking database client](assets/rsij_0902.png)'
+  id: totrans-15
   prefs: []
   type: TYPE_IMG
 - en: Figure 9-2\. Nonblocking database client
+  id: totrans-16
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
@@ -98,6 +129,7 @@
     new nonblocking clients: reducing the number of worker threads an application
     might need, as database communication with these new clients can occur on the
     same thread as any reactive application code!'
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
 - en: In [Figure 9-2](#image:database-non-blocking-client), we see a single database
@@ -105,12 +137,15 @@
     client API and database supports it, we can utilize pipelining to share a single
     database connection for several requests. [Figure 9-3](#image:database-non-blocking-client-pipelining)
     shows how pipelining in the database client works.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
 - en: '![Nonblocking database client with pipelining](assets/rsij_0903.png)'
+  id: totrans-19
   prefs: []
   type: TYPE_IMG
 - en: Figure 9-3\. Nonblocking database client with pipelining
+  id: totrans-20
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
@@ -120,9 +155,11 @@
     database instead of, in this case, three. We want to take advantage of nonblocking
     advancements such as this whenever we can, to squeeze more and more out of the
     same amount of resources for an application.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
 - en: 'Using a Reactive ORM: Hibernate Reactive'
+  id: totrans-22
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -130,6 +167,7 @@
     data outlives the application process. As an ORM framework, Hibernate is concerned
     with data persistence as it applies to relational databases. Hibernate provides
     both imperative and reactive APIs.'
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
 - en: 'These APIs support two facets: nonblocking database clients, covered in the
@@ -138,8 +176,11 @@
     Reactive introduces a new layer for utilizing reactive and nonblocking APIs to
     communicate with database clients. The reactive APIs work in concert with JPA
     annotations, Hibernate annotations, and Bean Validation as well.'
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些API支持两个方面：非阻塞数据库客户端，前一节已经涵盖，以及响应式编程作为与关系数据库交互的手段。大多数现有的Hibernate内部机制仍在使用，但是Hibernate
+    Reactive引入了一个新的层，用于利用响应式和非阻塞API与数据库客户端通信。响应式API与JPA注解、Hibernate注解和Bean Validation协同工作。
 - en: It’s time to dive in and use Hibernate with reactive APIs! With Quarkus, Hibernate
     Reactive is even better, because we have the option to use Hibernate Reactive
     with *Panache*. This thin layer simplifies the use of the Hibernate ORM. It provides
@@ -149,28 +190,42 @@
     functions, keeping the entity structure *pure*. See the *chapter-9/hibernate-reactive*
     directory for all Hibernate Reactive project code. First we need the dependency
     for Hibernate Reactive ([Example 9-1](#data::dep)).
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 是时候深入使用带有响应式API的Hibernate了！在Quarkus中，由于我们可以选择使用带有*Panache*的Hibernate Reactive，因此它变得更加强大。这个薄层简化了Hibernate
+    ORM的使用。它提供了两种模型。您的实体可以被管理为活动记录，因为实体类提供了检索、更新和查询该实体类实例的方法。您还可以使用仓库模型，其中仓库类提供这些功能，保持实体结构的*纯洁性*。请查看*chapter-9/hibernate-reactive*目录以获取所有Hibernate
+    Reactive项目代码。首先，我们需要Hibernate Reactive的依赖项（[示例 9-1](#data::dep)）。
 - en: Example 9-1\. Hibernate Reactive dependency (*chapter-9/hibernate-reactive/pom.xml*)
+  id: totrans-26
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 9-1\. Hibernate Reactive依赖项（*chapter-9/hibernate-reactive/pom.xml*）
 - en: '[PRE0]'
+  id: totrans-27
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: Notice we used the Panache version of Hibernate Reactive. If we didn’t want
     to use Panache, we could have used the `quarkus-hibernate-reactive` dependency
     instead. As mentioned previously, we need a reactive database client too. For
     this example, we will use the PostgreSQL client ([Example 9-2](#data::dep-pg)).
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，我们使用了Hibernate Reactive的Panache版本。如果我们不想使用Panache，我们可以改用`quarkus-hibernate-reactive`依赖项。如前所述，我们还需要一个响应式数据库客户端。在这个例子中，我们将使用PostgreSQL客户端（[示例 9-2](#data::dep-pg)）。
 - en: Example 9-2\. PostgreSQL database client dependency (*chapter-9/hibernate-reactive/pom.xml*)
+  id: totrans-29
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 9-2\. PostgreSQL数据库客户端依赖项（*chapter-9/hibernate-reactive/pom.xml*）
 - en: '[PRE1]'
+  id: totrans-30
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: With [Dev Services](https://oreil.ly/eKY8W), a Quarkus feature starting the
     required pieces of infrastructure automatically, we don’t need the Docker Maven
     plug-in to start a database for running tests. Quarkus will automatically start
@@ -178,228 +233,342 @@
     which we just added in [Example 9-2](#data::dep-pg), and to set `db.kind` for
     informing Quarkus of the database type being used. Let’s set that up now in `application.properties`
     ([Example 9-3](#data::config-pg)).
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用[Dev Services](https://oreil.ly/eKY8W)，这是Quarkus的一个功能，可以自动启动所需的基础设施部件，我们不再需要Docker
+    Maven插件来启动运行测试所需的数据库。Quarkus将自动为我们启动数据库！为了利用Dev Services，我们需要一个数据库驱动程序，我们刚刚在[示例 9-2](#data::dep-pg)中添加了它，并设置`db.kind`以告知Quarkus正在使用的数据库类型。现在让我们在`application.properties`中设置它（[示例 9-3](#data::config-pg)）。
 - en: Example 9-3\. PostgreSQL database client config (*chapter-9/hibernate-reactive/src/main/resources/application.properties*)
+  id: totrans-32
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 9-3\. PostgreSQL数据库客户端配置（*chapter-9/hibernate-reactive/src/main/resources/application.properties*）
 - en: '[PRE2]'
+  id: totrans-33
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: With Dev Services, all the properties except `db.kind` are specified with the
     `prod` configuration profile. We could also remove the properties from the `prod`
     profile completely, preferring to set them with environment variables, or a ConfigMap
     in Kubernetes.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用Dev Services时，除了`db.kind`以外的所有属性都在`prod`配置文件中指定。我们也可以完全从`prod`配置文件中删除这些属性，而是选择使用环境变量或Kubernetes中的ConfigMap进行设置。
 - en: We have a `Customer` entity that extends `PanacheEntity`. We won’t cover `Customer`
     in detail here, as it utilizes the usual annotations from JPA, Bean Validation,
     and Hibernate Validator. The full source can be viewed at *chapter-9/hibernate-reactive/src/main/java/org/acme/data/Customer*.
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们有一个`Customer`实体，扩展了`PanacheEntity`。我们在这里不会详细介绍`Customer`，因为它使用了来自JPA、Bean
+    Validation和Hibernate Validator的通常注解。完整的源代码可以在*chapter-9/hibernate-reactive/src/main/java/org/acme/data/Customer*查看。
 - en: Let’s take a look at the implementation of a CRUD application using Hibernate
     Reactive and RESTEasy Reactive to expose a REST API. First up is a method to retrieve
     all customers from the database ([Example 9-4](#data::retrieve-cust)).
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看一下使用 Hibernate Reactive 和 RESTEasy Reactive 实现 CRUD 应用程序的实现。首先是从数据库检索所有客户的方法（[Example 9-4](#data::retrieve-cust)）。
 - en: Example 9-4\. Retrieve all customers (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  id: totrans-37
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 9-4\. 检索所有客户 (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
 - en: '[PRE3]'
+  id: totrans-38
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: We use `streamAll` on `Customer`, from Panache, to retrieve all instances into
     `Multi`. Each customer can have orders associated with them, and when we retrieve
     a single customer, we also want to retrieve their orders. Though we have a single
     application, we will consider the orders to be coming from an external service.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们使用 `Customer` 上的 `streamAll`，从 Panache 中检索所有实例到 `Multi`。每个客户可能有与之关联的订单，当我们检索单个客户时，我们也想检索他们的订单。虽然我们有一个单一的应用程序，但我们将考虑订单来自外部服务。
 - en: First we define `Uni` to retrieve `Customer` and throw an exception if one was
     not found, as shown in [Example 9-5](#data::find-customer).
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们定义 `Uni` 来检索 `Customer`，并在未找到时抛出异常，如 [Example 9-5](#data::find-customer)
+    所示。
 - en: Example 9-5\. Find a customer (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  id: totrans-41
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 9-5\. 查找客户 (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
 - en: '[PRE4]'
+  id: totrans-42
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: Next the orders of a customer are retrieved as a `List` into a separate `Uni`
     (see [Example 9-6](#data::retrieve-orders)).
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，客户的订单作为 `List` 单独检索到另一个 `Uni`（见 [Example 9-6](#data::retrieve-orders)）。
 - en: Example 9-6\. Retrieve customer orders (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  id: totrans-44
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 9-6\. 获取客户订单 (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
 - en: '[PRE5]'
+  id: totrans-45
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: Lastly, the two are combined by a mapper, taking the results of each `Uni` to
     set the orders on the customer. The resulting `Uni` is transformed into a JAX-RS
     `Response` to complete the endpoint execution ([Example 9-7](#data::combine-customer-orders)).
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，这两者通过一个映射器组合在一起，每个 `Uni` 的结果设置为客户的订单。最终的 `Uni` 转换为 JAX-RS `Response` 来完成端点的执行（[Example 9-7](#data::combine-customer-orders)）。
 - en: Example 9-7\. Combine `customer` and `orders` (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  id: totrans-47
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 9-7\. 结合 `customer` 和 `orders` (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
 - en: '[PRE6]'
+  id: totrans-48
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: So far, everything we’ve done hasn’t required a transaction, as we’ve only been
     reading database records. [Example 9-8](#data::create-customer) shows how we can
     use transactions to store a new customer.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们所做的一切都不需要事务，因为我们只是在读取数据库记录。[Example 9-8](#data::create-customer) 展示了如何使用事务来存储新客户。
 - en: Example 9-8\. Create a customer (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  id: totrans-50
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 9-8\. 创建客户 (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
 - en: '[PRE7]'
+  id: totrans-51
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: We use `Panache.withTransaction` to inform Panache that we want a transaction
     to wrap the `Uni` `Supplier` we pass into it. In this instance, we use `customer.persist`
     as the code to be wrapped with a transaction. Though `Uni<Void>` is returned on
     success, we can use `replaceWith` to create the necessary `Uni<Response>`.
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们使用 `Panache.withTransaction` 来通知 Panache 我们想要一个事务来包装我们传递给它的 `Uni` `Supplier`。在这个例子中，我们使用
+    `customer.persist` 作为要用事务包装的代码。尽管成功时返回 `Uni<Void>`，但我们可以使用 `replaceWith` 来创建必要的
+    `Uni<Response>`。
 - en: Next we use `withTransaction` to update the customer name. First we retrieve
     a customer by ID. Then, when we receive an item that is not `null`, we `invoke`
     a runnable to update the name on the retrieved entity ([Example 9-9](#data::update-customer)).
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们使用 `withTransaction` 更新客户名称。首先，我们通过 ID 检索客户。然后，当我们接收到一个非 `null` 的项目时，我们会
+    `invoke` 一个可运行对象来更新检索到的实体的名称（[Example 9-9](#data::update-customer)）。
 - en: Example 9-9\. Update a customer (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  id: totrans-54
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: Example 9-9\. 更新客户 (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
 - en: '[PRE8]'
+  id: totrans-55
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: We then utilize `onItem` to generate an outcome of a successful response or
     return a `not found` response if the item is `null`.
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，我们利用 `onItem` 来生成成功响应的结果，或者如果项目为 `null` 则返回 `not found` 响应。
 - en: The last method we need for a CRUD application with Hibernate Reactive provides
     the ability to delete a customer. Again we use `withTransaction`, passing it the
     Panache method to delete a customer by its ID. Deleting an entity returns `Uni<Boolean>`.
     We need to use `map` to convert it to a JAX-RS response based on its success ([Example 9-10](#data::delete-customer)).
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用Hibernate Reactive创建CRUD应用程序的最后一个方法提供了删除客户的功能。再次使用 `withTransaction`，传递Panache方法按其ID删除客户。删除实体返回
+    `Uni<Boolean>`。我们需要使用 `map` 根据其成功来将其转换为JAX-RS响应 ([示例 9-10](#data::delete-customer))。
 - en: Example 9-10\. Delete a customer (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
+  id: totrans-58
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 9-10\. 删除一个客户 (*chapter-9/hibernate-reactive/src/main/java/org/acme/data/CustomerResource.java*)
 - en: '[PRE9]'
+  id: totrans-59
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: You’ve now seen how to create, retrieve, update, and delete entities with Panache
     and Hibernate Reactive! To see how the endpoints can be tested, take a look at
     */chapter-9/hibernate-reactive/src/test/java/org/acme/data/CustomerEndpointTest*
     in the book’s code examples.
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在你已经看到如何使用Panache和Hibernate Reactive创建、检索、更新和删除实体！要了解端点如何进行测试，请查看书中代码示例中的 */chapter-9/hibernate-reactive/src/test/java/org/acme/data/CustomerEndpointTest*。
 - en: What About NoSQL?
+  id: totrans-61
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: NoSQL怎么样？
 - en: We’ve shown how we can have reactive APIs with a traditional ORM such as Hibernate,
     but what about NoSQL? Are we able to take advantage of reactive APIs when an application
     needs a NoSQL database instead of a relational one? Yes, we can!
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们已经展示了如何在传统ORM（如Hibernate）中具有反应式API，那么在需要NoSQL数据库而不是关系数据库时，我们能否利用反应式API？答案是肯定的！
 - en: Quarkus has several extensions for communicating with NoSQL databases, including
     MongoDB, Redis, and Apache Cassandra. Do all these extensions support reactive
     APIs? Currently, the MongoDB, Redis, and Cassandra clients have support for reactive
     APIs.
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: Quarkus有几个扩展可用于与NoSQL数据库通信，包括MongoDB、Redis和Apache Cassandra。所有这些扩展是否支持反应式API？目前，MongoDB、Redis和Cassandra客户端都支持反应式API。
 - en: In the next section, we will develop a CRUD application with the same functionality
     as the Hibernate Reactive example in the previous section.
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一节中，我们将开发一个与上一节中Hibernate Reactive示例具有相同功能的CRUD应用程序。
 - en: Interacting with Redis
+  id: totrans-65
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 与Redis的交互
 - en: Let’s develop a customer CRUD application with Redis! For this example, we will
     extract interactions into a separate service we can inject into a REST resource.
     Check out */chapter-9/redis/src/main/java/org/acme/data/CustomerResource* in the
     code examples to see how the service is used.
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们开发一个与Redis一起使用的客户CRUD应用程序！对于这个示例，我们将交互提取到一个可以注入到REST资源中的单独服务中。查看代码示例中的 */chapter-9/redis/src/main/java/org/acme/data/CustomerResource*，了解服务的使用方式。
 - en: First we need the Redis client dependency for the project; see [Example 9-11](#data::redis-client-dep).
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们需要项目中的Redis客户端依赖项；请参阅 [示例 9-11](#data::redis-client-dep)。
 - en: Example 9-11\. Redis client dependency (*chapter-9/redis/pom.xml*)
+  id: totrans-68
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 9-11\. Redis客户端依赖项 (*chapter-9/redis/pom.xml*)
 - en: '[PRE10]'
+  id: totrans-69
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: As we did with the Hibernate Reactive example, we will utilize `docker-maven-plugin`
     to run a Redis container for test execution. Check out *chapter-9/redis/pom.xml*
     in the book source for the details.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 就像我们在Hibernate Reactive示例中所做的那样，我们将利用 `docker-maven-plugin` 运行一个Redis容器以进行测试执行。有关详细信息，请查看书籍源码中的
+    *chapter-9/redis/pom.xml*。
 - en: Next we configure the Redis client as to where the host of the server is located.
     Include the config in [Example 9-12](#data::redis-client-config) in `application.properties`.
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们配置Redis客户端的服务器主机位置。将配置包含在 `application.properties` 中的 [示例 9-12](#data::redis-client-config)
+    中。
 - en: Example 9-12\. Redis client config (*chapter-9/redis/src/main/resources/application.properties*)
+  id: totrans-72
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 9-12\. Redis客户端配置 (*chapter-9/redis/src/main/resources/application.properties*)
 - en: '[PRE11]'
+  id: totrans-73
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: To be able to use the Redis client, we need to `@Inject` it, as shown in [Example 9-13](#data::inject-redis-client).
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 要能够使用Redis客户端，我们需要进行 `@Inject`，如 [示例 9-13](#data::inject-redis-client) 中所示。
 - en: Example 9-13\. Inject Redis client (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  id: totrans-75
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 9-13\. 注入Redis客户端 (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
 - en: '[PRE12]'
+  id: totrans-76
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: So we don’t create an unintentional key clash in Redis, we will prefix a customer
     ID, as shown in [Example 9-14](#data::key-prefix).
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了避免在Redis中意外创建键冲突，我们将给客户ID添加前缀，如 [示例 9-14](#data::key-prefix) 所示。
 - en: Example 9-14\. Key prefix (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  id: totrans-78
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 9-14\. 键前缀 (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
 - en: '[PRE13]'
+  id: totrans-79
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: Let’s start out with retrieving a list of all the customers from Redis ([Example 9-15](#data::retrieve-all-customers)).
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从Redis中检索所有客户的列表开始 ([示例 9-15](#data::retrieve-all-customers))。
 - en: Example 9-15\. Retrieve all customers (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  id: totrans-81
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE14]'
+  id: totrans-82
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: '`ReactiveRedisClient` provides an API aligned with the commands available with
     Redis, making it easier to use in Java if you are already familiar with using
     Redis commands. In [Example 9-15](#data::retrieve-all-customers), we use `keys`
     with a wildcard to retrieve all keys, which returns `Uni<Response>`. This particular
     `Response` class represents the response from Redis.'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
 - en: On receiving the response (the item) from Redis, we use `transformToMulti` to
     separate the single response into individual keys. In the lambda, we create a
     `Multi` of string keys from the response directly, as it’s an `Iterable`, and
     map the value to the string of the key. The result of the execution is `Multi<String>`.
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
 - en: We’re not done just yet; we need to convert the stream of keys into a stream
@@ -409,6 +578,7 @@
     values matching the key, or hash. The response from `hgetall` is mapped to a `Customer`
     instance using `constructCustomer`. Finally, the customer `Uni`s instances are
     merged into a `Multi` for returning.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
 - en: To retrieve a single customer, we call `hgetall` and, depending on the size
@@ -416,63 +586,81 @@
     ([Example 9-16](#data::retrieve-customer)). We need to check the size of the response
     to find out whether any fields and values were returned. If the size is zero,
     the response was empty because the key could not be found.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-16\. Retrieve customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  id: totrans-87
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE15]'
+  id: totrans-88
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: To store a customer record into Redis, we use `hmset` to store multiple fields
     and values for a single key. From a Redis perspective, it doesn’t matter whether
     we’re storing a new customer or updating an existing one; we use `hmset` for both.
     We should split the behavior into a separate method to reuse it in both places,
     as shown in [Example 9-17](#data::store-customer).
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-17\. Store customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  id: totrans-90
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE16]'
+  id: totrans-91
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: Using `hmset`, we need to ensure that an odd number of arguments are passed
     to it. The first argument is the hash for the record, followed by matching pairs
     of field and value for as many fields to be set. We get a simple reply of `OK`
     if it succeeds, using `transform` to return the customer on success or throw an
     exception.
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
 - en: With `storeCustomer` in place, let’s look at `createCustomer`; see [Example 9-18](#data::create-customer-2).
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-18\. Create customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  id: totrans-94
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE17]'
+  id: totrans-95
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: We have a nice clean method for `createCustomer` for responding with `Uni<Customer>`!
     There wasn’t much to that one, so let’s look at `updateCustomer` in [Example 9-19](#data::update-customer-2).
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-19\. Update customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  id: totrans-97
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE18]'
+  id: totrans-98
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: First we reuse `getCustomer` from the service to retrieve the existing customer
     from Redis. When an item is returned from `getCustomer`, we transform it into
     another `Uni` with a mapper. The mapper first checks whether the item we received,
     the customer, is null, returning a `Uni` failure containing an exception if it
     is. Then we set the new name onto the customer before calling `storeCustomer`,
     creating the `Uni` the mapper returns.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
 - en: Lastly, we need a way to delete a customer. For this, we use `hdel` on the Redis
@@ -482,21 +670,27 @@
     name) to return `true`, or `null` if there were no responses. On the produced
     item, we fail with `NotFoundException` if the item is `null`, or succeed and transform
     the item into a null item.
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-20\. Delete a customer (*chapter-9/redis/src/main/java/org/acme/data/CustomerService.java*)
+  id: totrans-101
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE19]'
+  id: totrans-102
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: This section gave a brief look into utilizing some methods of the reactive client
     for Redis. There are many more methods we didn’t cover, but this section provided
     guidance on how they can be generally used.
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
 - en: Data-Related Events and Change Data Capture
+  id: totrans-104
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -504,6 +698,7 @@
     from sources that don’t typically operate with events and messaging, such as databases.
     CDC has many benefits, including being able to produce change events from a legacy
     application without modifying the application.'
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
 - en: Another benefit is that CDC doesn’t care about the languages an application
@@ -512,18 +707,22 @@
     that has polyglot applications writing to it. Having to update possibly dozens
     of applications written in different languages to produce a consistent-looking
     change event from them all can be challenging and time-consuming.
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
 - en: Writing to a database involves transactions, or usually should, and poses an
     additional complexity when also writing an event to a messaging system. In [Figure 9-4](#image:database-message-transaction),
     we need to make sure that if either the database update fails or producing a message
     fails, everything rolls back and undoes any changes.
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
 - en: '![Writing to a database and message broker](assets/rsij_0904.png)'
+  id: totrans-108
   prefs: []
   type: TYPE_IMG
 - en: Figure 9-4\. Writing to a database and message broker
+  id: totrans-109
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
@@ -531,20 +730,28 @@
     outside our application code because of a failure to return an HTTP response,
     for instance. With CDC, this concern goes away because we worry only about writing
     to the database itself.
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 当事务回滚可能发生在我们的应用代码之外时，情况可能会特别复杂，例如由于未返回HTTP响应而导致。使用CDC，这种担忧消失了，因为我们只关心写入数据库本身。
 - en: Any change events can flow from the updated database with CDC, ensuring that
     we’re never sending an event we shouldn’t because the transaction has been committed
     before CDC sees the change, as shown in [Figure 9-5](#image:database-message-cdc).
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: 任何更改事件都可以通过CDC从更新后的数据库流出，确保我们不会发送任何不应该发送的事件，因为CDC在看到更改之前事务已经提交，如[图9-5](#image:database-message-cdc)所示。
 - en: '![Writing to a database, with CDC triggering message creation](assets/rsij_0905.png)'
+  id: totrans-112
   prefs: []
   type: TYPE_IMG
+  zh: '![写入数据库，CDC触发消息创建](assets/rsij_0905.png)'
 - en: Figure 9-5\. Writing to a database, with CDC triggering message creation
+  id: totrans-113
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 第9-5图：写入数据库，CDC触发消息创建
 - en: One impact for developers to be aware of is that CDC does not provide strong
     consistency. *Strong consistency* means that any data viewed immediately after
     an update is consistent for all observers of the data, regardless of whether the
@@ -553,40 +760,57 @@
     period of time between the update happening in the database, and when the message
     of the update is received and processed by the furthest downstream system consuming
     the messages.
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: 开发人员需要注意的一个影响是CDC不提供强一致性。*强一致性*意味着在更新后立即查看的任何数据对于所有数据观察者都是一致的，无论观察者是否在并行或分布式进程中。对于关系数据库，这是有保证的，因为它是数据库设计的一部分。使用CDC，数据库中发生更新和最远的下游系统接收并处理消息的时间之间存在一段时间。
 - en: The lack of strong consistency, or *eventual consistency*, is not a deterrent
     for the use of CDC. We want developers to be aware of the consistency guarantees
     of the CDC pattern, to bear it in mind during application design.
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: 缺乏强一致性，或*最终一致性*，并不妨碍使用CDC。我们希望开发人员了解CDC模式的一致性保证，并在应用程序设计中牢记这一点。
 - en: Using Debezium to Capture Change
+  id: totrans-116
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用Debezium捕获更改
 - en: '[Debezium](https://debezium.io/) is a distributed platform for CDC. Debezium
     is durable and fast, enabling applications to respond promptly and never miss
     an event!'
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: '[Debezium](https://debezium.io/)是一个用于CDC的分布式平台。Debezium是耐用且快速的，使应用能够迅速响应并且不会错过任何事件！'
 - en: '[Figure 9-6](#image:debezium-cdc) shows where Debezium fits in an application
     architecture using CDC. Debezium provides Kafka Connect source connectors for
     several databases, including MySQL, MongoDB, PostgreSQL, Oracle, Db2, and SQL
     Server.'
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: '[图9-6](#image:debezium-cdc)显示了Debezium在使用CDC的应用程序架构中的位置。Debezium为几个数据库提供了Kafka
+    Connect源连接器，包括MySQL、MongoDB、PostgreSQL、Oracle、Db2和SQL Server。'
 - en: '![CDC with Debezium](assets/rsij_0906.png)'
+  id: totrans-119
   prefs: []
   type: TYPE_IMG
+  zh: '![CDC与Debezium](assets/rsij_0906.png)'
 - en: Figure 9-6\. CDC with Debezium
+  id: totrans-120
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 第9-6图：CDC与Debezium
 - en: We will briefly show how we can enhance the Hibernate Reactive example from
     the previous section with Debezium. Full details can be found in the [source code](https://oreil.ly/XTQQp)
     for the book.
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将简要展示如何使用Debezium增强上一节中的Hibernate Reactive示例。完整的细节可以在书的[源代码](https://oreil.ly/XTQQp)中找到。
 - en: Though this example includes a copy of the code from Hibernate Reactive, it
     would also work by using the example directly, as the application code is not
     impacted by the introduction of Debezium. The main piece to understand is the
@@ -595,96 +819,128 @@
     container images from the Debezium project to simplify the deployment process.
     For example, the PostgreSQL container image already includes the logical decoding
     plug-ins necessary to communicate the change events to Kafka Connect.
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管此示例包含来自Hibernate Reactive的代码副本，但也可以直接使用示例，因为引入Debezium不会影响应用程序代码。要理解的主要部分是*docker-compose.yml*文件。该文件启动Kafka容器，ZooKeeper作为Kafka的依赖项，PostgreSQL数据库和Kafka
+    Connect。我们将使用Debezium项目中的容器映像来简化部署过程。例如，PostgreSQL容器映像已经包含了向Kafka Connect通信更改事件所需的逻辑解码插件。
 - en: Start all the containers with `docker compose up`, and then build and start
     the application with `java -jar target/quarkus-app/quarkus-run.jar`. Once all
     containers have started, we install the Debezium source connector for PostgreSQL
     into Kafka Connect ([Example 9-21](#data::install-source-connector)).
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-21\. Install the Debezium source connector
+  id: totrans-124
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE20]'
+  id: totrans-125
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: Here, *register.json* is the data we’re passing to the Kafka Connect endpoint.
     The file provides the details of the database to connect to and the Debezium connector
     to use, as shown in [Example 9-22](#data::deb-source-connector-def).
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-22\. Debezium source connector definition
+  id: totrans-127
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE21]'
+  id: totrans-128
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: The installation of the source connector will trigger the creation of Kafka
     topics for the tables discovered by the connector. We can verify what topics were
     created by running `docker exec -ti kafka bin/kafka-topics.sh --list --zookeeper
     zookeeper:2181`.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
 - en: Next we run an *exec* shell in the Kafka container to consume messages from
     the topic for the customer database, `quarkus-db-server.public.customer` ([Example 9-23](#data::kafka-customer-topic)).
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-23\. Consume messages from Kafka
+  id: totrans-131
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE22]'
+  id: totrans-132
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: '[![1](assets/1.png)](#co_accessing_data_reactively_CO1-1)'
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
 - en: Remove this setting to skip the initial four messages created when the application
     started.
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
 - en: When [Example 9-23](#data::kafka-customer-topic) is done, create a new customer
     in a separate terminal window, as shown in [Example 9-24](#data::create-new-customer).
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-24\. Create a customer
+  id: totrans-136
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE23]'
+  id: totrans-137
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: In the terminal running [Example 9-23](#data::kafka-customer-topic), we see
     the JSON message created by the connector ([Example 9-25](#data::json-message)).
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
 - en: Example 9-25\. CDC message from creating a customer
+  id: totrans-139
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
 - en: '[PRE24]'
+  id: totrans-140
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: '[![1](assets/1.png)](#co_accessing_data_reactively_CO2-1)'
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
 - en: The ID of the record created with the `POST`
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
 - en: '[![2](assets/2.png)](#co_accessing_data_reactively_CO2-3)'
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
 - en: Name of the created customer
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
 - en: Experiment with other HTTP commands, such as updating a customer name, to compare
     the JSON received in the Kafka topic.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
 - en: Summary
+  id: totrans-146
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -692,12 +948,14 @@
     reactive database clients available. With the introduction of Vert.x client APIs
     for databases such as PostgreSQL, we can now create a reactive application that
     is reactive for the entirety of the stack.
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
 - en: We don’t always want to utilize database client APIs directly. We like simplified
     APIs such as that provided by Hibernate ORM. Hibernate Reactive gives us such
     an ability, building on the maturity of Hibernate ORM to add reactive-specific
     APIs.
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
 - en: Relational databases aren’t the only option either. We also have reactive clients
@@ -705,6 +963,7 @@
     to create events from database interactions. This is where CDC shines, with its
     ability to extract changes from database tables and create change events to feed
     into Kafka.
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
 - en: We’ve now reached the end of [Part III](part03.html#quarkus-part)! We dove deeper
@@ -715,8 +974,11 @@
     we explored RESTEasy Reactive to develop JAX-RS resources in a completely nonblocking
     manner while still providing the ability to block when needed, before finishing
     up with reactive database clients with Hibernate Reactive and Redis.
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在已经到达了[第三部分](part03.html#quarkus-part)的结尾！我们深入探讨了Quarkus，发现它统一了命令式和反应式编程模型，为开发人员在选择应用程序堆栈时提供了更大的灵活性。然后，我们通过`Uni`和`Multi`深入了解了Quarkus中首选的反应式编程库Mutiny。继续探索Quarkus中的新创新，我们探索了RESTEasy
+    Reactive，以完全非阻塞的方式开发JAX-RS资源，同时仍然提供需要时进行阻塞的能力，然后通过Hibernate Reactive和Redis完成了反应式数据库客户端的介绍。
 - en: In [Part IV](part04.html#patterns-part), we focus on typical patterns we need
     when developing reactive applications, such as messaging with Kafka and AMQP.
     Then we delve into aspects of the system’s underlying messaging to better appreciate
@@ -724,5 +986,7 @@
     services with HTTP clients, while still utilizing nonblocking I/O. Lastly, though
     not necessarily an application pattern per se, we will look at observability,
     as it is critical to understand and implement it for distributed systems.
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[第四部分](part04.html#patterns-part)，我们聚焦于开发反应式应用程序时需要的典型模式，例如使用Kafka和AMQP进行消息传递。然后，我们深入系统底层消息传递的各个方面，以更好地理解权衡和它们的能力。我们查看了通过HTTP客户端与外部服务通信的方式，同时利用非阻塞I/O。最后，虽然不一定是应用程序模式本身，但我们将研究可观察性，因为对于分布式系统而言，理解和实现它至关重要。
