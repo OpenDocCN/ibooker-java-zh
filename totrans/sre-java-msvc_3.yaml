@@ -1,70 +1,98 @@
 - en: Chapter 3\. Debugging with Observability
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第 3 章\. 使用可观察性进行调试
 - en: 'As mentioned at the beginning of [Chapter 2](part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73),
     observability signals can be roughly broken down into two categories, based on
     the value they bring: availability and debuggability. Aggregated application metrics
     provide the best availability signal. In this chapter, we will discuss the other
     two main signals, distributed tracing and logs.'
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 如在 [第 2 章](part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73) 开头提到的，可观察性信号可以根据它们带来的价值大致分为两类：可用性和调试性。聚合应用程序度量提供了最佳的可用性信号。在本章中，我们将讨论另外两个主要信号，即分布式追踪和日志。
 - en: We’ll show one approach to correlating metrics and traces using only open source
     tooling. Some commercial vendors also work to provide this unified experience.
     Like in [Chapter 2](part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73),
     the purpose in showing a specific approach is to develop an expectation about
     the minimum level of sophistication you should be able to *expect* from your observability
     stack when it is fully assembled.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将展示使用仅开源工具的方法来关联度量和跟踪的一种方法。一些商业供应商也致力于提供这种统一体验。就像在 [第 2 章](part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73)
+    中一样，展示特定方法的目的是为了开发对你的可观察性堆栈在完全组装时应具备的最低期望水平。
 - en: Lastly, distributed tracing instrumentation, given that it needs to propagate
     context across a microservice hierarchy, can be an efficient place to govern behavior
     deeper in a system. We’ll discuss a hypothetical failure injection testing feature
     as an example of the possibilities.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，分布式追踪仪表化，因其需要在微服务层次结构中传播上下文，可以成为系统更深层行为管理的有效场所。我们将讨论一个假设的故障注入测试功能作为其可能性的例子。
 - en: The Three Pillars of Observability…or Is It Two?
+  id: totrans-4
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 可观察性的三大支柱……还是两大支柱？
 - en: 'As discussed in [*Distributed Systems Observability*](https://learning.oreilly.com/library/view/distributed-systems-observability/9781492033431)
     by Cindy Sridharan (O’Reilly), three different types of telemetry form the “three
     pillars of observability”: logs, distributed traces, and metrics. This three pillars
     classification is common, to such an extent that it’s difficult to pinpoint its
     origin.'
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如 [*《分布式系统可观察性》*](https://learning.oreilly.com/library/view/distributed-systems-observability/9781492033431)
+    一书中 Cindy Sridharan（O’Reilly）所述，三种不同类型的遥测形成了“可观察性的三大支柱”：日志、分布式追踪和度量。这种三支柱的分类非常普遍，以至于很难准确指出其起源。
 - en: 'While logs, distributed traces, and metrics are three distinct forms of telemetry
     with unique characteristics, they roughly serve two purposes: proving availability
     and debugging for root cause identification.'
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然日志、分布式追踪和度量是三种具有独特特性的遥测形式，它们大致上有两个目的：证明可用性和用于根本原因诊断的调试。
 - en: The operational cost of maintaining all this telemetry data would be high unless
     the volume of data is reduced in some way. Clearly we can only maintain telemetry
     data for a certain amount of time, so there is a need for other reduction strategies.
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 除非以某种方式减少数据量，否则维护所有这些遥测数据的操作成本将非常高昂。显然，我们只能维护一定时间的遥测数据，因此需要其他的减少策略。
 - en: Aggregation
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 聚合
 - en: Precalculating statistics from every measurement. Data from timers (see [“Timers”](part0006_split_017.html#5N4J5-2d714b853a094e9a910510217e0e3d73)),
     for example, could be presented as a sum, a count, and some limited distribution
     statistics.
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，可以将定时器数据（参见 [“定时器”](part0006_split_017.html#5N4J5-2d714b853a094e9a910510217e0e3d73)）的预计算统计量呈现为总和、计数和一些有限的分布统计信息。
 - en: Sampling
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 采样
 - en: Selecting only certain measurements for retention.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 仅保留某些测量数据。
 - en: Aggregation effectively compacts the representation at the expense of request-level
     granularity, where sampling retains request-level granularity at the expense of
     the holistic view of the system’s performance. Except in low-throughput systems,
     the cost of both full request-level granularity and a full representation of all
     requests is too expensive.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 聚合有效地以请求级粒度的代价压缩了表示，而采样则以系统性能整体视图的代价保留了请求级粒度。除低吞吐量系统外，既保持全请求级粒度又全面表示所有请求的成本都太高。
 - en: Retaining some information at full granularity is essential to *debugging* with
     observability tools, the focus of this chapter. Availability signals derived from
     metrics will point to a problem. Dimensional exploration of this data may in some
@@ -73,67 +101,91 @@
     instance that is failing. There could be a whole region failing or an application
     version. In the rare cases where a pattern isn’t obvious, representative failures
     in distributed traces or logs will be the key to root cause identification.
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 在*使用可观察性工具进行调试*的重点章节中，保留一些信息的完整粒度对于调试至关重要。从指标中派生的可用性信号将指向问题所在。通过对数据进行维度探索，在某些情况下足以识别问题的根本原因。例如，将特定信号按实例分解成各个信号可能会揭示特定实例的故障。可能出现整个区域故障或应用程序版本故障的情况。在模式不明显的罕见情况下，分布式跟踪或日志中的代表性故障将是确定根本原因的关键。
 - en: Considering the characteristics of each of the “three pillars” shows that logging
     and tracing as event-level telemetry serve the purpose of debugging and metrics
     serve the purpose of proving availability.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 考虑每个“三支柱”的特征表明，作为事件级遥测的日志和跟踪用于调试，而指标用于证明可用性。
 - en: Logs
+  id: totrans-15
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 日志
 - en: Logs are ubiquitous in the software stack. Regardless of their structure and
     where they are ultimately stored, logs have some defining characteristics.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 日志在软件堆栈中无处不在。无论其结构及最终存储位置如何，日志都具有一些定义特征。
 - en: Logs grow proportionally to throughput through a system. The more times a log-instrumented
     code path is executed, the more log data is emitted. Even if log data is sampled,
     this proportional relationship in size still holds.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 日志与系统吞吐量成正比增长。每次执行记录日志的代码路径，都会产生更多日志数据。即使对日志数据进行抽样，其大小仍然保持这种比例关系。
 - en: The context of a log is scoped to an event. Log data provides context into the
     execution behavior of a particular interaction. When data from several independent
     log events is aggregated together to reason about the overall performance of a
     system, the aggregate is effectively a metric.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 日志的上下文范围限定在事件中。日志数据提供了关于特定交互执行行为的上下文。当从多个独立的日志事件中聚合数据以推断系统的整体性能时，聚合效果实际上就是一个指标。
 - en: Logs are obviously geared toward debugging. Sophisticated log analytics packages
     help to prove availability from logging data only through aggregation. There is
     a cost to performing this aggregation, to persisting the data subject to aggregation,
     and to allocating the payload that was persisted.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 显然，日志主要用于调试。先进的日志分析包能够通过聚合日志数据来证明可用性。执行此聚合操作、持久化受聚合影响的数据以及分配已持久化的有效载荷都需要成本。
 - en: Distributed Tracing
+  id: totrans-20
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 分布式跟踪
 - en: Tracing telemetry, like logs, is recorded per instrumented execution (i.e.,
     it is event-driven) but links individual events across disparate parts of a system
     causally. A distributed tracing system can reason about a user interaction end
     to end across the whole system. So for a given request that was known to exhibit
     some degradation, this end-to-end view of the satisfaction of a user request shows
     which part of the distributed system was degraded.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 跟踪遥测与日志类似，记录每个已接入执行（即事件驱动），但会因果关联地跨系统的不同部分链接个别事件。分布式跟踪系统可以完整地推断出整个系统中用户交互的端到端情况。因此，对于已知存在一些下降情况的请求，用户请求满意度的这种端到端视图显示出系统中哪个部分出现了下降。
 - en: Tracing telemetry is even more commonly sampled than logs. Nevertheless, tracing
     data still grows proportionally to throughput through a system in much the same
     way that log data grows proportionally to throughput.
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 跟踪遥测比日志更常见地进行抽样。然而，跟踪数据与日志数据一样，仍然与系统吞吐量成正比增长。
 - en: Tracing can be difficult to retrofit into an existing system, as each collaborator
     in an end-to-end process must be configured to propagate trace context forward.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 将跟踪集成到现有系统中可能很困难，因为端到端流程中的每个协作者都必须配置为向前传播跟踪上下文。
 - en: Distributed tracing shines especially for a particular type of performance problem
     where the entire system is slower than it should be but there is no obvious hotspot
     to quickly optimize. Sometimes you simply have to see the contribution of many
     subsystems to the performance of a system as whole to recognize that systemic
     “death by a thousand cuts” that needs to be visualized in order to build the organizational
     will to address, and thus the attention of time and resources.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 分布式追踪特别适用于特定类型的性能问题，其中整个系统比应有的速度慢，但没有明显的热点可以快速优化。 有时，您只需看到许多子系统对整个系统性能的贡献，才能意识到需要可视化的系统性“死亡方式”，以便建立解决这种问题的组织意愿，因此需投入时间和资源的关注。
 - en: “It’s slow” is the hardest problem you’ll ever debug. “It’s slow” might mean
     one or more of the number of systems involved in performing a user request is
     slow. It might mean one or more of the parts of a pipeline of transformations
@@ -143,66 +195,91 @@
     corner. And, until the degradation becomes very obvious, you won’t receive as
     many resources (time, money, and tooling) to solve it. Dapper and Zipkin were
     built for a reason.
+  id: totrans-25
   prefs:
   - PREF_BQ
   type: TYPE_NORMAL
+  zh: “很慢”是您要调试的最困难的问题。 “很慢”可能意味着执行用户请求所涉及的多个系统之一速度慢。 它可能意味着跨许多计算机的转换管道的部分之一速度慢。 “很慢”很难，部分原因是问题陈述并未提供有关缺陷位置的许多线索。
+    部分故障隐藏在黑暗的角落。 并且，直到退化变得非常明显，您才会获得足够的资源（时间、金钱和工具）来解决它。 Dapper和Zipkin的建立是有原因的。
 - en: ''
+  id: totrans-26
   prefs:
   - PREF_BQ
   type: TYPE_NORMAL
 - en: Jeff Hodges
+  id: totrans-27
   prefs:
   - PREF_BQ
   type: TYPE_NORMAL
+  zh: 杰夫·霍奇斯
 - en: In organizations with a large set of microservices, distributed tracing helps
     to understand the service graph (the dependencies between services themselves)
     involved in the processing of a certain type of request. This assumes, of course,
     that each service in the graph has tracing instrumentation in one form or another.
     In the narrowest sense, the last tier of services can be uninstrumented and still
     appear in the service graph if named by a span wrapping a call on the client side.
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 在拥有大量微服务的组织中，分布式追踪有助于理解参与处理特定类型请求的服务图（服务之间的依赖关系）。 当然，这假设图中的每个服务都以某种形式进行追踪仪器化。
+    从最狭义的意义上讲，服务图的最后一层可以是未经仪器化的，但如果由客户端的调用包装的跨度命名，则仍会出现在服务图中。
 - en: Distributed tracing, like logging, is inherently event-driven and so is best
     suited to act as a debugging signal, but one that carries important interservice
     relational context in addition to its tags.
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 分布式追踪与日志一样，本质上是事件驱动的，因此最适合作为调试信号，但是除了标签之外，它还承载着重要的服务间关系上下文。
 - en: Metrics
+  id: totrans-30
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 度量
 - en: Logs and distributed traces are more similar to each other than they are to
     metrics, which were discussed in detail in [Chapter 2](part0006_split_000.html#5N3C4-2d714b853a094e9a910510217e0e3d73),
     since in some ways they are both sampled to control cost. Metrics are presented
     in aggregate and are used to understand some service level indicator (SLI) as
     a whole, rather than providing detail about the individual interactions that,
     taken together, are measured as an SLI.
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 日志和分布式追踪在某种程度上比起详细讨论的度量更加相似，因为它们都是经过抽样以控制成本。度量是以聚合形式呈现的，用于全面了解某种服务水平指标（SLI），而不是提供有关构成SLI的单个交互的详细信息。
 - en: Retrofitting an existing codebase with metrics is partially a manual effort,
     and partially comes out of the box with improvements in common frameworks and
     libraries which are increasingly shipping with instrumentation.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用度量为现有代码库添加度量部分是手动工作，部分是源于通用框架和库的改进，这些框架和库越来越多地配备了仪器化功能。
 - en: Metrics SLIs are purposefully collected to be tested against a service level
     objective, so they are geared toward proving availability.
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 度量SLI是有目的地收集以针对服务水平目标进行测试的，因此它们旨在证明可用性。
 - en: Which Telemetry Is Appropriate?
+  id: totrans-34
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 适用哪种遥测？
 - en: Given this context about what each form of observability is intended for, consider
     how they overlap. Where they overlap, which form do we emphasize over another?
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 考虑到每种可见性形式的预期用途，请考虑它们的重叠部分。 它们重叠的地方，我们应该强调哪种形式而不是另一种形式？
 - en: The idea that both tracing and logging are debugging signals implies that they
     can be redundant, though not equal. All things being equal about retrieving and
     searching for them, a trace with effective tags and metadata is superior to a
     log line when it also provides useful context about the chain of calls that led
     to it (and propagates this context further along as well).
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 追踪和日志记录都是调试信号的概念表明它们可能是多余的，尽管不相等。在检索和搜索它们方面一切相等的情况下，具有有效标签和元数据的追踪比日志行更优秀，因为它还提供了有关导致该追踪的调用链的有用上下文（并进一步传播此上下文）。
 - en: Tracing instrumentation exists at all the same logical places where metrics
     timers do. Note that distributed traces *only* measure executions, though. Where
     execution timing is concerned, metrics and tracing instrumentation may both be
@@ -211,8 +288,10 @@
     and distributed tracing provides sampled examples of individual executions. In
     addition to timing executions though, metrics also count and gauge things. There
     are no tracing equivalents for these kinds of signals.
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 追踪仪器存在于与度量计时器完全相同的逻辑位置。请注意，分布式追踪仅测量执行。在涉及执行时间的情况下，度量和追踪仪器都可能适用，因为它们互补。度量提供了对代码片段的所有执行的聚合视图（且没有调用者上下文），而分布式追踪提供了单个执行的采样示例。除了计时执行外，度量还计数和测量事物。这些信号没有追踪等效信号。
 - en: To make this more concrete, let’s take a look at excerpts from a typical application
     log in [Example 3-1](part0008_split_005.html#log_showing_telemetry_choices). Much
     of the beginning of this log excerpt contains one-time events about which components
@@ -224,22 +303,32 @@
     sense as distributed traces either, because these are events that are specific
     to the state of this service alone and have nothing to do with the coordinated
     satisfaction of an end-user request across multiple microservices.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了使这更具体，让我们看一下来自[示例 3-1](part0008_split_005.html#log_showing_telemetry_choices)中的典型应用程序日志摘录。这个日志摘录的开始部分包含了一次性事件的信息，说明了配置了哪些组件和启用了哪些功能。这些信息可能对理解为什么应用程序无法按预期运行很重要（例如，如果预期应该配置组件但未配置），但它们不适合作为度量标准，因为它们不是需要随时间聚合以了解系统整体性能的重复事件。它们也不适合作为分布式追踪，因为这些事件特定于此服务的状态，并且与在多个微服务之间协调满足最终用户请求无关。
 - en: There are other log lines that could be replaced with tracing or metrics, as
     noted in the callouts following the example.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 有其他日志行可以用追踪或度量替换，如在例子后的调用中所述。
 - en: Example 3-1\. A typical application log demonstrating telemetry choices
+  id: totrans-40
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-1。展示遥测选择的典型应用程序日志
 - en: '[PRE0]'
+  id: totrans-41
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: '[![1](../images/00112.png)](part0008_split_005.html#co_debugging_with_observability_CO1-1)'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](../images/00112.png)](part0008_split_005.html#co_debugging_with_observability_CO1-1)'
 - en: '*Both metrics and logging, no tracing.* Mongo socket connection attempts could
     easily be timed with metrics, with a tag indicating success/failure and a tag
     with a summarized exception tag like `exception=ConnectException`. This summarized
@@ -248,28 +337,36 @@
     logging the stack trace helps identify the specific problem once the monitoring
     system alerts us to a grouping of exceptions that have failed an established service
     level objective.'
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: '*既没有度量也没有日志记录，只有追踪。*Mongo套接字连接尝试可以很容易地通过度量进行计时，其中标签指示成功/失败，并带有类似`exception=ConnectException`的摘要异常标签。这种摘要标签可能足以在查看整个堆栈跟踪之前理解问题。在其他情况下，如果摘要异常标签是类似`exception=NullPointerException`的内容，则在监控系统提醒我们一组异常未能达到已建立的服务水平目标时，记录堆栈跟踪有助于识别具体问题。'
 - en: '[![2](../images/00059.png)](part0008_split_005.html#co_debugging_with_observability_CO1-2)'
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![2](../images/00059.png)](part0008_split_005.html#co_debugging_with_observability_CO1-2)'
 - en: '*Both traces and metrics, no logging.* The log statement in the code could
     be removed entirely. Metrics and distributed traces capture all the interesting
     information about this payment in a way that allows us to reason about the retrieval
     of all payments holistically, as well as representative retrievals of individual
     payments. The metrics, for example, will show us that while most payments are
     retrieved in less than 40 ms, some will take an order of magnitude longer to retrieve.'
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
 - en: '[![3](../images/00067.png)](part0008_split_005.html#co_debugging_with_observability_CO1-3)'
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
 - en: '*Metrics, no traces or logs.* A near cache of frequently retrieved payments
     could be monitored strictly with a gauge metric. There is no equivalent to a gauge
     in tracing instrumentation, and logging this is redundant.'
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
 - en: Which Observability Tool Should You Choose?
+  id: totrans-48
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -279,13 +376,16 @@
     Adding additional telemetry to help remediate problems can come later. When you
     do add tracing, start at places where timed metrics instrumentation exists, because
     it is likely also worth tracing with a superset of the same tags.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
 - en: Supposing then that you are ready to add distributed tracing, let’s next consider
     what makes up a trace and how it might be visualized.
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
 - en: Components of a Distributed Trace
+  id: totrans-51
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -293,12 +393,15 @@
     information about the performance of each touchpoint in the satisfaction of an
     end-user request. These spans can be assembled into an “icicle” graph that shows
     relatively how much time was spent in each service, as shown in [Figure 3-1](part0008_split_007.html#zipkin_trace_view).
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
 - en: '![srej 0301](../images/00066.png)'
+  id: totrans-53
   prefs: []
   type: TYPE_IMG
 - en: Figure 3-1\. Zipkin icicle graph
+  id: totrans-54
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
@@ -308,6 +411,7 @@
     then tags may identify region (in the public cloud sense), API endpoint, HTTP
     method, response status code, etc. Keeping metric and trace naming consistent
     is the key to allowing for correlation of telemetry (see [“Correlation of Telemetry”](part0008_split_023.html#telemetry_correlation)).
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
 - en: Unlike in metrics, the Zipkin span data model contains special fields for service
@@ -316,6 +420,7 @@
     backends don’t set aside a reserved tag name for this concept. Span name is also
     a defined field on the Zipkin data model. Both are indexed for lookup, so unbounded
     value set cardinality on span and service name should be avoided.
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
 - en: Unlike metrics, it is not necessary to control tag cardinality of a trace in
@@ -327,12 +432,14 @@
     without any regard to whether another span had the same name and tags. The cost
     of distributed traces is then the product of the throughput through the system
     and the sampling rate (viewed as a percentage).
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
 - en: While tag cardinality does not influence storage cost in a distributed tracing
     system, it does influence *lookup* cost. And in tracing systems, tags can be marked
     as indexable by the tracing backend (and autocompletable in the Zipkin UI). Clearly,
     these tag value sets should be bounded for index performance.
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
 - en: It’s best to overlap as many tags as possible between metrics and traces so
@@ -340,33 +447,43 @@
     additional high-cardinality tags that can be used to locate a request from a particular
     user or interaction, as in [Table 3-1](part0008_split_007.html#overlap_in_trace_metrics_tagging).
     Strive for the value to match wherever tag keys match.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
 - en: Table 3-1\. Overlap of distributed trace and metrics tagging
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
 - en: '| Metric tag key | Trace tag key | Value |'
+  id: totrans-61
   prefs: []
   type: TYPE_TB
 - en: '| --- | --- | --- |'
+  id: totrans-62
   prefs: []
   type: TYPE_TB
 - en: '| application | application | payments |'
+  id: totrans-63
   prefs: []
   type: TYPE_TB
 - en: '| method | method | GET |'
+  id: totrans-64
   prefs: []
   type: TYPE_TB
 - en: '| status | status | 200 |'
+  id: totrans-65
   prefs: []
   type: TYPE_TB
 - en: '| uri | uri | /api/payment/{paymentId} |'
+  id: totrans-66
   prefs: []
   type: TYPE_TB
 - en: '|  | detailedUri | /api/payment/abc123 |'
+  id: totrans-67
   prefs: []
   type: TYPE_TB
 - en: '|  | user | user123456 |'
+  id: totrans-68
   prefs: []
   type: TYPE_TB
 - en: It should be clear at this point that a trace is designed to give you insight
@@ -377,20 +494,25 @@
     performance for a matching set of traces for a particular set of parameters. Building
     a correlation between the overall distribution and this view is the subject of
     [“Correlation of Telemetry”](part0008_split_023.html#telemetry_correlation).
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
 - en: '![srej 0302](../images/00031.png)'
+  id: totrans-70
   prefs: []
   type: TYPE_IMG
 - en: Figure 3-2\. Searching for traces in the Zipkin Lens UI
+  id: totrans-71
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
 - en: As with metrics, there are multiple ways of adding distributed tracing to your
     application. Let’s consider some of the advantages of each.
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
 - en: Types of Distributed Tracing Instrumentation
+  id: totrans-73
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -398,37 +520,51 @@
     with respect to metrics also applies to distributed tracing instrumentation. Tracing
     instrumentation is available at various architectural levels (from infrastructure
     to individual components of an application).
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 与度量有关的所有讨论，都适用于分布式追踪仪表化[“黑盒与白盒监控”](part0006_split_001.html#blackbox_whitebox)。追踪仪表化在各种架构层面上可用（从基础设施到应用程序的各个组件）。
 - en: Manual Tracing
+  id: totrans-75
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 手动追踪
 - en: Libraries like Zipkin’s Brave or OpenTelemetry allow you to instrument your
     application explicitly in code. In an ideally traced distributed system, some
     level of manual tracing will certainly be present. Through it, key business-specific
     context can be added to traces that other forms of prepackaged instrumentation
     couldn’t possibly be aware of.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 类似 Zipkin 的 Brave 或 OpenTelemetry 的库允许您在代码中显式地为应用程序添加仪表化。在理想情况下被追踪的分布式系统中，一定程度的手动追踪肯定是存在的。通过它，可以向追踪中添加关键的业务特定上下文，而其他形式的预打包仪表化则无法意识到。
 - en: Agent Tracing
+  id: totrans-77
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 代理追踪
 - en: Like with metrics, agents (typically vendor-provided) can automatically add
     tracing instrumentation without making code changes. Attaching an agent is a change
     to your application delivery pipeline, and this complexity cost shouldn’t be ignored.
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: 就像使用度量一样，代理（通常由供应商提供）可以在不进行代码更改的情况下自动添加追踪仪表化。连接代理是应用程序交付流水线的一个变更，这种复杂性成本不应被忽视。
 - en: 'This cost is real no matter which level of abstraction your platform operates
     at:'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论您的平台在哪个抽象级别运作，这种成本都是真实的：
 - en: For an infrastructure-as-a-service platform like Amazon EC2, you will have to
     add the agent and its configuration to your base Amazon Machine Image.
+  id: totrans-80
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于像亚马逊 EC2 这样的基础设施即服务平台，您将不得不将代理及其配置添加到基础 Amazon Machine Image 中。
 - en: For a container-as-a-service (CaaS) platform, you will need another container
     level between a basic image like `openjdk:jre-alpine` and your application. This
     impact can leak into your build then. If you were using the Gradle `com.bmuschko.docker-spring-boot-application`
@@ -437,45 +573,64 @@
     any time the base image (which may very well be the default of `com.bmuschko.docker-spring-boot-application`)
     of the container image containing the agent is updated, you have to publish a
     new image.
+  id: totrans-81
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于一个容器即服务（CaaS）平台，您需要在类似 `openjdk:jre-alpine` 的基础镜像和您的应用程序之间再加一层容器级别。这种影响可能泄漏到您的构建中。如果您正在使用
+    Gradle 的 `com.bmuschko.docker-spring-boot-application` 插件将 Spring Boot 应用程序打包用于
+    CaaS 的部署，现在需要用包含代理的镜像覆盖默认的容器镜像。此外，每当包含代理的容器镜像的基础镜像（很可能是 `com.bmuschko.docker-spring-boot-application`
+    的默认镜像）更新时，您都需要发布新镜像。
 - en: For a platform as a service (PaaS) like Cloud Foundry or Heroku, you have to
     use a custom base unless integration with the agent is specifically supported
     by the PaaS vendor already.
+  id: totrans-82
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于像 Cloud Foundry 或 Heroku 这样的平台即服务（PaaS），除非特定支持代理的集成已被 PaaS 供应商支持，否则您必须使用自定义基础。
 - en: Framework Tracing
+  id: totrans-83
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 框架追踪
 - en: Frameworks can also include telemetry out of the box. Because frameworks are
     included in an application as a binary dependency, this form of telemetry is technically
     a black box solution. Framework-level instrumentation can have a white box feel
     to it when it allows for user-provided customizations to its automatically instrumented
     touchpoints.
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 框架也可以自带遥测功能。由于框架作为二进制依赖项包含在应用程序中，这种形式的遥测在技术上是黑盒解决方案。当框架级仪表化允许用户提供自定义到其自动仪表化触点时，框架级仪表化可以有白盒的感觉。
 - en: Frameworks are aware of their own implementation idiosyncracies, so they can
     provide rich contextual information as tags.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 框架了解其自身的实现特异性，因此可以提供丰富的上下文信息作为标签。
 - en: To give an example, framework instrumentation for an HTTP request handler can
     tag the span with a parameterized request URI (i.e., `/api/customers/(id)` versus
     `/api/customers/1`). Agent instrumentation would have to be aware of and switch
     over all supported frameworks to provide the same level of richness and keep up
     with changes to frameworks individually.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 举个例子，为了一个 HTTP 请求处理程序的框架仪表化，可以用参数化的请求 URI 标记 span（例如，`/api/customers/(id)` 和
+    `/api/customers/1`）。代理仪表化必须意识到并切换所有支持的框架，以提供相同的丰富度，并跟上各框架的变更。
 - en: Another complication comes from increasingly prevalent asynchronous workflows
     in modern programming paradigms like reactive. A proper tracing implementation
     requires in-process propagation, which can be tricky in reactive contexts where
     you can’t just stuff context into a `ThreadLocal`. Also, dealing with [mapped
     diagnostic contexts](https://oreil.ly/h1p0-) to correlate logs and tracing can
     be tricky in those same contexts.
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一个复杂性来自于现代编程范式中日益普遍的异步工作流程，例如响应式编程。适当的跟踪实现需要进程内传播，在响应式上下文中可能会有些棘手，因为您不能简单地将上下文信息放入
+    `ThreadLocal` 中。此外，在同样的上下文中处理 [映射诊断上下文](https://oreil.ly/h1p0-) 以关联日志和跟踪可能也会有些棘手。
 - en: Retrofitting an existing application with framework-level instrumentation can
     be relatively low touch. For example, Spring Cloud Sleuth adds tracing telemetry
     to an existing Spring Cloud—based application. You just need an additional dependency
@@ -483,38 +638,58 @@
     as in [Example 3-3](part0008_split_011.html#sleuth_config), the latter of which
     can be done cross-organizationally if you are already using a centralized dynamic
     configuration server like Spring Cloud Config Server.
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 在现有应用中添加框架级别的仪表化可能是比较轻量级的。例如，Spring Cloud Sleuth 为基于 Spring Cloud 的现有应用添加追踪遥测。您只需像
+    [示例 3-2](part0008_split_011.html#sleuth_dependency) 中那样增加一个额外的依赖项，以及像 [示例 3-3](part0008_split_011.html#sleuth_config)
+    中的少量配置，后者可以在跨组织使用像 Spring Cloud Config Server 这样的集中式动态配置服务器时进行配置。
 - en: Example 3-2\. Sleuth runtime dependency in Gradle build
+  id: totrans-89
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-2\. 在 Gradle 构建中 Sleuth 运行时依赖
 - en: '[PRE1]'
+  id: totrans-90
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: '[![1](../images/00112.png)](part0008_split_011.html#co_debugging_with_observability_CO2-1)'
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](../images/00112.png)](part0008_split_011.html#co_debugging_with_observability_CO2-1)'
 - en: Note that the `io.spring.dependency-management` plug-in is responsible for adding
     the version to this dependency specification.
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 请注意，`io.spring.dependency-management` 插件负责将版本添加到此依赖项规范中。
 - en: Example 3-3\. Sleuth configuration in Spring Boot’s application.yml
+  id: totrans-93
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-3\. Spring Boot 的应用程序配置在 application.yml 中的 Sleuth 配置
 - en: '[PRE2]'
+  id: totrans-94
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Service Mesh Tracing
+  id: totrans-95
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 服务网格跟踪
 - en: The service mesh is an infrastructure layer outside of application code that
     manages interaction between microservices. Many implementations accomplish this
     through sidecar proxies in some way associated with the application process.
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 服务网格是应用代码之外的基础设施层，负责管理微服务之间的交互。许多实现方式通过与应用程序进程关联的 Sidecar 代理来完成这一点。
 - en: In some ways, this form of instrumentation isn’t much different from how the
     framework might accomplish it, but don’t be fooled into thinking they are equal.
     They are similar in the point of instrumentation (decorating an RPC call). The
@@ -523,18 +698,26 @@
     are mapped in a lossy way to one of a small set of HTTP status codes. The service
     mesh would only have access to the status code. The framework has access to the
     unsubstituted path of the endpoint (e.g., `/api/person/{id}` instead of `/api/person/1`).
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 在某些方面，这种仪表化形式与框架可能实现的方式并没有太大区别，但不要被误导以为它们是相同的。它们在仪表化点上是相似的（装饰 RPC 调用）。框架肯定会比服务网格拥有更多信息。例如，对于
+    REST 端点跟踪，框架可以访问以一种有损映射到少量 HTTP 状态码之一的方式映射的异常细节。服务网格只能访问状态码。框架可以访问端点的未替换路径（例如
+    `/api/person/{id}` 而不是 `/api/person/1`）。
 - en: Agents also have more potential for richness than a sidecar because they can
     reach down into individual method invocations, a finer level of granularity than
     RPC calls.
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 与 Sidecar 相比，代理还具有更丰富的潜力，因为它们可以深入到单个方法调用，比 RPC 调用的粒度更细。
 - en: Adding service mesh not only changes your delivery pipeline, it also comes at
     an additional resource and complexity cost in managing sidecars and their control
     plane as well.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 添加服务网格不仅会改变交付流水线，还会增加在管理 Sidecar 和它们的控制平面时的额外资源和复杂性成本。
 - en: Still, instrumenting at a service mesh layer means you don’t have to retrofit
     existing applications with framework instrumentation like Spring Cloud Sleuth,
     change your base images like with agent-based instrumentation, or perform manual
@@ -546,12 +729,18 @@
     As a result, telemetry streaming out of mesh-based instrumentation will be harder
     to group by parameterized URI. Adding the runtime dependency may very well be
     significantly easier in the end.
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，在服务网格层进行仪器化意味着你不必为现有应用程序添加类似 Spring Cloud Sleuth 的框架仪器化，也不必像使用代理仪器化那样更改基础镜像，或者进行手动仪器化。由于服务网格相对于框架而言缺乏信息，引入服务网格主要是为了实现遥测仪器化，这将产生维护网格所需的重大成本，而遥测数据相对较少。例如，网格将观察到对
+    `/api/customers/1` 的请求，但不会像框架那样具有上下文，即这是对 `/api/customers/(id)` 的请求。因此，从基于网格的仪器化产生的遥测数据将更难按参数化
+    URI 进行分组。最终，添加运行时依赖可能会更加容易。
 - en: Blended Tracing
+  id: totrans-101
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 混合跟踪
 - en: White box (or framework telemetry that, because it is autoconfigured, *feels*
     like white box) and black box options aren’t mutually exclusive. They can in fact
     complement each other well. Consider the REST controller in [Example 3-4](part0008_split_013.html#7K4OG-2d714b853a094e9a910510217e0e3d73).
@@ -561,47 +750,72 @@
     breaks down the end-to-end user interaction into an even-finer-grained trace.
     Now we can identify where the database specifically is the cause of a service
     degradation in the satisfaction of the request in this particular microservice.
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 白盒（或因自动配置而“感觉像”白盒的框架遥测）和黑盒选项并不是互斥的。事实上，它们可以相互补充得很好。考虑一下 [示例 3-4](part0008_split_013.html#7K4OG-2d714b853a094e9a910510217e0e3d73)
+    中的 REST 控制器。Spring Cloud Sleuth 被设计为在请求处理器 `findCustomerById` 周围自动创建一个 span，并标记它与相关信息。通过注入一个
+    `Tracer`，你可以在仅涉及数据库访问时添加一个更精细的 span。这将用户交互端到端分解成了一个更细粒度的跟踪。现在，我们可以确定数据库在特定微服务中导致请求满意度降低的原因所在。
 - en: Example 3-4\. Blended black box and white box tracing instrumentation
+  id: totrans-103
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-4\. 混合了黑盒和白盒跟踪仪器化
 - en: '[PRE3]'
+  id: totrans-104
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: '[![1](../images/00112.png)](part0008_split_013.html#co_debugging_with_observability_CO3-1)'
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![1](../images/00112.png)](part0008_split_013.html#co_debugging_with_observability_CO3-1)'
 - en: Spring Cloud Sleuth will automatically instrument this endpoint, tagging the
     span with useful context like `http.uri`.
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: Spring Cloud Sleuth 将自动为此端点添加仪器化，并使用诸如 `http.uri` 的有用上下文进行标记。
 - en: '[![2](../images/00059.png)](part0008_split_013.html#co_debugging_with_observability_CO3-2)'
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![2](../images/00059.png)](part0008_split_013.html#co_debugging_with_observability_CO3-2)'
 - en: Starting a new span adds another distinct element to the trace icicle graph.
     We can now reason about the cost of just this method `findCustomerById` in the
     context of an entire end-to-end user interaction.
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 开始一个新的 span 将为跟踪冰柱图添加另一个不同的元素。现在，我们可以在整个端到端用户交互的上下文中推断出仅此方法 `findCustomerById`
+    的成本。
 - en: '[![3](../images/00067.png)](part0008_split_013.html#co_debugging_with_observability_CO3-3)'
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![3](../images/00067.png)](part0008_split_013.html#co_debugging_with_observability_CO3-3)'
 - en: Adding business-specific context that black box instrumentation would lack.
     Maybe your company just launched a service recently in a new country as part of
     a global expansion, and because of its recency, customers in that country lack
     a long activity history with your product. Seeing a surprising difference in lookup
     times between older and newer customers might suggest a change to how activity
     history is loaded in this situation.
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 添加业务特定的上下文，黑盒仪器化可能缺乏。也许你的公司最近在新的国家推出了一项服务，作为全球扩张的一部分，由于其新近性，该国家的客户缺乏与你的产品的长期活动历史。看到老客户和新客户之间查找时间的惊人差异可能表明在这种情况下如何加载活动历史的变化。
 - en: '[![4](../images/00016.png)](part0008_split_013.html#co_debugging_with_observability_CO3-4)'
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: '[![4](../images/00016.png)](part0008_split_013.html#co_debugging_with_observability_CO3-4)'
 - en: The whole data access operation is manually instrumented with white box instrumentation.
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: 整个数据访问操作都是使用白盒工具手动进行的。
 - en: Supposing database access was traced across the application stack (potentially
     by encapsulating the wrapping of database access with tracing instrumentation
     into a common library and sharing it across the organization), the database would
@@ -609,12 +823,17 @@
     to the database layer itself. Instrumenting something like an IBM DB2 database
     running on a z/OS mainframe with Zipkin Brave seems like an impossible task initially,
     but it can be accomplished from the caller perspective.
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设数据库访问是跨应用程序堆栈进行追踪的（可能通过将数据库访问的包装与跟踪仪器封装成一个通用库并在整个组织中共享），则可以有效地追踪数据库，而无需向数据库层本身添加任何形式的白盒或黑盒监控。从调用者的角度来仪器化像
+    IBM DB2 数据库运行在 z/OS 主机上的情况使用 Zipkin Brave 似乎是一个不可能的任务，但从调用者的角度来看可以完成。
 - en: Tracing All Calls to a Subsystem Effectively Traces the Subsystem
+  id: totrans-114
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 有效地跟踪所有对子系统的调用实际上是在跟踪子系统。
 - en: By tracing all *calls* to a subsystem, the subsystem is covered with tracing
     in the same way as if it were instrumented itself. Many component frameworks (database,
     cache, message queue) offer some sort of event system for you to hook into. In
@@ -622,8 +841,10 @@
     to ensuring all calling applications have a binary dependency on their runtimes
     that’s capable of automatically injecting an event handler into the component
     framework you want to instrument.
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过追踪所有对子系统的*调用*，实际上就像对其自身进行仪器化一样覆盖了子系统。许多组件框架（数据库、缓存、消息队列）提供了某种事件系统，供您挂接。在许多情况下，涂层所有调用者以便仪器化可以简化为确保所有调用应用程序具有能够自动将事件处理程序注入到要仪器化的组件框架的运行时的二进制依赖关系。
 - en: The other ramification of tracing from a caller is that it includes latency
     (e.g., network overhead) between the two systems. In a scenario where a series
     of callers is executing requests to a downstream service that is serving requests
@@ -631,66 +852,96 @@
     may not even be aware of a request until it starts to be processed. Instrumenting
     from the caller side includes the time a request sat in a queue waiting to be
     processed by the downstream.
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 从调用者的角度来进行跟踪的另一个影响是它包括两个系统之间的延迟（例如，网络开销）。在一个场景中，一系列调用者正在向服务下游执行请求，服务以固定的最大并发级别提供请求服务（例如，线程池），直到请求开始处理，服务可能甚至没有意识到请求的存在。从调用者的角度仪器化包括请求在等待被下游处理之前在队列中停留的时间。
 - en: All this contextual information can get expensive. To control cost, at some
     point we have to sample tracing telemetry.
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有这些上下文信息可能非常昂贵。为了控制成本，在某些时候我们必须对跟踪遥测数据进行采样。
 - en: Sampling
+  id: totrans-118
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 采样
 - en: As mentioned in [“The Three Pillars of Observability…or Is It Two?”](part0008_split_001.html#7K4GG-2d714b853a094e9a910510217e0e3d73),
     tracing data generally must be sampled to control cost, meaning some traces are
     published to the tracing backend and others are not.
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 如 [“可观察性的三大支柱…还是两大支柱？”](part0008_split_001.html#7K4GG-2d714b853a094e9a910510217e0e3d73)
+    所述，一般来说，跟踪数据通常必须进行采样以控制成本，这意味着某些跟踪信息发布到跟踪后端，而其他跟踪信息则不会。
 - en: No matter how smart the sampling strategy, it is important to remember that
     data is being *discarded*. Whatever collection of traces you get as a result are
     going to be skewed in some way. This is perfectly fine when you are pairing distributed
     tracing data with metrics data. Metrics should alert you to anomalous conditions
     and traces used to do in-depth debugging when necessary.
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论采样策略多么聪明，重要的是要记住数据是*被丢弃*的。无论最终得到的一系列追踪信息如何，它们总是会在某种程度上有所偏差。当您将分布式追踪数据与指标数据配对时，这是完全可以接受的。指标应该在异常情况下提醒您，而需要深入调试时则使用追踪信息。
 - en: Sampling strategies fall into a few basic categories, ranging from not sampling
     at all to propagating sampling decisions down from the edge.
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: 采样策略可以分为几个基本类别，从完全不进行采样到从边缘传播采样决策。
 - en: No Sampling
+  id: totrans-122
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 无采样
 - en: It is possible to retain every tracing sample. Some organizations even do this
     at a large scale, often at extraordinary cost. For Spring Cloud Sleuth, configure
     the `Sampler` via a bean definition, as shown in [Example 3-5](part0008_split_016.html#sleuth_no_sampling).
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 可以保留每一个跟踪样本。一些组织甚至在大规模上做到了这一点，通常付出了巨大的代价。对于 Spring Cloud Sleuth，请通过 bean 定义配置
+    `Sampler`，如 [示例 3-5](part0008_split_016.html#sleuth_no_sampling) 所示。
 - en: Example 3-5\. Configuring Spring Cloud Sleuth to always sample
+  id: totrans-124
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-5\. 配置 Spring Cloud Sleuth 以始终进行采样
 - en: '[PRE4]'
+  id: totrans-125
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: Rate-Limiting Samplers
+  id: totrans-126
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 速率限制采样器
 - en: By default, Spring Cloud Sleuth retains the first 10 samples per second (a configurable
     rate limit threshold) and downsamples probabilistically thereafter. Since rate-limiting
     sampling is the default in Sleuth, the rate limit can be set by a property, as
     in [Example 3-6](part0008_split_017.html#sleuth_rate_limit).
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，Spring Cloud Sleuth保留每秒前10个样本（可配置的速率限制阈值），然后以概率方式进行降采样。由于在Sleuth中默认使用速率限制抽样，因此速率限制可以通过属性设置，如[示例 3-6](part0008_split_017.html#sleuth_rate_limit)所示。
 - en: Example 3-6\. Configuring Spring Cloud Sleuth to retain the first 2,000 samples
     per second
+  id: totrans-128
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-6\. 配置Spring Cloud Sleuth以保留每秒前2,000个样本
 - en: '[PRE5]'
+  id: totrans-129
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: The logic behind this is that there is some rate of throughput for which it
     is reasonably cost-effective to not discard anything. This is largely going to
     be dictated by the nature of your business and the throughput to your applications.
@@ -699,8 +950,10 @@
     insurance agents in the field. Since the pool of insurance agents is not going
     to suddenly grow by an order of magnitude overnight, a stable capacity plan for
     a tracing system that accepts 100% of traces for this system is determinable.
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 其背后的逻辑是，对于某些吞吐量，不丢弃任何东西在成本上是合理划算的。这在很大程度上将由您业务的性质和应用程序的吞吐量来决定。一个地区性的财产和意外保险公司每分钟通过其旗舰应用程序接收5,000个请求，大约由3,500名外出的保险代理生成的交互产生。由于保险代理的群体不会在一夜之间突然增长一个数量级，因此，为接受此系统的100%追踪的追踪系统制定稳定的容量计划是可以确定的。
 - en: Even if your organization is like this insurer, it’s important to keep in mind
     where further investments in application observability are made, often in open
     source at tech companies with significant scale and at monitoring system vendors
@@ -709,101 +962,141 @@
     it can still make sense to leverage high-percentile approximations from bucketed
     histograms over trying to calculate an exact percentile from tracing data, even
     though this is mathematically possible with 100% data.
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 即使您的组织像这家保险公司一样稳定，也要牢记在应用程序可观察性上进一步投资的位置，通常在具有显著规模的技术公司的开源项目和监控系统供应商中，不能假设其客户都有如此稳定的容量计划。考虑到服务端点的延迟高百分位数计算，从分桶直方图中利用高百分位数的近似值仍然比尝试从追踪数据中计算精确百分位数更有意义，即使数学上可以实现使用100%数据。
 - en: The point is to avoid inventing new methods of calculating distribution statistics
     when similar methods are available from metrics telemetry designed to operate
     at scale.
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 关键是要避免在可操作范围内计算分布统计数据的新方法，当已有类似的方法可从专为大规模操作设计的指标遥测中获取时。
 - en: One challenge of rate-based sampling is holes. When you have several microservices
     in a call chain, each independently making a decision about whether to retain
     a trace, holes are going to develop in the end-to-end picture of a given request.
     Put another way, rate-based samplers don’t make a consistent sampling decision
     given a trace ID. The moment any individual subsystem exceeds the rate threshold,
     a hole develops in traces involving this subsystem.
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 基于速率的抽样的一个挑战是存在空洞。当您在调用链中有几个微服务，每个独立地决定是否保留追踪时，会在给定请求的端到端图像中产生空洞。换句话说，基于速率的抽样器在给定追踪ID时不能做出一致的抽样决策。当任何个体子系统超过速率阈值时，涉及该子系统的追踪中就会出现空洞。
 - en: When making capacity planning decisions based off of rate-based samplers, be
     careful to recognize that these rates are on a *per-instance* basis. The rate
     of samples reaching the tracing system is the product of instances in the cluster
     times and the sampling rate in the worst case.
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 基于速率抽样器进行容量规划决策时，要注意这些速率是**每个实例**的基础。
 - en: Probabilistic Samplers
+  id: totrans-135
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 概率抽样器
 - en: Probabilistic samplers count to see how many out of 100 traces should be retained.
     They guarantee that if you select a 10% probability, 10 out of 100 traces will
     be retained, but it likely won’t be the first 10 or the last 10.
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 概率抽样器计算，以确定需要保留的100个追踪中有多少个。它们保证如果选择了10%的概率，则会保留100个追踪中的10个，但可能不会是前10个或最后10个。
 - en: In the presence of a probability property, Spring Cloud Sleuth configures a
     probabilistic sampler instead of a rate-limiting sampler, as in [Example 3-7](part0008_split_018.html#sleuth_probabilistic).
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 在存在概率属性的情况下，Spring Cloud Sleuth会配置概率采样器而不是速率限制采样器，如[示例 3-7](part0008_split_018.html#sleuth_probabilistic)中所示。
 - en: Example 3-7\. Configuring Spring Cloud Sleuth to retain 10% of traces
+  id: totrans-138
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-7\. 配置Spring Cloud Sleuth以保留10%的跟踪
 - en: '[PRE6]'
+  id: totrans-139
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'Probabilistic samplers are rarely the right choice for a couple of reasons:'
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 几个原因使得概率采样器很少是正确的选择：
 - en: Cost
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 成本
 - en: No matter what probability you choose, your tracing cost grows linearly in proportion
     to traffic. Maybe you never expect an API endpoint to receive more than 100 requests
     per second and you’ve sampled to 10%. If there is a sudden increase in traffic
     to 10,000 requests per second, you’ll suddenly be shipping 1,000 traces per second
     rather than 10\. Rate-limiting samplers cap the cost in a way that places a fixed
     upper bound on cost, irrespective of throughput.
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论您选择什么概率，您的跟踪成本都会与流量成正比线性增长。也许您从未预料到API端点会收到超过每秒100个请求，因此您抽样了10%。如果流量突然增加到每秒10,000个请求，您将突然之间将要发送每秒1,000个跟踪，而不是10个。速率限制采样器通过一种方式限制成本，无论吞吐量如何，都将成本上限固定在一个值上。
 - en: Holes
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 洞
 - en: Like rate-based samplers, probabilistic samplers don’t look at trace IDs and
     headers to make their sampling decisions. Holes will develop in the end-to-end
     picture. In the case of relatively low throughput systems, a rate-based sampler
     may practically have no holes because no individual subsystem exceeded the rate
     threshold, but a probabilistic sampler has a uniform probability of holes per
     unit of throughput, so holes will likely exist even for low-throughput systems.
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: 像基于速率的采样器一样，概率采样器不查看跟踪ID和头部来做出其采样决策。在端到端图像中将会出现洞。对于相对低吞吐量系统，基于速率的采样器可能实际上没有洞，因为没有单个子系统超过速率阈值，但是概率采样器在单位吞吐量上有均匀的洞存在概率，因此即使对于低吞吐量系统，洞可能也会存在。
 - en: Boundary Sampling
+  id: totrans-145
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 边界采样
 - en: Boundary samplers are a variant of probabilistic sampler that solves the problem
     of holes by making the sampling decision only once at the edge (the first interaction
     with your system) and propagating the sampling decision downstream to other services
     and components. The trace context in each component contains a sampling decision
     that is added as an HTTP header and extracted into trace context by the downstream
     component, as shown in [Figure 3-3](part0008_split_019.html#trace_boundary_sampling).
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 边界采样器是概率采样器的一种变体，通过仅在边缘（与您的系统的第一个交互）进行一次采样决策，并将该采样决策传播到其他服务和组件来解决洞的问题。每个组件中的跟踪上下文包含一个采样决策，该决策作为HTTP头添加，并由下游组件提取为跟踪上下文，如[图 3-3](part0008_split_019.html#trace_boundary_sampling)所示。
 - en: '![srej 0303](../images/00054.png)'
+  id: totrans-147
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0303](../images/00054.png)'
 - en: Figure 3-3\. B3 trace headers propagate the sampling decision to downstream
     components
+  id: totrans-148
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 3-3\. B3跟踪头将采样决策传播到下游组件
 - en: Impact of Sampling on Anomaly Detection
+  id: totrans-149
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 采样对异常检测的影响
 - en: Let’s consider specifically the impact probabilistic sampling would have on
     anomaly detection. A similar effect would occur for any sampling strategy really,
     but we’ll use probabilistic sampling to make this concrete.
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们具体考虑概率采样对异常检测的影响。实际上，任何采样策略都会产生类似的影响，但我们将使用概率采样来具体描述这一点。
 - en: Anomaly detection systems built on sampled traces are generally misguided unless
     your organization assumes the cost of 100% sampling. To show why, let’s consider
     a hypothetical sampling strategy that makes an up-front decision about whether
@@ -817,27 +1110,43 @@
     right-parenthesis asterisk 100 percent-sign"><mrow><mo>(</mo> <mn>1</mn> <mo>-</mo>
     <mn>0</mn> <mo>.</mo> <msup><mn>99</mn> <mi>N</mi></msup> <mo>)</mo> <mo>*</mo>
     <mn>100</mn> <mo>%</mo></mrow></math> ).
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 建立在采样跟踪上的异常检测系统通常是错误的，除非你的组织承担了 100% 采样的成本。为了说明这一点，让我们考虑一种假设的采样策略，根据每个请求开始时的加权随机数做出关于是否保留追踪的决定（就像
+    Google 的 Dapper 最初所做的那样）。如果我们对请求进行 1% 的采样，那么一个超出第 99 百分位数的异常值，像其他所有请求一样，有 1% 的机会在采样中存活。看到任何这些个别的异常值的机会是
+    0.01%。即使在每秒 1,000 个请求的情况下，你可能每秒都会发生 10 个异常值，但在追踪数据中只会每 5 分钟看到一个，如[图 3-4](part0008_split_020.html#chance_of_outlier_in_trace_sampling)所示（这是一个<math
+    alttext="left-parenthesis 1 minus 0.99 Superscript upper N Baseline right-parenthesis
+    asterisk 100 percent-sign"><mrow><mo>(</mo> <mn>1</mn> <mo>-</mo> <mn>0</mn> <mo>.</mo>
+    <msup><mn>99</mn> <mi>N</mi></msup> <mo>)</mo> <mo>*</mo> <mn>100</mn> <mo>%</mo></mrow></math>的图）。
 - en: '![srej 0304](../images/00026.png)'
+  id: totrans-152
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0304](../images/00026.png)'
 - en: Figure 3-4\. Chance of seeing an outlier in tracing data over time
+  id: totrans-153
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 3-4\. 随时间变化的追踪数据中看到异常值的机会
 - en: There can be a significant range of outliers above the 99th percentile, as shown
     in [Figure 4-20](part0009_split_010.html#avg_vs_p99_latency). You could have a
     huge business-critical outlier (above P99.9) happening once per second and only
     see it *once* in tracing data in any given hour! For the purposes of debuggability,
     having one or a small set of outliers survive over a given period is fine—we still
     get to examine in detail the nature of what’s happening in the outlier case.
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 在第 99 百分位数以上可能存在显著范围的异常值，如[图 4-20](part0009_split_010.html#avg_vs_p99_latency)所示。你可能每秒都会出现一个巨大的业务关键异常值（高于
+    P99.9），但在任何给定的小时内追踪数据中只会看到*一次*！出于调试目的，让一个或一小组异常值在一定时期内存活是可以接受的——我们仍然可以详细检查异常情况发生的性质。
 - en: Distributed Tracing and Monoliths
+  id: totrans-155
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 分布式追踪与单体应用
 - en: Don’t be fooled by the name *distributed* tracing. It is absolutely reasonable
     to use this form of observability in a monolith as well. In the purest microservices
     architecture, tracing around RPC calls could be implemented in a black box fashion
@@ -846,8 +1155,11 @@
     architecture, tracing RPC could actually give you quite a bit of information about
     what’s going on; i.e., microservice boundaries are effectively business logic
     functional boundaries as well.
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
+  zh: 别被*分布式*追踪的名字所迷惑。在单体架构中使用这种形式的可观察性是完全合理的。在最纯粹的微服务架构中，围绕 RPC 调用进行追踪可以在框架级别（比如
+    Spring）或者在诸如服务网格技术中找到的边车中以黑匣子的方式实现。考虑到微服务架构的单一责任性质，追踪 RPC 实际上可以为你提供关于正在发生的事情的相当多的信息；即，微服务边界实际上也是业务逻辑功能边界。
 - en: Inside a monolithic application that receives a single end-user request and
     performs many tasks to satisfy that request, framework-level instrumentation has
     a diminished value, of course, but you can still write tracing instrumentation
@@ -855,8 +1167,10 @@
     logging statements. In this way, you’ll be able to select specific tags that allow
     you to search for spans with business context that framework or service-mesh instrumentation
     will certainly lack.
+  id: totrans-157
   prefs: []
   type: TYPE_NORMAL
+  zh: 在一个接收单个端用户请求并执行许多任务以满足该请求的单体应用程序内部，框架级别的仪器化当然价值降低，但你仍然可以在单体应用程序内部的关键功能边界处编写追踪仪器化，方式与编写日志语句相同。通过这种方式，你将能够选择特定的标签，这些标签允许你搜索具有业务上下文的跨度，而框架或服务网格仪器化肯定会缺少这些标签。
 - en: In fact, white box instrumentation with business-specific tagging winds up being
     essential even in a pure microservices architecture. In many cases, our key pieces
     of business functionality aren’t *completely* broken in production, but rather
@@ -866,33 +1180,45 @@
     both metrics and tracing telemetry allows an engineer to drill down dimensionally
     on a metric and find the problem area and then hop to debugging signals like tracing
     and logs to see example failures once the failing dimension is known.
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 实际上，具有业务特定标记的白盒仪器在纯微服务架构中变得至关重要。在许多情况下，我们的关键业务功能在生产环境中并非完全失效，而是在特定（通常是不寻常的）业务特定故障线路上出现问题。也许一个保险公司的政策管理系统无法对肯塔基州的某个县的经典车辆进行定价。在度量和跟踪遥测中同时拥有车辆类别、县和州的信息，使工程师可以在已知故障维度上进行维度钻取，并找到问题区域，然后跳转到跟踪和日志以查看示例故障。
 - en: Business Context Makes White Box Tracing as Important in Monoliths as in Distributed
     Systems
+  id: totrans-159
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 业务上下文使得白盒跟踪在单体应用中与分布式系统一样重要
 - en: The density of white box distributed tracing instrumentation per bounded context
     of business functionality should roughly be the same in a microservices or monolithic
     architecture, because black box instrumentation will not tag spans with business-specific
     context that aids in later lookup.
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 在业务功能边界上的白盒分布式跟踪仪器密度在微服务或单体架构中应大致相同，因为黑盒仪器不会使用帮助后续查找的业务特定上下文标记跨度。
 - en: So the only difference between microservices and monoliths is that you have
     more bounded contexts of business functionality packed into one process. And with
     each additional piece of business functionality comes all the trappings that support
     its existence. Observability is not an exception.
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，微服务和单体应用之间唯一的区别在于您将更多业务功能边界打包到一个进程中。随着每个额外的业务功能的增加，支持其存在的一切都会随之而来。可观察性并不是例外。
 - en: Additionally, even a microservice with a single responsibility can do a handful
     of things, including data access, in the satisfaction of a user request.
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 此外，即使是负责单一责任的微服务也可以执行一些任务，包括数据访问，以满足用户请求。
 - en: Correlation of Telemetry
+  id: totrans-163
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 遥测数据的关联
 - en: Since metrics data is a strong availability signal and tracing and logging data
     is useful for debugging, anything we can do to link them together makes the transition
     from an alert indicating a lack of availability to the debugging information that
@@ -900,40 +1226,54 @@
     a chart on a dashboard and an alert on a decaying max. Presenting a view of the
     latency distribution as a heatmap of the latency histogram is an interesting information-dense
     visualization but isn’t something we can plot an alert threshold on.
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于度量数据是强有力的可用性信号，跟踪和日志数据对调试非常有用，我们可以做的一切都是将它们链接在一起，使得从警报指示可用性缺失到最佳识别潜在问题的调试信息的过渡更加顺畅。在延迟情况下，我们将在仪表板上绘制图表，并在一个衰减的最大值上设置警报。将延迟分布的视图呈现为延迟直方图的热图是一种信息密集的有趣可视化，但我们无法在其上绘制警报阈值。
 - en: Metric to Trace Correlation
+  id: totrans-165
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 度量到跟踪的相关性
 - en: We can plot example traces (exemplars), as shown in [Figure 3-5](part0008_split_024.html#trace_exemplars),
     on the heatmap and make the heatmap more interactive by making heatmap cells into
     links that take us directly to the tracing UI, where we can see a set of traces
     that match these criteria. So an engineer responsible for a system receives an
     alert on a latency condition, looks at the set of latency charts for this application,
     and can immediately click through to the distributed tracing system.
+  id: totrans-166
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以在热图上绘制示例跟踪（样本），如[图 3-5](part0008_split_024.html#trace_exemplars)所示，并通过将热图单元格转换为链接使热图更加交互化，直接跳转到跟踪界面，从中可以查看与这些标准匹配的一组跟踪。因此，负责系统的工程师收到延迟条件的警报后，查看此应用程序的延迟图表集，并可以立即点击跳转到分布式跟踪系统。
 - en: '![srej 0305](../images/00041.png)'
+  id: totrans-167
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0305](../images/00041.png)'
 - en: Figure 3-5\. Zipkin trace data plotted on top of a Prometheus histogram represented
     as a heatmap in Grafana
+  id: totrans-168
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 3-5\. 在 Grafana 中以热图形式呈现的 Zipkin 追踪数据叠加在 Prometheus 直方图上
 - en: This sort of correlative plot makes metrics and tracing together more valuable.
     We’d normally lose through aggregation an understanding of what happened in particular
     cases when looking at metrics data. Traces, on the other hand, lack the understanding
     of the big picture that metrics provide.
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种相关性绘图使得指标和追踪一起变得更有价值。通过聚合，我们通常会失去对特定情况下发生了什么的理解，而查看指标数据。另一方面，追踪则缺乏指标提供的整体情况理解。
 - en: Also, since it is certainly possible that trace sampling (again, to control
     cost) has thrown away all the traces that would match a particular latency bucket,
     we still get to understand what latencies end users experienced even if we aren’t
     able to drill into the trace detail.
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 另外，由于确实可能发生了追踪抽样（再次为了控制成本），已经丢弃了所有匹配特定延迟桶的追踪，即使我们无法深入了解追踪细节，我们仍然能够了解最终用户经历了什么样的延迟。
 - en: This visualization is built through the combination of independent Prometheus
     and Zipkin queries, as shown in [Figure 3-6](part0008_split_024.html#prometheus_zipkin_queries_grafana).
     Notice that the tags don’t have to strictly line up between the metrics and tracing
@@ -943,16 +1283,25 @@
     turned on) is collected with a tag called `uri`. Spring Cloud Sleuth instruments
     Spring in a similar way but tags traces with `http.uri`. These are of course logically
     equivalent.
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 此可视化是通过独立的 Prometheus 和 Zipkin 查询的组合构建的，如 [图 3-6](part0008_split_024.html#prometheus_zipkin_queries_grafana)
+    所示。请注意，指标和追踪工具之间的标签不一定严格对应。Micrometer 的 `Timer` 被称为 `http.server.requests`（在打开直方图时，Prometheus
+    中称为 `http_server_requests_second_bucket`），使用一个名为 `uri` 的标签进行收集。Spring Cloud Sleuth
+    以类似的方式仪表化 Spring，但使用 `http.uri` 标记跟踪。这些当然在逻辑上是等价的。
 - en: '![srej 0306](../images/00019.png)'
+  id: totrans-172
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0306](../images/00019.png)'
 - en: Figure 3-6\. Independent Prometheus and Zipkin queries form the combined trace
     exemplar heatmap
+  id: totrans-173
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 3-6\. 独立的 Prometheus 和 Zipkin 查询形成了联合追踪示例热图
 - en: It should be clear, however, that even though the tag keys (and even values)
     don’t have to be identical, if you want to filter the heatmap to a metrics tag
     that has no logical equivalent in the tracing data, then it won’t be possible
@@ -963,16 +1312,23 @@
     outcomes because their latency characteristics can be quite different (e.g., failures
     occur abnormally fast due to an external resource unavailability or abnormally
     slow due to a timeout).
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，应当明确的是，即使标签键（甚至值）不必完全相同，如果您想要将热图过滤到在追踪数据中没有逻辑等价物的指标标签，那么将无法准确地找到与热图上所见内容匹配的样本（会有一些误报）。例如，Spring
+    Cloud Sleuth 最初没有使用 HTTP 状态码或结果标记跟踪，而 Spring 的 Micrometer 工具包则有。通常我们希望将延迟可视化限制在成功或失败的结果之一，因为它们的延迟特性可能会有很大不同（例如，失败由于外部资源不可用而异常快速或由于超时而异常缓慢）。
 - en: So far, our look at distributed tracing has strictly been related to observability,
     but it can serve other purposes that influence or govern the way traffic is handled.
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们对分布式追踪的探讨严格限于可观察性，但它可以用于影响或管理流量处理的其他目的。
 - en: Using Trace Context for Failure Injection and Experimentation
+  id: totrans-176
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用追踪上下文进行失败注入和实验
 - en: Earlier, when discussing sampling methods for distributed tracing, we covered
     boundary sampling (see [“Boundary Sampling”](part0008_split_019.html#boundary_sampling)).
     In this method, a sampling decision is made up front (i.e., at the edge), and
@@ -980,27 +1336,38 @@
     in satisfying a request. There is an interesting opportunity to make other up-front
     decisions and leverage trace context to pass along other information unrelated
     to sampling decisions to downstream services as well.
+  id: totrans-177
   prefs: []
   type: TYPE_NORMAL
+  zh: 在早期讨论分布式追踪的抽样方法时，我们涵盖了边界抽样（参见 [“边界抽样”](part0008_split_019.html#boundary_sampling)）。在这种方法中，抽样决策是事先做出的（即在边缘处），并且此决策向下游微服务传播，这些微服务参与满足请求。有一个有趣的机会可以做其他事先决策，并利用跟踪上下文将与抽样决策无关的其他信息传递给下游服务。
 - en: A well-known example of this is *failure injection testing* (FIT), a specific
     form of chaos engineering. The overall discipline of chaos engineering is broad
     and covered in detail in [*Chaos Engineering*](http://shop.oreilly.com/product/0636920203957.do).
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 这其中一个著名的例子是*故障注入测试*（FIT），这是混沌工程的一种特定形式。混沌工程的整体学科是广泛的，并且在[*混沌工程*](http://shop.oreilly.com/product/0636920203957.do)中有详细介绍。
 - en: Failure injection decisions can be added by the API gateway up front in coordination
     with rules provided by a central FIT service and propagated downstream as a trace
     tag. Later, a microservice in the execution path can use this information about
     a failure test to unnaturally fail a request in some way. [Figure 3-7](part0008_split_025.html#failure_injection_testing)
     shows the whole process, end to end.
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: API 网关可以在与由中央 FIT 服务提供的规则协调的前提下，前置添加故障注入决策，并作为跟踪标签向下游传播。稍后，执行路径中的微服务可以使用有关故障测试的信息，以某种方式非自然地使请求失败。[图 3-7](part0008_split_025.html#failure_injection_testing)
+    显示了整个过程，端到端。
 - en: '![srej 0307](../images/00043.png)'
+  id: totrans-180
   prefs: []
   type: TYPE_IMG
+  zh: '![srej 0307](../images/00043.png)'
 - en: Figure 3-7\. Failure injection testing process from user request to failure
+  id: totrans-181
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图 3-7\. 从用户请求到故障的故障注入测试过程
 - en: Attaching this kind of decision to telemetry has the added benefit that any
     sampled traces that also are part of a failure injection are tagged as such, so
     you can differentiate between real and intentional failures when looking at telemetry
@@ -1009,28 +1376,44 @@
     Sleuth starter applied) looking up and adding a FIT decision as “baggage” to the
     trace context, which can automatically be converted to a trace tag by setting
     the property `spring.sleuth.baggage.tag-fields=failure.injection`.
+  id: totrans-182
   prefs: []
   type: TYPE_NORMAL
+  zh: 将这种决策附加到遥测数据中的一个附加好处是，任何作为故障注入一部分的抽样跟踪都会被标记为这样，因此当稍后查看遥测数据时，您可以区分真实故障和故意故障。[示例 3-8](part0008_split_025.html#gateway_adding_fit)
+    显示了一个简化的 Spring Cloud Gateway 应用程序示例（同时应用了 Spring Cloud Sleuth Starter），查找并将 FIT
+    决策作为 "baggage" 添加到跟踪上下文，这可以通过设置属性 `spring.sleuth.baggage.tag-fields=failure.injection`
+    自动转换为跟踪标签。
 - en: Example 3-8\. Spring Cloud Gateway adding failure injection testing data to
     trace context
+  id: totrans-183
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-8\. Spring Cloud Gateway 将故障注入测试数据添加到跟踪上下文
 - en: '[PRE7]'
+  id: totrans-184
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: Then, add an incoming request filter (in this case a WebFlux `WebFilter`) to
     all microservices that might participate in failure injection tests, as shown
     in [Example 3-9](part0008_split_025.html#fit_web_filter).
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，将一个入站请求过滤器（在这种情况下是一个 WebFlux `WebFilter`）添加到可能参与故障注入测试的所有微服务中，如 [示例 3-9](part0008_split_025.html#fit_web_filter)
+    所示。
 - en: Example 3-9\. WebFlux WebFilter for failure injection testing
+  id: totrans-186
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-9\. WebFlux WebFilter 用于故障注入测试
 - en: '[PRE8]'
+  id: totrans-187
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: We can also add a failure injection test decision as a tag to HTTP client metrics,
     as shown in [Example 3-10](part0008_split_025.html#micrometer_webflux_metrics_fit).
     It may be useful to filter out failure injection tests from our notion of the
@@ -1039,30 +1422,43 @@
     alerted to and responding to unexpected failure, but the data will still be present
     so that the investigating engineer can dimensionally drill down to determine if
     the alert was caused by failure injection or by real issues.
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们还可以将故障注入测试决策作为 HTTP 客户端指标的一个标签添加，如 [示例 3-10](part0008_split_025.html#micrometer_webflux_metrics_fit)
+    所示。将故障注入测试从我们对与下游服务的 HTTP 客户端交互的错误比率的概念中过滤掉可能是有用的。或者，它们被保留下来以提醒标准来验证对意外故障的警觉和响应的工程学纪律，但数据仍然存在，以便调查工程师可以维度下钻以确定警报是由故障注入引起还是由真实问题引起。
 - en: Example 3-10\. Adding the failure injection testing decision as a Micrometer
     tag
+  id: totrans-189
   prefs:
   - PREF_H5
   type: TYPE_NORMAL
+  zh: 示例 3-10\. 将故障注入测试决策作为 Micrometer 标签添加
 - en: '[PRE9]'
+  id: totrans-190
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: This is just a sketch, of course. It is up to you how you would define a failure
     injection service, and under what conditions to select requests for failure injection.
     For a simple set of rules, this service could even be an integral part of your
     gateway application.
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
+  zh: 当然，这只是一个草图。由你决定如何定义故障注入服务，以及在什么条件下选择注入故障的请求。对于一组简单的规则，这种服务甚至可以成为你网关应用的一个组成部分。
 - en: In addition to failure injection, trace baggage could be used to propagate decisions
     about whether a request is participating in A/B experiments as well.
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了故障注入外，跟踪 "baggage" 还可以用于传播有关请求是否参与 A/B 实验的决策。
 - en: Summary
+  id: totrans-193
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 总结
 - en: In this chapter, we’ve shown the difference between monitoring for availability
     and monitoring for debugging. The event-based nature of debugging signals means
     they tend to want to grow proportionally with increased throughput through a system,
@@ -1071,14 +1467,20 @@
     give us pause about trying to build aggregations around them, since every form
     of sampling discards some part of the distribution and thus skews the aggregation
     in one form or another.
+  id: totrans-194
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们展示了监控可用性与监控调试之间的区别。调试信号的事件驱动特性意味着它们倾向于随系统吞吐量的增加而成比例增长，因此需要一种控制成本的限制措施。讨论了控制成本的不同采样方法。调试信号通常被采样的事实应该使我们对试图围绕它们构建聚合操作产生疑虑，因为每种采样形式都会丢弃某些分布的部分，从而使聚合结果产生某种形式的偏差。
 - en: Lastly, we showed how in addition to its chief function in publishing debugging
     information, we can piggyback on trace context propagation to propagate behaviors
     down a deep microservice call chain.
+  id: totrans-195
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们展示了除了在发布调试信息方面的主要功能外，我们还可以利用跟踪上下文传播来在深度微服务调用链中传播行为。
 - en: In the next chapter, we return to metrics, showing which availability signals
     you should start with for basically every Java microservice.
+  id: totrans-196
   prefs: []
   type: TYPE_NORMAL
+  zh: 在接下来的章节中，我们将回到指标的话题，展示你应该从哪些可用性信号开始，这对于几乎每个 Java 微服务都是基础。
