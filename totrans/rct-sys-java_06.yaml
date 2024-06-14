@@ -925,6 +925,7 @@
   id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，`select`是在上世纪80年代实现的。它支持注册1,024个套接字。在80年代这当然足够了，但现在不再是这样了。
 - en: '`poll` is a replacement for `select` introduced in 1997. The most significant
     difference is that `poll` no longer limits the number of sockets. However, as
     with `select`, the system tells you only how many channels are ready, not which
@@ -934,6 +935,7 @@
   id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: '`poll`是1997年引入的`select`的替代品。最大的区别是，`poll`不再限制套接字的数量。但是，与`select`一样，系统仅告诉您有多少通道准备就绪，而不是哪些通道准备就绪。您需要迭代通道集合以检查哪些通道已准备就绪。当通道较少时，这不是一个大问题。一旦通道数量超过数十万，迭代时间就会相当可观。'
 - en: Then, `epoll` appeared in 2002 in the Linux Kernel 2.5.44. `Kqueue` appeared
     in FreeBSD in 2000 and `/dev/poll` in Solaris around the same time. These mechanisms
     return the set of channels that are ready to be processed—no more iteration over
@@ -942,6 +944,7 @@
   id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，`epoll`在2002年出现在Linux内核2.5.44中。`Kqueue`在2000年出现在FreeBSD中，而`/dev/poll`在同一时间左右出现在Solaris中。这些机制返回准备处理的通道集合——不再需要迭代处理每个通道！最后，Windows系统提供了IOCP，这是`select`的优化实现。
 - en: What’s important to remember is that regardless of how the operating systems
     implement it, with nonblocking I/O, you need only a single thread to handle multiple
     requests. This model is much more efficient than blocking I/O, as you don’t need
@@ -952,6 +955,8 @@
   id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 重要的是要记住，无论操作系统如何实现，使用非阻塞I/O，您只需要一个线程来处理多个请求。这个模型比阻塞I/O更高效，因为您不需要创建线程来处理并发请求。消除这些额外的线程使您的应用程序在内存消耗（每个线程约为1
+    MB）方面更高效，并避免因上下文切换而浪费CPU周期（每次切换1-2微秒）^([4](ch04.html#idm45358830663584))
 - en: Reactive systems recommend the use of nonblocking I/O to receive and send messages.
     Thus, your application can handle more messages with fewer resources. Another
     advantage is that an idle application would consume almost no memory or CPUs.
@@ -959,11 +964,13 @@
   id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 响应式系统建议使用非阻塞I/O来接收和发送消息。因此，您的应用程序可以使用更少的资源处理更多的消息。另一个优点是，空闲应用程序几乎不会消耗内存或CPU。您不必预先保留资源。
 - en: Reactor Pattern and Event Loop
   id: totrans-125
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 反应器模式和事件循环
 - en: 'Nonblocking I/O gives us the possibility to handle multiple concurrent requests
     or messages with a single thread. How could we handle these concurrent requests?
     How do we structure our code when using nonblocking I/O? The examples given in
@@ -974,27 +981,33 @@
   id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 非阻塞I/O使我们有可能使用单个线程处理多个并发请求或消息。我们如何处理这些并发请求？在使用非阻塞I/O时如何构建我们的代码结构？前一节中给出的示例的性能不佳；我们很快就会看到，使用这种模型实现REST
+    API将是一场噩梦。此外，我们希望避免使用工作线程，因为这将抛弃非阻塞I/O的优势。我们需要不同的东西：反应器模式。
 - en: The *reactor pattern*, illustrated in [Figure 4-7](#image:event-loop), allows
     associating I/O events with *event handlers*. The *reactor*, the cornerstone of
     this mechanism, invokes the event handlers when the expected event is received.
   id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: '*反应器模式*，如[图 4-7](#image:event-loop)所示，允许将I/O事件与*事件处理程序*关联起来。*反应器*，这个机制的基石，当接收到预期的事件时调用事件处理程序。'
 - en: The purpose of the reactor pattern is to avoid creating a thread for each message,
     request, and connection. This pattern receives events from multiple channels and
     sequentially distributes them to the corresponding event handlers.
   id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: 反应器模式的目的是避免为每个消息、请求和连接创建线程。该模式从多个通道接收事件，并将它们顺序地分配给相应的事件处理程序。
 - en: '![The reactor pattern](assets/rsij_0407.png)'
   id: totrans-129
   prefs: []
   type: TYPE_IMG
+  zh: '![反应器模式](assets/rsij_0407.png)'
 - en: Figure 4-7\. The reactor pattern
   id: totrans-130
   prefs:
   - PREF_H6
   type: TYPE_NORMAL
+  zh: 图4-7。反应器模式
 - en: Implementation of the reactor pattern uses an *event loop* ([Figure 4-7](#image:event-loop)).
     It’s a thread iterating over the set of channels, and when data is ready to be
     consumed, the event loop invokes the associated event handler sequentially, in
