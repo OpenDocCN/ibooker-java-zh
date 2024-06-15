@@ -1,4 +1,4 @@
-# 第一章. 简介 Spring Boot
+# 第一章：简介 Spring Boot
 
 本章探讨了 Spring Boot 的三个核心特性以及它们如何作为开发者的增强因子。
 

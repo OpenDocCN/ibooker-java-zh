@@ -1,4 +1,4 @@
-# 第三章. WebDriver 基础知识
+# 第三章：WebDriver 基础知识
 
 本章介绍了 Selenium WebDriver API 的基本方面。为此，我们首先回顾了创建`WebDriver`层次结构实例的不同方法（例如，`ChromeDriver`，`EdgeDriver`，`FirefoxDriver`等）。此外，我们还探讨了这些对象中可用的主要方法。其中，在网页中定位不同元素至关重要。因此，您将了解可能的定位器，即在网页中查找元素的策略（在 Selenium WebDriver API 中称为`WebElement`），例如按标签名称，链接文本，HTML 属性（标识符，名称或类），CSS 选择器或 XPath。本章还涵盖了 Selenium WebDriver API 的另一个关键方面，即模拟用户操作（即使用键盘和鼠标自动与网页进行交互）。本章的最后部分介绍了等待网页元素的能力。由于 Web 应用程序的动态和异步性质，此功能至关重要。
 

@@ -1,4 +1,4 @@
-# 第十一章 数据科学与 R
+# 第十一章：数据科学与 R
 
 数据科学是一个相对较新的学科，最初因 [O’Reilly 的 Mike Loukides 的这篇文章](https://www.oreilly.com/ideas/what-is-data-science) 而引起了许多人的注意。虽然在这个领域有许多定义，但 Loukides 将他对该领域的详细观察和参与归结为这个定义：
 

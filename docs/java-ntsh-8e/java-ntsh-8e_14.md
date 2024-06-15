@@ -1,4 +1,4 @@
-# 第十二章。Java 平台模块
+# 第十二章：Java 平台模块
 
 在本章中，我们将对 *Java 平台模块系统*（JPMS）进行基本介绍。然而，这是一个大而复杂的主题——有兴趣的读者可能需要更深入的参考资料，如《Java 9 Modularity》（O'Reilly）的 Sander Mak 和 Paul Bakker。
 

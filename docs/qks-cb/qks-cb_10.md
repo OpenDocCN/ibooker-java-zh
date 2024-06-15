@@ -1,4 +1,4 @@
-# 第十章. 集成 Kubernetes
+# 第十章：集成 Kubernetes
 
 到目前为止，您一直在学习如何在裸机上开发和运行 Quarkus 应用程序，但 Quarkus 真正发光的地方是在 Kubernetes 集群中运行时。
 

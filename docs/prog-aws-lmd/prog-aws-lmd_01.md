@@ -1,4 +1,4 @@
-# 第一章。服务器无服务器、Amazon Web Services 和 AWS Lambda 介绍
+# 第一章：服务器无服务器、Amazon Web Services 和 AWS Lambda 介绍
 
 要开始您的无服务器之旅，我们将带您简要了解云，并定义无服务器。之后，我们将深入探讨 Amazon Web Services（AWS）——这对一些人来说是新的，对另一些人来说是一个复习。
 

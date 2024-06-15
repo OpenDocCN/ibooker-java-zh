@@ -1,4 +1,4 @@
-# 第六章\. 远程 WebDriver
+# 第六章：远程 WebDriver
 
 到目前为止，本书中解释的示例都是在执行测试的机器上使用本地安装的 web 浏览器。本章涵盖了 Selenium WebDriver API 的另一个重要特性，即使用远程浏览器的能力（即安装在其他主机上）。首先，我们回顾了允许在 Selenium WebDriver 中使用远程浏览器的架构。其次，我们研究了 Selenium Grid，这是一个为 Selenium WebDriver 测试提供远程浏览器的网络基础设施。第三，我们分析了一些最重要的云提供商，即提供自动化测试托管服务的公司。最后，我们探讨了如何使用 Docker 来支持 Selenium 的浏览器基础设施。
 

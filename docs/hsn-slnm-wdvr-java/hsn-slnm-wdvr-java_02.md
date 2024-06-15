@@ -1,4 +1,4 @@
-# 第一章. Selenium 入门
+# 第一章：Selenium 入门
 
 [*Selenium*](https://www.selenium.dev) 是一个由一组库和工具组成的开源套件，允许自动化 web 浏览器。我们可以将 Selenium 视为一个以三个核心组件为中心的项目：WebDriver、Grid 和 IDE（集成开发环境）。Selenium WebDriver 是一个允许以编程方式驱动浏览器的库。因此，我们可以使用 Selenium WebDriver 自动化地浏览网站并与网页交互（例如点击链接、填写表单等），就像真实用户一样。 Selenium WebDriver 的主要用途是自动化测试 web 应用程序。 Selenium 的其他用途包括自动化基于 web 的管理任务或网络抓取（自动化的 web 数据提取）。
 

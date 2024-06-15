@@ -1,4 +1,4 @@
-# Selenium 4 新功能简介
+# 附录 A. Selenium 4 新功能简介
 
 本附录总结了 Selenium 4 中可用的新功能。内容的目的有两个：首先，它列举了 Selenium 套件核心组件（即 WebDriver、Driver 和 IDE）中的新功能，并提供了解释每个方面的书籍章节的链接。此外，本附录还描述了 Selenium 4 中随 Selenium 3 到 4 迁移时变化的其他方面，例如文档和治理。第二个目标是识别从 Selenium 3 到 4 迁移时废弃部分及相应的新功能。
 

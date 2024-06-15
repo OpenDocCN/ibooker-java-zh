@@ -1,4 +1,4 @@
-# 第二章。测试准备
+# 第二章：测试准备
 
 这一章旨在使用 Selenium WebDriver 和 Java 语言实现你的第一个端到端测试。为此，我们首先回顾了技术要求，包括先前的知识、硬件和软件。其次，本章概述了设置包含 Selenium WebDriver 测试的 Java 项目的概述。您可以使用类似 Maven 或 Gradle 的构建工具来简化项目设置。最后，您将学习使用 Selenium WebDriver 实现基本的端到端测试，即*hello world*测试。我们将使用不同的 Web 浏览器（如 Chrome、Edge 或 Firefox）和单元测试框架（JUnit 和 TestNG）以多种风格实现此测试。请记住，本书中的每个代码示例都可以在[开源 GitHub 存储库](https://github.com/bonigarcia/selenium-webdriver-java)中找到。因此，您可以重用此存储库的内容和配置作为自己测试的基础。
 

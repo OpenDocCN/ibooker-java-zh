@@ -1,4 +1,4 @@
-# 第五章\. 浏览器特定操作
+# 第五章：浏览器特定操作
 
 正如你所见，Selenium WebDriver API 的许多特性在各种浏览器中是兼容的，即我们可以使用 Selenium WebDriver 以编程方式控制不同类型的浏览器。Selenium WebDriver API 的其他部分在浏览器之间是不可互操作的。换句话说，一些 WebDriver 特性对于某些浏览器（如 Chrome 或 Edge）是可用的，而对于其他浏览器（如 Firefox）则不可用（或不同）。本章回顾了这些特定于浏览器的特性。
 

@@ -1,4 +1,4 @@
-# 第十三章 Quarkus REST 客户端
+# 第十三章：Quarkus REST 客户端
 
 在第三章，您已经学习了如何开发 RESTful 服务，但在本章中，您将学习如何在 RESTful Web 服务之间进行通信。
 

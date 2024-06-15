@@ -1,4 +1,4 @@
-# 第十章。超越 Selenium
+# 第十章：超越 Selenium
 
 本章通过介绍几种与 Selenium 互补的技术来结束本书。首先，我们分析了移动应用程序的基础并介绍了 Appium，这是一个流行的用于移动测试的测试框架。然后，您将学习如何使用名为 REST Assured 的开源 Java 库测试 REST（表现状态转移）服务。最后，您将介绍用于实施 Web 应用程序端到端测试的 Selenium WebDriver 的替代工具，即：Cypress、WebDriverIO、TestCafe、Puppeteer 和 Playwright。
 

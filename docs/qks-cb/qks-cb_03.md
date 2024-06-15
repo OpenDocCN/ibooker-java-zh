@@ -1,4 +1,4 @@
-# 第三章 开发 RESTful 服务
+# 第三章：开发 RESTful 服务
 
 Quarkus 集成了 RESTEasy，一个 JAX-RS 实现，用于定义 REST API。在本章中，您将学习如何在 Quarkus 中开发 RESTful Web 服务。我们将涵盖以下主题：
 

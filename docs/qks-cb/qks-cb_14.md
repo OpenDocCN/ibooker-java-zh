@@ -1,4 +1,4 @@
-# 第十四章 开发 Quarkus 应用程序使用 Spring API
+# 第十四章：开发 Quarkus 应用程序使用 Spring API
 
 到目前为止，您已经看到每个示例都是使用 CDI 注解（如 `@Inject` 或 `@Produces`）、JAX-RS 注解或 Java EE 安全性注解开发的。但是 Quarkus 也为一些最常用的 Spring 库提供了兼容层，因此您可以使用关于 Spring Framework 的所有知识来开发 Quarkus 应用程序。
 

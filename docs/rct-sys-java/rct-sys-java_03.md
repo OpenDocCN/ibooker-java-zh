@@ -1,4 +1,4 @@
-# 第二章。Quarkus 简介
+# 第二章：Quarkus 简介
 
 在继续理解响应式之前，让我们花点时间了解一下 Quarkus。那么，什么是 Quarkus？
 
