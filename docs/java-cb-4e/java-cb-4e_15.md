@@ -2,7 +2,7 @@
 
 # 第 15.0 章 引言
 
-Java 语言的一个更好的方面之一是它定义了一个非常清晰的打包机制，用于分类和管理其庞大的 API。与大多数其他语言相比，这些语言中的符号可能在 C 库本身或其他几十个库中找到，而没有明确定义的命名约定。^(1) API 包括一个或多个包，包括类，类包括方法和字段。任何人都可以创建一个包，但有一个重要的限制：你和我不能创建以四个字母 `java` 开头的包。以 `java.` 或 `javax.` 命名的包是由 Oracle 的 Java 开发人员使用的，受 Java Community Process (JCP) 管理。当 Java 刚推出时，大约有十几个包，这个结构至今仍然存在，尽管它的大小已经增加了四倍；其中一些包显示在 Table 15-1 中。
+Java 语言的一个更好的方面之一是它定义了一个非常清晰的打包机制，用于分类和管理其庞大的 API。与大多数其他语言相比，这些语言中的符号可能在 C 库本身或其他几十个库中找到，而没有明确定义的命名约定。¹ API 包括一个或多个包，包括类，类包括方法和字段。任何人都可以创建一个包，但有一个重要的限制：你和我不能创建以四个字母 `java` 开头的包。以 `java.` 或 `javax.` 命名的包是由 Oracle 的 Java 开发人员使用的，受 Java Community Process (JCP) 管理。当 Java 刚推出时，大约有十几个包，这个结构至今仍然存在，尽管它的大小已经增加了四倍；其中一些包显示在 Table 15-1 中。
 
 Table 15-1\. Java 包基本结构
 
@@ -435,7 +435,7 @@ MySillyAttribute: true
 MySillynessLevel: high (5'11")
 ```
 
-你将其存储在一个名为*manifest.stub*的文件中^(2)，并使用 `-m` 开关将其传递给*jar*。*jar* 将包含你的属性在它创建的清单文件中：
+你将其存储在一个名为*manifest.stub*的文件中²，并使用 `-m` 开关将其传递给*jar*。*jar* 将包含你的属性在它创建的清单文件中：
 
 ```java
 jar -cv -m manifest.stub -f /tmp/com.darwinsys.util.jar .
@@ -768,6 +768,6 @@ LockManager mgr = opt.get();
 
 JPMS 是相对较新的技术，库提供者仍在学习如何正确使用它。早期的发布可以在 [*https://openjdk.java.net/projects/jigsaw/quick-start*](https://openjdk.java.net/projects/jigsaw/quick-start) 找到。关于迁移到模块化的计划可以在 [*http://tutorials.jenkov.com/java/modules.html#migrating-to-java-9*](http://tutorials.jenkov.com/java/modules.html#migrating-to-java-9) 找到。关于准备多模块 Maven 应用程序的讨论可以在 [*https://www.baeldung.com/maven-multi-module-project-java-jpms*](https://www.baeldung.com/maven-multi-module-project-java-jpms) 找到。Sander Mak 和 Paul Bakker 的书 [*Java 9 Modularity: Patterns and Practices for Developing Maintainable Applications*](http://shop.oreilly.com/product/0636920049494.do) 可能是对 JPMS 最全面的处理。
 
-^(1) 这并不严格正确。至少在 Unix 中的 C 语言中，普通的包含文件和*sys*子目录中的文件是有区别的，而且许多结构体的名称以一个或两个字母加下划线开始，如`pw_name`、`pw_passwd`和`pw_home`。但这远不及 Java 的`java.*`命名约定那样一致。
+¹ 这并不严格正确。至少在 Unix 中的 C 语言中，普通的包含文件和*sys*子目录中的文件是有区别的，而且许多结构体的名称以一个或两个字母加下划线开始，如`pw_name`、`pw_passwd`和`pw_home`。但这远不及 Java 的`java.*`命名约定那样一致。
 
-^(2) 有些人喜欢使用像*MyPackage.mf*这样的名称，这样就清楚这是为哪个包而准备的；扩展名*.mf*是任意的，但对于识别清单文件来说是一个好的约定。
+² 有些人喜欢使用像*MyPackage.mf*这样的名称，这样就清楚这是为哪个包而准备的；扩展名*.mf*是任意的，但对于识别清单文件来说是一个好的约定。

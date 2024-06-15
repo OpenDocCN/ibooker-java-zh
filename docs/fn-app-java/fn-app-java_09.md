@@ -6,7 +6,7 @@
 
 # 原始流
 
-在 Java 中，泛型仅适用于基于对象的类型（参见^(1)）。这就是为什么`Stream<T>`不能用于像`int`这样的原始值序列的原因。使用原始类型与流的唯一两种选项是：
+在 Java 中，泛型仅适用于基于对象的类型（参见¹）。这就是为什么`Stream<T>`不能用于像`int`这样的原始值序列的原因。使用原始类型与流的唯一两种选项是：
 
 +   自动装箱
 
@@ -233,7 +233,7 @@ DoubleStream doubles(long streamSize,
                      double randomNumberBound)
 ```
 
-技术上，这些流只是*有效地无限*，如它们文档中所述^(2)。如果未提供`streamSize`，结果流将包含`Long.MAX_VALUE`个元素。上限和下限由`randomNumberOrigin`（包括）和`randomNumberBound`（不包括）设置。
+技术上，这些流只是*有效地无限*，如它们文档中所述²。如果未提供`streamSize`，结果流将包含`Long.MAX_VALUE`个元素。上限和下限由`randomNumberOrigin`（包括）和`randomNumberBound`（不包括）设置。
 
 将在 “示例：随机数” 中讨论一般使用和性能特征。
 
@@ -263,7 +263,7 @@ DoubleStream doubles(long streamSize,
 
 # 从数组到流，再从流到数组
 
-数组是一种特殊类型的对象。它们是一种类似集合的结构，保存其*基本类型*的元素，并且仅提供一种通过索引访问特定元素以及数组的总长度的方法，除了从`java.lang.Object`继承的*通常*方法。它们也是未来直到*Valhalla 项目*变得可用之前，拥有原始类型集合的唯一方式^(3)。
+数组是一种特殊类型的对象。它们是一种类似集合的结构，保存其*基本类型*的元素，并且仅提供一种通过索引访问特定元素以及数组的总长度的方法，除了从`java.lang.Object`继承的*通常*方法。它们也是未来直到*Valhalla 项目*变得可用之前，拥有原始类型集合的唯一方式³。
 
 然而，数组具有两个特征使其非常适合基于流的处理。首先，它们在创建时就确定了长度并且不会改变。其次，它们是有序序列。这就是为什么`java.util.Arrays`上有多个便利方法来为不同的基本类型创建适当流的原因。使用适当的终端操作可以从流创建数组。
 
@@ -599,7 +599,7 @@ try (Stream<String> stream = Files.lines(location)) { ![3](img/3.png)
 
 ![1](img/#co_working_with_streams_CO5-1)
 
-使用 Project Gutenberg 的*《战争与和平》*普通文本版本^(4)，因此没有格式可能会影响单词计数。
+使用 Project Gutenberg 的*《战争与和平》*普通文本版本⁴，因此没有格式可能会影响单词计数。
 
 ![2](img/#co_working_with_streams_CO5-2)
 
@@ -672,7 +672,7 @@ try (Stream<String> stream = Files.lines(location)) {
 
 # 处理日期和时间
 
-处理日期始终是具有许多边缘情况的挑战。幸运的是，Java 8 引入了一个*日期和时间 API*⁠^(5)。其不可变性很好地适合于任何函数式代码，并且也提供了一些与流相关的方法。
+处理日期始终是具有许多边缘情况的挑战。幸运的是，Java 8 引入了一个*日期和时间 API*⁠⁵。其不可变性很好地适合于任何函数式代码，并且也提供了一些与流相关的方法。
 
 ## 查询时间类型
 
@@ -711,7 +711,7 @@ LocalTime time = LocalDateTime.now().query(LocalTime::from);
 | `zoneId()` | `ZoneId` |
 | `zone()` | `ZoneId` |
 
-显然，并非所有的时间 API 类型都支持每一种查询类型。例如，你无法从`Local…​`类型中获取`ZoneId`/`ZoneOffset`。每种方法都有详细的文档说明^(6)，说明了它们支持的类型和预期的使用情况。
+显然，并非所有的时间 API 类型都支持每一种查询类型。例如，你无法从`Local…​`类型中获取`ZoneId`/`ZoneOffset`。每种方法都有详细的文档说明⁶，说明了它们支持的类型和预期的使用情况。
 
 ## LocalDate-Range Streams
 
@@ -731,13 +731,13 @@ Java 9 引入了 Stream 的能力，用于单个 JSR 310 类型 `java.time.Local
 
 JVM 及其*即时*编译器可能很难进行基准测试和确定实际性能。这就是*Java 微基准测试工具包*的用武之地。
 
-[JMH](https://openjdk.java.net/projects/code-tools/jmh/) 负责 JVM 预热、迭代和代码优化，这可能会淡化结果，使其更可靠，因此更适合用作评估的基线。它是基准测试的*事实标准*，并在 JDK 版本 12 中被包含在内^(7)。
+[JMH](https://openjdk.java.net/projects/code-tools/jmh/) 负责 JVM 预热、迭代和代码优化，这可能会淡化结果，使其更可靠，因此更适合用作评估的基线。它是基准测试的*事实标准*，并在 JDK 版本 12 中被包含在内⁷。
 
 可用于 IDE 和构建系统的插件，例如 [Gradle](https://github.com/melix/jmh-gradle-plugin)、[IntelliJ](https://github.com/artyushov/idea-jmh-plugin)、[Jenkins](https://github.com/brianfromoregon/jmh-plugin) 或 [TeamCity](https://github.com/presidentio/teamcity-plugin-jmh)。
 
 [JMH GitHub 仓库的示例目录](https://github.com/openjdk/jmh/blob/master/jmh-samples/src/main/java/org/openjdk/jmh/samples/)有很多文档完整的基准测试，解释了其使用的复杂性。
 
-我不会进一步讨论如何在一般情况下对流或 lambda 进行基准测试，因为这超出了本章的范围，而且很容易占用整本书的空间。事实上，我建议你查看**《Java 优化》（Optimizing Java）**，作者是**本杰明·J·埃文斯**（Benjamin J Evans）、**詹姆斯·高夫**（James Gough）、**克里斯·纽兰德**（Chris Newland）^(8)，以及**《Java 性能》（Java Performance）**，作者是**斯科特·奥克斯**（Scott Oaks）^(9)，以了解更多关于基准测试和如何在 Java 中测量性能的信息。
+我不会进一步讨论如何在一般情况下对流或 lambda 进行基准测试，因为这超出了本章的范围，而且很容易占用整本书的空间。事实上，我建议你查看**《Java 优化》（Optimizing Java）**，作者是**本杰明·J·埃文斯**（Benjamin J Evans）、**詹姆斯·高夫**（James Gough）、**克里斯·纽兰德**（Chris Newland）⁸，以及**《Java 性能》（Java Performance）**，作者是**斯科特·奥克斯**（Scott Oaks）⁹，以了解更多关于基准测试和如何在 Java 中测量性能的信息。
 
 # 更多关于收集器的信息
 
@@ -1188,20 +1188,20 @@ Collector<CharSequence, StringJoiner, String> joinector =
 
 +   如果一组下游收集器的组合无法满足您的任务需求，您可以退而自行创建收集器。
 
-^(1) 正如在“Project Valhalla 和专用泛型”中讨论的那样，*Project Valhalla*将允许像原始类型这样的值类型用作泛型类型边界。然而，截至本书撰写之时，尚不清楚其具体可用日期。
+¹ 正如在“Project Valhalla 和专用泛型”中讨论的那样，*Project Valhalla*将允许像原始类型这样的值类型用作泛型类型边界。然而，截至本书撰写之时，尚不清楚其具体可用日期。
 
-^(2) 例如，[`Random#ints()`的文档](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Random.xhtml#ints())指出该方法被实现为`Random.ints(Long.MAX_VALUE)`的等效方法。
+² 例如，[`Random#ints()`的文档](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Random.xhtml#ints())指出该方法被实现为`Random.ints(Long.MAX_VALUE)`的等效方法。
 
-^(3) 有关*Project Valhalla*的更多信息，请参见侧边栏“Project Valhalla 和专用泛型”。
+³ 有关*Project Valhalla*的更多信息，请参见侧边栏“Project Valhalla 和专用泛型”。
 
-^(4) Project Gutenberg 提供多个免费版本的[《战争与和平》](https://www.gutenberg.org/ebooks/2600)。
+⁴ Project Gutenberg 提供多个免费版本的[《战争与和平》](https://www.gutenberg.org/ebooks/2600)。
 
-^(5) [Java *日期与时间 API*（JSR310）](https://openjdk.java.net/projects/threeten) 的目标是用一套全面的类型替换 `java.util.Date`，以一种不可变的方式提供一致和完整的日期和时间处理方法。
+⁵ [Java *日期与时间 API*（JSR310）](https://openjdk.java.net/projects/threeten) 的目标是用一套全面的类型替换 `java.util.Date`，以一种不可变的方式提供一致和完整的日期和时间处理方法。
 
-^(6) [官方文档 `java.time.temporal.TemporalQueries`](https://docs.oracle.com/javase/8/docs/api/java/time/temporal/TemporalQueries.xhtml) 详细列出了每个预定义 `TemporalQuery` 支持的类型。
+⁶ [官方文档 `java.time.temporal.TemporalQueries`](https://docs.oracle.com/javase/8/docs/api/java/time/temporal/TemporalQueries.xhtml) 详细列出了每个预定义 `TemporalQuery` 支持的类型。
 
-^(7) JMH 也支持 Java 12 之前的版本，但您需要手动包含其两个依赖项：[JMH Core](https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-core) 和 [JMH Generators/Annotation Processors](https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-generator-annprocess)。
+⁷ JMH 也支持 Java 12 之前的版本，但您需要手动包含其两个依赖项：[JMH Core](https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-core) 和 [JMH Generators/Annotation Processors](https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-generator-annprocess)。
 
-^(8) Evans, Benjamin J., Gough, James, Newland, Chris. 2018\. “优化 Java。” O’Reilly Media. 978-1-492-02579-5
+⁸ Evans, Benjamin J., Gough, James, Newland, Chris. 2018\. “优化 Java。” O’Reilly Media. 978-1-492-02579-5
 
-^(9) Oaks, Scott. 2020\. “Java 性能，第二版。” O’Reilly Media. ISBN 978-1-492-05611-9.
+⁹ Oaks, Scott. 2020\. “Java 性能，第二版。” O’Reilly Media. ISBN 978-1-492-05611-9.

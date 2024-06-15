@@ -8,7 +8,7 @@
 
 # Java 异常处理简介
 
-通常，异常是程序执行过程中发生的特殊事件，会打断正常指令流。这个概念不仅存在于 Java 中，而且在许多其他编程语言中都有，并可以追溯到 Lisp 的起源^(1)。
+通常，异常是程序执行过程中发生的特殊事件，会打断正常指令流。这个概念不仅存在于 Java 中，而且在许多其他编程语言中都有，并可以追溯到 Lisp 的起源¹。
 
 实际上，异常处理的形式取决于编程语言。
 
@@ -87,7 +87,7 @@ try (var fileReader = new FileReader(file);
 
 ###### 图 10-1\. Java 中的异常层次结构
 
-在编程语言中有不同类型的异常的概念相当不常见，并且由于它们在处理方式上的不同需求，是一个有争议的讨论话题。例如，Kotlin^(2)继承了处理异常的一般机制，但没有任何经过检查的异常。
+在编程语言中有不同类型的异常的概念相当不常见，并且由于它们在处理方式上的不同需求，是一个有争议的讨论话题。例如，Kotlin²继承了处理异常的一般机制，但没有任何经过检查的异常。
 
 # Lambda 表达式中的经过检查的异常
 
@@ -191,7 +191,7 @@ Stream.of(path1, path2, path3)
 
 ###### 注
 
-安全方法提取类似于*外观模式*的更局部化版本⁠^(3)。与包装整个类以提供更安全的、上下文特定接口不同，只有特定方法获得新外观以改进它们的处理以适应特定用例。这减少了受影响的代码量，但仍为您提供了外观的优点，如减少复杂性和提高可读性。这也是未来重构工作的良好起点。
+安全方法提取类似于*外观模式*的更局部化版本⁠³。与包装整个类以提供更安全的、上下文特定接口不同，只有特定方法获得新外观以改进它们的处理以适应特定用例。这减少了受影响的代码量，但仍为您提供了外观的优点，如减少复杂性和提高可读性。这也是未来重构工作的良好起点。
 
 提取的安全方法可能比在 lambda 中使用`try`-`catch`块更好，因为您保留了内联 lambda 和方法引用的表现力，并有机会处理任何异常。但是，处理被限制在另一个抽象层上的现有代码以恢复对干扰性控制流条件的控制。方法的实际调用者——流操作——没有处理异常的机会，使得处理不透明且不灵活。
 
@@ -290,7 +290,7 @@ String sneakyRead(File input) {
 
 等等，难道使用像`sneakyThrow`这样的方法抛出已检查的异常的人不必遵循捕获或指定的要求吗？
 
-嗯，这里有一个例外（双关语）。你可以利用 Java 8 关于泛型和异常的类型推断的变化^(4)。简单来说，如果一个泛型方法签名没有上限或下限，并且有`throws E`，编译器会假定类型`E`是`RuntimeException`。这使你可以创建以下的`sneakyThrow`：
+嗯，这里有一个例外（双关语）。你可以利用 Java 8 关于泛型和异常的类型推断的变化⁴。简单来说，如果一个泛型方法签名没有上限或下限，并且有`throws E`，编译器会假定类型`E`是`RuntimeException`。这使你可以创建以下的`sneakyThrow`：
 
 ```java
 <E extends Throwable> void sneakyThrow(Throwable e) throws E {
@@ -583,13 +583,13 @@ public record Result<V, E extends Throwable>(V value,
 
 Scala 可以说是 JVM 上可用的最接近 Java 的函数式语言，不考虑 Clojure，因为后者具有更外来的语法和动态类型系统。它解决了许多 Java 被认为有的“缺陷”，并且从根本上是函数式的，包括处理异常条件的优秀方式。
 
-*尝试/成功/失败*模式及其相关类型`Try[+T]`⁠^(5)，`Success[+T]`和`Failure[+T]`，是 Scala 处理异常的一种更函数式方式。
+*尝试/成功/失败*模式及其相关类型`Try[+T]`⁠⁵，`Success[+T]`和`Failure[+T]`，是 Scala 处理异常的一种更函数式方式。
 
 `Optional<T>` 表示值可能丢失，而 `Try[+T]` 可以告诉你 *为什么* 并提供处理任何发生的异常的可能性，类似于本章前面讨论的 `Result` 类型。如果代码成功，将返回一个 `Success[+T]` 对象，如果失败，错误将包含在一个 `Failure[+T]` 对象中。Scala 还支持 *模式匹配*，一种处理不同结果的 `switch`-like 概念。这允许相当简洁直接的异常处理，而无需 Java 开发者通常习惯的样板代码。
 
 ###### 注意
 
-自 Java 17 起，Java 的 `switch` 结构可以使用类似 Scala 的模式匹配作为预览功能^(6)。
+自 Java 17 起，Java 的 `switch` 结构可以使用类似 Scala 的模式匹配作为预览功能⁶。
 
 `Try[+T]` 可以处于 `Success[+T]` 或 `Failure[+T]` 状态，后者包含一个 `Throwable`。即使没有完全了解 Scala 语法，示例 10-8 中的代码对于 Java 开发者来说也不应该太陌生。
 
@@ -877,14 +877,14 @@ Stream.of(path1, path2, path3)
 
 +   在函数式代码中选择正确处理异常的方式高度依赖于周围的上下文。
 
-^(1) Guy L. Steele 和 Richard P. Gabriel. 1996 年。《Lisp 的演变》。《编程语言历史---II。计算机协会，233-330 页》(https://doi.org/10.1145/234286.1057818)。
+¹ Guy L. Steele 和 Richard P. Gabriel. 1996 年。《Lisp 的演变》。《编程语言历史---II。计算机协会，233-330 页》(https://doi.org/10.1145/234286.1057818)。
 
-^(2) [官方 Kotlin 文档](https://kotlinlang.org/docs/exceptions.xhtml)强调了 Java 和 Kotlin 异常处理之间的区别。
+² [官方 Kotlin 文档](https://kotlinlang.org/docs/exceptions.xhtml)强调了 Java 和 Kotlin 异常处理之间的区别。
 
-^(3) Gamma, E., Helm, R., Johnson, R., & Vlissides, J. (1994). 设计模式：可重用面向对象软件的元素。马萨诸塞州波士顿：Addison Wesley。
+³ Gamma, E., Helm, R., Johnson, R., & Vlissides, J. (1994). 设计模式：可重用面向对象软件的元素。马萨诸塞州波士顿：Addison Wesley。
 
-^(4) 类型解析的规则在《Java SE 8 语言规范》的第 §18.4 节中列出。
+⁴ 类型解析的规则在《Java SE 8 语言规范》的第 §18.4 节中列出。
 
-^(5) Scala 的泛型类型使用`[]`（方括号）而不是`<>`（尖括号）声明。`+`（加号）表示类型的变异性。有关类型变异的更多信息，请参见[“Scala 之旅”](https://docs.scala-lang.org/tour/variances.xhtml)。
+⁵ Scala 的泛型类型使用`[]`（方括号）而不是`<>`（尖括号）声明。`+`（加号）表示类型的变异性。有关类型变异的更多信息，请参见[“Scala 之旅”](https://docs.scala-lang.org/tour/variances.xhtml)。
 
-^(6) `switch` 的模式匹配首次预览在[JEP 406](https://openjdk.org/jeps/406)中描述。第二个预览在[Java 18](https://openjdk.org/jeps/420)中发布，其中包括[JEP 420](https://openjdk.org/jeps/420)的描述。下一个发布版本，Java 19，包括在[JEP 427](https://openjdk.org/jeps/427)中描述的第三个预览。该功能仍在发展中，并计划在 Java 20 中进行另一次预览，详见[JEP 433](https://openjdk.org/jeps/433)。
+⁶ `switch` 的模式匹配首次预览在[JEP 406](https://openjdk.org/jeps/406)中描述。第二个预览在[Java 18](https://openjdk.org/jeps/420)中发布，其中包括[JEP 420](https://openjdk.org/jeps/420)的描述。下一个发布版本，Java 19，包括在[JEP 427](https://openjdk.org/jeps/427)中描述的第三个预览。该功能仍在发展中，并计划在 Java 20 中进行另一次预览，详见[JEP 433](https://openjdk.org/jeps/433)。

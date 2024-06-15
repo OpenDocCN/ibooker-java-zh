@@ -1,6 +1,6 @@
 # 第五章。使用 Records
 
-Java 14 引入了一种新的数据结构类型作为预览^(1) 功能，两个版本后最终定型：*Records*。它们不仅仅是另一种典型的 Java 类型或技术，您可以使用。相反，Records 是一个全新的语言特性，为您提供了一个简单但功能丰富的数据聚合器，具有最少的样板代码。
+Java 14 引入了一种新的数据结构类型作为预览¹ 功能，两个版本后最终定型：*Records*。它们不仅仅是另一种典型的 Java 类型或技术，您可以使用。相反，Records 是一个全新的语言特性，为您提供了一个简单但功能丰富的数据聚合器，具有最少的样板代码。
 
 # 数据聚合类型
 
@@ -269,7 +269,7 @@ public record User(String username,
 
 名称
 
-命名规则与《Java 语言规范》中定义的任何其他标识符相同，如*Java 语言规范*⁠^(2)所述。
+命名规则与《Java 语言规范》中定义的任何其他标识符相同，如*Java 语言规范*⁠²所述。
 
 [泛型类型](https://example.org/generic_types)
 
@@ -325,7 +325,7 @@ public final class User extends java.lang.Record {
 
 ## 记录功能
 
-Records 是透明的数据聚合器，具有特定的保证属性和明确定义的行为，通过自动^(3)提供功能，无需重复编写以下琐碎的样板实现：
+Records 是透明的数据聚合器，具有特定的保证属性和明确定义的行为，通过自动³提供功能，无需重复编写以下琐碎的样板实现：
 
 +   [组件访问器](https://example.org/component_accessors)
 
@@ -482,7 +482,7 @@ public record User(@NonNull String username,
 }
 ```
 
-乍一看，`username`看起来像是一个参数，因此一个明智的结论是只有具有`ElementType.PARAMETER`目标的注解才可能存在^(4)。但是对于 Records 及其自动生成的字段和组件访问器，必须考虑一些特殊情况。为了支持对这些特性进行注解，如果应用于组件，则任何具有`FIELD`、`PARAMETER`或`METHOD`目标的注解将传播到相应的位置。
+乍一看，`username`看起来像是一个参数，因此一个明智的结论是只有具有`ElementType.PARAMETER`目标的注解才可能存在⁴。但是对于 Records 及其自动生成的字段和组件访问器，必须考虑一些特殊情况。为了支持对这些特性进行注解，如果应用于组件，则任何具有`FIELD`、`PARAMETER`或`METHOD`目标的注解将传播到相应的位置。
 
 除了现有的目标外，还引入了新的目标`ElementType.RECORD_COMPONENT`，用于在记录中实现更精细的注解控制。
 
@@ -988,7 +988,7 @@ var modified3 = original.with(builder -> builder.x(12)
                                                 .y(21));
 ```
 
-尽管使用外部工具来补充你的记录或任何代码可以节省大量输入，但也存在一些缺点。依赖于一个必不可少的项目部分的工具，会在它们之间形成难以打破的凝聚性。任何错误、安全问题或破坏性变更都可能以无法预料的方式影响你的代码，通常没有可能自行修复。注解处理器集成到你的构建工具中，使它们现在也相互关联。因此，请确保在将它们添加到你的项目之前对这些依赖进行彻底评估^(7)。
+尽管使用外部工具来补充你的记录或任何代码可以节省大量输入，但也存在一些缺点。依赖于一个必不可少的项目部分的工具，会在它们之间形成难以打破的凝聚性。任何错误、安全问题或破坏性变更都可能以无法预料的方式影响你的代码，通常没有可能自行修复。注解处理器集成到你的构建工具中，使它们现在也相互关联。因此，请确保在将它们添加到你的项目之前对这些依赖进行彻底评估⁷。
 
 ## 记录作为本地名义元组
 
@@ -1201,7 +1201,7 @@ public record User(String username,
 
 完整的序列化过程包括*序列化*（将对象转换为字节流）和*反序列化*（从字节流中读取对象）。如果没有明确提到，序列化描述的是整个过程，而不仅仅是第一个方面。
 
-对于普通的非 Record 对象，序列化依赖于昂贵的^(8) 反射来访问它们的私有状态。这个过程可以通过在类型中实现`private`方法`readObject`和`writeObject`进行定制。这两个方法没有由任何接口提供，但仍然属于[Java 对象序列化规范](https://docs.oracle.com/en/java/javase/17/docs/specs/serialization/serial-arch.xhtml)的一部分。它们难以正确实现，并且过去已经导致了许多漏洞^(9)。
+对于普通的非 Record 对象，序列化依赖于昂贵的⁸ 反射来访问它们的私有状态。这个过程可以通过在类型中实现`private`方法`readObject`和`writeObject`进行定制。这两个方法没有由任何接口提供，但仍然属于[Java 对象序列化规范](https://docs.oracle.com/en/java/javase/17/docs/specs/serialization/serial-arch.xhtml)的一部分。它们难以正确实现，并且过去已经导致了许多漏洞⁹。
 
 Record 仅由其不可变状态定义，由其组件表示。在创建后没有任何代码能够影响状态的情况下，序列化过程非常简单：
 
@@ -1299,7 +1299,7 @@ IdenticalPoint point = in.readObject();
 
 JDK 预览功能是 Java 语言、JVM 或 Java API 的新功能，完全指定、实现但是暂时的。一般的想法是收集实际使用的反馈，以便该功能可能在将来的版本中成为永久性的。
 
-Java 16 引入了 `instanceof` 操作符的模式匹配^(10)，在使用操作符后不再需要强制转换：
+Java 16 引入了 `instanceof` 操作符的模式匹配¹⁰，在使用操作符后不再需要强制转换：
 
 ```java
 // PREVIOUSLY
@@ -1316,7 +1316,7 @@ if (obj instanceof String str) {
 }
 ```
 
-Java 17 和 18 扩展了这个想法，通过启用 `switch` 表达式的模式匹配作为预览功能^(11)：
+Java 17 和 18 扩展了这个想法，通过启用 `switch` 表达式的模式匹配作为预览功能¹¹：
 
 ```java
 // WITHOUT SWITCH PATTERN MACTHING
@@ -1340,7 +1340,7 @@ String formatted = switch (obj) {
 };
 ```
 
-Java 19+ 也包括了这些 Records 的功能，包括解构^(12)，这意味着 Record 的组件可以直接作为变量在作用域中使用：
+Java 19+ 也包括了这些 Records 的功能，包括解构¹²，这意味着 Record 的组件可以直接作为变量在作用域中使用：
 
 ```java
 record Point(int x, int y) {
@@ -1385,26 +1385,26 @@ Java 的新数据聚合类型 Records 通过尽可能少的代码提供了极大
 
 +   记录提供了比基于类的兄弟更安全和更灵活的序列化解决方案。
 
-^(1) JDK 预览功能是设计、规范和实现完备，但不是永久性的功能。它旨在从社区中收集反馈以进一步发展。这样的功能可能在未来的版本中以不同的形式存在或完全不存在。
+¹ JDK 预览功能是设计、规范和实现完备，但不是永久性的功能。它旨在从社区中收集反馈以进一步发展。这样的功能可能在未来的版本中以不同的形式存在或完全不存在。
 
-^(2) 参见 Java 语言规范 [章节 3.8](https://docs.oracle.com/javase/specs/jls/se16/html/jls-3.xhtml#jls-3.8)，了解有效 Java 标识符的定义。
+² 参见 Java 语言规范 [章节 3.8](https://docs.oracle.com/javase/specs/jls/se16/html/jls-3.xhtml#jls-3.8)，了解有效 Java 标识符的定义。
 
-^(3) “自动魔法”一词描述了一种自动过程，对用户隐藏，因此类似于魔法。Records 提供它们的自动功能，无需额外的工具如注解处理器或额外的编译器插件。
+³ “自动魔法”一词描述了一种自动过程，对用户隐藏，因此类似于魔法。Records 提供它们的自动功能，无需额外的工具如注解处理器或额外的编译器插件。
 
-^(4) 要了解更多关于注解的一般信息以及如何使用它们，你应该查看我的文章[Java 注解解析](https://belief-driven-design.com/4f54e6e6c3f/)。
+⁴ 要了解更多关于注解的一般信息以及如何使用它们，你应该查看我的文章[Java 注解解析](https://belief-driven-design.com/4f54e6e6c3f/)。
 
-^(5) Gamma, E., Helm, R., Johnson, R., & Vlissides, J. (1994). Design patterns: Elements of reusable object-oriented software. Addison Wesley.
+⁵ Gamma, E., Helm, R., Johnson, R., & Vlissides, J. (1994). Design patterns: Elements of reusable object-oriented software. Addison Wesley.
 
-^(6) *单一责任原则* 是面向对象编程中 *SOLID* 原则的第一个。其五个原则旨在使 OO 设计更灵活、可维护和简单。
+⁶ *单一责任原则* 是面向对象编程中 *SOLID* 原则的第一个。其五个原则旨在使 OO 设计更灵活、可维护和简单。
 
-^(7) 我在我的[个人博客](https://belief-driven-design.com/e3e769e891b/)上写了一篇关于如何评估依赖关系的文章。
+⁷ 我在我的[个人博客](https://belief-driven-design.com/e3e769e891b/)上写了一篇关于如何评估依赖关系的文章。
 
-^(8) 关于反射的“成本”一词与产生的性能开销和暴露于安全问题有关。反射使用动态解析的类型信息，这导致 JVM 无法利用其所有可能的优化。因此，反射比它们的非反射对应物具有更慢的性能。
+⁸ 关于反射的“成本”一词与产生的性能开销和暴露于安全问题有关。反射使用动态解析的类型信息，这导致 JVM 无法利用其所有可能的优化。因此，反射比它们的非反射对应物具有更慢的性能。
 
-^(9) 方法`readObject`可以执行任意代码，而不仅仅是读取对象。一些相关的 CVE 包括：[CVE-2019-6503](https://nvd.nist.gov/vuln/detail/CVE-2019-6503)，[CVE-2019-12630](https://nvd.nist.gov/vuln/detail/CVE-2019-12630)，[CVE-2018-1851](https://nvd.nist.gov/vuln/detail/CVE-2018-1851)。
+⁹ 方法`readObject`可以执行任意代码，而不仅仅是读取对象。一些相关的 CVE 包括：[CVE-2019-6503](https://nvd.nist.gov/vuln/detail/CVE-2019-6503)，[CVE-2019-12630](https://nvd.nist.gov/vuln/detail/CVE-2019-12630)，[CVE-2018-1851](https://nvd.nist.gov/vuln/detail/CVE-2018-1851)。
 
-^(10) 将`instanceof`运算符扩展为支持 *模式匹配* 的概述在 [JEP 394](https://openjdk.java.net/jeps/394) 中。
+¹⁰ 将`instanceof`运算符扩展为支持 *模式匹配* 的概述在 [JEP 394](https://openjdk.java.net/jeps/394) 中。
 
-^(11) `switch` 的模式匹配总结在 [JEP 406](https://openjdk.java.net/jeps/406) 和 [JEP 430](https://openjdk.java.net/jeps/420) 中。
+¹¹ `switch` 的模式匹配总结在 [JEP 406](https://openjdk.java.net/jeps/406) 和 [JEP 430](https://openjdk.java.net/jeps/420) 中。
 
-^(12) 记录的模式匹配总结在 [JEP 405](https://openjdk.java.net/jeps/405) 中。
+¹² 记录的模式匹配总结在 [JEP 405](https://openjdk.java.net/jeps/405) 中。

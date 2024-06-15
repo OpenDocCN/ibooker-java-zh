@@ -53,7 +53,7 @@ var initials = user.initials();
 
 ![1](img/#co_handling_null_with_optionals_CO1-1)
 
-`String.format`接受`null`值，只要它不是格式字符串之后的唯一值^(1)。它会翻译为字符串`null`，无论所选的格式说明符如何，甚至对于数值类型也是如此。
+`String.format`接受`null`值，只要它不是格式字符串之后的唯一值¹。它会翻译为字符串`null`，无论所选的格式说明符如何，甚至对于数值类型也是如此。
 
 ![2](img/#co_handling_null_with_optionals_CO1-2)
 
@@ -108,7 +108,7 @@ var stillNotString = ((String) name) instanceof String; ![3](img/3.png)
 
 在 Java 中处理 `null` 是每个开发人员工作中必不可少的重要部分，尽管它可能很麻烦。遇到意外且未处理的 `NullPointerException` 是许多问题的根源，必须相应地处理。
 
-其他语言，如[Swift](https://www.swift.org)，提供了专用运算符和习语，如安全导航^(2)或 `null` 合并运算符^(3)，以便更轻松地处理 `null`。然而，Java 并没有提供这样的内置工具来处理 `null` 引用。
+其他语言，如[Swift](https://www.swift.org)，提供了专用运算符和习语，如安全导航²或 `null` 合并运算符³，以便更轻松地处理 `null`。然而，Java 并没有提供这样的内置工具来处理 `null` 引用。
 
 在使用 Optional 之前，有三种不同的方法来处理 `null` 引用：
 
@@ -198,7 +198,7 @@ public record User(long id, String firstname, String lastname) {
 
 这些规则旨在尽可能减少`null`的一般使用，特别是在代码交集处，如 API 表面，因为更少的暴露会导致更少的必需`null`检查和可能的`NullPointerExceptions`。但这并不意味着你应该完全避免`null`。例如，在隔离的上下文中，如局部变量或非`public`的 API 中，使用`null`并不那么问题，甚至可能简化您的代码，只要谨慎使用即可。
 
-你不能期望每个人都遵循与你相同的规则或者一样细心，因此你需要在代码中保持防御性，尤其是在你控制范围之外的情况下。这更加理由让你始终坚持最佳实践，并鼓励其他人也这样做。它们将提高你的整体代码质量，不论`null`如何。但这不是银弹，需要团队的纪律才能获得最大的好处。手动处理`null`并添加一些`null`检查优于因为假设某些东西“永远”不可能为`null`而导致意外的`NullPointerException`。即使是 JIT 编译器^(4)也会执行“`null`检查消除”，从优化的汇编代码中删除许多显式的`null`检查，这要归功于其在运行时的更多知识。
+你不能期望每个人都遵循与你相同的规则或者一样细心，因此你需要在代码中保持防御性，尤其是在你控制范围之外的情况下。这更加理由让你始终坚持最佳实践，并鼓励其他人也这样做。它们将提高你的整体代码质量，不论`null`如何。但这不是银弹，需要团队的纪律才能获得最大的好处。手动处理`null`并添加一些`null`检查优于因为假设某些东西“永远”不可能为`null`而导致意外的`NullPointerException`。即使是 JIT 编译器⁴也会执行“`null`检查消除”，从优化的汇编代码中删除许多显式的`null`检查，这要归功于其在运行时的更多知识。
 
 ## 工具辅助的空值检查
 
@@ -231,11 +231,11 @@ interface Example {
 
 方法参数`identifier`允许为`null`。
 
-JDK 不包括这些注解，对应的 [JSR 305](https://jcp.org/en/jsr/detail?id=305) 自 2012 年以来一直处于“休眠”状态。尽管如此，它仍然是事实上的社区标准，并被许多库、框架和 IDE 广泛采用。几个库^(5)提供了缺失的注解，大多数工具支持多种变体。
+JDK 不包括这些注解，对应的 [JSR 305](https://jcp.org/en/jsr/detail?id=305) 自 2012 年以来一直处于“休眠”状态。尽管如此，它仍然是事实上的社区标准，并被许多库、框架和 IDE 广泛采用。几个库⁵提供了缺失的注解，大多数工具支持多种变体。
 
 ###### 警告
 
-尽管 `@NonNull` 和 `@Nullable` 的行为在表面上似乎显而易见，但实际实现可能因工具不同而有所不同，特别是在边缘情况下^(6)。
+尽管 `@NonNull` 和 `@Nullable` 的行为在表面上似乎显而易见，但实际实现可能因工具不同而有所不同，特别是在边缘情况下⁶。
 
 工具辅助方法的一般问题在于对工具本身的依赖。如果它过于侵入式，你可能最终会得到无法运行的代码，特别是如果工具在“幕后”生成代码。然而，在涉及 `null` 相关注解的情况下，你不必过于担心。你的代码仍然可以在没有工具解释注解的情况下运行，并且你的变量和方法签名仍然能够清晰地传达它们的要求给任何使用它们的人，即使没有强制执行。
 
@@ -243,7 +243,7 @@ JDK 不包括这些注解，对应的 [JSR 305](https://jcp.org/en/jsr/detail?id
 
 工具辅助方法给你编译时的 `null` 检查，而专门类型则在运行时提供更安全的 `null` 处理。在 Java 引入自己的 `Optional` 类型之前，不同的库填补了这个缺失功能，比如自 2011 年起由 [Google Guava 框架](https://github.com/google/guava/wiki/Release10) 提供的基本的 `Optional` 类型。
 
-尽管 JDK 现在提供了一个集成的解决方案，Guava 在可预见的未来不打算弃用这个类^(7)。然而，他们温和建议你在可能的情况下优先选择新的、标准的 Java `Optional<T>`。
+尽管 JDK 现在提供了一个集成的解决方案，Guava 在可预见的未来不打算弃用这个类⁷。然而，他们温和建议你在可能的情况下优先选择新的、标准的 Java `Optional<T>`。
 
 # Optional 来拯救
 
@@ -571,7 +571,7 @@ if (permissions != null && !permissions.isEmpty()) {
 
 ###### 注意
 
-*Cyclomatic Complexity^(8)* 是用于确定代码复杂性的度量标准。它基于代码中的分支路径数或决策。总体思想是，直接的、非嵌套的语句和表达式更容易跟踪，比深度嵌套的决策分支，如嵌套的 `if` 语句，更不容易出错。
+*Cyclomatic Complexity⁸* 是用于确定代码复杂性的度量标准。它基于代码中的分支路径数或决策。总体思想是，直接的、非嵌套的语句和表达式更容易跟踪，比深度嵌套的决策分支，如嵌套的 `if` 语句，更不容易出错。
 
 ### 获取（回退）值
 
@@ -694,7 +694,7 @@ List<User> activeUsers =
 
 使用提供的`accumulator`运算符对流的元素进行规约。返回值是规约的结果，如果流为空，则返回一个空的 Optional。
 
-详见示例 9-11 以获取来自官方文档的等效伪代码示例^(9)。
+详见示例 9-11 以获取来自官方文档的等效伪代码示例⁹。
 
 ##### Example 9-11\. Pseudo-code equivalent to the `reduce` operation
 
@@ -765,7 +765,7 @@ Optional 可以通过提供一个多功能的“盒子”来极大地改善 JDK 
 
 因此，你仍然必须遵循最佳实践和非正式规则，以免抵消使用 Optionals 的好处。如果你设计一个 API 并决定使用 Optionals 作为返回类型，在任何情况下都*不能*返回 `null`！返回 Optional 是一个明确的信号，表明使用 API 的任何人至少会收到一个“盒子”，*可能*包含一个值，而不是可能的 `null` 值。如果没有可能的值，始终使用空的 Optional 或者等效的基本类型。
 
-尽管如此，这个基本的设计要求必须通过约定来执行。没有额外的工具，如 [SonarSource](https://www.sonarsource.com/)^(10)，编译器不会帮助你。
+尽管如此，这个基本的设计要求必须通过约定来执行。没有额外的工具，如 [SonarSource](https://www.sonarsource.com/)¹⁰，编译器不会帮助你。
 
 ## 敏感于身份的方法
 
@@ -777,7 +777,7 @@ Optional 可以通过提供一个多功能的“盒子”来极大地改善 JDK 
 
 两个相同的对象也是相等的，但反过来不一定成立。仅因为两个对象包含相同的状态并不意味着它们也共享相同的内存地址。
 
-行为上的差异在于 Optional 是*基于值*的类型，意味着其内部值是其主要关注点。像 `equals`、`hashCode` 和 `toString` 这样的方法仅基于内部值，并忽略实际对象标识。因此，你应该将 Optional 实例视为可互换的，并且不适合用于像同步并发代码这样的身份相关操作，正如官方文档所述^(11)。
+行为上的差异在于 Optional 是*基于值*的类型，意味着其内部值是其主要关注点。像 `equals`、`hashCode` 和 `toString` 这样的方法仅基于内部值，并忽略实际对象标识。因此，你应该将 Optional 实例视为可互换的，并且不适合用于像同步并发代码这样的身份相关操作，正如官方文档所述¹¹。
 
 ## 性能开销
 
@@ -866,7 +866,7 @@ public class User implements Serializable {
 
 # 对空引用的最终思考
 
-尽管被称为“价值十亿美元的错误”，`null` 本身并不邪恶。`null` 的发明者，查尔斯·安东尼·理查德·霍尔爵士（Sir Charles Antony Richard Hoare）认为，编程语言设计者应对使用其语言编写的程序中的错误负责^(12)。
+尽管被称为“价值十亿美元的错误”，`null` 本身并不邪恶。`null` 的发明者，查尔斯·安东尼·理查德·霍尔爵士（Sir Charles Antony Richard Hoare）认为，编程语言设计者应对使用其语言编写的程序中的错误负责¹²。
 
 一种语言应该提供一个坚实的基础，具有很多创造性和控制性。允许存在 `null` 引用只是 Java 的许多设计选择之一，不过也不仅仅是这样。正如在第十章中解释的“捕获或声明要求”和 `try`-`catch` 块为你提供了应对明显错误的工具一样。但是由于 `null` 是任何类型的有效值，每个引用都可能会导致崩溃。即使你认为某些东西永远不会是 `null`，经验告诉我们，某个时刻可能是可能的。
 
@@ -896,26 +896,26 @@ Optionals 的初衷是提供一个有限的机制来处理可选的返回值，�
 
 +   `null` 本身并不邪恶。不要没有充分理由就用 Optional 替换每个变量。
 
-^(1) 变长参数不接受单独的`null`作为参数，因为它是不精确的参数类型，可能代表`Object`或`Object[]`。要向变长参数传递单个`null`，需要将其包装在数组中：`new Object[]{ null }`。
+¹ 变长参数不接受单独的`null`作为参数，因为它是不精确的参数类型，可能代表`Object`或`Object[]`。要向变长参数传递单个`null`，需要将其包装在数组中：`new Object[]{ null }`。
 
-^(2) 许多编程语言都有专门的运算符，用于在可能为`null`的引用上安全调用字段或方法。[安全导航运算符维基百科文章](https://en.wikipedia.org/wiki/Safe_navigation_operator)中详细说明并提供了多种语言的示例。
+² 许多编程语言都有专门的运算符，用于在可能为`null`的引用上安全调用字段或方法。[安全导航运算符维基百科文章](https://en.wikipedia.org/wiki/Safe_navigation_operator)中详细说明并提供了多种语言的示例。
 
-^(3) `null`合并运算符类似于缩短的三元运算符。表达式`x != null ? x : y`缩短为`x ?: y`，其中`?:`（问号冒号）是运算符。不过，并非所有语言使用相同的运算符。[维基百科文章](https://en.wikipedia.org/wiki/Null_coalescing_operator)概述了支持哪种运算符形式的不同编程语言。
+³ `null`合并运算符类似于缩短的三元运算符。表达式`x != null ? x : y`缩短为`x ?: y`，其中`?:`（问号冒号）是运算符。不过，并非所有语言使用相同的运算符。[维基百科文章](https://en.wikipedia.org/wiki/Null_coalescing_operator)概述了支持哪种运算符形式的不同编程语言。
 
-^(4) Java 的 JIT（即时）编译器执行多种优化以改善执行代码。必要时，当有更多关于其执行方式的信息时，它会重新编译代码。有关可能的优化概述可在[Open JDK Wiki](https://wiki.openjdk.org/display/HotSpot/PerformanceTechniques)上找到。
+⁴ Java 的 JIT（即时）编译器执行多种优化以改善执行代码。必要时，当有更多关于其执行方式的信息时，它会重新编译代码。有关可能的优化概述可在[Open JDK Wiki](https://wiki.openjdk.org/display/HotSpot/PerformanceTechniques)上找到。
 
-^(5) 提供标记注释最常见的库是[FindBugz](http://findbugs.sourceforge.net/)（适用于 Java 8 及以前），以及其精神继承者[SpotBugz](https://spotbugs.github.io/)。JetBrains，IntelliJ IDE 和 JVM 语言*Kotlin*的创建者，也[提供了一个包含注解的包](https://github.com/JetBrains/java-annotations)。
+⁵ 提供标记注释最常见的库是[FindBugz](http://findbugs.sourceforge.net/)（适用于 Java 8 及以前），以及其精神继承者[SpotBugz](https://spotbugs.github.io/)。JetBrains，IntelliJ IDE 和 JVM 语言*Kotlin*的创建者，也[提供了一个包含注解的包](https://github.com/JetBrains/java-annotations)。
 
-^(6) [Checker Framework](https://checkerframework.org)提供了这种在不同工具之间的“非标准”行为的[示例](https://checkerframework.org/manual/#findbugs-nullable)。
+⁶ [Checker Framework](https://checkerframework.org)提供了这种在不同工具之间的“非标准”行为的[示例](https://checkerframework.org/manual/#findbugs-nullable)。
 
-^(7) Guava 的[Optional<T>文档](https://guava.dev/releases/snapshot-jre/api/docs/com/google/common/base/Optional.xhtml)明确提到应优先使用 JDK 的变体。
+⁷ Guava 的[Optional<T>文档](https://guava.dev/releases/snapshot-jre/api/docs/com/google/common/base/Optional.xhtml)明确提到应优先使用 JDK 的变体。
 
-^(8) McCabe, TJ. 1976\. “A Complexity Measure” [IEEE Transactions on Software Engineering, December 1976, Vol. SE-2 No. 4, 308–320](https://doi.org/10.1109/TSE.1976.233837)。
+⁸ McCabe, TJ. 1976\. “A Complexity Measure” [IEEE Transactions on Software Engineering, December 1976, Vol. SE-2 No. 4, 308–320](https://doi.org/10.1109/TSE.1976.233837)。
 
-^(9) [Optional<T> reduce​(BinaryOperator<T> accumulator)文档](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/util/stream/Stream.xhtml#reduce(java.util.function.BinaryOperator))。
+⁹ [Optional<T> reduce​(BinaryOperator<T> accumulator)文档](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/util/stream/Stream.xhtml#reduce(java.util.function.BinaryOperator))。
 
-^(10) [SonarSource](https://www.sonarsource.com/)规则[RSPEC-2789](https://rules.sonarsource.com/java/RSPEC-2789)检查 Optional 是否为`null`。
+¹⁰ [SonarSource](https://www.sonarsource.com/)规则[RSPEC-2789](https://rules.sonarsource.com/java/RSPEC-2789)检查 Optional 是否为`null`。
 
-^(11) [官方文档](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/util/Optional.xhtml) 明确提到了不可预测的标识方法行为作为“API 注释”。
+¹¹ [官方文档](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/util/Optional.xhtml) 明确提到了不可预测的标识方法行为作为“API 注释”。
 
-^(12) 查尔斯·安东尼·理查德·霍尔爵士在 2009 年的 [“空引用：十亿美元的错误”](https://www.infoq.com/presentations/Null-References-The-Billion-Dollar-Mistake-Tony-Hoare/) 演讲中表达了这一观点。
+¹² 查尔斯·安东尼·理查德·霍尔爵士在 2009 年的 [“空引用：十亿美元的错误”](https://www.infoq.com/presentations/Null-References-The-Billion-Dollar-Mistake-Tony-Hoare/) 演讲中表达了这一观点。

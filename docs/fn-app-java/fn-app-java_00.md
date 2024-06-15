@@ -6,7 +6,7 @@
 
 开发软件是一个相当复杂的工作。作为 Java 开发者，我们通常试图用面向对象编程（OOP）来驾驭这种复杂性，将其作为一种比喻来表示我们正在开发的事物，比如数据结构，并且使用主要以命令式为主的编码风格来处理程序的状态。虽然 OOP 是一种广为人知且经过实战验证的开发合理软件的方法，但并不是每个问题都适合它。如果我们在每个问题上都强行采用 OOP 原则，而不是使用更适当的工具和范式，可能会引入一定量不必要的复杂性。函数式编程（FP）范式提供了解决问题的另一种替代方法。
 
-函数式编程并不是一个新概念。事实上，它甚至比面向对象编程还要古老！它最早出现在计算机发展的早期，1950 年代，最早在*Lisp*⁠^(1)编程语言中出现，并且在学术界和小众领域中被广泛使用。然而，近年来，函数式范式越来越受到关注。
+函数式编程并不是一个新概念。事实上，它甚至比面向对象编程还要古老！它最早出现在计算机发展的早期，1950 年代，最早在*Lisp*⁠¹编程语言中出现，并且在学术界和小众领域中被广泛使用。然而，近年来，函数式范式越来越受到关注。
 
 许多新的函数式语言出现了，非函数式语言也在各种程度上包含函数式特性。FP 背后的思想和概念现在几乎在每一种主流多范式和通用编程语言中被采纳，无论上下文和选择的语言如何，都允许我们使用某种形式的函数式编程。没有什么能阻止我们从函数式编程中摘取最好的部分，并增强我们现有的编程方式和软件开发工具，这也是本书的主旨！
 
@@ -14,7 +14,7 @@
 
 # 新硬件需要新的思维方式
 
-硬件正在朝着新方向发展。相当长一段时间以来，单核性能的改进不如以往的处理器世代那样显著。*摩尔定律*⁠^(2)似乎放缓，但这种放缓并不意味着硬件停止改进。而制造商们不再主要关注单核性能甚至更高的 GHz 数，而是更青睐越来越多的核心数目。^(3)因此，为了让现代工作负载能够充分利用偏向更多核心而非更快处理器的新硬件带来的所有好处，我们需要采用能够有效利用更多核心的技术，而不会降低生产力或引入额外复杂性。
+硬件正在朝着新方向发展。相当长一段时间以来，单核性能的改进不如以往的处理器世代那样显著。*摩尔定律*⁠²似乎放缓，但这种放缓并不意味着硬件停止改进。而制造商们不再主要关注单核性能甚至更高的 GHz 数，而是更青睐越来越多的核心数目。³因此，为了让现代工作负载能够充分利用偏向更多核心而非更快处理器的新硬件带来的所有好处，我们需要采用能够有效利用更多核心的技术，而不会降低生产力或引入额外复杂性。
 
 横向扩展你的软件通过并行处理在面向对象编程中并不是一项容易的任务。并非所有问题都适合并行处理。更多的画家可能会更快地涂完一个房间，但是你不能通过让更多的人参与来加快怀孕的速度。如果问题由串行或相互依赖的任务组成，那么并发比并行更可取。但是，如果一个问题可以分解为更小、不相关的子问题，那么并行处理就会大放异彩。这正是函数式编程发挥作用的地方。惯用的函数式编程的无状态和不可变性质提供了构建小型、可靠、可重复使用和高质量任务所需的所有工具，这些任务优雅地适应并行和并发环境。
 
@@ -24,13 +24,13 @@
 
 # Java 也可以是函数式的
 
-有许多编程语言非常适合函数式编程。[*Haskell*](https://www.haskell.org) 是一个喜欢的选择，如果你喜欢几乎不支持命令式编程风格的纯函数式语言。[*Elixir*](https://elixir-lang.org/) 是另一个令人兴奋的选择，它利用了[*Erlang VM*](https://www.erlang.org/)^(4)。然而，你并不需要抛弃广阔的 JVM 生态系统来找到支持函数式编程的语言。[*Scala*](https://www.scala-lang.org/) 在将面向对象和函数式编程范式结合成一种简洁、高级别语言方面表现出色。另一个受欢迎的选择，[*Clojure*](https://clojure.org/)，从一开始就被设计为具有动态类型系统的函数式语言。
+有许多编程语言非常适合函数式编程。[*Haskell*](https://www.haskell.org) 是一个喜欢的选择，如果你喜欢几乎不支持命令式编程风格的纯函数式语言。[*Elixir*](https://elixir-lang.org/) 是另一个令人兴奋的选择，它利用了[*Erlang VM*](https://www.erlang.org/)⁴。然而，你并不需要抛弃广阔的 JVM 生态系统来找到支持函数式编程的语言。[*Scala*](https://www.scala-lang.org/) 在将面向对象和函数式编程范式结合成一种简洁、高级别语言方面表现出色。另一个受欢迎的选择，[*Clojure*](https://clojure.org/)，从一开始就被设计为具有动态类型系统的函数式语言。
 
 在理想的情况下，你可以选择对下一个项目最适合的函数式语言。然而，在现实中，你可能根本没有选择语言的余地，你必须使用手头现有的工具。
 
-作为 Java 开发者，你可以使用 Java，尽管它在历史上被认为不太适合函数式编程。在我们继续之前，我需要强调的是，你可以在 Java 中实现大多数函数式原则，而不论语言级别是否深度集成支持^(5)。然而，最终的代码不会像在允许在首次使用函数式方法的其他语言中那样简洁且易于推理。这一限制使许多开发者不敢尝试将函数式原则应用于 Java，尽管这可能会提供更高效的方法或更好的整体解决方案。
+作为 Java 开发者，你可以使用 Java，尽管它在历史上被认为不太适合函数式编程。在我们继续之前，我需要强调的是，你可以在 Java 中实现大多数函数式原则，而不论语言级别是否深度集成支持⁵。然而，最终的代码不会像在允许在首次使用函数式方法的其他语言中那样简洁且易于推理。这一限制使许多开发者不敢尝试将函数式原则应用于 Java，尽管这可能会提供更高效的方法或更好的整体解决方案。
 
-在过去，许多人认为 Java 是一个行动缓慢的庞然大物，一种“太大以至于无法灭绝”的企业语言，就像 COBOL 或[Fortran](https://fortran-lang.org/)的更现代版本一样。在我看来，至少在过去是部分正确的。直到 Java 9 和缩短的发布时间框架^(6)才加快了步伐。Java 从版本 6 到 7 花了五年的时间（2006-2011）。即使有显著的新特性，比如[`try-with-resources`](https://docs.oracle.com/javase/tutorial/essential/exceptions/tryResourceClose.xhtml)，但都不是“突破性”的。过去的少量且缓慢的变化导致项目和开发者未采用“最新最好”的 Java 开发工具包（JDK），错失了许多语言改进。三年后的 2014 年，下一个版本 Java 8 发布了。这一次，它引入了 Java 未来最重要的变化之一：*lambda 表达式*。
+在过去，许多人认为 Java 是一个行动缓慢的庞然大物，一种“太大以至于无法灭绝”的企业语言，就像 COBOL 或[Fortran](https://fortran-lang.org/)的更现代版本一样。在我看来，至少在过去是部分正确的。直到 Java 9 和缩短的发布时间框架⁶才加快了步伐。Java 从版本 6 到 7 花了五年的时间（2006-2011）。即使有显著的新特性，比如[`try-with-resources`](https://docs.oracle.com/javase/tutorial/essential/exceptions/tryResourceClose.xhtml)，但都不是“突破性”的。过去的少量且缓慢的变化导致项目和开发者未采用“最新最好”的 Java 开发工具包（JDK），错失了许多语言改进。三年后的 2014 年，下一个版本 Java 8 发布了。这一次，它引入了 Java 未来最重要的变化之一：*lambda 表达式*。
 
 对于世界上最显著的面向对象编程语言之一，函数式编程终于提供了一个更好的基础，显著改变了语言及其习语：
 
@@ -84,7 +84,7 @@ Runnable runnable = () -> System.out.println("hello, functional world!");
 
 没有提到 Android 就很难谈论 Java。即使你可以用 Java 编写 Android 应用程序，底层的 API 和运行时也不同。那么，对于在 Android 应用程序中采用功能方法编写 Java，这意味着什么呢？为了更好地理解这一点，我们首先需要看看是什么使得 Android 上的 Java 与“正常”的 Java 不同。
 
-Android 并不直接在面向较小设备的*Java 平台微版*（[Java 平台微版概述](https://www.oracle.com/java/technologies/javameoverview.xhtml)）上运行 Java 字节码。而是对字节码进行重新编译。*Dex-编译器*创建*Dalvik 字节码*，然后在专门的运行时上运行：*Android 运行时*（ART），之前是在 *Dalvik 虚拟机*⁠^(7)。
+Android 并不直接在面向较小设备的*Java 平台微版*（[Java 平台微版概述](https://www.oracle.com/java/technologies/javameoverview.xhtml)）上运行 Java 字节码。而是对字节码进行重新编译。*Dex-编译器*创建*Dalvik 字节码*，然后在专门的运行时上运行：*Android 运行时*（ART），之前是在 *Dalvik 虚拟机*⁠⁷。
 
 将 Java 字节码重新编译为*Dalvik 字节码*使设备能够运行高度优化的代码，充分利用其硬件限制。然而对于开发者来说，尽管你的代码在表面上看起来和感觉像 Java —— 大部分公共 API 是相同的 --⁠，JDK 和 Android SDK 之间并没有功能对等性可依赖。例如，本书的基石 —— *lambda 表达式* 和 *Streams* —— 在 Android 上长时间缺失了这些特性。
 
@@ -92,13 +92,13 @@ Android Gradle 插件从 3.0.0 版本开始支持一些缺失的功能特性（l
 
 ###### 警告
 
-尽管大多数 JDK 的功能特性在 Android 上也是可用的，它们并不是逐字复制^(8)，可能具有不同的性能特征和边缘情况。可用功能列在[Java 8+ 支持的官方文档](https://developer.android.com/studio/write/java8-support)中。
+尽管大多数 JDK 的功能特性在 Android 上也是可用的，它们并不是逐字复制⁸，可能具有不同的性能特征和边缘情况。可用功能列在[Java 8+ 支持的官方文档](https://developer.android.com/studio/write/java8-support)中。
 
 ## 一种面向 Android 的功能方法
 
 在 2019 年，[Kotlin](https://kotlinlang.org)取代 Java 成为 Android 开发者首选的语言。它是一种多平台语言，主要面向 JVM，但也可以编译为 JavaScript 和多个本地平台。它旨在成为一个“现代和更简洁”的 Java，修复了 Java 多年来由于向后兼容性而积累的一些争议性缺陷和不必要的复杂性，同时保留了 Java 可用的所有框架和库。并且它是 100%可互操作的：你可以轻松地在同一个项目中混合使用 Java 和 Kotlin。
 
-Kotlin 相对于 Java 的一个明显优势是，许多函数概念和习语已经融入到语言本身。但作为一种不同的语言，Kotlin 有其自己的习惯用法和最佳实践，这些与 Java 的不同。生成的字节码也可能不同，例如如何生成 lambda 表达式^(10)。Kotlin 最显著的优势是试图创建一个比 Java 更简洁和可预测的语言。就像你可以在 Java 中更加函数式而不是*完全函数式*一样，你也可以在 Android 项目中仅使用 Kotlin 特有的功能，而不必*全面使用* Kotlin。通过混合 Java 和 Kotlin，你可以从两种语言中选择最佳的功能。
+Kotlin 相对于 Java 的一个明显优势是，许多函数概念和习语已经融入到语言本身。但作为一种不同的语言，Kotlin 有其自己的习惯用法和最佳实践，这些与 Java 的不同。生成的字节码也可能不同，例如如何生成 lambda 表达式¹⁰。Kotlin 最显著的优势是试图创建一个比 Java 更简洁和可预测的语言。就像你可以在 Java 中更加函数式而不是*完全函数式*一样，你也可以在 Android 项目中仅使用 Kotlin 特有的功能，而不必*全面使用* Kotlin。通过混合 Java 和 Kotlin，你可以从两种语言中选择最佳的功能。
 
 请记住，本书的主要焦点是 Java 语言和 JDK。尽管如此，你所学到的大部分思想都可以转移到 Android 上，即使你使用 Kotlin。但本书中没有专门考虑 Android 或 Kotlin 的特别情况。
 
@@ -202,22 +202,22 @@ Kotlin 相对于 Java 的一个明显优势是，许多函数概念和习语已�
 
 最后但并非最不重要的是，我要感谢我的采购编辑 Brian Guerin 以及 O’Reilly 的所有人。我的编辑 Rita Fernando 总是找到办法去打磨一些粗糙的地方，并让我所写的东西发挥到极致。Ashley Stussy，这位制作编辑使我所有的布局请求都成为可能。O’Reilly 工具团队的 Nick 和 Theresa，他们耐心地帮助我解决了任何 Asciidoc 问题。还有所有在幕后参与其中的人。谢谢你们！
 
-^(1) Lisp 最初于 1958 年规定，是仍在常用的第二古老的高级编程语言。它还构建了各种编程语言的基础，如[*Emacs Lisp*](https://www.gnu.org/software/emacs/manual/html_node/elisp/index.xhtml)，或功能 JVM 语言[*Clojure*](https://clojure.org/)。
+¹ Lisp 最初于 1958 年规定，是仍在常用的第二古老的高级编程语言。它还构建了各种编程语言的基础，如[*Emacs Lisp*](https://www.gnu.org/software/emacs/manual/html_node/elisp/index.xhtml)，或功能 JVM 语言[*Clojure*](https://clojure.org/)。
 
-^(2) *摩尔定律*（Moore’s law）是在 1965 年提出的，观察到晶体管数量每两年翻倍，因此，我们可以获得每核心的性能。Edwards, Chris. 2021. “摩尔定律：下一步是什么？”[《ACM 通讯》，2021 年 2 月，第 64 卷第 2 期，12–14 页](https://doi.org/10.1145/3440992)
+² *摩尔定律*（Moore’s law）是在 1965 年提出的，观察到晶体管数量每两年翻倍，因此，我们可以获得每核心的性能。Edwards, Chris. 2021. “摩尔定律：下一步是什么？”[《ACM 通讯》，2021 年 2 月，第 64 卷第 2 期，12–14 页](https://doi.org/10.1145/3440992)
 
-^(3) Thompson, N. C. 和 Svenja Spanuth 在 2021 年发表了“计算机作为通用技术的衰落”[*《ACM 通讯》*，Vol. 64, No. 3, 64-72](https://doi.org/10.1145/3430936)。
+³ Thompson, N. C. 和 Svenja Spanuth 在 2021 年发表了“计算机作为通用技术的衰落”[*《ACM 通讯》*，Vol. 64, No. 3, 64-72](https://doi.org/10.1145/3430936)。
 
-^(4) [*Erlang*](https://www.erlang.org/)是一种功能丰富且面向并发的编程语言，以构建低延迟、分布式和容错系统而闻名。
+⁴ [*Erlang*](https://www.erlang.org/)是一种功能丰富且面向并发的编程语言，以构建低延迟、分布式和容错系统而闻名。
 
-^(5) Dean Wampler 在他的书籍[“Java 开发者的函数式编程”](http://oreilly.com/catalog/9781449311032/)中详细展示了如何在 Java 中实现和促进缺失的函数式编程特性。他展示了在版本 8 之前很难实现的许多技术。但现在，JDK 中的许多缺陷和间隙都已被填补，提供了许多工具，可以更简洁、更直接地整合 FP。
+⁵ Dean Wampler 在他的书籍[“Java 开发者的函数式编程”](http://oreilly.com/catalog/9781449311032/)中详细展示了如何在 Java 中实现和促进缺失的函数式编程特性。他展示了在版本 8 之前很难实现的许多技术。但现在，JDK 中的许多缺陷和间隙都已被填补，提供了许多工具，可以更简洁、更直接地整合 FP。
 
-^(6) Oracle 在 Java 9 版本发布时推出了更快的[发布计划](https://www.oracle.com/java/technologies/java-se-support-roadmap.xhtml)，不再像以前那样发布频率较低，而是固定为每六个月发布一次。为了符合如此紧张的时间表，并非每个版本都被视为“长期支持”，而是更倾向于比以往更快地发布功能。
+⁶ Oracle 在 Java 9 版本发布时推出了更快的[发布计划](https://www.oracle.com/java/technologies/java-se-support-roadmap.xhtml)，不再像以前那样发布频率较低，而是固定为每六个月发布一次。为了符合如此紧张的时间表，并非每个版本都被视为“长期支持”，而是更倾向于比以往更快地发布功能。
 
-^(7) [Android 开源项目](https://source.android.com/devices/tech/dalvik)提供了对 Android 运行时特性及其背后原理的很好概述。
+⁷ [Android 开源项目](https://source.android.com/devices/tech/dalvik)提供了对 Android 运行时特性及其背后原理的很好概述。
 
-^(8) 著名的 Android 开发者 Jack Wharton 在他的[详细解析](https://jakewharton.com/androids-java-8-support/)中展示了 Android 如何处理现代 Java 代码。
+⁸ 著名的 Android 开发者 Jack Wharton 在他的[详细解析](https://jakewharton.com/androids-java-8-support/)中展示了 Android 如何处理现代 Java 代码。
 
-^(9) 请参阅官方 Kotlin 文档，了解[支持平台的概述](https://kotlinlang.org/docs/multiplatform-dsl-reference.xhtml)。
+⁹ 请参阅官方 Kotlin 文档，了解[支持平台的概述](https://kotlinlang.org/docs/multiplatform-dsl-reference.xhtml)。
 
-^(10) 每个 Lambda 都会编译为一个匿名类，该类扩展了`kotlin.jvm.internal.FunctionImpl`，详见[函数类型规范](https://github.com/JetBrains/kotlin/blob/aabc00f53faa72f7c070c2512e655abffad37597/spec-docs/function-types.md)。
+¹⁰ 每个 Lambda 都会编译为一个匿名类，该类扩展了`kotlin.jvm.internal.FunctionImpl`，详见[函数类型规范](https://github.com/JetBrains/kotlin/blob/aabc00f53faa72f7c070c2512e655abffad37597/spec-docs/function-types.md)。

@@ -90,7 +90,7 @@ Java 以其向后兼容性而闻名。这就是为什么尽管 lambda 语法是�
 
 JDK 中的大多数函数接口为您提供与类型相关的额外`default`和`static`方法。检查任何函数接口的接口声明可能会揭示许多功能上的隐匿宝藏。
 
-考虑示例 2-2，展示了函数接口`java.util.function.Predicate<T>`的简化版本^(1)。`Predicate`是一个用于测试条件的函数接口，将在“四大函数接口类别详解”中详细解释。
+考虑示例 2-2，展示了函数接口`java.util.function.Predicate<T>`的简化版本¹。`Predicate`是一个用于测试条件的函数接口，将在“四大函数接口类别详解”中详细解释。
 
 ##### 示例 2-2\. 简化的`java.util.functional.Predicate<T>`
 
@@ -227,7 +227,7 @@ wordList = List.of("assigning", "another", "List", "is", "not"); ![3](img/3.png)
 
 ###### 警告
 
-如果在 `jshell` 中运行任何显示的 *effectively* `final` 相关示例，它们可能不会如预期般运行。这是因为 `jshell` 对于顶级表达式和声明具有特殊的语义，这影响了顶级处的 `final` 或 effectively `final` 值^(2)。即使你可以重新分配任何引用，使其不再是 effectively `final`，你仍然可以在 lambda 中使用它们，只要你不在顶级范围内。
+如果在 `jshell` 中运行任何显示的 *effectively* `final` 相关示例，它们可能不会如预期般运行。这是因为 `jshell` 对于顶级表达式和声明具有特殊的语义，这影响了顶级处的 `final` 或 effectively `final` 值²。即使你可以重新分配任何引用，使其不再是 effectively `final`，你仍然可以在 lambda 中使用它们，只要你不在顶级范围内。
 
 ### 重新 final 化一个引用
 
@@ -661,9 +661,9 @@ Function<String, Locale> newLocaleLambda = Locale::new;
 
 纯函数本质上是*引用透明*的。因此，您可以用先前计算的结果替换任何具有相同参数的后续调用。这种可互换性允许一种称为*记忆化*的优化技术。这种技术源自拉丁词“memorandum”——*被记住*——描述了“记住”以前评估的表达式。它交换内存*空间*以节省计算*时间*。
 
-您很可能已经在代码中使用引用透明性的一般思想，以*缓存*的形式。从专用缓存库，如 Ehcache^(6) 到简单的基于`HashMap`的查找表，都是关于针对一组输入参数“记住”值的。
+您很可能已经在代码中使用引用透明性的一般思想，以*缓存*的形式。从专用缓存库，如 Ehcache⁶ 到简单的基于`HashMap`的查找表，都是关于针对一组输入参数“记住”值的。
 
-Java 编译器不支持 lambda 表达式或方法调用的自动记忆化。一些框架提供了注释，如 Spring 中的`@Cacheable`^(7) 或 Apache Tapestry 中的`@Cached`^(8)，并在幕后自动生成所需的代码。
+Java 编译器不支持 lambda 表达式或方法调用的自动记忆化。一些框架提供了注释，如 Spring 中的`@Cacheable`⁷ 或 Apache Tapestry 中的`@Cached`⁸，并在幕后自动生成所需的代码。
 
 由于 Java 8+ 的一些新添加，创建自己的 lambda 表达式缓存也不是太难。所以现在就让我们来做。
 
@@ -840,18 +840,18 @@ var result2 = simple() || complex();
 
 +   方法引用是匹配方法签名和 lambda 定义的简洁替代方式。它们甚至提供了一种简单的方法来使用“相同但不兼容”的函数接口类型。
 
-^(1) 简化版的`java.util.function.Predicate`基于撰写时最新 Git 标签的 LTS 版本的源代码：17+35\. 您可以查看[官方源代码库](https://github.com/openjdk/jdk/blob/dfacda488bfbe2e11e8d607a6d08527710286982/src/java.base/share/classes/java/util/function/Predicate.java)查看原始文件。
+¹ 简化版的`java.util.function.Predicate`基于撰写时最新 Git 标签的 LTS 版本的源代码：17+35\. 您可以查看[官方源代码库](https://github.com/openjdk/jdk/blob/dfacda488bfbe2e11e8d607a6d08527710286982/src/java.base/share/classes/java/util/function/Predicate.java)查看原始文件。
 
-^(2) [官方文档](https://docs.oracle.com/en/java/javase/17/docs/api/jdk.jshell/jdk/jshell/JShell.xhtml#eval(java.lang.String))为顶层表达式和声明的特殊语义和要求提供了一些指导。
+² [官方文档](https://docs.oracle.com/en/java/javase/17/docs/api/jdk.jshell/jdk/jshell/JShell.xhtml#eval(java.lang.String))为顶层表达式和声明的特殊语义和要求提供了一些指导。
 
-^(3) Landin, Peter J. (1964). “表达式的机械评估。”[《计算机杂志》。计算机杂志。6 (4)](https://doi.org/10.1093/comjnl/6.4.308)。
+³ Landin, Peter J. (1964). “表达式的机械评估。”[《计算机杂志》。计算机杂志。6 (4)](https://doi.org/10.1093/comjnl/6.4.308)。
 
-^(4) Java Magazine 有 Java 冠军本·埃文斯的[一篇文章](https://blogs.oracle.com/javamagazine/post/understanding-java-method-invocation-with-invokedynamic)，详细解释了`invokedynamic`方法调用。
+⁴ Java Magazine 有 Java 冠军本·埃文斯的[一篇文章](https://blogs.oracle.com/javamagazine/post/understanding-java-method-invocation-with-invokedynamic)，详细解释了`invokedynamic`方法调用。
 
-^(5) 类[`java.lang.invoke.LambdaMetaFactory`](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/lang/invoke/LambdaMetafactory.xhtml)负责创建“引导方法”。
+⁵ 类[`java.lang.invoke.LambdaMetaFactory`](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/lang/invoke/LambdaMetafactory.xhtml)负责创建“引导方法”。
 
-^(6) [Ehcache](https://www.ehcache.org/)是广泛使用的 Java 缓存库。
+⁶ [Ehcache](https://www.ehcache.org/)是广泛使用的 Java 缓存库。
 
-^(7) [像 `@Cacheable` 这样的官方文档](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/cache/annotation/Cacheable.xhtml) 解释了其内部工作原理，包括键的机制。
+⁷ [像 `@Cacheable` 这样的官方文档](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/cache/annotation/Cacheable.xhtml) 解释了其内部工作原理，包括键的机制。
 
-^(8) [Tapestry 注解](https://tapestry.apache.org/5.8.2/apidocs/org/apache/tapestry5/annotations/Cached.xhtml) 不支持基于键的缓存，但可以绑定到一个字段上。
+⁸ [Tapestry 注解](https://tapestry.apache.org/5.8.2/apidocs/org/apache/tapestry5/annotations/Cached.xhtml) 不支持基于键的缓存，但可以绑定到一个字段上。

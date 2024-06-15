@@ -52,7 +52,7 @@ Java 提供了一个易于使用的数据处理管道，具有并行处理能力
 
 # 并行流实例
 
-为了说明如何并行处理流，我们将再次计算托尔斯泰的《战争与和平》中不同单词的出现次数 ^(1)，就像前一章节所做的那样。
+为了说明如何并行处理流，我们将再次计算托尔斯泰的《战争与和平》中不同单词的出现次数 ¹，就像前一章节所做的那样。
 
 首先，应概述一个粗略的方法作为将需要翻译为流操作的必要步骤的蓝图：
 
@@ -333,7 +333,7 @@ int total = Stream.of(1, 2, 3, 4, 5, 6, ...)
 
 在并行流的情况下，与顺序流相比，你将从更大的初始劣势开始。除了流脚手架本身的开销外，你还必须考虑数据源分解成本、`ForkJoinPool`的线程管理以及重新组合最终结果，以获得所有移动部件的全貌。并且所有这些部件都必须具有资源——CPU 核心和内存可用以实际并行运行它们。
 
-由计算机科学家 Gene Amdahl 在 1967 年创造，*阿姆达尔定律*⁠^(2)提供了一种计算并行执行中理论延迟速度提升的方法，适用于恒定工作负载。该定律考虑了单个任务的*并行部分*和并行运行的*任务数量*，如图 8-5 所示。
+由计算机科学家 Gene Amdahl 在 1967 年创造，*阿姆达尔定律*⁠²提供了一种计算并行执行中理论延迟速度提升的方法，适用于恒定工作负载。该定律考虑了单个任务的*并行部分*和并行运行的*任务数量*，如图 8-5 所示。
 
 ![阿姆达尔定律](img/afaj_0805.png)
 
@@ -347,7 +347,7 @@ int total = Stream.of(1, 2, 3, 4, 5, 6, ...)
 
 数据源特性
 
-流是通过`Files.lines`方法从 UTF-8 纯文本文件创建的，根据文档，这个方法具有相当好的并行特性^(3)。
+流是通过`Files.lines`方法从 UTF-8 纯文本文件创建的，根据文档，这个方法具有相当好的并行特性³。
 
 元素数量
 
@@ -437,7 +437,7 @@ var parallelStats = rnd.ints(elementsCount)
 
 数据源特性
 
-即使`Random`是线程安全的，它在文档中明确提到^(4)，从不同线程重复使用会对性能产生负面影响。相反，建议使用`ThreadLocalRandom`类型。
+即使`Random`是线程安全的，它在文档中明确提到⁴，从不同线程重复使用会对性能产生负面影响。相反，建议使用`ThreadLocalRandom`类型。
 
 元素数量
 
@@ -543,16 +543,16 @@ var parallelStats = rnd.ints(elementsCount)
 
 +   大多数功能上首选的技术，如 *纯函数* 和 *不可变性*，对于无错误和高性能的并行化代码是有利的，如果不是必须的话。从早期遵循这些技术，即使在顺序代码中，也可以更轻松地过渡到并行处理。
 
-+   Kent Beck 的著名语录也适用于并行流：“先让它运行起来，然后把它做对，最后使它快。”⁠^(5) 从顺序流开始满足您的数据处理需求。通过优化其操作来改进它。只有在必要且被证明有益的情况下，才通过并行方式使其快速。
++   Kent Beck 的著名语录也适用于并行流：“先让它运行起来，然后把它做对，最后使它快。”⁠⁵ 从顺序流开始满足您的数据处理需求。通过优化其操作来改进它。只有在必要且被证明有益的情况下，才通过并行方式使其快速。
 
 +   阅读您的数据源、操作等的文档，以查看它们是否适合并行执行。它通常提供了实现细节背后的推理、性能指示、示例，有时甚至还提供了替代方法。
 
-^(1) 古腾堡计划免费提供多个版本的托尔斯泰的[《战争与和平》](https://www.gutenberg.org/ebooks/2600)。使用纯文本版本，以确保不会因额外的格式化而影响计数单词的过程。
+¹ 古腾堡计划免费提供多个版本的托尔斯泰的[《战争与和平》](https://www.gutenberg.org/ebooks/2600)。使用纯文本版本，以确保不会因额外的格式化而影响计数单词的过程。
 
-^(2) 维基百科关于[Amdahl 定律](https://en.wikipedia.org/wiki/Amdahl%27s_law)详细描述了实际公式。
+² 维基百科关于[Amdahl 定律](https://en.wikipedia.org/wiki/Amdahl%27s_law)详细描述了实际公式。
 
-^(3) 调用委托给`Files.lines(Path path, CharSet cs)`，其[文档](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/nio/file/Files.xhtml#lines(java.nio.file.Path,java.nio.charset.Charset))列出由于其`Spliterator`在正常情况下以最佳比例分割而可能获得良好的并行性能。
+³ 调用委托给`Files.lines(Path path, CharSet cs)`，其[文档](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/nio/file/Files.xhtml#lines(java.nio.file.Path,java.nio.charset.Charset))列出由于其`Spliterator`在正常情况下以最佳比例分割而可能获得良好的并行性能。
 
-^(4) 通常，类型的文档，如[`java.util.Random`](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Random.xhtml)，提供了在多线程环境中使用它们的指示。
+⁴ 通常，类型的文档，如[`java.util.Random`](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Random.xhtml)，提供了在多线程环境中使用它们的指示。
 
-^(5) 肯特·贝克是美国软件工程师，也是*极限编程*的创始人。尽管这句引述通常被归因于他，但其实这个思想早在 B·W·兰普森的《计算机系统设计提示》中就有描述，见[*IEEE Software*, Vol. 1, No. 1, 11-28, Jan. 1984](https://doi.org/10.1109/MS.1984.233391)。
+⁵ 肯特·贝克是美国软件工程师，也是*极限编程*的创始人。尽管这句引述通常被归因于他，但其实这个思想早在 B·W·兰普森的《计算机系统设计提示》中就有描述，见[*IEEE Software*, Vol. 1, No. 1, 11-28, Jan. 1984](https://doi.org/10.1109/MS.1984.233391)。

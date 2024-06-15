@@ -181,7 +181,7 @@ public class HelloWorld {
 
 语言和平台设计通常涉及在所需功能之间进行决策和权衡。在这种情况下，分歧在于“接近底层”的语言和依赖于“零成本抽象”等思想，以及支持开发者生产力和“完成任务”的语言，而不是严格的低级控制。
 
-> 总体而言，C++实现遵循零开销原则：你不用的部分不需要付出代价。而且进一步说，你使用的部分，你手工编码也不会更好。^(1)
+> 总体而言，C++实现遵循零开销原则：你不用的部分不需要付出代价。而且进一步说，你使用的部分，你手工编码也不会更好。¹
 > 
 > Bjarne Stroustrup
 
@@ -448,7 +448,7 @@ VisualVM 的插件架构允许轻松添加额外的工具到核心平台以增�
 
 +   类库源代码
 
-OpenJDK 项目位于[OpenJDK 网站](https://openjdk.org/)，这个项目是开发 Java 开源参考实现的项目——其许可证为 GNU 公共许可证第二版，并带有类路径例外（GPLv2+CE）。^(2) 该项目由 Oracle 领导并支持——他们为 OpenJDK 代码库提供了大多数工程师。
+OpenJDK 项目位于[OpenJDK 网站](https://openjdk.org/)，这个项目是开发 Java 开源参考实现的项目——其许可证为 GNU 公共许可证第二版，并带有类路径例外（GPLv2+CE）。² 该项目由 Oracle 领导并支持——他们为 OpenJDK 代码库提供了大多数工程师。
 
 关于 OpenJDK 的关键点是，它只提供*源代码*。这对于 VM（HotSpot）和类库都是如此。
 
@@ -486,7 +486,7 @@ HotSpot 和 OpenJDK 类库的结合构成了今天生产环境中使用的绝大
 
 Oracle
 
-Oracle 的 Java（Oracle JDK）可能是最广为人知的实现。它本质上是 OpenJDK 代码库，以 Oracle 专有许可证重新许可，只有一些极小的差异（例如包含一些在开源许可证下不可用的附加组件）。Oracle 通过要求所有 OpenJDK 的贡献者签署许可协议来实现双重许可，允许其贡献同时采用 OpenJDK 的 GPLv2+CE 许可和 Oracle 的专有许可。^(3)
+Oracle 的 Java（Oracle JDK）可能是最广为人知的实现。它本质上是 OpenJDK 代码库，以 Oracle 专有许可证重新许可，只有一些极小的差异（例如包含一些在开源许可证下不可用的附加组件）。Oracle 通过要求所有 OpenJDK 的贡献者签署许可协议来实现双重许可，允许其贡献同时采用 OpenJDK 的 GPLv2+CE 许可和 Oracle 的专有许可。³
 
 Eclipse Adoptium
 
@@ -542,7 +542,7 @@ Google 的 Android 项目有时被认为是“基于 Java”。但实际情况�
 
 现在我们可以通过简要讨论 Java 发布周期来完整地说明这个情况。
 
-新功能开发是公开的——在一组 GitHub 存储库中进行。小到中等的功能和错误修复以拉取请求直接提交到主 OpenJDK 存储库的主分支中。^(4)
+新功能开发是公开的——在一组 GitHub 存储库中进行。小到中等的功能和错误修复以拉取请求直接提交到主 OpenJDK 存储库的主分支中。⁴
 
 每 6 个月，Java 会从主要版本中切出一个新版本。错过“列车”的功能必须等待下一个发布——自 2017 年 9 月以来，这种 6 个月的节奏和严格的时间表一直得到维持。这些发布被称为“功能发布”，由 Oracle 作为 Java 的管理者运行。
 
@@ -564,10 +564,10 @@ Oracle 在任何给定的功能版本发布后立即停止工作。然而，一�
 
 在第四章中，我们将开始探讨垃圾收集的旅程，从标记-清除的基本概念入手，深入到具体细节，包括 HotSpot 如何实现 GC 的一些内部细节。
 
-^(1) B. Stroustrup，“抽象和 C++机器模型”，*计算机科学讲义*，第 3605 卷（Springer 2005）
+¹ B. Stroustrup，“抽象和 C++机器模型”，*计算机科学讲义*，第 3605 卷（Springer 2005）
 
-^(2) [*https://openjdk.org/legal/gplv2+ce.xhtml*](https://openjdk.org/legal/gplv2+ce.xhtml)
+² [*https://openjdk.org/legal/gplv2+ce.xhtml*](https://openjdk.org/legal/gplv2+ce.xhtml)
 
-^(3) 后者已多次更改，因此链接到当前最新版本可能并不实用——到您阅读本文时可能已过时。
+³ 后者已多次更改，因此链接到当前最新版本可能并不实用——到您阅读本文时可能已过时。
 
-^(4) [*https://github.com/openjdk/jdk*](https://github.com/openjdk/jdk)
+⁴ [*https://github.com/openjdk/jdk*](https://github.com/openjdk/jdk)

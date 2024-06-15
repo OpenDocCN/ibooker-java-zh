@@ -859,9 +859,9 @@ Java 的另一个备选单元测试框架是*TestNG*；它通过采用诸如 Jav
 
 不仅仅是基于代码的项目从 CI 中受益。如果你有多个小型网站，将它们全部纳入 CI 控制是朝着围绕网站部署和管理开发自动化、DevOps 文化的几个重要步骤之一。
 
-如果你对 CI 的概念还很陌生，我无法做得比恳请你阅读马丁·福勒（Martin Fowler）的深思熟虑的（正如他一直以来所做的）[关于这个主题的论文](http://martinfowler.com/articles/continuousIntegration.html)更好了。其中一个关键点是自动化代码的*管理*以及构建项目所需的所有其他工件，并自动化*构建*实际过程，可能使用本章前面讨论过的其中一个构建工具。^(1)
+如果你对 CI 的概念还很陌生，我无法做得比恳请你阅读马丁·福勒（Martin Fowler）的深思熟虑的（正如他一直以来所做的）[关于这个主题的论文](http://martinfowler.com/articles/continuousIntegration.html)更好了。其中一个关键点是自动化代码的*管理*以及构建项目所需的所有其他工件，并自动化*构建*实际过程，可能使用本章前面讨论过的其中一个构建工具。¹
 
-在 CI 服务器中有许多免费和商业选择。在开源世界中，[CruiseControl](http://cruisecontrol.sourceforge.net) 和 Jenkins/Hudson^(2) 是你自己部署的最知名的 CI 服务器之一。还有托管解决方案，如 [Travis CI](https://travis-ci.com)，[TeamCity](https://www.jetbrains.com/teamcity)，或 [CircleCI](https://circleci.com)。这些托管解决方案消除了设置和运行自己的 CI 服务器的需要。它们也倾向于在你的存储库中有其配置（如 *travis.yml* 等），因此向它们部署变得更加简单。
+在 CI 服务器中有许多免费和商业选择。在开源世界中，[CruiseControl](http://cruisecontrol.sourceforge.net) 和 Jenkins/Hudson² 是你自己部署的最知名的 CI 服务器之一。还有托管解决方案，如 [Travis CI](https://travis-ci.com)，[TeamCity](https://www.jetbrains.com/teamcity)，或 [CircleCI](https://circleci.com)。这些托管解决方案消除了设置和运行自己的 CI 服务器的需要。它们也倾向于在你的存储库中有其配置（如 *travis.yml* 等），因此向它们部署变得更加简单。
 
 Jenkins 作为一个 Web 应用程序运行，可以在 Jakarta EE 服务器内或者作为独立的 Web 服务器运行。一旦它启动了，你可以使用任何标准的 Web 浏览器作为其用户界面。安装和启动 Jenkins 可以像解压分发文件和调用如下所示那样简单：
 
@@ -1025,6 +1025,6 @@ Table 1-6\. 开源代码库
 
 就像所有免费软件一样，请确保您理解各种许可方案的后果。例如，GPL 下的代码会自动将 GPL 转移到使用其中任何一小部分的代码上。请咨询律师。结果可能有所不同。尽管存在这些警告，源代码对于想要深入了解 Java 的人来说是一种无价的资源。
 
-^(1) 如果部署或构建包括“让史密斯在他的桌面上处理文件 X 并复制到服务器”的步骤，那么您可能还不太理解自动化测试的概念。
+¹ 如果部署或构建包括“让史密斯在他的桌面上处理文件 X 并复制到服务器”的步骤，那么您可能还不太理解自动化测试的概念。
 
-^(2) [Jenkins](http://jenkins-ci.org) 和 [Hudson](https://www.eclipse.org/hudson) 最初是 Hudson，由小林克树在 Sun Microsystems 工作时编写的。后来发生了文化冲突，导致 Jenkins 从 Hudson 中分离出来，创建了项目的一个新分支。小林克树现在致力于后来被称为 Jenkins 的部分。我会一直使用 Jenkins 这个名字，因为这是我使用的名字，而且每次都说“Jenkins/Hudson”太长了。但几乎这里的所有内容也适用于 Hudson。
+² [Jenkins](http://jenkins-ci.org) 和 [Hudson](https://www.eclipse.org/hudson) 最初是 Hudson，由小林克树在 Sun Microsystems 工作时编写的。后来发生了文化冲突，导致 Jenkins 从 Hudson 中分离出来，创建了项目的一个新分支。小林克树现在致力于后来被称为 Jenkins 的部分。我会一直使用 Jenkins 这个名字，因为这是我使用的名字，而且每次都说“Jenkins/Hudson”太长了。但几乎这里的所有内容也适用于 Hudson。

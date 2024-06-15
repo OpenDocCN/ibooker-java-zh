@@ -2,7 +2,7 @@
 
 # 6.0 引言
 
-开发人员在 Java 1.0 的 `Date` 类和其替代品 Java 1.1 的 `Calendar` 类的不一致性和模糊性下遭受了长达十五年的苦难。出现了几种替代 `Date` 的包，包括简单而明智的 [Date4J](http://date4j.net) 和更全面的 [Joda-Time 包](http://www.joda.org/joda-time)。Java 8 引入了一个新的、一致且经过深思熟虑的日期和时间处理包，由 Java 社区流程 JSR-310 主持，由开发人员 Stephen Colebourne 提出，基于他早期的 Joda-Time 包，但进行了几个重要的设计更改。^(1) 该包偏向于 ISO 8601 日期；例如，默认格式为 2015-10-23T10:22:45。当然，它也可以与其他日历方案一起使用。
+开发人员在 Java 1.0 的 `Date` 类和其替代品 Java 1.1 的 `Calendar` 类的不一致性和模糊性下遭受了长达十五年的苦难。出现了几种替代 `Date` 的包，包括简单而明智的 [Date4J](http://date4j.net) 和更全面的 [Joda-Time 包](http://www.joda.org/joda-time)。Java 8 引入了一个新的、一致且经过深思熟虑的日期和时间处理包，由 Java 社区流程 JSR-310 主持，由开发人员 Stephen Colebourne 提出，基于他早期的 Joda-Time 包，但进行了几个重要的设计更改。¹ 该包偏向于 ISO 8601 日期；例如，默认格式为 2015-10-23T10:22:45。当然，它也可以与其他日历方案一起使用。
 
 新 API 的一个关键优势是它提供了像添加/减去日期/时间等 *有用的操作*。开发人员曾多次浪费时间重复实现这些有用的操作。有了新的 API，可以使用内置功能。尽管如此，数百万行代码基于旧的 API，因此我们将简要回顾它们，并在本章的最后一节（Recipe 6.9）考虑将新 API 与遗留代码进行接口化。
 
@@ -689,4 +689,4 @@ public class LegacyDates {
 
 新的日期/时间 API 有许多我们尚未探索的功能。事实上，这几乎足以编写一本关于该主题的小书。同时，您可以在 [Oracle](https://docs.oracle.com/en/java/javase/13/docs/api/java.base/java/time/package-summary.html) 学习 API 的详细信息。
 
-^(1) 对于那些对历史奥秘感兴趣的人来说，这些差异在他的[博客](http://blog.joda.org/2009/11/why-jsr-310-isn-joda-time_4941.html)上有详细记录。
+¹ 对于那些对历史奥秘感兴趣的人来说，这些差异在他的[博客](http://blog.joda.org/2009/11/why-jsr-310-isn-joda-time_4941.html)上有详细记录。

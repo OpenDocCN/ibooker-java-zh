@@ -123,7 +123,7 @@ Main-Class: ch03.exercises.HelloJar
 % java -jar hello.jar
 ```
 
-请记住，标志中的 `m` 元素是必要的，以包含我们的清单。还值得提醒的是，`m` 和 `f` 标志的顺序决定了随后跟随的 *manifest.mf* 和 *hello.jar* 命令行参数的顺序。您还记得如何查看您新创建的 JAR 的内容以验证清单是否存在吗？^(1)
+请记住，标志中的 `m` 元素是必要的，以包含我们的清单。还值得提醒的是，`m` 和 `f` 标志的顺序决定了随后跟随的 *manifest.mf* 和 *hello.jar* 命令行参数的顺序。您还记得如何查看您新创建的 JAR 的内容以验证清单是否存在吗？¹
 
 # 第四章：Java 语言
 
@@ -328,7 +328,7 @@ Main-Class: ch03.exercises.HelloJar
 
 ## 代码练习
 
-1.  正如我们在本章中提到的，您不能像对列表或数组进行排序一样直接对简单映射进行排序。甚至`Set`通常也不可排序。^(2)不过，您可以对列表进行排序，因此使用`keySet()`方法填充列表应该可以满足您的需求：
+1.  正如我们在本章中提到的，您不能像对列表或数组进行排序一样直接对简单映射进行排序。甚至`Set`通常也不可排序。²不过，您可以对列表进行排序，因此使用`keySet()`方法填充列表应该可以满足您的需求：
 
     ```java
         List<Integer> ids = new ArrayList<>(employees.keySet());
@@ -652,6 +652,6 @@ Main-Class: ch03.exercises.HelloJar
 
 随着实践，您将会形成自己对开始使用新 API 所需信息的感觉。但是，您确实需要练习。在构建第一个客户端之后，查找另一个服务。为该 API 编写客户端，并查看您是否已经能够识别常见问题或更好地重用第一个客户端的代码。
 
-^(1) 您可以使用`jar tvf <jarfile>`查看任何 JAR 或 ZIP 文件。
+¹ 您可以使用`jar tvf <jarfile>`查看任何 JAR 或 ZIP 文件。
 
-^(2) 不过，您可以使用`SortedSet`或`TreeMap`，它们都会保持其条目排序。对于`TreeMap`，键保持有序。
+² 不过，您可以使用`SortedSet`或`TreeMap`，它们都会保持其条目排序。对于`TreeMap`，键保持有序。

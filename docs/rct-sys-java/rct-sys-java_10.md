@@ -1,6 +1,6 @@
 # 第七章。Mutiny：一个基于事件驱动的响应式编程 API
 
-在第五章中，我们介绍了响应式编程及其如何帮助实现响应式应用程序。然后，在第六章中，我们讨论了 Quarkus 如何使用 Mutiny 来实现响应式应用程序。本章重点介绍 Mutiny 本身。^(1)
+在第五章中，我们介绍了响应式编程及其如何帮助实现响应式应用程序。然后，在第六章中，我们讨论了 Quarkus 如何使用 Mutiny 来实现响应式应用程序。本章重点介绍 Mutiny 本身。¹
 
 本章介绍了 Mutiny 的概念和常见模式，这将帮助您理解接下来的几章。Mutiny 是 Quarkus 中用于每个与响应式相关的功能的 API。当深入学习使用 Quarkus 构建响应式应用程序和系统时，您将看到更多关于 Mutiny 的内容。
 
@@ -42,7 +42,7 @@ Mutiny 的 API 不是简洁的。我们更看重可读性和理解性，而不�
 
 # Uni 和 Multi
 
-Mutiny 提供两个主要类：`Uni` 和 `Multi`。^(2) `Uni` 表示异步操作或任务。它可以发出单个项目或失败，如果所表示的操作失败。`Multi` 表示项目流。它可以传输多个项目，以及终端失败或完成事件。
+Mutiny 提供两个主要类：`Uni` 和 `Multi`。² `Uni` 表示异步操作或任务。它可以发出单个项目或失败，如果所表示的操作失败。`Multi` 表示项目流。它可以传输多个项目，以及终端失败或完成事件。
 
 让我们看两个使用案例，以更好地理解它们的差异。假设您想从数据库中检索单个用户（由 `UserProfile` 类表示）。您将使用 `Uni<UserProfile>`，如 示例 7-1 所示。
 
@@ -249,7 +249,7 @@ uni
 );
 ```
 
-`transformToUni`和`transformToMulti`提供了生成`Uni`或`Multi`实例的能力。^(3) 当你接收到一个项时，Mutiny 会调用返回`Uni`或`Multi`的函数。然后，从这个`Uni`或`Multi`向下游发出事件。在示例 7-13 中，我们检索特定用户（通过其名称）的订单列表。
+`transformToUni`和`transformToMulti`提供了生成`Uni`或`Multi`实例的能力。³ 当你接收到一个项时，Mutiny 会调用返回`Uni`或`Multi`的函数。然后，从这个`Uni`或`Multi`向下游发出事件。在示例 7-13 中，我们检索特定用户（通过其名称）的订单列表。
 
 ##### 示例 7-13\. 检索特定用户的订单（*chapter-7/order-example/src/main/java/org/acme/ShopResource.java*）
 
@@ -283,7 +283,7 @@ public Multi<Order> getOrdersPerUser() {
 
 你可以立即发现一个不同点。不是`transformToMulti`，而是`transformToMultiAndConcatenate`。但为什么*AndConcatenate*？这与向下游发送的项的顺序有关。它获取第一个用户的`Multi`，将项发送到下游，然后处理下一个用户的`Multi`，依此类推。换句话说，它逐个获取`Multi`实例并将它们连接起来。这种方法保留了顺序，但同时也限制了并发性，因为我们一次只检索一个用户的订单。
 
-如果你不需要保留顺序，可以使用`transformToMultiAndMerge`方法。^(4) 在这种情况下，它并发地调用`getOrderForUser`。它将从生成的`Multi`中合并项目，因此可能会交错来自不同用户的订单（示例 7-15）。
+如果你不需要保留顺序，可以使用`transformToMultiAndMerge`方法。⁴ 在这种情况下，它并发地调用`getOrderForUser`。它将从生成的`Multi`中合并项目，因此可能会交错来自不同用户的订单（示例 7-15）。
 
 ##### 示例 7-15\. 使用合并检索每个用户的订单
 
@@ -485,10 +485,10 @@ Uni<Long> count = multi.collect().with(Collectors.counting());
 
 有了这个理解，我们现在可以开始使用 Quarkus 提供的响应式服务和设施。
 
-^(1) Quarkus 集成了 Mutiny，这是一个可以嵌入到任何地方的独立项目。
+¹ Quarkus 集成了 Mutiny，这是一个可以嵌入到任何地方的独立项目。
 
-^(2) Mutiny 的名称来源于 `Multi` 和 `Uni` 的缩写。
+² Mutiny 的名称来源于 `Multi` 和 `Uni` 的缩写。
 
-^(3) `transformToUni` 和 `transformToMulti` 操作在传统的响应式编程库中通常被称为 `flatMap`。
+³ `transformToUni` 和 `transformToMulti` 操作在传统的响应式编程库中通常被称为 `flatMap`。
 
-^(4) `transformToMultiAndConcatenate` 在传统的响应式编程库中称为 `concatMap`。`transformToMultiAndMerge` 通常被称为 `flatMap`。
+⁴ `transformToMultiAndConcatenate` 在传统的响应式编程库中称为 `concatMap`。`transformToMultiAndMerge` 通常被称为 `flatMap`。

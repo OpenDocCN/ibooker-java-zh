@@ -6,7 +6,7 @@ Java 是一种面向对象（OO）语言。你知道这是什么。函数式编�
 
 > 一种编程范式，一种构建计算机程序结构和元素的风格，将计算视为数学函数的评估，并避免状态和可变数据。函数式编程强调的是产生结果仅依赖于其输入而不依赖于程序状态的函数，即纯数学函数。这是一种声明式编程范式，意味着编程是通过表达式完成的。在函数式代码中，函数的输出值仅取决于作为函数输入的参数，因此对于相同参数 x 两次调用函数 f 将产生相同的结果 f(x)。消除副作用，即不依赖于函数输入的状态变化，可以大大增强理解和预测程序行为的能力，这是开发函数式编程的关键动机之一。
 
-我们如何从 FP 范式中受益？一种方式是转向使用 FP 语言；一些主要的 FP 语言包括 Haskell^(1)、Idris、Ocaml、Erlang、Julia 和 LISP 家族。但大多数这些语言都要求放弃 Java 生态系统。你可以考虑使用[Scala](http://www.scala-lang.org)或[Clojure](http://clojure.org)，这些是基于 JVM 的语言，在面向对象语言的背景下提供函数式编程支持。还有[Kotlin](https://kotlinlang.org)，这是最新的类 Java 语言。
+我们如何从 FP 范式中受益？一种方式是转向使用 FP 语言；一些主要的 FP 语言包括 Haskell¹、Idris、Ocaml、Erlang、Julia 和 LISP 家族。但大多数这些语言都要求放弃 Java 生态系统。你可以考虑使用[Scala](http://www.scala-lang.org)或[Clojure](http://clojure.org)，这些是基于 JVM 的语言，在面向对象语言的背景下提供函数式编程支持。还有[Kotlin](https://kotlinlang.org)，这是最新的类 Java 语言。
 
 但这是《Java Cookbook》，因此可以想象，我们将尝试在保持 Java 语言的同时获得尽可能多的函数式编程好处。FP 的一些特征包括以下内容：
 
@@ -118,7 +118,7 @@ public interface CameraInfo {
 
 也许您已经能够看出问题所在了。随着应用程序复杂度的增加，您还需要编写 `findByPrice()`、`findByMakeAndModel()`、`findByYearIntroduced()` 等等。
 
-您可以考虑实现一个例如查询方法，其中您传入一个`Camera`对象，其所有非空字段都用于比较。但是，如何实现查找价格*低于$500*的可换镜头相机？^(2)
+您可以考虑实现一个例如查询方法，其中您传入一个`Camera`对象，其所有非空字段都用于比较。但是，如何实现查找价格*低于$500*的可换镜头相机？²
 
 因此，更好的方法可能是使用回调函数来进行比较。然后，您可以提供一个匿名内部类来执行任何需要的搜索。您可能希望能够编写像这样的回调方法：
 
@@ -128,7 +128,7 @@ public boolean choose(Camera c) {
 }
 ```
 
-因此，我们将把它构建成一个接口：^(3)
+因此，我们将把它构建成一个接口：³
 
 ```java
 /** An Acceptor accepts some elements from a Collection */
@@ -806,8 +806,8 @@ Presto — Java 现在支持 mixin！
 
 如果适度使用，功能接口可以提供一种通过代码混入来构建应用程序的能力，这种方式不同于直接继承、聚合或 AOP。如果过度使用，会使你的代码变得臃肿，让那些 Java 8 之前的开发者发疯，并导致混乱。
 
-^(1) 使用 Haskell 编写了一个相当完整的 Twitter 克隆版本，代码只有几百行；请参阅[*https://github.com/Gabriel439/simple-twitter*](https://github.com/Gabriel439/simple-twitter)。
+¹ 使用 Haskell 编写了一个相当完整的 Twitter 克隆版本，代码只有几百行；请参阅[*https://github.com/Gabriel439/simple-twitter*](https://github.com/Gabriel439/simple-twitter)。
 
-^(2) 如果你曾经需要在关系数据库中使用 Java Persistence API（JPA）存储数据，你应该考虑使用[Spring Data](https://spring.io/projects/spring-data)或[Apache DeltaSpike](http://deltaspike.apache.org)框架。这些框架允许你定义一个带有像`findCameraByInterchangeableTrueAndPriceLessThan(double price)`这样方法名的接口，并让框架为你实现这些方法。
+² 如果你曾经需要在关系数据库中使用 Java Persistence API（JPA）存储数据，你应该考虑使用[Spring Data](https://spring.io/projects/spring-data)或[Apache DeltaSpike](http://deltaspike.apache.org)框架。这些框架允许你定义一个带有像`findCameraByInterchangeableTrueAndPriceLessThan(double price)`这样方法名的接口，并让框架为你实现这些方法。
 
-^(3) 如果你对相机不感兴趣，那么“可换镜头相机（ILC）”的描述包括你在相机商店可能找到的两类产品：传统的单反相机（DSLR）和较新的“紧凑系统相机”，如尼康 1 和 Z 系列、索尼 ILCE（前身为 NEX）和佳能 EOS-M，这些都比旧款 DSLR 相机更小更轻。
+³ 如果你对相机不感兴趣，那么“可换镜头相机（ILC）”的描述包括你在相机商店可能找到的两类产品：传统的单反相机（DSLR）和较新的“紧凑系统相机”，如尼康 1 和 Z 系列、索尼 ILCE（前身为 NEX）和佳能 EOS-M，这些都比旧款 DSLR 相机更小更轻。

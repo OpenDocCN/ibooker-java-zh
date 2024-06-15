@@ -4,7 +4,7 @@
 
 > 数据应用从数据本身获取其价值，并随之生成更多数据。它不仅仅是一个带有数据的应用程序；它是一个数据产品。数据科学使得数据产品的创建成为可能。
 
-用于数据科学软件的主要开源生态系统之一位于 Apache，包括 [Hadoop](https://hadoop.apache.org)（包括 HDFS 分布式文件系统，Hadoop Map/Reduce，^(1) Ozone 对象存储和 Yarn 调度程序）、[Cassandra 分布式数据库](https://cassandra.apache.org) 和 [Spark 计算引擎](https://spark.apache.org)。请阅读 Hadoop 页面的“模块和相关工具”部分以获取当前列表。
+用于数据科学软件的主要开源生态系统之一位于 Apache，包括 [Hadoop](https://hadoop.apache.org)（包括 HDFS 分布式文件系统，Hadoop Map/Reduce，¹ Ozone 对象存储和 Yarn 调度程序）、[Cassandra 分布式数据库](https://cassandra.apache.org) 和 [Spark 计算引擎](https://spark.apache.org)。请阅读 Hadoop 页面的“模块和相关工具”部分以获取当前列表。
 
 这里有趣的是，许多数据科学家视为理所当然的大部分基础设施都是用 Java 和 Scala（一种 JVM 语言）编写的。其余大部分则是用 Python 编写的，这是一种与 Java 互补的语言。
 
@@ -57,7 +57,7 @@ Table 11-1\. 一些 Java 机器学习包
 
 ## 讨论
 
-Spark 是一个非常庞大的主题！已经有整本书专门讲述了它。引用 [Databricks](https://databricks.com)，这个团队是 Spark 最初的开发者之一：^(2)
+Spark 是一个非常庞大的主题！已经有整本书专门讲述了它。引用 [Databricks](https://databricks.com)，这个团队是 Spark 最初的开发者之一：²
 
 > Apache Spark™ 在过去几年中取得了巨大的增长，成为今天企业中的事实标准数据处理和 AI 引擎，这归功于其速度、易用性和复杂的分析功能。Spark 通过简化跨多个来源的大规模数据准备，为数据工程和数据科学工作负载提供一致的 API 集，以及与流行的 AI 框架和库（如 TensorFlow、PyTorch、R 和 SciKit-Learn）的无缝集成，统一了数据和人工智能。
 
@@ -555,6 +555,6 @@ timevis(epics)
 
 要将其暴露在公共网络上，请复制文件（完整路径显示在浏览器标题栏中）和*lib*文件夹放入同一目录，并将该目录服务于 Web 服务器。或者直接使用文件→另存为→完整网页，在浏览器中执行。无论哪种方式，您都必须在 R 会话运行时执行此操作，因为会话结束时会删除临时文件。或者，如果您熟悉`shiny`框架，可以将`timevis`可视化插入到`shiny`应用程序中。
 
-^(1) *Map/Reduce*是由 Google 开发的处理大数据问题的著名算法。未指定数量的生成器处理*map*数据，如网页上的单词或页面的 URL，单个（通常）reduce 进程将这些映射减少为可管理的形式，例如包含给定单词的所有页面的列表。早期，数据科学试图通过 Map/Reduce 做所有事情；现在，风向标已经回到使用像 Spark 这样的计算引擎。
+¹ *Map/Reduce*是由 Google 开发的处理大数据问题的著名算法。未指定数量的生成器处理*map*数据，如网页上的单词或页面的 URL，单个（通常）reduce 进程将这些映射减少为可管理的形式，例如包含给定单词的所有页面的列表。早期，数据科学试图通过 Map/Reduce 做所有事情；现在，风向标已经回到使用像 Spark 这样的计算引擎。
 
-^(2) DataBricks 在其网站上提供了几本关于 Spark 的免费电子书；它还提供商业 Spark 附加组件。
+² DataBricks 在其网站上提供了几本关于 Spark 的免费电子书；它还提供商业 Spark 附加组件。

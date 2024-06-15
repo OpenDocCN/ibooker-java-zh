@@ -194,7 +194,7 @@ Java 在历史上拥有非常长的主要版本之间的发布周期，平均从
 
 ![显示每个 Java 发布采用率的图表](img/dtjd_1002.png)
 
-###### 图 10-2\. 开发者对最近的 Java 发布的采纳情况^(1)
+###### 图 10-2\. 开发者对最近的 Java 发布的采纳情况¹
 
 更甚的是，OpenJDK 支持模型仅为每个 Java 发布提供六个月的公共支持，直到下一个特性发布出现。即使您每六个月升级一次，您仍会缺少关键的支持和安全补丁，详细信息请参阅[Stephen Colebourne 的博客](https://oreil.ly/Axfki)。
 
@@ -204,7 +204,7 @@ Java 在历史上拥有非常长的主要版本之间的发布周期，平均从
 
 ![显示 Java 8 采用率增长的图表](img/dtjd_1003.png)
 
-###### Figure 10-3\. Java 8 发布两年后的开发者采用^2
+###### Figure 10-3\. Java 8 发布两年后的开发者采用²
 
 这将我们带到 Java 9 及以后版本采用率低的第二个原因，即价值成本比较差。Java 9 的主要特性是引入了一个新的模块化系统。Java 平台模块化的想法最早由 [Mark Reinhold 在 2008 年提出](https://oreil.ly/22YFR)，并在 Java 9 的发布中经历了九年的完善。
 
@@ -458,6 +458,6 @@ Knight Capital Group 是一家专门从事高交易量交易的做市商，2011 
 
 现在您已经掌握了知识，是时候开始说服您的同事在今天采纳最佳实践，而不是成为高科技行业的下一个 Knight Capital 的“Knightmare”头条新闻。成为 DevOps 行业的精英表现者，而不是出现在注册表的头版。不要试图一口吃掉整个大海，但小而持续的改进举措最终会使您的组织实现持续更新。祝您好运！
 
-^(1) Brian Vermeer，“2020 年 JVM 生态系统报告”，Snyk，2020 年，[*https://oreil.ly/4fN74*](https://oreil.ly/4fN74)。
+¹ Brian Vermeer，“2020 年 JVM 生态系统报告”，Snyk，2020 年，[*https://oreil.ly/4fN74*](https://oreil.ly/4fN74)。
 
-^(2) Eugen Paraschiv，“2016 年 3 月 Java 8 采用情况”，最后修改于 2022 年 3 月 11 日，[*https://oreil.ly/ab5Vv*](https://oreil.ly/ab5Vv)。
+² Eugen Paraschiv，“2016 年 3 月 Java 8 采用情况”，最后修改于 2022 年 3 月 11 日，[*https://oreil.ly/ab5Vv*](https://oreil.ly/ab5Vv)。

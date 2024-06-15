@@ -245,13 +245,13 @@ List<String> result =
 
 内部迭代和高阶函数的基本设计使得流能够相当高效地优化自身。它们利用多种技术来提升性能：
 
-+   （无状态）操作的融合^(1)
++   （无状态）操作的融合¹
 
 +   移除冗余操作
 
 +   短路管道路径
 
-与流相关的迭代代码优化并不限于流。如果可能的话，传统循环也会被 JVM 优化^(2)。
+与流相关的迭代代码优化并不限于流。如果可能的话，传统循环也会被 JVM 优化²。
 
 此外，像`for`和`while`这样的循环是语言特性，因此可以被进一步优化。流是普通类型，具有相关的所有成本。它们仍然需要通过包装数据源来创建，并且管道是一个调用链，每次调用都需要一个新的堆栈帧。在大多数实际场景中，它们的总体优势超过了与内置语句`for`或`while`相比可能的性能影响。
 
@@ -423,7 +423,7 @@ public interface Collection<E> extends Iterable<E> {
 
 ###### 提示
 
-所有 `Stream` 操作都有合适的命名，并且有充分的 [文档](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/stream/Stream.xhtml) 和示例。许多方法使用“尚未成为标准”的 JavaDoc^(3) `@implSpec` 来引用特定于实现的行为。因此，请确保在您的 IDE 无法正确呈现所有文档时，查看在线文档或 JavaDoc 本身。
+所有 `Stream` 操作都有合适的命名，并且有充分的 [文档](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/stream/Stream.xhtml) 和示例。许多方法使用“尚未成为标准”的 JavaDoc³ `@implSpec` 来引用特定于实现的行为。因此，请确保在您的 IDE 无法正确呈现所有文档时，查看在线文档或 JavaDoc 本身。
 
 在本节中，我将使用一个简单的 `Shape` 记录，如 示例 6-6 所示，来演示不同的操作。
 
@@ -1255,7 +1255,7 @@ var result = Stream.of("apple", "orange", "banana", "melon")
 
 您的代码始终可以更高效。在测量和验证实际性能之前，因性能焦虑而排斥某个工具可能会使您失去解决实际问题的更好方案。
 
-托尼·霍尔爵士^(4)曾说过：“我们应该忘记小的效率，大约有 97%的时间：过早优化是一切邪恶的根源。”
+托尼·霍尔爵士⁴曾说过：“我们应该忘记小的效率，大约有 97%的时间：过早优化是一切邪恶的根源。”
 
 在决定是否使用流或循环时，可以应用这些建议。大多数情况下——大约 97%的时间——您不需要关注原始性能，流可能是最简单和直接的解决方案，同时也能享受流 API 提供的所有好处。偶尔——那个 3%的时间——您需要关注原始性能以实现您的目标，而流可能不是最好的解决方案。尽管在第八章中，您将学习如何通过利用并行流来提高处理性能。
 
@@ -1281,10 +1281,10 @@ var result = Stream.of("apple", "orange", "banana", "melon")
 
 +   并行处理可能不是所有数据处理问题的最佳方法，并且通常需要验证以更高效地解决问题。
 
-^(1) Oracle 的 Java 语言架构师 Brian Goetz 解释了在 [StackOverflow](https://stackoverflow.com/questions/35069055/java-stream-operation-fusion-and-stateful-intermediate-operations/35070889#35070889) 上的操作融合和有状态中间操作。
+¹ Oracle 的 Java 语言架构师 Brian Goetz 解释了在 [StackOverflow](https://stackoverflow.com/questions/35069055/java-stream-operation-fusion-and-stateful-intermediate-operations/35070889#35070889) 上的操作融合和有状态中间操作。
 
-^(2) Newland, Chris 和 Ben Evans. 2019\. “循环展开：一种用于减少循环迭代次数的复杂机制可以提高性能，但可能会因无意编码而受阻。” [Java magazine](https://blogs.oracle.com/javamagazine/loop-unrolling).
+² Newland, Chris 和 Ben Evans. 2019\. “循环展开：一种用于减少循环迭代次数的复杂机制可以提高性能，但可能会因无意编码而受阻。” [Java magazine](https://blogs.oracle.com/javamagazine/loop-unrolling).
 
-^(3) 虽然自 Java 8 发布以来 JavaDoc 中使用了几种新的注释，但截至本书撰写时它们还不是*官方*标准。非正式提案可在官方 OpenJDK 错误跟踪器上查看，编号为[JDK-8068562](https://bugs.openjdk.java.net/browse/JDK-8068562)。
+³ 虽然自 Java 8 发布以来 JavaDoc 中使用了几种新的注释，但截至本书撰写时它们还不是*官方*标准。非正式提案可在官方 OpenJDK 错误跟踪器上查看，编号为[JDK-8068562](https://bugs.openjdk.java.net/browse/JDK-8068562)。
 
-^(4) 英国计算机科学家**查尔斯·安东尼·理查德·霍尔**（Sir Charles Antony Richard Hoare）是图灵奖的获得者，这是计算机科学领域的最高荣誉，他在编程语言、算法、操作系统、形式验证和并发计算方面做出了基础性贡献。
+⁴ 英国计算机科学家**查尔斯·安东尼·理查德·霍尔**（Sir Charles Antony Richard Hoare）是图灵奖的获得者，这是计算机科学领域的最高荣誉，他在编程语言、算法、操作系统、形式验证和并发计算方面做出了基础性贡献。

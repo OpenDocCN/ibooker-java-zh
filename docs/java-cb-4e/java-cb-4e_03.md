@@ -4,7 +4,7 @@
 
 字符串是几乎任何编程任务中不可避免的一部分。我们用它们来向用户打印消息；用来引用磁盘上文件或其他外部媒体；以及用于人们的姓名、地址和所属关系。字符串的用途是多种多样的，几乎不计其数（实际上，如果你需要数字，我们会在第五章中介绍它们）。
 
-如果你之前有 C 这样的编程语言的经验，你需要记住在 Java 中`String`是一个定义的类型（类）——也就是说，字符串是一个对象，因此有方法。它不是一个字符数组（尽管它包含一个），不应该被认为是一个数组。像`fileName.endsWith(".gif")`和`extension.equals(".gif")`（以及相应的 "`.gif".equals(extension)`）这样的操作是很常见的。^(1)
+如果你之前有 C 这样的编程语言的经验，你需要记住在 Java 中`String`是一个定义的类型（类）——也就是说，字符串是一个对象，因此有方法。它不是一个字符数组（尽管它包含一个），不应该被认为是一个数组。像`fileName.endsWith(".gif")`和`extension.equals(".gif")`（以及相应的 "`.gif".equals(extension)`）这样的操作是很常见的。¹
 
 Java 老手应该注意，Java 11 和 12 添加了几个新的`String`方法，包括`indent(int n)`，`stripLeading()`和`stripTrailing()`，`Stream<T>` `lines()`，`isBlank()`和`transform()`。其中大多数提供了明显的功能；最后一个允许将一个函数接口的实例（参见食谱 9.0）应用于字符串并返回该操作的结果。
 
@@ -135,7 +135,7 @@ while (st.hasMoreElements( ))
 FirstName|LastName|Company|PhoneNumber
 ```
 
-而你亲爱的老阿姨贝贡尼亚在过去 38 年没有工作吗？她的`Company`字段很可能为空。^(3) 如果您仔细查看前面的代码示例，您会看到它有两个连续的分隔符（逗号和空格）；但是如果您运行它，没有“额外”的标记——也就是说，`StringTokenizer`通常会丢弃相邻的连续分隔符。对于像电话列表这样需要保留空字段的情况，有好消息和坏消息。好消息是您可以做到：在构造`StringTokenizer`时添加第二个参数`true`，表示希望将分隔符视为标记。坏消息是现在您会看到这些分隔符作为标记，因此您必须自己进行算术计算。想看看吗？运行这个程序：
+而你亲爱的老阿姨贝贡尼亚在过去 38 年没有工作吗？她的`Company`字段很可能为空。³ 如果您仔细查看前面的代码示例，您会看到它有两个连续的分隔符（逗号和空格）；但是如果您运行它，没有“额外”的标记——也就是说，`StringTokenizer`通常会丢弃相邻的连续分隔符。对于像电话列表这样需要保留空字段的情况，有好消息和坏消息。好消息是您可以做到：在构造`StringTokenizer`时添加第二个参数`true`，表示希望将分隔符视为标记。坏消息是现在您会看到这些分隔符作为标记，因此您必须自己进行算术计算。想看看吗？运行这个程序：
 
 *main/src/main/java/strings/StrTokDemo3.java*
 
@@ -261,7 +261,7 @@ while (tokenizer.find( )) {
 
 ## 讨论
 
-`StringBuilder`类的对象基本上表示一个字符集合。它类似于一个`String`对象。^(4) 然而，正如前面提到的，`String`是不可变的；而`StringBuilder`是可变的，专门用于构建`String`。通常您会构造一个`StringBuilder`，调用需要的方法以便按照您想要的方式获取字符序列，然后调用`toString()`方法生成表示相同字符序列的`String`，以便在大多数处理`String`的 Java API 中使用。
+`StringBuilder`类的对象基本上表示一个字符集合。它类似于一个`String`对象。⁴ 然而，正如前面提到的，`String`是不可变的；而`StringBuilder`是可变的，专门用于构建`String`。通常您会构造一个`StringBuilder`，调用需要的方法以便按照您想要的方式获取字符序列，然后调用`toString()`方法生成表示相同字符序列的`String`，以便在大多数处理`String`的 Java API 中使用。
 
 `StringBuffer`是历史悠久的——它从时间的开始就存在。它的一些方法是同步的（参见 Recipe 16.5），这在单线程环境中会产生不必要的开销。在 Java 5 中，这个类被分成了`StringBuffer`（同步的）和`StringBuilder`（非同步的）；因此，对于单线程使用来说，它更快速且更可取。另一个新类`AbstractStringBuilder`是这两者的父类。在接下来的讨论中，我会使用“`StringBuilder`类”来指代这三者，因为它们大部分具有相同的方法。
 
@@ -1559,14 +1559,14 @@ public class Soundex {
 
 Levenshtein 字符串编辑距离算法可以用于以不同方式进行近似字符串比较。你可以在[Apache Commons StringUtils](http://commons.apache.org/proper/commons-lang)中找到这个算法。我展示了这个算法的非 Java（Perl）实现，在 Recipe 18.5 中可以找到。
 
-^(1) 这两个`.equals()`调用在**除了第一个可能会抛出`NullPointerException`之外**是等价的。
+¹ 这两个`.equals()`调用在**除了第一个可能会抛出`NullPointerException`之外**是等价的。
 
-^(2) `StringBuilder` 是在 Java 5 中添加的。它在功能上等同于旧版的 `StringBuffer`。我们将在 Recipe 3.2 中详细讨论细节。
+² `StringBuilder` 是在 Java 5 中添加的。它在功能上等同于旧版的 `StringBuffer`。我们将在 Recipe 3.2 中详细讨论细节。
 
-^(3) 除非，也许，你更新个人记录的速度和我一样慢。
+³ 除非，也许，你更新个人记录的速度和我一样慢。
 
-^(4) `String` 和 `StringBuilder` 在它们实现的 `CharSequence` 接口中有几个强制相同的方法。
+⁴ `String` 和 `StringBuilder` 在它们实现的 `CharSequence` 接口中有几个强制相同的方法。
 
-^(5) 实际上，Unicode 中有如此多的字符，以至于出现了一种潮流，使用近似拉丁字母的倒置版本字符显示你的名字倒置。在网络上搜索“倒置 Unicode”即可了解更多。
+⁵ 实际上，Unicode 中有如此多的字符，以至于出现了一种潮流，使用近似拉丁字母的倒置版本字符显示你的名字倒置。在网络上搜索“倒置 Unicode”即可了解更多。
 
-^(6) 在 Unix 术语中，守护进程（daemon）是一个服务器。这个古老的英文单词与撒旦的恶魔无关，而是指一个帮助者或助手。Derwin Daemon 实际上是 Susannah Coleman 的 *Source Wars* 在线漫画中的一个角色，很久以前曾经在一个现在已经关闭的网站 *darby.daemonnews.org* 上在线。
+⁶ 在 Unix 术语中，守护进程（daemon）是一个服务器。这个古老的英文单词与撒旦的恶魔无关，而是指一个帮助者或助手。Derwin Daemon 实际上是 Susannah Coleman 的 *Source Wars* 在线漫画中的一个角色，很久以前曾经在一个现在已经关闭的网站 *darby.daemonnews.org* 上在线。

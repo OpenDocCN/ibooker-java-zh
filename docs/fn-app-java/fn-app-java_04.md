@@ -148,7 +148,7 @@ Integer result = over9000.test(1_234);
 Function<String, String> greeterFn = name -> "Hello " + name;
 ```
 
-由于 Java 方法中的参数数量，如 SAM，是固定的^(1)，因此必须有一个显式的功能接口来表示每个所需的元数。为了支持大于一的元数，JDK 包括了接受参数的主要功能接口类别的专门变体，如表 3-1 所列。
+由于 Java 方法中的参数数量，如 SAM，是固定的¹，因此必须有一个显式的功能接口来表示每个所需的元数。为了支持大于一的元数，JDK 包括了接受参数的主要功能接口类别的专门变体，如表 3-1 所列。
 
 表 3-1\. 基于元数的函数接口
 
@@ -433,7 +433,7 @@ public class ArrayList<E> extends AbstractList<E>
 
 功能接口可以通过 lambda 或方法引用隐式实现，但当它们由你的类型之一显式实现时，它们也非常有用，因此它们可以在高阶函数中使用。你的一些类型可能已经实现了诸如`java.util.Comparator<T>`或`java.lang.Runnable`之类的后续功能接口中的一个。
 
-直接实现功能接口在以前的“非功能”类型和它们在功能代码中的易用性之间创建了一个桥梁。一个很好的例子是面向对象的*命令设计模式*⁠^(2)。
+直接实现功能接口在以前的“非功能”类型和它们在功能代码中的易用性之间创建了一个桥梁。一个很好的例子是面向对象的*命令设计模式*⁠²。
 
 ###### 注意
 
@@ -638,8 +638,8 @@ public final class Compositor {
 
 +   常见或缺失的功能任务可以在具有`static`方法的辅助类型中累积。
 
-^(1) 可变参数方法参数，如`String…​`，似乎具有动态的 arity，因为该方法接受非固定数量的参数。然而，在幕后，这些参数被转换为数组，使实际的 arity 为一。
+¹ 可变参数方法参数，如`String…​`，似乎具有动态的 arity，因为该方法接受非固定数量的参数。然而，在幕后，这些参数被转换为数组，使实际的 arity 为一。
 
-^(2) 命令模式是由 *四人帮* 描述的许多面向对象设计模式之一。Gamma, E., Helm, R., Johnson, R., & Vlissides, J. (1994). Design patterns: Elements of reusable object-oriented software. Boston, MA: Addison Wesley.
+² 命令模式是由 *四人帮* 描述的许多面向对象设计模式之一。Gamma, E., Helm, R., Johnson, R., & Vlissides, J. (1994). Design patterns: Elements of reusable object-oriented software. Boston, MA: Addison Wesley.
 
-^(3) 所示的`Function<T, R>`接口是 JDK 中存在的源代码的简化变体，以增加可读性。
+³ 所示的`Function<T, R>`接口是 JDK 中存在的源代码的简化变体，以增加可读性。

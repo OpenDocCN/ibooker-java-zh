@@ -2,7 +2,7 @@
 
 在继续理解响应式之前，让我们花点时间了解一下 Quarkus。那么，什么是 Quarkus？
 
-*Quarkus*是一个基于 Kubernetes 的 Java 堆栈。它专为 Kubernetes、容器和云环境进行了定制，但在裸金属和虚拟机上也能完美运行。^(1) Quarkus 应用程序需要比使用传统框架的应用程序更少的内存，并且启动更快。它们还可以编译成本地可执行文件，从而消耗更少的内存并实现即时启动。
+*Quarkus*是一个基于 Kubernetes 的 Java 堆栈。它专为 Kubernetes、容器和云环境进行了定制，但在裸金属和虚拟机上也能完美运行。¹ Quarkus 应用程序需要比使用传统框架的应用程序更少的内存，并且启动更快。它们还可以编译成本地可执行文件，从而消耗更少的内存并实现即时启动。
 
 Quarkus 一个令人兴奋且核心的方面是其响应式引擎。在容器或虚拟化环境中运行时，响应式引擎对于减少内存和 CPU 消耗至关重要。该引擎使得任何 Quarkus 应用程序都能高效运行，并支持响应式应用程序和系统的创建。
 
@@ -40,7 +40,7 @@ Java 现在已经 25 岁了！有时很难想象。从三层架构和客户端/�
 
 框架通常可以通过延迟工作直到接收到第一个请求来实现较低的启动时间。任何剩余的启动任务在处理第一个请求之前完成。*惰性初始化* 是这种行为的另一个名称，它提供了一个关于应用真正准备好的虚假指示。*开始接收请求* 的时间是衡量应用启动时间的最佳指标。在无服务器工作负载以及使用 *规模至零* 方法的任何机制中，具有较低的 *首个请求时间* 是至关重要的，其中服务仅在需要时启动。在更常见的架构中，这种快速启动时间可以减少崩溃后的恢复时间。
 
-如何测量启动时间？有许多方法可行，包括修改端点以在访问时输出时间戳。为了让生活更简单，我们将使用由 Red Hat 的 John O’Hara 开发的 Node.js 脚本。^2 此脚本使用应用程序启动命令和访问它的 URL，在另一个进程中启动应用程序。脚本会等待 URL 返回 `200`，表示成功，然后计算首个请求的时间。
+如何测量启动时间？有许多方法可行，包括修改端点以在访问时输出时间戳。为了让生活更简单，我们将使用由 Red Hat 的 John O’Hara 开发的 Node.js 脚本。² 此脚本使用应用程序启动命令和访问它的 URL，在另一个进程中启动应用程序。脚本会等待 URL 返回 `200`，表示成功，然后计算首个请求的时间。
 
 ###### 注意
 
@@ -538,7 +538,7 @@ No resources found in default namespace.
 
 +   一个可供你的 Kubernetes 集群访问的容器镜像
 
-+   一个描述你的部署的 YAML 文档^(5)
++   一个描述你的部署的 YAML 文档⁵
 
 Quarkus 提供了一些工具来避免手动创建镜像和编写部署，比如我们之前提到的 Kubernetes、minikube 和 Jib 容器扩展。
 
@@ -828,14 +828,14 @@ code-with-quarkus-fd76c594b-48b98   0m           7Mi
 
 在接下来的章节中，我们将简要回顾详细分布式系统、响应式系统、响应式编程及其相互关系。
 
-^(1) 本书中，*容器* 指的是操作系统虚拟化形式，而不是 Java EE 容器。
+¹ 本书中，*容器* 指的是操作系统虚拟化形式，而不是 Java EE 容器。
 
-^(2) 您可以在 GitHub 上找到 [用于测量启动时间的脚本](https://github.com/cescoffier/reactive-systems-in-java)。
+² 您可以在 GitHub 上找到 [用于测量启动时间的脚本](https://github.com/cescoffier/reactive-systems-in-java)。
 
-^(3) [查看 Quarkus 网站上特定平台的内存报告](https://oreil.ly/eYjXF)。
+³ [查看 Quarkus 网站上特定平台的内存报告](https://oreil.ly/eYjXF)。
 
-^(4) Quarkus 提供多种实现 HTTP 端点的方式。JAX-RS 是其中之一。您还可以使用带有 Spring MVC 注解的控制器类或者如果更喜欢程序化方法，可以使用响应式路由。
+⁴ Quarkus 提供多种实现 HTTP 端点的方式。JAX-RS 是其中之一。您还可以使用带有 Spring MVC 注解的控制器类或者如果更喜欢程序化方法，可以使用响应式路由。
 
-^(5) YAML（Yet Another Markup Language）是描述 Kubernetes 资源最常用的格式。[Wikipedia 提供了一个简明介绍](https://oreil.ly/mZOTT)。
+⁵ YAML（Yet Another Markup Language）是描述 Kubernetes 资源最常用的格式。[Wikipedia 提供了一个简明介绍](https://oreil.ly/mZOTT)。
 
-^(6) GraalVM 并非第一个用于从 Java 代码构建本地可执行文件的工具。Dalvik、Avian、GNU Compiler for Java (GCJ) 和 Excelsior JET 在 GraalVM 之前就存在了。
+⁶ GraalVM 并非第一个用于从 Java 代码构建本地可执行文件的工具。Dalvik、Avian、GNU Compiler for Java (GCJ) 和 Excelsior JET 在 GraalVM 之前就存在了。

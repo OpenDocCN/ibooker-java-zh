@@ -60,7 +60,7 @@ Spring Boot 应用程序为开发人员提供了多种强大的机制，可以�
 
 +   `@PropertySource` 注解用于 `@Configuration` 类；请注意，这些属性源在应用程序上下文刷新之前不会添加到 `Environment` 中，这对于在刷新开始之前读取的某些属性（例如 `logging.*` 和 `spring.main.*`）进行配置来说为时已晚。
 
-+   通过设置 `SpringApplication.setDefaultProperties` 指定的默认属性。注意：前述属性源按优先级降序列出：来自列表更高位置的属性将替换来自列表较低位置的相同属性。^(1)
++   通过设置 `SpringApplication.setDefaultProperties` 指定的默认属性。注意：前述属性源按优先级降序列出：来自列表更高位置的属性将替换来自列表较低位置的相同属性。¹
 
 所有这些都可能非常有用，但在本章的代码场景中，我特别选择了其中几个：
 
@@ -770,4 +770,4 @@ echo '{"configuredLevel": "TRACE"}'
 
 在下一章中，我将深入探讨数据：如何使用各种行业标准和领先的数据库引擎定义其存储和检索，以及 Spring Data 项目和工具如何以最简单和强大的方式支持它们的使用。
 
-^(1) [Spring Boot 属性源的优先级顺序](https://oreil.ly/OrderPredSB)。
+¹ [Spring Boot 属性源的优先级顺序](https://oreil.ly/OrderPredSB)。

@@ -34,7 +34,7 @@ JVM 还有许多其他语言，包括以下几种：
 
 ## 讨论
 
-`Runtime`类中的`exec()`方法允许你运行外部程序。你给出的命令行通过简单的`StringTokenizer`（参见 Recipe 3.1）分解为字符串，并传递给操作系统的“执行程序”系统调用。例如，这里是一个使用`exec()`运行* kwrite *的简单程序，一个带窗口的文本编辑器程序。^(1) 在 Windows 上，你可能需要将名称更改为`notepad`或`wordpad`，可能包括完整路径名，例如，*c:/windows/notepad.exe*（你也可以使用反斜杠，但要小心要双倍，因为反斜杠在 Java 字符串中是特殊字符）：
+`Runtime`类中的`exec()`方法允许你运行外部程序。你给出的命令行通过简单的`StringTokenizer`（参见 Recipe 3.1）分解为字符串，并传递给操作系统的“执行程序”系统调用。例如，这里是一个使用`exec()`运行* kwrite *的简单程序，一个带窗口的文本编辑器程序。¹ 在 Windows 上，你可能需要将名称更改为`notepad`或`wordpad`，可能包括完整路径名，例如，*c:/windows/notepad.exe*（你也可以使用反斜杠，但要小心要双倍，因为反斜杠在 Java 字符串中是特殊字符）：
 
 ```java
 public class ExecDemoSimple {
@@ -986,4 +986,4 @@ main(int argc, char *argv[]) {
 
 ====
 
-^(1) *kwrite* 是 Unix 特有的；它是 [K Desktop Environment (KDE)](http://www.kde.org) 的一部分。
+¹ *kwrite* 是 Unix 特有的；它是 [K Desktop Environment (KDE)](http://www.kde.org) 的一部分。

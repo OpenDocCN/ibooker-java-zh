@@ -295,7 +295,7 @@ public class AddMilkDecorator extends Decorator {
 
 `prepare` 调用同样要求 `super` 执行其预期目的，并用牛奶“装饰”结果的咖啡。
 
-现在很容易制作“café con leche^(3)"：
+现在很容易制作“café con leche³"：
 
 ```java
 CoffeeMaker coffeeMaker = new BlackCoffeeMaker();
@@ -446,7 +446,7 @@ var coffee = maker.prepare();
 
 ## 策略模式
 
-*策略模式*属于*行为模式*的一种。由于主导大多数面向对象设计的*开闭原则*⁠^(4)，不同的系统通常通过抽象耦合，如针对接口而不是具体实现进行编程。
+*策略模式*属于*行为模式*的一种。由于主导大多数面向对象设计的*开闭原则*⁠⁴，不同的系统通常通过抽象耦合，如针对接口而不是具体实现进行编程。
 
 这种*抽象耦合*提供了更多理论组件一起工作的有用虚构，以便稍后实现，而不是您的代码知道实际实现。策略使用这种解耦的代码风格来创建基于相同抽象的可互换的小逻辑单元。哪个被选择在运行时决定。
 
@@ -684,7 +684,7 @@ public record User(String email, String name, List<String> permissions) {
 }
 ```
 
-第二，生成器可以模仿 Groovy 的`with`⁠^(5)，如下所示：
+第二，生成器可以模仿 Groovy 的`with`⁠⁵，如下所示：
 
 ```java
 var user = User.builder()
@@ -774,12 +774,12 @@ public record User(String email, String name, List<String> permissions) {
 
 +   即使对于没有函数等效的设计模式，添加某些函数技术也可以提高其灵活性和简洁性。
 
-^(1) 所谓的“无底蜷缠”描述了*无限回归*的问题：由递归原则管理的无限系列实体。每个实体依赖于或由其前身产生，这与许多函数设计哲学相符。
+¹ 所谓的“无底蜷缠”描述了*无限回归*的问题：由递归原则管理的无限系列实体。每个实体依赖于或由其前身产生，这与许多函数设计哲学相符。
 
-^(2) Gamma, E., Helm, R., Johnson, R., & Vlissides, J. (1994). Design patterns: Elements of reusable object-oriented software. Boston, MA: Addison Wesley.
+² Gamma, E., Helm, R., Johnson, R., & Vlissides, J. (1994). Design patterns: Elements of reusable object-oriented software. Boston, MA: Addison Wesley.
 
-^(3) *Café con leche*是西班牙和拉丁美洲流行的一种咖啡变种。字面意思是“咖啡加牛奶”。我没有使用“flat white”作为我的例子，因为那样我就需要先蒸牛奶。
+³ *Café con leche*是西班牙和拉丁美洲流行的一种咖啡变种。字面意思是“咖啡加牛奶”。我没有使用“flat white”作为我的例子，因为那样我就需要先蒸牛奶。
 
-^(4) *开闭原则*是*SOLID 原则*的一部分。它指出，实体（如类、方法、函数等）应*对扩展开放*，但*对修改关闭*。详细信息请参见维基百科页面：[开闭原则](https://en.wikipedia.org/wiki/Open%E2%80%93closed_principle)和[SOLID](https://en.wikipedia.org/wiki/SOLID)。
+⁴ *开闭原则*是*SOLID 原则*的一部分。它指出，实体（如类、方法、函数等）应*对扩展开放*，但*对修改关闭*。详细信息请参见维基百科页面：[开闭原则](https://en.wikipedia.org/wiki/Open%E2%80%93closed_principle)和[SOLID](https://en.wikipedia.org/wiki/SOLID)。
 
-^(5) Groovy 提供了一个`with`方法，接受闭包以简化对相同变量的重复使用。更多信息请参阅[官方 Groovy 风格指南](https://groovy-lang.org/style-guide.xhtml#_using_code_with_code_and_code_tap_code_for_repeated_operations_on_the_same_bean)。
+⁵ Groovy 提供了一个`with`方法，接受闭包以简化对相同变量的重复使用。更多信息请参阅[官方 Groovy 风格指南](https://groovy-lang.org/style-guide.xhtml#_using_code_with_code_and_code_tap_code_for_repeated_operations_on_the_same_bean)。

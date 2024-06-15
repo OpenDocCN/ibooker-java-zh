@@ -267,7 +267,7 @@ spring init -a demo -l java --build maven demo
 
 +   `-a demo` (或 `--artifactId demo`) 允许我们为项目提供一个 artifact ID；在本例中，我们称其为“demo”。
 
-+   `-l java` (或 `--language java`) 允许我们指定 Java、Kotlin 或 Groovy^(1) 作为此项目的主要语言。
++   `-l java` (或 `--language java`) 允许我们指定 Java、Kotlin 或 Groovy¹ 作为此项目的主要语言。
 
 +   `--build` 是用于构建系统参数的标志；有效的值是 `maven` 和 `gradle`。
 
@@ -293,7 +293,7 @@ spring init -a demo -l java --build maven demo
 
 无论如何创建 Spring Boot 项目，您都需要打开它并编写一些代码以创建有用的应用程序。
 
-有三种主要的集成开发环境（IDE）和许多文本编辑器可以很好地支持开发者。IDE 包括但不限于[Apache NetBeans](https://netbeans.apache.org)，[Eclipse](https://www.eclipse.org)和[IntelliJ IDEA](https://www.jetbrains.com/idea)。这三种都是开源软件（OSS），在许多情况下都是免费的。^(2)
+有三种主要的集成开发环境（IDE）和许多文本编辑器可以很好地支持开发者。IDE 包括但不限于[Apache NetBeans](https://netbeans.apache.org)，[Eclipse](https://www.eclipse.org)和[IntelliJ IDEA](https://www.jetbrains.com/idea)。这三种都是开源软件（OSS），在许多情况下都是免费的。²
 
 在本书中，以及在我的日常生活中，我主要使用 IntelliJ Ultimate Edition。在选择 IDE 时，并没有绝对的正确选择，更多取决于个人喜好（或组织的要求或偏好），因此请根据自己的情况选择最适合你和你喜好的工具。大多数主要工具之间的概念转移都非常顺畅。
 
@@ -370,6 +370,6 @@ or a JavaFX application class must extend javafx.application.Application
 
 在下一章中，我们将创建我们的第一个真正有意义的 Spring Boot 应用程序：一个提供 REST API 的应用程序。
 
-^(1) Spring Boot 仍然支持 Groovy，但远不及 Java 或 Kotlin 广泛使用。
+¹ Spring Boot 仍然支持 Groovy，但远不及 Java 或 Kotlin 广泛使用。
 
-^(2) 有两个选项可供选择：社区版（CE）和旗舰版（UE）。社区版支持 Java 和 Kotlin 应用程序开发，但要获得所有可用的 Spring 支持，您必须使用旗舰版。某些用例符合 UE 的免费许可证条件，或者您当然也可以购买一个。此外，这三个版本都为 Spring Boot 应用程序提供了出色的支持。
+² 有两个选项可供选择：社区版（CE）和旗舰版（UE）。社区版支持 Java 和 Kotlin 应用程序开发，但要获得所有可用的 Spring 支持，您必须使用旗舰版。某些用例符合 UE 的免费许可证条件，或者您当然也可以购买一个。此外，这三个版本都为 Spring Boot 应用程序提供了出色的支持。

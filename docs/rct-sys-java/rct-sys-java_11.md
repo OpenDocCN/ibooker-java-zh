@@ -101,7 +101,7 @@ public String hello() {
 Hello RESTEasy Reactive vert.x-eventloop-thread-5
 ```
 
-端点方法是从 I/O 线程调用的！^(1) 更具响应性，但是...等等...现在如何处理阻塞逻辑？使用 RESTEasy Reactive，您可以使用 `@NonBlocking` 和 `@Blocking` 注解指示希望请求在哪个线程上处理。^(2) 让我们来举个例子。创建另一个端点方法，与 `hello` 方法相同的代码，但是针对不同的路径，并且没有 `@NonBlocking` 注解，如 Example 8-4 所示。
+端点方法是从 I/O 线程调用的！¹ 更具响应性，但是...等等...现在如何处理阻塞逻辑？使用 RESTEasy Reactive，您可以使用 `@NonBlocking` 和 `@Blocking` 注解指示希望请求在哪个线程上处理。² 让我们来举个例子。创建另一个端点方法，与 `hello` 方法相同的代码，但是针对不同的路径，并且没有 `@NonBlocking` 注解，如 Example 8-4 所示。
 
 ##### 示例 8-4\. 当使用 `@Blocking` 时，请求会在工作线程上处理。
 
@@ -245,7 +245,7 @@ Uni<String> uni = vertx.fileSystem().readFile(path)
         .onItem().transform(buffer -> buffer.toString("UTF-8"));
 ```
 
-访问文件系统在大多数情况下是一个阻塞操作。 但是，由于 Vert.x API，我们获得了一个非阻塞的变体，已经提供了 `Uni` 实例！ 但它是 `Uni<Buffer>`，为了获得 `String`，我们需要转换发出的结果。^(3) 换句话说，Example 8-12 读取指定路径的文件。 此操作返回 `Uni`。 当内容准备好被消耗时，`Uni` 发出 `Buffer` 作为项目，并且我们将 `Buffer` 转换为 `String` 对象。 所有这些都不会阻塞线程！
+访问文件系统在大多数情况下是一个阻塞操作。 但是，由于 Vert.x API，我们获得了一个非阻塞的变体，已经提供了 `Uni` 实例！ 但它是 `Uni<Buffer>`，为了获得 `String`，我们需要转换发出的结果。³ 换句话说，Example 8-12 读取指定路径的文件。 此操作返回 `Uni`。 当内容准备好被消耗时，`Uni` 发出 `Buffer` 作为项目，并且我们将 `Buffer` 转换为 `String` 对象。 所有这些都不会阻塞线程！
 
 但这还不是全部！ 我们可以直接返回该 `Uni` 并让 Quarkus 订阅和处理我们的重活，正如在 Example 8-13 中所示。
 
@@ -692,8 +692,8 @@ HTTP 是不可避免的。虽然它不强制执行响应式原则，但 Quarkus 
 
 您可能想知道如何消费 HTTP 端点。这在第 12 章中有所涵盖。但是，有一个方面我们还没有讨论：数据以及如何反应性地访问数据存储。这是下一章的主题。
 
-^(1) Vert.x 事件循环线程是 I/O 线程。
+¹ Vert.x 事件循环线程是 I/O 线程。
 
-^(2) 如果未另有说明，则返回 `Multi` 或 `Uni` 实例的方法自动被视为非阻塞的。
+² 如果未另有说明，则返回 `Multi` 或 `Uni` 实例的方法自动被视为非阻塞的。
 
-^(3) `Buffer` 是在 Vert.x 中表示字节包的一种方便方式。
+³ `Buffer` 是在 Vert.x 中表示字节包的一种方便方式。

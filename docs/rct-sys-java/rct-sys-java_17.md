@@ -267,7 +267,7 @@ Ack-to-nack 比率
 
 我们讨论的所有这些度量都非常适合检测反应式应用程序中可能存在的瓶颈。如果同时看到几个这些度量朝着不利方向发展，这无疑是我们在处理消息中遇到问题的迹象！我们还可以定义检测瓶颈的基本规则。在使用 HTTP 或请求/响应时，应检查响应时间和成功率。高响应时间或低成功率可能表明需要调查的问题。对于消息传递应用程序，尚未处理的 *in-flight* 消息数量是一个关键的跟踪指标。
 
-我们已经涵盖了许多理论知识，但是我们需要做什么来捕获这些度量标准呢？关键的变化是为 Micrometer 添加依赖项^(1)，在本例中我们希望以 Prometheus 格式提供度量标准。
+我们已经涵盖了许多理论知识，但是我们需要做什么来捕获这些度量标准呢？关键的变化是为 Micrometer 添加依赖项¹，在本例中我们希望以 Prometheus 格式提供度量标准。
 
 *Micrometer* 是 Quarkus 的首选度量解决方案，因为它为开发者提供了关键的优势：
 
@@ -348,7 +348,7 @@ kafka_producer_request_latency_avg \
 
 *分布式跟踪* 是反应式系统可观测性的一个极其重要的部分。当我们有一个单一的应用部署时，所有的交互通常发生在同一个进程中。此外，反应式系统具有一个服务不知道另一个服务将在何时何地消耗它们创建的消息的复杂性。在非反应式系统中，我们通常可以通过阅读代码来推断连接，以查看出站 HTTP 调用的位置。在围绕消息构建的反应式系统中，这是不可能的。
 
-这就是分布式跟踪的优点所在，它能够连接系统中许多点（服务），跨越空间和时间，从而提供消息流的整体视角。在本示例中，我们将使用 OpenTelemetry 扩展，配合一个导出器将捕获的跟踪发送到 Jaeger。^(2)
+这就是分布式跟踪的优点所在，它能够连接系统中许多点（服务），跨越空间和时间，从而提供消息流的整体视角。在本示例中，我们将使用 OpenTelemetry 扩展，配合一个导出器将捕获的跟踪发送到 Jaeger。²
 
 首先，让我们来了解一些术语：
 
@@ -453,6 +453,6 @@ mp.messaging.incoming.ticks.auto.offset.reset=earliest
 
 我们已经到达了第四部分的末尾，在这里我们讨论了反应式消息传递的模式以及其支持事件总线、连接消息到/从 HTTP 端点和观察反应式系统。
 
-^(1) [微米计](https://micrometer.io) 提供了对流行监控系统（如 Prometheus）的仪表客户端的外观封装。
+¹ [微米计](https://micrometer.io) 提供了对流行监控系统（如 Prometheus）的仪表客户端的外观封装。
 
-^(2) [OpenTelemetry](https://opentelemetry.io) 是一个 CNCF 项目，将 OpenCensus 和 OpenTracing 结合为一个项目，用于收集遥测信号。[Jaeger](https://www.jaegertracing.io) 是一个 CNCF 项目，用于收集和可视化跟踪数据。
+² [OpenTelemetry](https://opentelemetry.io) 是一个 CNCF 项目，将 OpenCensus 和 OpenTracing 结合为一个项目，用于收集遥测信号。[Jaeger](https://www.jaegertracing.io) 是一个 CNCF 项目，用于收集和可视化跟踪数据。

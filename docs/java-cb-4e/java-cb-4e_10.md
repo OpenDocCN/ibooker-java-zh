@@ -52,7 +52,7 @@ Java 文档没有打开文件的方法。如何打开并读取文本文件，然
 
 ## 讨论
 
-没有显式的打开操作，^(2) 或许是 Java API 面向对象设计的一种修辞华丽。
+没有显式的打开操作，² 或许是 Java API 面向对象设计的一种修辞华丽。
 
 逐行处理文本文件的最快方法是使用 `Files.lines()`，该方法接受 `Path` 参数并返回一个功能性 `Stream<String>`，它将文件中的行输入其中：
 
@@ -284,7 +284,7 @@ System.out.printf("%1$04d - the year of %2$f%n", 1956, Math.PI);
 System.out.printf("%04d - the year of %f%n", 1956, Math.PI);
 ```
 
-正如 图 10-2 所示，“%1$04d” 控制年份的格式化，而“%2$f” 控制 PI 的值的格式化。^(3)
+正如 图 10-2 所示，“%1$04d” 控制年份的格式化，而“%2$f” 控制 PI 的值的格式化。³
 
 ![jcb4 1002](img/jcb4_1002.png)
 
@@ -1148,7 +1148,7 @@ public class WriteBinary {
 
 ## 讨论
 
-类`java.util.zip.ZipFile`本身不是一个 I/O 类，而是一个实用类，允许您读取或写入 JAR 或 ZIP 格式文件的内容。^(5) 创建时，它会创建一系列`ZipEntry`对象，每个条目代表存档中的一个条目。换句话说，`ZipFile`表示整个存档，而`ZipEntry`表示一个条目或存储（和压缩）在存档中的一个文件。`ZipEntry`具有诸如`getName()`（返回文件在放入存档之前的名称）和`getInputStream()`（提供`InputStream`，通过透明地将存档条目解压缩来过滤它）等方法。要创建`ZipFile`对象，您需要存档文件的名称或表示它的`File`对象：
+类`java.util.zip.ZipFile`本身不是一个 I/O 类，而是一个实用类，允许您读取或写入 JAR 或 ZIP 格式文件的内容。⁵ 创建时，它会创建一系列`ZipEntry`对象，每个条目代表存档中的一个条目。换句话说，`ZipFile`表示整个存档，而`ZipEntry`表示一个条目或存储（和压缩）在存档中的一个文件。`ZipEntry`具有诸如`getName()`（返回文件在放入存档之前的名称）和`getInputStream()`（提供`InputStream`，通过透明地将存档条目解压缩来过滤它）等方法。要创建`ZipFile`对象，您需要存档文件的名称或表示它的`File`对象：
 
 ```java
 ZipFile zippy = new ZipFile(fileName);
@@ -2573,12 +2573,12 @@ public class FindFilter {
 }
 ```
 
-^(1) 名称选择不佳：它是在 Java SE 1.4 中新增的。但比 `InputStream`/`OutputStream`（Java 1.0）和 `Reader`s/`Writer`s（1.1）更新。
+¹ 名称选择不佳：它是在 Java SE 1.4 中新增的。但比 `InputStream`/`OutputStream`（Java 1.0）和 `Reader`s/`Writer`s（1.1）更新。
 
-^(2) 不完全正确；在 `java.nio.FileChannel` 类中是有的，但我们没有涵盖它。
+² 不完全正确；在 `java.nio.FileChannel` 类中是有的，但我们没有涵盖它。
 
-^(3) 《少年派的奇幻漂流》中的中心人物应该是根据 [Wikipedia](http://en.wikipedia.org/wiki/Life_of_pi) 中的信息于 1956 年出生。
+³ 《少年派的奇幻漂流》中的中心人物应该是根据 [Wikipedia](http://en.wikipedia.org/wiki/Life_of_pi) 中的信息于 1956 年出生。
 
-^(4) 如果这是一个维护项目中的代码，我可能会将这两个计算器中的一些常见代码因子提取出来，以及 Recipe 5.12 中的代码，并使用接口更好地划分代码。然而，这会减弱自包含示例的简洁性。
+⁴ 如果这是一个维护项目中的代码，我可能会将这两个计算器中的一些常见代码因子提取出来，以及 Recipe 5.12 中的代码，并使用接口更好地划分代码。然而，这会减弱自包含示例的简洁性。
 
-^(5) 不支持向现有存档添加文件，因此确保一次性将所有文件放入或准备好从头开始重新创建存档。
+⁵ 不支持向现有存档添加文件，因此确保一次性将所有文件放入或准备好从头开始重新创建存档。

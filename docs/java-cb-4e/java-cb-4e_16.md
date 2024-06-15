@@ -12,7 +12,7 @@
 
 尽管大多数现代操作系统都提供线程，但 Java 是第一种在语言中内置支持线程操作的主流编程语言。`java.lang.Object`的语义包括对象的监视器锁定的概念，一些方法（`notify`，`notifyAll`，`wait`）仅在多线程应用程序的上下文中有意义。Java 还有诸如`synchronized`之类的语言关键字，用于控制线程应用程序的行为。
 
-现在世界各地已经有多年与 Java 线程化的经验，专家们开始构建编写线程化应用程序的更好方法。并发实用程序是根据 JSR 166^(1)规范，并包含在所有现代 Java 发布版中，它们在计算机科学系的 Doug Lea 教授的`util.concurrent`包的基础上进行了大量的扩展。这个包旨在解决线程化困难，就像集合类（参见第七章）为数据结构化所做的那样。这不是一个小事业，但他们成功地完成了。
+现在世界各地已经有多年与 Java 线程化的经验，专家们开始构建编写线程化应用程序的更好方法。并发实用程序是根据 JSR 166¹规范，并包含在所有现代 Java 发布版中，它们在计算机科学系的 Doug Lea 教授的`util.concurrent`包的基础上进行了大量的扩展。这个包旨在解决线程化困难，就像集合类（参见第七章）为数据结构化所做的那样。这不是一个小事业，但他们成功地完成了。
 
 `java.util.concurrent`包包括几个主要部分：
 
@@ -131,7 +131,7 @@ public Future<T> submit(Runnable);
 
 ###### Figure 16-1\. 动画程序
 
-动画程序的代码包括两个类，`Sprite`（参见示例 16-4）和`Bounce`^(2)（参见示例 16-5）。`Sprite`是一个移动的图像；`Bounce`是主程序。
+动画程序的代码包括两个类，`Sprite`（参见示例 16-4）和`Bounce`²（参见示例 16-5）。`Sprite`是一个移动的图像；`Bounce`是主程序。
 
 ##### Example 16-4\. main/src/main/java/threads/Sprite.java（动画程序的一部分）
 
@@ -574,7 +574,7 @@ synchronized(myArrayList) {
 }
 ```
 
-示例 16-9 是一个 Web Servlet，我写了一个用于课堂使用的建议，来自 Learning Tree 的同事 Scott Weingust 的建议。^(3) 它允许您玩一个类似游戏节目主持人提问并且第一个按下蜂鸣器的人（按蜂鸣器键）尝试回答问题的风格的游戏。为了确保不会同时有两个人按蜂鸣器，代码在更新`Boolean` `buzzed`变量的代码周围使用了同步块。而且为了可靠性，任何访问这个`Boolean`的代码也是同步的。
+示例 16-9 是一个 Web Servlet，我写了一个用于课堂使用的建议，来自 Learning Tree 的同事 Scott Weingust 的建议。³ 它允许您玩一个类似游戏节目主持人提问并且第一个按下蜂鸣器的人（按蜂鸣器键）尝试回答问题的风格的游戏。为了确保不会同时有两个人按蜂鸣器，代码在更新`Boolean` `buzzed`变量的代码周围使用了同步块。而且为了可靠性，任何访问这个`Boolean`的代码也是同步的。
 
 ##### 示例 16-9\. main/src/main/java/threads/BuzzInServlet.java
 
@@ -1308,8 +1308,8 @@ interface FileSaver {
 
 [Project Loom: Fibers and Continuations](https://wiki.openjdk.java.net/display/loom/Main)旨在推广更易于使用、轻量级的并发机制。
 
-^(1) JSR 代表 Java 规范请求。Java 社区流程将提议和采纳的标准称为 JSR。详情请见[*http://www.jcp.org*](http://www.jcp.org)。
+¹ JSR 代表 Java 规范请求。Java 社区流程将提议和采纳的标准称为 JSR。详情请见[*http://www.jcp.org*](http://www.jcp.org)。
 
-^(2) 标题掩盖了一些未实现的野心，即使在一些更花哨的动画演示中看到的反弹曲线也无法实现。
+² 标题掩盖了一些未实现的野心，即使在一些更花哨的动画演示中看到的反弹曲线也无法实现。
 
-^(3) 一个*servlet*是用于与远程客户端交互的低级服务器端 API；今天可能会以 JavaServer Faces (JSF)处理程序的形式编写。
+³ 一个*servlet*是用于与远程客户端交互的低级服务器端 API；今天可能会以 JavaServer Faces (JSF)处理程序的形式编写。

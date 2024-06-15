@@ -28,7 +28,7 @@ Java 目前的管理者是 Oracle Corporation（收购了 Java 的发起者 Sun 
 
 从 Java 7 开始，Java 的参考实现是开源的 OpenJDK（Java 开发工具包），许多公司在此基础上进行合作并发布他们的产品。
 
-Java 最初由几个不同但相关的环境和规范组成，如 Java Mobile Edition（Java ME），^(1) Java Standard Edition（Java SE）和 Java Enterprise Edition（Java EE）。^(2) 在本书中，我们将只涵盖 Java SE 17，并附带某些历史注解，相关内容涉及某些功能何时引入到该平台中。一般而言，如果没有进一步的澄清，人们提到“Java”，通常指的是 Java SE。
+Java 最初由几个不同但相关的环境和规范组成，如 Java Mobile Edition（Java ME），¹ Java Standard Edition（Java SE）和 Java Enterprise Edition（Java EE）。² 在本书中，我们将只涵盖 Java SE 17，并附带某些历史注解，相关内容涉及某些功能何时引入到该平台中。一般而言，如果没有进一步的澄清，人们提到“Java”，通常指的是 Java SE。
 
 我们稍后将详细讨论标准化问题，因此让我们继续讨论 Java 语言和 JVM 作为分开但相关的概念。
 
@@ -390,6 +390,6 @@ Java 17（2021 年 9 月）（LTS）
 
 下一章将从*自下而上*的角度，重点介绍 Java 语言的语法，专注于词法语法的各个基本单元并逐步构建。如果您已经熟悉类似 Java 的语言的语法（如 JavaScript、C 或 C++），您可以选择略读或跳过本章，并在遇到不熟悉的语法时参考。
 
-^(1) Java ME 是面向功能手机和第一代智能手机的一个较旧的标准。如今，Android 和 iOS 主导手机市场，Java ME 已不再更新。
+¹ Java ME 是面向功能手机和第一代智能手机的一个较旧的标准。如今，Android 和 iOS 主导手机市场，Java ME 已不再更新。
 
-^(2) Java EE 现已移交至 Eclipse Foundation，继续作为 Jakarta EE 项目存在。
+² Java EE 现已移交至 Eclipse Foundation，继续作为 Jakarta EE 项目存在。

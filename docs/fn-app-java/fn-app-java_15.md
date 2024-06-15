@@ -826,7 +826,7 @@ var processed = task.end().get();
 
 并发编程的另外两个方面不容忽视：超时和线程池。
 
-默认情况下，所有`-Async`的`CompletableFuture`操作使用 JDK 的公共`ForkJoinPool`。这是一个基于运行时设置具有合理默认值的高度优化的线程池^(1)。顾名思义，“common”池是一个共享池，也被 JDK 的其他部分如并行流使用。然而，与并行流不同，异步操作可以使用自定义的`Executor`。这使您可以使用适合您需求的线程池^(2)，而不影响公共池。
+默认情况下，所有`-Async`的`CompletableFuture`操作使用 JDK 的公共`ForkJoinPool`。这是一个基于运行时设置具有合理默认值的高度优化的线程池¹。顾名思义，“common”池是一个共享池，也被 JDK 的其他部分如并行流使用。然而，与并行流不同，异步操作可以使用自定义的`Executor`。这使您可以使用适合您需求的线程池²，而不影响公共池。
 
 # 守护线程
 
@@ -868,7 +868,7 @@ var processed = task.end().get();
 
 像其他并发或并行高级 API 一样，比如我在第八章中讨论的并行流 API，协调多个线程涉及非明显的成本。应该有意选择这些 API 作为优化技术，而不是作为一种希望更有效地利用可用资源的一揽子解决方案。
 
-如果你对如何安全地在多线程环境中导航的细节感兴趣，我推荐由 Oracle 的 Java 语言架构师 Brian Goetz^(3) 所著的 *Java Concurrency in Practice* 这本书。即使自 2006 年发布以来引入了所有新的并发功能，这本书仍然是该主题的事实参考手册。
+如果你对如何安全地在多线程环境中导航的细节感兴趣，我推荐由 Oracle 的 Java 语言架构师 Brian Goetz³ 所著的 *Java Concurrency in Practice* 这本书。即使自 2006 年发布以来引入了所有新的并发功能，这本书仍然是该主题的事实参考手册。
 
 # 要点
 
@@ -884,8 +884,8 @@ var processed = task.end().get();
 
 +   由于`CompletableFuture` API 是一个并发工具，因此还需要考虑通常与并发相关的方面和问题，如超时和线程池。与并行流一样，异步运行任务应被视为一种优化技术，而不一定是首选选项。
 
-^(1) 通用的`ForkJoinPool`的默认设置及其如何更改的解释可在[其文档](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/ForkJoinPool.xhtml)中找到。
+¹ 通用的`ForkJoinPool`的默认设置及其如何更改的解释可在[其文档](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/ForkJoinPool.xhtml)中找到。
 
-^(2) 优秀的书籍*Java 并发实战*由 Josh Bloch 等人编写（ISBN 9780321349606），在*第二部分：第八章 应用线程池*中，提供了更好地理解线程池工作及其最佳应用的所有信息。
+² 优秀的书籍*Java 并发实战*由 Josh Bloch 等人编写（ISBN 9780321349606），在*第二部分：第八章 应用线程池*中，提供了更好地理解线程池工作及其最佳应用的所有信息。
 
-^(3) Goetz, Brian. 2006\. “Java Concurrency in Practice.” Addison-Wesley. ISBN 978-0321349606.
+³ Goetz, Brian. 2006\. “Java Concurrency in Practice.” Addison-Wesley. ISBN 978-0321349606.

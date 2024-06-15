@@ -2,7 +2,7 @@
 
 # 引言：Java 总是在不断变化
 
-Java 一直是开发者和作者的移动目标。在我的商业培训项目中，我会遇到一些开发者，他们甚至还不知道一些早期的 Java 发行版新增的功能，更不用说现在了。本附录将审视每个主要的 Java 发行版。请参阅乔恩·拜厄斯的 Sun Microsystems 文章《Java 技术：早期岁月》以了解 Java 的早期历史。你也可以在帕德博恩大学网站找到一份副本。^(1)
+Java 一直是开发者和作者的移动目标。在我的商业培训项目中，我会遇到一些开发者，他们甚至还不知道一些早期的 Java 发行版新增的功能，更不用说现在了。本附录将审视每个主要的 Java 发行版。请参阅乔恩·拜厄斯的 Sun Microsystems 文章《Java 技术：早期岁月》以了解 Java 的早期历史。你也可以在帕德博恩大学网站找到一份副本。¹
 
 Java 8 之前的发布详情被视为古代历史，并已移至我的网站，[*https://darwinsys.com/java/ancientHistory.html*](https://darwinsys.com/java/ancientHistory.html)。
 
@@ -209,4 +209,4 @@ Java 14 还有几个其他有趣的 JEPs。完整列表可在[OpenJDK](https://o
 
 2020 年还将有一个 Java 15，但它在本书印刷时刚进入早期访问阶段，因此我们在这个版本中没有覆盖它。“Java 的未来总是在变动中”，如 Yoda 所言。
 
-^(1) Sun Microsystems，“Java 技术：早期岁月”的文章可以在[*https://web.archive.org/web/20090311011509/http://java.sun.com/features/1998/05/birthday.html*](https://web.archive.org/web/20090311011509/http://java.sun.com/features/1998/05/birthday.html)和 Paderborn 大学网站[*http://gcc.upb.de/www/WI/WI2/wi2_lit.nsf/7544f3043ee53927c12573e70058bbb6/abf8d70f07c12eb3c1256de900638899/$FILE/Java%20Technology%20-%20An%20early%20history.pdf*](http://gcc.upb.de/www/WI/WI2/wi2_lit.nsf/7544f3043ee53927c12573e70058bbb6/abf8d70f07c12eb3c1256de900638899/$FILE/Java%20Technology%20-%20An%20early%20history.pdf)找到。
+¹ Sun Microsystems，“Java 技术：早期岁月”的文章可以在[*https://web.archive.org/web/20090311011509/http://java.sun.com/features/1998/05/birthday.html*](https://web.archive.org/web/20090311011509/http://java.sun.com/features/1998/05/birthday.html)和 Paderborn 大学网站[*http://gcc.upb.de/www/WI/WI2/wi2_lit.nsf/7544f3043ee53927c12573e70058bbb6/abf8d70f07c12eb3c1256de900638899/$FILE/Java%20Technology%20-%20An%20early%20history.pdf*](http://gcc.upb.de/www/WI/WI2/wi2_lit.nsf/7544f3043ee53927c12573e70058bbb6/abf8d70f07c12eb3c1256de900638899/$FILE/Java%20Technology%20-%20An%20early%20history.pdf)找到。

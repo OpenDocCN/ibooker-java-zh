@@ -193,7 +193,7 @@ Circle copy = new Circle(original);     // copy constructor
 
 在 Java 中，常量是一个 `static final` 字段。这个修饰符的组合给定了一个单一的值（每个类），并且在类加载时初始化，然后不能被更改。
 
-按照惯例，Java 的常量以全大写的形式命名，使用 *蛇形命名*，例如 `NETWORK_SERVER_SOCKET`^(1)，而不是“驼峰命名法”（或“驼峰式”）的约定，如 `networkServerSocket` 对于一个常规字段。
+按照惯例，Java 的常量以全大写的形式命名，使用 *蛇形命名*，例如 `NETWORK_SERVER_SOCKET`¹，而不是“驼峰命名法”（或“驼峰式”）的约定，如 `networkServerSocket` 对于一个常规字段。
 
 基本上有
 
@@ -1021,4 +1021,4 @@ try {
 
 从我们对面向对象设计的介绍过渡到 Java 语言和平台的最后一个方面，需要理解一个坚实的基础。这就是内存和并发的特性——这是平台中最复杂的之一，但也正是通过细致研究带来了巨大的回报。它是我们下一章的主题，并结束了第一部分。
 
-^(1) 从技术上讲，这应该被称为 `SCREAMING_SNAKE_CASE`。
+¹ 从技术上讲，这应该被称为 `SCREAMING_SNAKE_CASE`。
