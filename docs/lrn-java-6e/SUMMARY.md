@@ -1,3 +1,4 @@
++   [Java 学习指南第六版](README.md)
 +   [序言](lrn-java-6e_00.md)
 +   [第一章：现代语言](lrn-java-6e_01.md)
 +   [第二章：第一个应用程序](lrn-java-6e_02.md)

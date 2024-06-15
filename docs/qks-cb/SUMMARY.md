@@ -1,3 +1,4 @@
++   [Quarkus 秘籍](README.md)
 +   [序言](qks-cb_00.md)
 +   [第一章：Quarkus 概述](qks-cb_01.md)
 +   [第二章：搭建](qks-cb_02.md)

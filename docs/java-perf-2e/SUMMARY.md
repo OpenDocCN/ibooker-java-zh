@@ -1,3 +1,4 @@
++   [Java 高性能指南](README.md)
 +   [前言](java-perf-2e_00.md)
 +   [第一章：介绍](java-perf-2e_01.md)
 +   [第二章：性能测试方法](java-perf-2e_02.md)

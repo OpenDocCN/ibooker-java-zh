@@ -1,3 +1,4 @@
++   [Java 秘籍第四版](README.md)
 +   [前言](java-cb-4e_00.md)
 +   [第一章：入门：编译和运行 Java](java-cb-4e_01.md)
 +   [第二章：与环境交互](java-cb-4e_02.md)

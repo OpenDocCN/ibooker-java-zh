@@ -1,3 +1,4 @@
++   [Java 函数式方法](README.md)
 +   [序言](fn-app-java_00.md)
 +   [第一部分：函数基础](fn-app-java_01.md)
 +   [第一章：函数式编程简介](fn-app-java_02.md)
