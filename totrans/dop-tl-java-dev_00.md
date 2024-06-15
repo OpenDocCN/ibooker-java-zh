@@ -1,0 +1,99 @@
+# 前言
+
+在这本书被写作的时候，世界因为一个世纪以来最大的大流行病而发生了巨大变化。然而，随着软件行业采用 DevOps 和云原生开发来处理加速的软件交付速度，本书的价值也变得前所未有。
+
+我们按照生命周期、复杂性和成熟度的增量顺序组织了本书的主题。但是，DevOps 是一个足够广泛的旅程，您可能会发现某些章节对您的项目需求更为相关。因此，我们设计了章节，以便您可以任意顺序开始，并专注于您需要专业知识、示例和最佳实践的特定主题，以提升您的知识水平。
+
+我们希望您享受阅读本书的乐趣，就像我们享受整理内容一样。我们唯一的要求是与朋友或同事分享您新发现的知识，以便我们所有人都能成为更好的开发者。
+
+# 本书中使用的约定
+
+本书使用以下排版约定：
+
+*斜体*
+
+表示新术语、URL、电子邮件地址、文件名和文件扩展名。
+
+`常量宽度`
+
+用于程序列表，以及在段落中引用程序元素，如变量或函数名称、数据库、数据类型、环境变量、语句和关键字。
+
+**`常量宽度粗体`**
+
+显示用户需要按照字面意思键入的命令或其他文本。
+
+*`常量宽度斜体`*
+
+显示应由用户提供值或根据上下文确定值替换的文本。
+
+###### Tip
+
+这个元素表示一个提示或建议。
+
+###### 注意
+
+这个元素表示一般注意事项。
+
+###### 警告
+
+这个元素表示警告或注意事项。
+
+# 使用代码示例
+
+补充材料（代码示例、练习等）可以从[*https://github.com/devops-tools-for-java-developers*](https://github.com/devops-tools-for-java-developers)下载。
+
+如果您有技术问题或在使用示例代码时遇到问题，请发送电子邮件至*bookquestions@oreilly.com*。
+
+本书的目的是帮助您完成工作。一般来说，如果本书提供示例代码，您可以在自己的程序和文档中使用它们。除非您复制了大量代码，否则无需联系我们以获得许可。例如，编写一个使用本书多个代码片段的程序不需要许可。销售或分发 O’Reilly 图书示例需要许可。通过引用本书并引用示例代码来回答问题不需要许可。将本书大量示例代码合并到您产品的文档中需要许可。
+
+我们感激您的认可，尽管通常并不要求署名。署名通常包括书名、作者、出版商和 ISBN。例如：“*DevOps Tools for Java Developers* by Stephen Chin, Melissa McKay, Ixchel Ruiz, and Baruch Sadogursky (O’Reilly)。版权 2022 Stephen Chin, Melissa McKay, Ixchel Ruiz, and Baruch Sadogursky，978-1-492-08402-0。”
+
+如果您认为您对代码示例的使用超出了公平使用或上述许可，请随时通过 *permissions@oreilly.com* 与我们联系。
+
+# O’Reilly 在线学习
+
+###### 注意
+
+超过 40 年来，[*O’Reilly Media*](http://oreilly.com) 提供技术和商业培训，知识和洞察力，帮助公司取得成功。
+
+我们独特的专家和创新者网络通过书籍、文章、会议以及我们的在线学习平台分享他们的知识和专业知识。O’Reilly 的在线学习平台为您提供按需访问的实时培训课程，深入的学习路径，交互式编码环境，以及来自 O’Reilly 和其他 200 多个出版商的大量文本和视频。欲了解更多信息，请访问 [*http://oreilly.com*](http://oreilly.com)。
+
+# 如何联系我们
+
+请将有关本书的评论和问题发送至出版商：
+
++   O’Reilly Media, Inc.
+
++   1005 Gravenstein Highway North
+
++   Sebastopol, CA 95472
+
++   800-998-9938（美国或加拿大）
+
++   707-829-0515（国际或当地）
+
++   707-829-0104（传真）
+
+我们为本书设有一个网页，其中列出勘误、示例和任何其他信息。您可以访问 [*https://oreil.ly/EHNuR*](https://oreil.ly/EHNuR) 查看这个页面。
+
+发送电子邮件至 *bookquestions@oreilly.com* 对本书进行评论或提出技术问题。
+
+欲了解更多关于我们的书籍、课程、会议和新闻的信息，请访问我们的网站 [*http://www.oreilly.com*](http://www.oreilly.com)。
+
+在 LinkedIn 上找到我们： [*https://linkedin.com/company/oreilly-media*](https://linkedin.com/company/oreilly-media)
+
+在 Twitter 上关注我们： [*http://twitter.com/oreillymedia*](http://twitter.com/oreillymedia)
+
+在 YouTube 上关注我们： [*http://youtube.com/oreillymedia*](http://youtube.com/oreillymedia)
+
+# 致谢
+
+没有我们家人和朋友的支持，这本书将无法完成。当我们全情投入地编写这本书时，他们帮助照顾我们所爱的人和个人健康，以便我们能够提供涵盖整个 DevOps 和 Java 生态系统所需的广泛内容。
+
+还要特别感谢 JFrog 的首席执行官 Shlomi Ben Haim。当其他公司收缩并紧缩预算时，Shlomi 个人支持了这本书，并赋予了我们专注于涵盖这一极其广泛主题的紧张任务的自由和灵活性。
+
+特别感谢 Ana-Maria Mihalceanu，对第八章的贡献，以及 Sven Ruppert，对第七章的贡献。
+
+我们要感谢我们的技术审阅者 Daniel Pittman，Cameron Pietrafeso，Sebastian Daschner 和 Kirk Pepperdine，为提升本书的准确性做出贡献。
+
+最后，特别感谢您，读者，您已经采取了主动行动，提升了整个 DevOps 流水线的知识，并成为自动化、流程和文化改进的推动者。
