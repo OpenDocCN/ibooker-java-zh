@@ -136,41 +136,6 @@ O’Reilly 出版了一整套关于 Java 编程的书籍，包括本书的几本
 
 如果您认为使用代码示例超出了合理使用范围或上述授权，请随时通过 *permissions@oreilly.com* 联系我们。
 
-# O’Reilly 在线学习
-
-###### 注意
-
-40 多年来，[*O’Reilly Media*](https://oreilly.com) 提供技术和商业培训、知识和见解，帮助公司取得成功。
-
-我们独特的专家和创新者网络通过书籍、文章以及我们的在线学习平台分享他们的知识和专长。O’Reilly 的在线学习平台为您提供按需访问的实时培训课程、深入学习路径、交互式编码环境，以及来自 O’Reilly 和其他 200 多家出版商的大量文本和视频。欲了解更多信息，请访问[*https://oreilly.com*](https://oreilly.com)。
-
-# 如何联系我们
-
-请就本书的评论和问题联系出版商：
-
-+   O’Reilly 媒体公司
-
-+   1005 Gravenstein Highway North
-
-+   Sebastopol, CA 95472
-
-+   800-998-9938（美国或加拿大）
-
-+   707-829-0515（国际或本地）
-
-+   707-829-0104（传真）
-
-我们为本书创建了一个网页，列出勘误、示例以及任何额外信息。您可以访问[*https://oreil.ly/java-in-a-nutshell-8e*](https://oreil.ly/java-in-a-nutshell-8e)。
-
-发送电子邮件至*bookquestions@oreilly.com*以就本书发表评论或提出技术问题。
-
-欲了解我们书籍和课程的最新动态和信息，请访问[*https://oreilly.com*](https://oreilly.com)。
-
-在 LinkedIn 上找到我们：[*https://linkedin.com/company/oreilly-media*](https://linkedin.com/company/oreilly-media)
-
-在 Twitter 上关注我们：[*https://twitter.com/oreillymedia*](https://twitter.com/oreillymedia)
-
-在 YouTube 观看我们：[*https://youtube.com/oreillymedia*](https://youtube.com/oreillymedia)
 
 # 致谢
 

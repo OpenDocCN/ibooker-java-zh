@@ -157,45 +157,6 @@ Hello, jshell!
 
 如果您有技术问题或在使用代码示例时遇到问题，请发送电子邮件至*bookquestions@oreilly.com*。
 
-# O’Reilly Online Learning
-
-###### 注意
-
-40 多年来，[*O’Reilly Media*](https://oreilly.com)为公司提供技术和业务培训，知识和见解，帮助其取得成功。
-
-我们独特的专家和创新者网络通过书籍，文章和我们的在线学习平台分享他们的知识和专业知识。O’Reilly 的在线学习平台为您提供按需访问的实时培训课程，深入的学习路径，交互式编码环境，以及来自 O’Reilly 和其他 200 多家出版商的广泛文本和视频集合。有关更多信息，请访问[*https://oreilly.com*](https://oreilly.com)。
-
-# 如何联系我们
-
-请将有关本书的评论和问题发送给出版商：
-
-+   O’Reilly Media, Inc.
-
-+   1005 Gravenstein Highway North
-
-+   Sebastopol, CA 95472
-
-+   800-889-8969（在美国或加拿大）
-
-+   707-829-7019（国际或当地）
-
-+   707-829-0104（传真）
-
-+   *support@oreilly.com*
-
-+   [*https://www.oreilly.com/about/contact.html*](https://www.oreilly.com/about/contact.html)
-
-我们为这本书制作了一个网页，列出了勘误和任何其他信息。您可以访问[*https://oreil.ly/learning-java-6e*](https://oreil.ly/learning-java-6e)查看此页面。
-
-你可以访问 GitHub 获取[代码示例](https://github.com/l0y/learnjava6e)。有关下载和使用示例的详细信息，请参阅附录 A。
-
-有关我们的图书和课程的新闻和信息，请访问[*https://oreilly.com*](https://oreilly.com)。
-
-在 LinkedIn 上找到我们：[*https://linkedin.com/company/oreilly-media*](https://linkedin.com/company/oreilly-media)
-
-在 Twitter 上关注我们：[*https://twitter.com/oreillymedia*](https://twitter.com/oreillymedia)
-
-在 YouTube 上观看我们：[*https://youtube.com/oreillymedia*](https://youtube.com/oreillymedia)
 
 # 致谢
 

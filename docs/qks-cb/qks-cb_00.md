@@ -76,42 +76,6 @@ Quarkus 是一个相对较新的框架，处于一个新的领域（本地 Java 
 
 如果您认为您使用的代码示例超出了合理使用范围或以上所给予的许可，请随时通过*permissions@oreilly.com*联系我们。
 
-# O’Reilly Online Learning
-
-###### Note
-
-超过 40 年来，[*O’Reilly Media*](http://oreilly.com)提供技术和商业培训、知识和洞察，帮助企业取得成功。
-
-我们独特的专家和创新者网络通过书籍、文章和我们的在线学习平台分享他们的知识和专业知识。O’Reilly 的在线学习平台为您提供按需访问的现场培训课程、深入学习路径、交互式编码环境以及来自 O’Reilly 和 200 多个其他出版商的大量文本和视频。有关更多信息，请访问[*http://oreilly.com*](http://oreilly.com)。
-
-# 如何联系我们
-
-请将关于本书的评论和问题发送至出版商：
-
-+   O’Reilly Media, Inc.
-
-+   1005 Gravenstein Highway North
-
-+   Sebastopol, CA 95472
-
-+   800-998-9938（美国或加拿大）
-
-+   707-829-0515（国际或本地）
-
-+   707-829-0104（传真）
-
-我们为这本书创建了一个网页，列出勘误、示例和任何额外信息。您可以访问这个页面：[*https://oreil.ly/quarkus-cookbook*](https://oreil.ly/quarkus-cookbook)。
-
-如果您想评论或询问关于这本书的技术问题，请发送电子邮件至*bookquestions@oreilly.com*。
-
-有关我们的图书和课程的新闻和信息，请访问[*http://oreilly.com*](http://oreilly.com)。
-
-在 Facebook 上找到我们：[*http://facebook.com/oreilly*](http://facebook.com/oreilly)
-
-在 Twitter 上关注我们：[*http://twitter.com/oreillymedia*](http://twitter.com/oreillymedia)
-
-观看我们的 YouTube 频道：[*http://youtube.com/oreillymedia*](http://youtube.com/oreillymedia)
-
 # 致谢
 
 **Jason Porter**：在隔离期间你会做什么？当然是写一本书！感谢所有在医疗前线勇敢的人们。我要感谢 Quarkus 和 GraalVM 团队，为我们提供了一个令人惊叹的工具和有趣的开发体验。我从事软件开发已有 20 多年，而 Quarkus 让我重新感受到了当初学习软件开发时的乐趣。特别感谢 Georgios Andrianakis 和 Daniel Hinojosa 为本书提供的技术审查！你们的工作帮助我们创造了一些易于理解、有用且希望能给学习 Quarkus 的人带来乐趣的东西。我还要感谢 Red Hat 让我有机会撰写这本书。Alex，再次感谢你邀请我与你共同撰写书籍！最后，感谢我的五个孩子（Kaili、Emily、Zackary、Nicolas 和 Rebecca）和妻子 Tessie，尽管我说过不再写书，但你们仍然支持我。爱你们！

@@ -60,41 +60,6 @@
 
 如果您认为您使用的示例代码超出了公平使用范围或上述许可，请随时通过*permissions@oreilly.com*与我们联系。
 
-# O’Reilly 在线学习
-
-###### 注意
-
-超过 40 年来，[*O’Reilly Media*](http://oreilly.com)提供技术和业务培训、知识和见解，帮助公司取得成功。
-
-我们独特的专家和创新者网络通过书籍、文章和我们的在线学习平台分享他们的知识和专长。O’Reilly 的在线学习平台为您提供按需访问的实时培训课程、深入的学习路径、交互式编程环境，以及来自 O’Reilly 和 200 多家其他出版商的大量文本和视频。更多信息，请访问[*http://oreilly.com*](http://oreilly.com)。
-
-# 如何联系我们
-
-请将有关本书的评论和问题寄给出版商：
-
-+   O’Reilly Media, Inc.
-
-+   1005 Gravenstein Highway North
-
-+   Sebastopol, CA 95472
-
-+   800-998-9938 (在美国或加拿大)
-
-+   707-829-0515（国际或本地）
-
-+   707-829-0104（传真）
-
-我们为本书设有网页，列出勘误、示例和任何额外信息。您可以访问[*https://oreil.ly/ModernJava*](https://oreil.ly/ModernJava)查看此页面。
-
-通过邮件*bookquestions@oreilly.com*发表评论或询问有关本书的技术问题。
-
-有关我们的书籍和课程的新闻和信息，请访问[*http://oreilly.com*](http://oreilly.com)。
-
-在 Facebook 上找到我们：[*http://facebook.com/oreilly*](http://facebook.com/oreilly)。
-
-在 Twitter 上关注我们：[*http://twitter.com/oreillymedia*](http://twitter.com/oreillymedia)。
-
-在 YouTube 上关注我们：[*http://youtube.com/oreillymedia*](http://youtube.com/oreillymedia)。
 
 # 致谢
 

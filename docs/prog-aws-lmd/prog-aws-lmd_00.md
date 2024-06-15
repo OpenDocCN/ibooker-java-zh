@@ -90,42 +90,6 @@ Lambda 对 Java 的支持并不仅仅是一个“附加功能”。事实上，J
 
 如果您觉得您使用的代码示例超出了公平使用或上述许可范围，请随时通过*permissions@oreilly.com*与我们联系。
 
-# O’Reilly 在线学习
-
-###### 注意
-
-超过 40 年来，[*O’Reilly Media*](http://oreilly.com)为公司成功提供技术和业务培训、知识和洞察。
-
-我们独特的专家和创新者网络通过书籍、文章、会议和我们的在线学习平台分享他们的知识和专业知识。O’Reilly 的在线学习平台让您随时访问现场培训课程、深入学习路径、交互式编码环境以及来自 O’Reilly 和其他 200 多家出版商的大量文本和视频。有关更多信息，请访问[*http://oreilly.com*](http://oreilly.com)。
-
-# 如何联系我们
-
-请将有关本书的评论和问题发送至出版商：
-
-+   O’Reilly Media，Inc.
-
-+   1005 Gravenstein Highway North
-
-+   加利福尼亚州塞巴斯托波尔，95472
-
-+   800-998-9938（美国或加拿大）
-
-+   707-829-0515（国际或本地）
-
-+   707-829-0104 (传真)
-
-我们为本书设立了一个网页，列出勘误、示例和任何额外信息。您可以访问[*https://oreil.ly/programming-aws-lambda*](https://oreil.ly/programming-aws-lambda)。
-
-电子邮件*bookquestions@oreilly.com*以就本书提出评论或技术问题。
-
-关于我们的图书、课程、会议和新闻的更多信息，请访问我们的网站[*http://www.oreilly.com*](http://www.oreilly.com)。
-
-在 Facebook 上找到我们：[*http://facebook.com/oreilly*](http://facebook.com/oreilly)
-
-在 Twitter 上关注我们：[*http://twitter.com/oreillymedia*](http://twitter.com/oreillymedia)
-
-在 YouTube 上观看我们：[*http://www.youtube.com/oreillymedia*](http://www.youtube.com/oreillymedia)
-
 # 致谢
 
 感谢我们的技术审阅者们为您花费的时间和对这本书的改进：布莱恩·格鲁伯、丹尼尔·布莱恩特、萨拉·韦尔斯和斯图尔特·西埃拉。感谢我们在 Intent Media 的前同事们，四年前加入并展示了这项革命性的新技术，展示了它如何改变团队。感谢所有 Symphonia 的客户、合作伙伴和朋友们——我们对您持续的信任和支持心存感激。感谢所有 O’Reilly 的工作人员，尤其是我们的编辑团队；我们在开始阅读动物书籍 20 多年后写下了自己的“动物”书籍，这真是令人惊奇。最后，感谢所有参与无服务器社区的朋友们！

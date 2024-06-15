@@ -77,39 +77,3 @@
 我们感谢但通常不要求署名。署名通常包括标题、作者、出版社和 ISBN。例如：“《*Real-World Software Development*》由 Raoul-Gabriel Urma 和 Richard Warburton（O’Reilly）著，版权所有 2020 年由 Functor Ltd.和 Monotonic Ltd.出版，ISBN 978-1-491-96717-1。”
 
 如果您认为您使用的代码示例超出了合理使用范围或上述许可，请随时联系我们：*permissions@oreilly.com*。
-
-# O’Reilly 在线学习
-
-###### 注意
-
-40 多年来，[*O’Reilly Media*](http://oreilly.com)为公司的成功提供技术和业务培训、知识和见解。
-
-我们独特的专家和创新者网络通过书籍、文章、会议和我们的在线学习平台分享他们的知识和专业知识。O’Reilly 的在线学习平台为您提供按需访问的现场培训课程、深入学习路径、互动编码环境以及来自 O’Reilly 和 200 多家其他出版商的大量文本和视频。有关更多信息，请访问：[*http://oreilly.com*](http://oreilly.com)。
-
-# 如何联系我们
-
-请向出版商提出有关本书的评论和问题：
-
-+   O’Reilly Media, Inc.
-
-+   Gravenstein Highway North 1005 号
-
-+   Sebastopol, CA 95472
-
-+   美国或加拿大地区电话：800-998-9938
-
-+   国际或本地电话：707-829-0515
-
-+   传真号码：707-829-0104
-
-对于此书，我们有一个网页列出勘误、示例和任何其他信息。您可以访问此页面：[*https://oreil.ly/RealWorld_SoftwareDev*](https://oreil.ly/RealWorld_SoftwareDev)。
-
-通过电子邮件*bookquestions@oreilly.com*评论或提出关于本书的技术问题。
-
-有关我们的书籍、课程、会议和新闻的更多信息，请访问我们的网站：[*http://www.oreilly.com*](http://www.oreilly.com)。
-
-在 Facebook 上找到我们：[*http://facebook.com/oreilly*](http://facebook.com/oreilly)
-
-在 Twitter 上关注我们：[*http://twitter.com/oreillymedia*](http://twitter.com/oreillymedia)
-
-在 YouTube 上观看我们：[*http://www.youtube.com/oreillymedia*](http://www.youtube.com/oreillymedia)

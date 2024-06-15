@@ -94,41 +94,6 @@ Selenium 是一个开源的大型项目，它可以实现对 Web 浏览器的自
 
 如果您认为您对代码示例的使用超出了公平使用或上述授权范围，请随时通过*permissions@oreilly.com*联系我们。
 
-# O’Reilly 在线学习
-
-###### 注意
-
-40 多年来，[*O’Reilly Media*](https://oreilly.com) 一直致力于为公司提供技术和商业培训、知识和见解，帮助公司取得成功。
-
-我们独特的专家和创新者网络通过书籍、文章以及我们的在线学习平台分享他们的知识和专长。O’Reilly 的在线学习平台为您提供按需访问的实时培训课程、深入学习路径、交互式编码环境，以及来自 O’Reilly 和 200 多家其他出版商的大量文本和视频。欲了解更多信息，请访问[*https://oreilly.com*](https://oreilly.com)。
-
-# 如何联系我们
-
-请将有关本书的评论和问题发送给出版商：
-
-+   O’Reilly Media, Inc.
-
-+   Gravenstein Highway North 1005
-
-+   加利福尼亚州塞巴斯托波尔市 95472
-
-+   800-998-9938（美国或加拿大）
-
-+   707-829-0515（国际或本地）
-
-+   707-829-0104（传真）
-
-我们为这本书建立了一个网页，列出勘误、示例和任何额外信息。您可以访问[*https://oreil.ly/handsOn_SeleniumWDJ*](https://oreil.ly/handsOn_SeleniumWDJ)。
-
-发送电子邮件至 *bookquestions@oreilly.com* 发表意见或询问有关本书的技术问题。
-
-欲了解我们的书籍和课程的新闻和信息，请访问[*https://oreilly.com*](https://oreilly.com)。
-
-在 Facebook 上找到我们：[*https://facebook.com/oreilly*](https://facebook.com/oreilly)。
-
-在 Twitter 上关注我们：[*https://twitter.com/oreillymedia*](https://twitter.com/oreillymedia)。
-
-在 YouTube 上观看我们：[*https://www.youtube.com/oreillymedia*](https://www.youtube.com/oreillymedia)。
 
 # 致谢
 

@@ -70,40 +70,6 @@ Java 的性能涵盖了这两个方面：调优编译器和垃圾收集器等标
 
 如果您觉得您使用的代码示例超出了合理使用范围或上述许可，请随时通过[*http://oreilly.com*](http://oreilly.com)与我们联系。
 
-# O’Reilly 在线学习
-
-超过 40 年来，[*O’Reilly Media*](http://oreilly.com)提供技术和商业培训、知识和洞察力，帮助公司取得成功。
-
-我们独特的专家和创新者网络通过书籍、文章、会议和我们的在线学习平台分享他们的知识和专业知识。O’Reilly 的在线学习平台为您提供按需访问的实时培训课程、深入学习路径、交互式编码环境以及来自 O’Reilly 和其他 200 多家出版商的大量文本和视频。欲了解更多信息，请访问[*http://oreilly.com*](http://oreilly.com)。
-
-# 如何联系我们
-
-关于本书的评论和问题，请联系出版商：
-
-+   O’Reilly Media, Inc.
-
-+   Gravenstein Highway North 1005
-
-+   CA 95472, Sebastopol
-
-+   800-998-9938（美国或加拿大）
-
-+   707-829-0515（国际或本地）
-
-+   707-829-0104（传真）
-
-我们为本书设立了一个网页，列出了勘误、示例和任何额外信息。您可以访问此页面：[*https://oreil.ly/java-performance-2e*](https://oreil.ly/java-performance-2e)。
-
-通过电子邮件*bookquestions@oreilly.com* 发表评论或提出关于本书的技术问题。
-
-获取有关我们的书籍、课程、会议和新闻的更多信息，请访问我们的网站[*http://www.oreilly.com*](http://www.oreilly.com)。
-
-在 Facebook 上找到我们：[*http://facebook.com/oreilly*](http://facebook.com/oreilly)
-
-在 Twitter 上关注我们：[*http://twitter.com/oreillymedia*](http://twitter.com/oreillymedia)
-
-在 YouTube 上观看我们：[*http://www.youtube.com/oreillymedia*](http://www.youtube.com/oreillymedia)
-
 # 致谢
 
 我要感谢在我写作这本书的过程中帮助过我的每一个人。在很多方面，这本书积累了我在 Java 性能组及其他 Sun Microsystems 和 Oracle 工程组工作的 20 年知识，因此提供积极反馈的人员名单相当广泛。感谢在这段时间内与我合作的所有工程师，特别是那些耐心回答我随机问题的人，谢谢你们！
