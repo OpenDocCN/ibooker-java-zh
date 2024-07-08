@@ -1,5 +1,6 @@
 +   [Java 开发者的 DevOps 工具](docs/dop-tl-java-dev/README.md)
 +   [Java 函数式方法](docs/fn-app-java/README.md)
++   [嗨翻 Java 第三版（早期发布）](docs/hd1st-java-3e/README.md)
 +   [Java Selenium WebDriver 实用手册](docs/hsn-slnm-wdvr-java/README.md)
 +   [从 Java 到 Kotlin](docs/j2kt/README.md)
 +   [Java 秘籍第四版](docs/java-cb-4e/README.md)

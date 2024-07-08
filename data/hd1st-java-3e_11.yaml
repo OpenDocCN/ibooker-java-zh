@@ -1,0 +1,1714 @@
+- en: 'Chapter 9\. Life and Death of an Object: Constructors and Garbage Collection'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第9章。对象的生命周期：构造函数和垃圾回收
+- en: '![image](Images/f0237-01.png)'
+  id: totrans-1
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0237-01.png)'
+- en: '**Objects are born and objects die.** You’re in charge of an object’s lifecycle.
+    You decide when and how to **construct** it. You decide when to **destroy** it.
+    Except you don’t actually *destroy* the object yourself, you simply *abandon*
+    it. But once it’s abandoned, the heartless **Garbage Collector (gc)** can vaporize
+    it, reclaiming the memory that object was using. If you’re gonna write Java, you’re
+    gonna create objects. Sooner or later, you’re gonna have to let some of them go,
+    or risk running out of RAM. In this chapter we look at how objects are created,
+    where they live while they’re alive, and how to keep or abandon them efficiently.
+    That means we’ll talk about the heap, the stack, scope, constructors, superclass
+    constructors, null references, and more. Warning: this chapter contains material
+    about object death that some may find disturbing. Best not to get too attached.'
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**对象诞生和对象死亡。** 你负责对象的生命周期。你决定何时以及如何 **构造** 它。你决定何时 **销毁** 它。但实际上你并不会 *销毁* 对象，你只是
+    *放弃* 它。一旦被放弃，无情的 **垃圾收集器（gc）** 可以将其蒸发，回收该对象占用的内存。如果你要写 Java，你就要创建对象。迟早会有一些对象需要放弃，否则会面临内存不足的风险。在本章中，我们将讨论对象的创建方式，它们在存活期间的存储位置，以及如何有效地保留或放弃它们。这意味着我们将讨论堆、栈、作用域、构造函数、超类构造函数、空引用等等。警告：本章包含关于对象死亡的内容，可能会让一些人感到不适。最好不要太过于依赖对象。'
+- en: 'The Stack and the Heap: where things live'
+  id: totrans-3
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 栈和堆：事物存放的位置
+- en: Before we can understand what really happens when you create an object, we have
+    to step back a bit. We need to learn more about where everything lives (and for
+    how long) in Java. That means we need to learn more about two areas of memory—the
+    Stack and the Heap. When a JVM starts up, it gets a chunk of memory from the underlying
+    OS and uses it to run your Java program. How *much* memory, and whether or not
+    you can tweak it, is dependent on which version of the JVM (and on which platform)
+    you’re running. But usually you *won’t* have any say in the matter. And with good
+    programming, you probably won’t care (more on that a little later).
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们理解创建对象时真正发生的事情之前，我们需要稍微退后一步。我们需要更多地了解在 Java 中所有东西存放的位置（以及存放多久）。这意味着我们需要更多地了解内存的两个区域——栈和堆。当
+    JVM 启动时，它从底层操作系统获取一块内存，并用它来运行您的 Java 程序。有多少内存，以及您是否可以调整它，取决于您运行的 JVM 版本（和平台）。但通常情况下，您
+    *不会* 对此有任何发言权。而对于良好的编程而言，您可能并不关心这些（稍后我们会详细讨论）。
+- en: In Java, we (programmers) care about the area of memory where objects live (the
+    heap) and the one where method invocations and local variables live (the stack).
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Java 中，我们（程序员）关心对象存放的内存区域（堆）以及方法调用和局部变量存放的内存区域（栈）。
+- en: We know that all *objects* live on the garbage-collectible heap, but we haven’t
+    yet looked at where *variables* live. And where a variable lives depends on what
+    *kind* of variable it is. And by “kind,” we don’t mean *type* (i.e., primitive
+    or object reference). The two *kinds* of variables whose lives we care about now
+    are *instance* variables and *local* variables. Local variables are also known
+    as *stack* variables, which is a big clue for where they live.
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们知道所有 *对象* 都存放在可垃圾回收的堆上，但我们还没有看到 *变量* 存放的位置。变量存放的位置取决于它是何种 *类型* 的变量。这里的“种类”并不是指
+    *类型*（即基本类型或对象引用），而是指我们现在关心的两种变量类型，即 *实例* 变量和 *局部* 变量。局部变量也被称为 *栈* 变量，这对于它们存放的位置提供了一个重要线索。
+- en: '**The Stack**'
+  id: totrans-7
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**栈（The Stack）**'
+- en: Where method invocations and local variables live
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 方法调用和局部变量的存储位置
+- en: '![image](Images/f0238-01.png)'
+  id: totrans-9
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0238-01.png)'
+- en: '**The Heap**'
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**堆（The Heap）**'
+- en: Where ***ALL*** objects live
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所有 ***对象*** 存放的位置
+- en: '![image](Images/f0238-02.png)'
+  id: totrans-12
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0238-02.png)'
+- en: Methods are stacked
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 方法被堆叠
+- en: '![image](Images/f0239-01.png)'
+  id: totrans-14
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0239-01.png)'
+- en: When you call a method, the method lands on the top of a call stack. That new
+    thing that’s actually pushed onto the stack is the stack *frame*, and it holds
+    the state of the method including which line of code is executing, and the values
+    of all local variables.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你调用一个方法时，该方法会放置在调用栈的顶部。实际推入栈顶的新事物是栈 *帧*，它保存方法的状态，包括正在执行的代码行以及所有局部变量的值。
+- en: The method at the *top* of the stack is always the currently running method
+    for that stack (for now, assume there’s only one stack, but in [Chapter 14](ch14.xhtml#a_very_graphic_story_getting_gui),
+    *A Very Graphic Story*, we’ll add more.) A method stays on the stack until the
+    method hits its closing curly brace (which means the method’s done). If method
+    foo() calls method bar(), method bar() is stacked on top of method foo().
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 栈顶的方法始终是该栈的当前运行方法（目前假设只有一个栈，在[第14章](ch14.xhtml#a_very_graphic_story_getting_gui)
+    *一个非常生动的故事：获取GUI* 中，我们会添加更多栈）。方法一直保持在栈上，直到方法遇到其结束大括号（这表示方法已完成）。如果方法 `foo()` 调用方法
+    `bar()`，则方法 `bar()` 叠加在方法 `foo()` 之上。
+- en: A call stack with two methods
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有两个方法的调用栈
+- en: '**The method on the top of the stack is always the currently executing method.**'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**栈顶的方法始终是当前正在执行的方法。**'
+- en: '[PRE0]'
+  id: totrans-19
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: A stack scenario
+  id: totrans-20
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 栈的场景
+- en: The code on the left is a snippet (we don’t care what the rest of the class
+    looks like) with three methods. The first method (doStuff()) calls the second
+    method (go()), and the second method calls the third (crazy()). Each method declares
+    one local variable within the body of the method (*b*, *z*, and *c*), and method
+    go() also declares a parameter variable (which means go() has two local variables,
+    *x* and *z*).
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 左侧的代码片段（我们不关心类的其余部分）包含三个方法。第一个方法（`doStuff()`）调用第二个方法（`go()`），第二个方法调用第三个方法（`crazy()`）。每个方法在方法体内声明了一个本地变量（*b*、*z*
+    和 *c*），方法 `go()` 还声明了一个参数变量（这意味着 `go()` 有两个本地变量，*x* 和 *z*）。
+- en: '![Images](Images/1.png) Code from another class calls `**doStuff(),**` and
+    `**doStuff()**` goes into a stack frame at the top of the stack. The boolean variable
+    named **“b”** goes on the `**doStuff()**` stack frame.'
+  id: totrans-22
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/1.png) 另一个类的代码调用 `**doStuff(),**` `**doStuff()**` 进入栈顶的栈帧。名为 **“b”**
+    的布尔变量放在 `**doStuff()**` 的栈帧上。'
+- en: '![image](Images/f0239-03.png)'
+  id: totrans-23
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0239-03.png)'
+- en: '![Images](Images/2.png) `**doStuff()**` calls `**go()**`, and `**go()**` is
+    *pushed* on top of the stack. Variables “`**x**`” and “`**z**`” are in the `**go()**`
+    stack frame.'
+  id: totrans-24
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/2.png) `**doStuff()**` 调用 `**go()**`，`**go()**` 被 *推送* 到栈顶。变量“`**x**`”
+    和 “`**z**`” 在 `**go()**` 的栈帧中。'
+- en: '![image](Images/f0239-04.png)'
+  id: totrans-25
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0239-04.png)'
+- en: '![Images](Images/3.png) `go()` calls `crazy(), crazy()` is now on the top of
+    the stack, with variable `“c”` in the frame.'
+  id: totrans-26
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/3.png) `go()` 调用 `crazy()`，`crazy()` 现在位于栈顶，带有变量 `“c”` 在栈帧中。'
+- en: '![image](Images/f0239-05.png)'
+  id: totrans-27
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0239-05.png)'
+- en: '![Images](Images/4.png) `crazy()` completes, and its stack frame is *popped*
+    off the stack. Execution goes back to the `**go()**` method and picks up at the
+    line following the call to **`crazy().`**'
+  id: totrans-28
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/4.png) `crazy()` 完成，并且它的栈帧被 *弹出*。执行返回到 `**go()**` 方法，并在调用 **`crazy().`**
+    后继续执行。'
+- en: '![image](Images/f0239-06.png)'
+  id: totrans-29
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0239-06.png)'
+- en: What about local variables that are objects?
+  id: totrans-30
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 那么，关于是对象的本地变量呢？
+- en: Remember, a non-primitive variable holds a reference to an object, not the object
+    itself. You already know where objects live—on the heap. It doesn’t matter where
+    they’re declared or created. ***If the local variable is a reference to an object,
+    only the variable (the reference/remote control) goes on the stack.***
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记住，非原始变量保存的是对象的引用，而不是对象本身。你已经知道对象存储在哪里——堆上。它们的声明或创建地点并不重要。***如果本地变量是对象的引用，只有变量（引用/遥控器）放在栈上。***
+- en: '![image](Images/f0240-01.png)'
+  id: totrans-32
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0240-01.png)'
+- en: If local variables live on the stack, where do instance variables live?
+  id: totrans-33
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如果本地变量存在于栈上，那实例变量存在于哪里呢？
+- en: When you say new CellPhone(), Java has to make space on the Heap for that CellPhone.
+    But how *much* space? Enough for the object, which means enough to house all of
+    the object’s instance variables. That’s right, instance variables live on the
+    Heap, *inside* the object they belong to.
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你说 new CellPhone()，Java必须在堆上为该CellPhone分配空间。但是要分配多少空间呢？足够容纳对象，也就是足够容纳对象的所有实例变量。没错，实例变量存在于堆内，*在*
+    它们所属的对象内部。
+- en: Remember that the *values* of an object’s instance variables live inside the
+    object. If the instance variables are all primitives, Java makes space for the
+    instance variables based on the primitive type. An int needs 32 bits, a long 64
+    bits, etc. Java doesn’t care about the value inside primitive variables; the bit-size
+    of an int variable is the same (32 bits) whether the value of the int is 32,000,000
+    or 32.
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记住，对象的实例变量的值存储在对象内部。如果实例变量都是原始类型，Java根据原始类型分配实例变量的空间。int 需要32位，long 需要64位，依此类推。Java并不关心原始变量内部的值；int
+    变量的位大小始终相同（32位），无论int的值是32000000还是32。
+- en: But what if the instance variables are *objects*? What if CellPhone HAS-A Antenna?
+    In other words, CellPhone has a reference variable of type Antenna.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是如果实例变量是*对象*呢？如果 CellPhone HAS-A Antenna 呢？换句话说，CellPhone 有一个类型为 Antenna 的引用变量。
+- en: 'When the new object has instance variables that are object references rather
+    than primitives, the real question is: does the object need space for all of the
+    objects it holds references to? The answer is, *not exactly*. No matter what,
+    Java has to make space for the instance variable values. But remember that a reference
+    variable value is not the whole *object*, but merely a *remote control* to the
+    object. So if CellPhone has an instance variable declared as the non-primitive
+    type Antenna, Java makes space within the CellPhone object only for the Antenna’s
+    *remote control* (i.e., reference variable) but not the Antenna *object.*'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当新对象具有引用对象而不是基本类型的实例变量时，真正的问题是：这个对象是否需要为其所有引用的对象预留空间？答案是，*并非完全需要*。无论如何，Java
+    都必须为实例变量的值预留空间。但请记住，引用变量的值并不是整个*对象*，而仅仅是*对象*的*遥控器*。因此，如果 CellPhone 有一个声明为非基本类型
+    Antenna 的实例变量，Java 只会在 CellPhone 对象内部为 Antenna 的*遥控器*（即引用变量）预留空间，而不是 Antenna *对象*本身。
+- en: Well, then, when does the Antenna *object* get space on the Heap? First we have
+    to find out *when* the Antenna object itself is created. That depends on the instance
+    variable declaration. If the instance variable is declared but no object is assigned
+    to it, then only the space for the reference variable (the remote control) is
+    created.
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，Antenna *对象*何时在堆上获得空间呢？首先，我们必须弄清楚 Antenna 对象本身是*何时*创建的。这取决于实例变量的声明。如果实例变量已声明但未分配对象，则只会创建引用变量（遥控器）的空间。
+- en: '[PRE1]'
+  id: totrans-39
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: No actual Antenna object is made on the heap unless or until the reference variable
+    is assigned a new Antenna object.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 直到引用变量被分配了一个新的 Antenna 对象之前，堆上都没有实际的 Antenna 对象。
+- en: '[PRE2]'
+  id: totrans-41
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: '![image](Images/f0241-01.png)'
+  id: totrans-42
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0241-01.png)'
+- en: Object with two primitive instance variables. Space for the variables lives
+    in the object.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 具有两个基本类型实例变量的对象。变量的空间位于对象内部。
+- en: '![image](Images/f0241-02.png)'
+  id: totrans-44
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0241-02.png)'
+- en: Object with one non-primitive instance variable—a reference to an Antenna object,
+    but no actual Antenna object. This is what you get if you declare the variable
+    but don’t initialize it with an actual Antenna object.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 具有一个非基本类型实例变量的对象——指向 Antenna 对象的引用，但实际上没有 Antenna 对象。如果声明变量但未使用实际的 Antenna 对象进行初始化，就会得到这种情况。
+- en: '[PRE3]'
+  id: totrans-46
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: '![image](Images/f0241-03.png)'
+  id: totrans-47
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0241-03.png)'
+- en: Object with one non-primitive instance variable, and the Antenna variable is
+    assigned a new Antenna object.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 具有一个非基本类型实例变量的对象，Antenna 变量被分配了一个新的 Antenna 对象。
+- en: '[PRE4]'
+  id: totrans-49
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: The miracle of object creation
+  id: totrans-50
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 对象创建的奇迹
+- en: 'Now that you know where variables and objects live, we can dive into the mysterious
+    world of object creation. Remember the three steps of object declaration and assignment:
+    declare a reference variable, create an object, and assign the object to the reference.'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在您知道变量和对象的存放位置，我们可以深入探讨对象创建的神秘世界了。记住对象声明和赋值的三个步骤：声明一个引用变量，创建一个对象，然后将对象赋给引用。
+- en: But until now, step two—where a miracle occurs and the new object is “born”—has
+    remained a Big Mystery. Prepare to learn the facts of object life. *Hope you’re
+    not squeamish.*
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但直到现在，第二步——奇迹发生并且新对象“诞生”的地方——一直是一个大谜。准备好了解对象生命周期的事实。*希望您不会心慌*。
+- en: '**Let’s review the 3 steps of object declaration, creation and assignment:**'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**让我们回顾对象声明、创建和赋值的三个步骤：**'
+- en: '![image](Images/f0242-01.png)'
+  id: totrans-54
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0242-01.png)'
+- en: '**Are we calling a method named Duck()? Because it sure *looks* like it.**'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**我们在调用名为 Duck() 的方法吗？因为看起来*确实*是这样。**'
+- en: '![image](Images/f0243-01.png)'
+  id: totrans-56
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0243-01.png)'
+- en: '**No.**'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**No.**'
+- en: '**We’re calling the Duck *constructor.***'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**我们正在调用 Duck *构造函数。***'
+- en: A constructor *does* look and feel a lot like a method, but it’s not a method.
+    It’s got the code that runs when you say `new.` In other words, *the code that
+    runs when you instantiate an object.*
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 构造函数确实看起来很像方法，但它不是方法。它包含在您说 `new` 时运行的代码。换句话说，*实例化对象时运行的代码*。
+- en: The only way to invoke a constructor is with the keyword `new` followed by the
+    class name. The JVM finds that class and invokes the constructor in that class.
+    (OK, technically this isn’t the *only* way to invoke a constructor. But it’s the
+    only way to do it from *outside* a constructor. You *can* call a constructor from
+    within another constructor, with restrictions, but we’ll get into all that later
+    in the chapter.)
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 调用构造函数的唯一方式是使用关键字`new`后跟类名。JVM找到该类并调用该类中的构造函数。（好吧，严格来说这不是*唯一*的调用构造函数的方式。但这是从*构造函数外部*调用的唯一方式。你*可以*在另一个构造函数中调用构造函数，但有限制，我们稍后在本章中会详细讨论。）
+- en: '**But where is the constructor?**'
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**但构造函数在哪里？**'
+- en: '**If we didn’t write it, who did?**'
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**如果我们没写，谁写了呢？**'
+- en: You can write a constructor for your class (we’re about to do that), but if
+    you don’t, ***the compiler writes one for you!***
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以为你的类编写一个构造函数（我们即将做到这一点），但如果你不这样做，***编译器会为你编写一个！***
+- en: 'Here’s what the compiler’s default constructor looks like:'
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是编译器默认构造函数的样子：
+- en: '[PRE5]'
+  id: totrans-65
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: '**Notice something missing? How is this different from a method?**'
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**注意到了什么缺失的东西吗？这与方法有什么不同？**'
+- en: '![image](Images/f0243-03.png)'
+  id: totrans-67
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0243-03.png)'
+- en: Construct a Duck
+  id: totrans-68
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 构造一个鸭子
+- en: '![image](Images/f0244-01.png)'
+  id: totrans-69
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0244-01.png)'
+- en: The key feature of a constructor is that it runs *before* the object can be
+    assigned to a reference. That means you get a chance to step in and do things
+    to get the object ready for use. In other words, before anyone can use the remote
+    control for an object, the object has a chance to help construct itself. In our
+    Duck constructor, we’re not doing anything useful, just demonstrating the sequence
+    of events.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 构造函数的关键特性是它在对象可以被分配给一个引用之前运行*。这意味着你有机会介入并做一些准备工作，使对象准备好使用。换句话说，在任何人能够使用对象的远程控制之前，对象有机会帮助自己构造。在我们的鸭子构造函数中，我们没有做任何有用的事情，只是演示事件序列。
+- en: '**The constructor gives you a chance to step into the middle of `new.`**'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**构造函数让你有机会介入`new.`的中间过程。**'
+- en: '![image](Images/f0244-02.png)![image](Images/f0244-03.png)'
+  id: totrans-72
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0244-02.png)![image](Images/f0244-03.png)'
+- en: '![Images](Images/arr.png) **Yours to solve.**'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![Images](Images/arr.png) **由你来解决。**'
+- en: Initializing the state of a new Duck
+  id: totrans-74
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 初始化新鸭子的状态
+- en: Most people use constructors to initialize the state of an object. In other
+    words, to make and assign values to the object’s instance variables.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 大多数人使用构造函数来初始化对象的状态。换句话说，为对象的实例变量创建并赋值。
+- en: '[PRE6]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: That’s all well and good when the Duck class *developer* knows how big the Duck
+    object should be. But what if we want the programmer who is *using* Duck to decide
+    how big a particular Duck should be?
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当鸭子类的*开发者*知道鸭子对象应该有多大时，这一切都很好。但是如果我们希望使用鸭子的程序员来决定特定鸭子的大小怎么办呢？
+- en: Imagine the Duck has a size instance variable, and you want the programmer using
+    your Duck class to set the size of the new Duck. How could you do it?
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 想象一下鸭子有一个大小实例变量，你希望使用你的鸭子类的程序员设置新鸭子的大小。你怎么做？
+- en: Well, you could add a setSize() setter method to the class. But that leaves
+    the Duck temporarily without a size* and forces the Duck user to write *two* statements—one
+    to create the Duck, and one to call the setSize() method. The code below uses
+    a setter method to set the initial size of the new Duck.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 好吧，你可以在类中添加一个setSize()设置器方法。但是这会暂时让鸭子没有大小*，并迫使鸭子用户编写*两个*语句——一个用于创建鸭子，一个用于调用setSize()方法。下面的代码使用一个设置器方法来设置新鸭子的初始大小。
+- en: '![image](Images/f0245-02.png)'
+  id: totrans-80
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0245-02.png)'
+- en: '*Instance variables do have a default value. 0 or 0.0 for numeric primitives,
+    false for booleans, and null for references.'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*实例变量确实有默认值。对于数值原始类型是0或0.0，对于布尔值是false，对于引用类型是null。'
+- en: Using the constructor to initialize important Duck state*
+  id: totrans-82
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用构造函数初始化重要的鸭子状态*
+- en: '![image](Images/f0246-01.png)'
+  id: totrans-83
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0246-01.png)'
+- en: If an object shouldn’t be used until one or more parts of its state (instance
+    variables) have been initialized, don’t let anyone get hold of a Duck object until
+    you’re finished initializing! It’s usually way too risky to let someone make—and
+    get a reference to—a new Duck object that isn’t quite ready for use until that
+    someone turns around and calls the setSize() method. How will the Duck user even
+    *know* that he’s required to call the setter method after making the new Duck?
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果一个对象在其状态（实例变量）的一个或多个部分被初始化之前不应该被使用，那么在你完成初始化之前不要让任何人获取鸭子对象！让某人调用setSize()方法后，该新鸭子对象才可以使用，通常风险太大了。鸭子用户甚至*知道*他需要在创建新鸭子后调用设置器方法吗？
+- en: The best place to put initialization code is in the constructor. And all you
+    need to do is make a constructor with arguments.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将初始化代码放入构造函数是最佳位置。你只需要创建一个带参数的构造函数。
+- en: '![image](Images/f0246-02.png)![image](Images/f0246-03.png)'
+  id: totrans-86
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0246-02.png)![图片](Images/f0246-03.png)'
+- en: '*Not to imply that not all Duck state is not unimportant.'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*并非所有的鸭子状态都不重要。'
+- en: Make it easy to make a Duck
+  id: totrans-88
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 让制作鸭子变得简单
+- en: Be sure you have a no-arg constructor
+  id: totrans-89
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 确保你有一个无参数构造函数
+- en: What happens if the Duck constructor takes an argument? Think about it. On the
+    previous page, there’s only *one* Duck constructor—and it takes an int argument
+    for the size of the Duck. That might not be a big problem, but it does make it
+    harder for a programmer to create a new Duck object, especially if the programmer
+    doesn’t *know* what the size of a Duck should be. Wouldn’t it be helpful to have
+    a default size for a Duck so that if the user doesn’t know an appropriate size,
+    they can still make a Duck that works?
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果鸭子构造函数需要参数会发生什么？想想看。在前一页上，只有*一个*鸭子构造函数——它接受一个整数参数作为鸭子的大小。这可能不是一个大问题，但它确实使得程序员更难以创建一个新的鸭子对象，特别是如果程序员不*知道*鸭子的大小应该是多少。有没有一个默认大小对于鸭子会有帮助，这样如果用户不知道一个合适的大小，他们仍然可以制作一个正常工作的鸭子？
+- en: '***Imagine that you want Duck users to have TWO options for making a Duck—one
+    where they supply the Duck size (as the constructor argument) and one where they
+    don’t specify a size and thus get your default Duck size.***'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '***想象一下，你希望鸭子的用户有两种制作鸭子的选项——一种是他们提供鸭子大小（作为构造函数参数），另一种是他们不指定大小，因此获得你的默认鸭子大小。***'
+- en: 'You can’t do this cleanly with just a single constructor. Remember, if a method
+    (or constructor—same rules) has a parameter, you *must* pass an appropriate argument
+    when you invoke that method or constructor. You can’t just say, “If someone doesn’t
+    pass anything to the constructor, then use the default size” because they won’t
+    even be able to compile without sending an int argument to the constructor call.
+    You *could* do something clunky like this:'
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你不能只用一个构造函数来干净利落地做这件事。记住，如果一个方法（或构造函数——规则相同）有参数，当你调用该方法或构造函数时，*必须*传递适当的参数。你不能只是说，“如果有人不向构造函数传递任何内容，则使用默认大小”，因为他们甚至在不向构造函数调用发送整数参数的情况下都无法编译。你*可以*做一些笨拙的事情，比如这样：
+- en: '![image](Images/f0247-01.png)'
+  id: totrans-93
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0247-01.png)'
+- en: But that means the programmer making a new Duck object has to *know* that passing
+    a “0” is the protocol for getting the default Duck size. Pretty ugly. What if
+    the other programmer doesn’t know that? Or what if they really *do* want a zero-sized
+    Duck? (Assuming a zerosized Duck is allowed. If you don’t want zero-sized Duck
+    objects, put validation code in the constructor to prevent it.) The point is,
+    it might not always be possible to distinguish between a genuine “I want zero
+    for the size” constructor argument and a “I’m sending zero so you’ll give me the
+    default size, whatever that is” constructor argument.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但这意味着制作一个新的鸭子对象的程序员必须*知道*传递“0”是获得默认鸭子大小的协议。相当丑陋。如果另一个程序员不知道呢？或者如果他们真的*想*要一个零大小的鸭子？（假设允许零大小的鸭子。如果你不想要零大小的鸭子对象，请在构造函数中放置验证代码来防止这种情况。）关键是，可能并不总是可能区分真正的“我想要大小为零”构造函数参数和“我发送零，所以你给我默认大小，不管那是多少”的构造函数参数。
+- en: Doesn’t the compiler always make a no-arg constructor for you? No!
+  id: totrans-95
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 编译器总是会为你创建无参数构造函数吗？不！
+- en: '![image](Images/f0248-01.png)'
+  id: totrans-96
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0248-01.png)'
+- en: You might think that if you write *only* a constructor with arguments, the compiler
+    will see that you don’t have a no-arg constructor and stick one in for you. But
+    that’s not how it works. The compiler gets involved with constructor-making *only
+    if you don’t say anything at all about constructors.*
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能会认为，如果你只写一个带参数的构造函数，编译器会看到你没有无参数构造函数，然后为你添加一个。但事实并非如此。编译器只有在你完全不说构造函数时才会参与构造函数的创建。
+- en: '**If you write a constructor that takes arguments and you *still* want a no-arg
+    constructor, you’ll have to build the no-arg constructor yourself!**'
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**如果你编写一个带参数的构造函数，而你*仍然*想要一个无参数构造函数，你将不得不自己构建无参数构造函数！**'
+- en: As soon as you provide a constructor, ANY kind of constructor, the compiler
+    backs off and says, “OK fair enough, looks like you’re in charge of constructors
+    now.”
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦提供构造函数，任何类型的构造函数，编译器就会退后一步，说：“好的，看起来你负责构造函数了。”
+- en: '**If you have more than one constructor in a class, the constructors MUST have
+    different argument lists.**'
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**如果在一个类中有多个构造函数，则这些构造函数必须具有不同的参数列表。**'
+- en: The argument list includes the order and types of the arguments. As long as
+    they’re different, you can have more than one constructor. You can do this with
+    methods as well, but we’ll get to that in another chapter.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 参数列表包括参数的顺序和类型。只要它们不同，你可以有多个构造函数。方法也可以这样做，但我们将在另一章节中讨论。
+- en: '**Overloaded constructors means you have more than one constructor in your
+    class.**'
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**重载的构造函数意味着你的类中有多个构造函数。**'
+- en: '**To compile, each constructor must have a *different* argument list!**'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**为了编译，每个构造函数的参数列表必须*不同*！**'
+- en: The class below is legal because all five constructors have different argument
+    lists. If you had two constructors that took only an int, for example, the class
+    wouldn’t compile. What you name the parameter variable doesn’t count. It’s the
+    variable *type* (int, Dog, etc.) and *order* that matters. You *can* have two
+    constructors that have identical types, ***as long as the order is different.***
+    A constructor that takes a String followed by an int is not the same as one that
+    takes an int followed by a String.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下面的类是合法的，因为五个构造函数具有不同的参数列表。例如，如果你有两个只接受int的构造函数，那么该类将无法编译。不管你给参数变量取什么名字，都不算。重要的是变量的*类型*（int、Dog等）和*顺序*。*可以*有两个具有相同类型的构造函数，***只要顺序不同***。接受String后跟int的构造函数与接受int后跟String的构造函数不同。
+- en: '![image](Images/f0249-02.png)'
+  id: totrans-105
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0249-02.png)'
+- en: 'Nanoreview: four things to remember about constructors'
+  id: totrans-106
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 纳米评论：关于构造函数需要记住的四件事
+- en: '![Images](Images/1.png) A constructor is the code that runs when somebody says
+    `new` on a class type:'
+  id: totrans-107
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/1.png) 构造函数是当有人在类类型上说 `new` 时运行的代码：'
+- en: '[PRE7]'
+  id: totrans-108
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: '![Images](Images/2.png) A constructor must have the same name as the class,
+    and `**no**` return type:'
+  id: totrans-109
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/2.png) 构造函数必须与类名相同，并且没有**返回类型**：'
+- en: '[PRE8]'
+  id: totrans-110
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: '![Images](Images/3.png) If you don’t put a constructor in your class, the compiler
+    puts in a default constructor. The default constructor is always a no-arg constructor.'
+  id: totrans-111
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/3.png) 如果你的类中没有放置构造函数，编译器会放置一个默认构造函数。默认构造函数始终是无参构造函数。'
+- en: '[PRE9]'
+  id: totrans-112
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: '![Images](Images/4.png) You can have more than one constructor in your class,
+    as long as the argument lists are different. Having more than one constructor
+    in a class means you have overloaded constructors.'
+  id: totrans-113
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/4.png) 你的类中可以有多个构造函数，只要参数列表不同。在类中有多个构造函数意味着你有重载的构造函数。'
+- en: '[PRE10]'
+  id: totrans-114
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: '*Doing all the Brain Power exercises has been shown to produce a 42% increase
+    in neuron size. And you know what they say, “Big neurons...”'
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*完成所有的Brain Power练习已被证明能增加42%的神经元大小。而且你知道他们说，“大脑神经元…”*'
+- en: Wait a minute...we never DID talk about superclasses and inheritance and how
+    that all fits in with constructors
+  id: totrans-116
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 等一下... 我们从未讨论过超类和继承以及它们如何与构造函数配合。
+- en: Here’s where it gets fun. Remember in the previous chapter we looked at the
+    Snowboard object wrapping around an inner core representing the Object portion
+    of the Snowboard class? The Big Point there was that every object holds not just
+    its *own* declared instance variables, but also *everything from its superclasses*
+    (which, at a minimum, means class Object, since *every* class extends Object).
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 看这里就有趣了。还记得在上一章中我们看过的Snowboard对象环绕内核表示Snowboard类的Object部分吗？关键在于每个对象不仅持有*自己*声明的实例变量，还有*来自其超类的所有变量*（至少是类Object，因为*每个*类都扩展自Object）。
+- en: So when an object is created (because somebody said `new`; there is ***no other
+    way*** to create an object other than someone, somewhere saying `**new**` on the
+    class type), the object gets space for *all* the instance variables, from all
+    the way up the inheritance tree. Think about it for a moment... a superclass might
+    have setter methods encapsulating a private variable. But that variable has to
+    live *somewhere*. When an object is created, it’s almost as though *multiple*
+    objects materialize—the object being new’d and one object per each superclass.
+    Conceptually, though, it’s much better to think of it like the picture below,
+    where the object being created has *layers* of itself representing each superclass.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，当创建对象（因为有人使用 `new`；除了有人在类类型上说 `**new**` 之外，没有***其他方式***创建对象），对象会获得来自整个继承树的*所有*实例变量的空间。稍微思考一下...
+    超类可能有封装私有变量的setter方法。但是这个变量必须存在*某处*。当创建对象时，几乎就像*多个*对象被实体化了——被new的对象和每个超类的一个对象。不过从概念上讲，更好的想法是像下面的图片一样，创建的对象有*层次*来表示每个超类。
+- en: '![image](Images/f0252-01.png)![image](Images/f0252-02.png)'
+  id: totrans-119
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0252-01.png)![图片](Images/f0252-02.png)'
+- en: The role of superclass constructors in an object’s life
+  id: totrans-120
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 超类构造函数在对象生命周期中的角色
+- en: '![image](Images/f0253-01.png)![image](Images/f0253-02.png)'
+  id: totrans-121
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0253-01.png)![图片](Images/f0253-02.png)'
+- en: '***All the constructors in an object’s inheritance tree must run when you make
+    a new object.***'
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '***对象继承树中的所有构造函数在创建新对象时必须运行。***'
+- en: Let that sink in.
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让这一切都沉淀下来。
+- en: That means every superclass has a constructor (because every class has a constructor),
+    and each constructor up the hierarchy runs at the time an object of a subclass
+    is created.
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这意味着每个超类都有构造函数（因为每个类都有构造函数），并且在创建子类对象时，层次结构中的每个构造函数都会运行。
+- en: Saying `**new**` is a Big Deal. It starts the whole constructor chain reaction.
+    And yes, even abstract classes have constructors. Although you can never say new
+    on an abstract class, an abstract class is still a superclass, so its constructor
+    runs when someone makes an instance of a concrete subclass.
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 说`**new**`是一件大事。它启动整个构造函数链反应。是的，即使抽象类也有构造函数。尽管你永远不能对抽象类说new，但抽象类仍然是超类，因此在创建具体子类的实例时运行其构造函数。
+- en: The superclass constructors run to build out the superclass parts of the object.
+    Remember, a subclass might inherit methods that depend on superclass state (in
+    other words, the value of instance variables in the superclass). For an object
+    to be fully formed, all the superclass parts of itself *must* be fully formed,
+    and that’s why the superclass constructor must run. All instance variables from
+    every class in the inheritance tree have to be declared and initialized. Even
+    if Animal has instance variables that Hippo doesn’t inherit (if the variables
+    are private, for example), the Hippo still depends on the Animal methods that
+    *use* those variables.
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 超类构造函数运行以构建对象的超类部分。请记住，子类可能会继承依赖于超类状态的方法（换句话说，超类中实例变量的值）。为了使对象完全形成，它自身的所有超类部分*必须*完全形成，这就是为什么必须运行超类构造函数的原因。继承树中每个类的所有实例变量都必须声明和初始化。即使Animal有Hippo不继承的实例变量（例如，如果变量是私有的），Hippo仍然依赖于Animal方法*使用*这些变量。
+- en: When a constructor runs, it immediately calls its superclass constructor, all
+    the way up the chain until you get to the class Object constructor.
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当一个构造函数运行时，它立即调用它的超类构造函数，一直向上链，直到达到Object类的构造函数。
+- en: On the next few pages, you’ll learn how superclass constructors are called,
+    and how you can call them yourself. You’ll also learn what to do if your superclass
+    constructor has arguments!
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的几页中，您将了解如何调用超类构造函数以及如何自己调用它们。您还将了解如果您的超类构造函数有参数该怎么办！
+- en: '**A new Hippo object also IS-A Animal and IS-A Object. If you want to make
+    a Hippo, you must also make the Animal and Object parts of the Hippo.**'
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**一个新的Hippo对象也是一个Animal和一个Object。如果你想创建一个Hippo，你也必须创建Hippo的Animal和Object部分。**'
+- en: '**This all happens in a process called Constructor Chaining.**'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**这一切都发生在一个称为构造函数链的过程中。**'
+- en: Making a Hippo means making the Animal and Object parts too...
+  id: totrans-131
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 制作一个Hippo也意味着制作Animal和Object的部分...
+- en: '![image](Images/f0254-01.png)'
+  id: totrans-132
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0254-01.png)'
+- en: Given the class hierarchy in the code above, we can step through the process
+    of creating a new Hippo object.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 鉴于上述代码中的类层次结构，我们可以逐步了解创建新Hippo对象的过程。
+- en: '![Images](Images/1.png) Code from another class calls new `**Hippo()**`, and
+    the `**Hippo()**` constructor goes into a stack frame at the top of the stack.'
+  id: totrans-134
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/1.png) 另一个类中的代码调用新的 `**Hippo()**`，并且 `**Hippo()**` 构造函数进入堆栈顶部的堆栈帧。'
+- en: '![image](Images/f0254-03.png)'
+  id: totrans-135
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0254-03.png)'
+- en: '![Images](Images/2.png) `**Hippo()**` invokes the superclass constructor, which
+    pushes the `**Animal()**` constructor onto the top of the stack.'
+  id: totrans-136
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/2.png) `**Hippo()**` 调用超类构造函数，将 `**Animal()**` 构造函数推入堆栈顶部。'
+- en: '![image](Images/f0254-04.png)'
+  id: totrans-137
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0254-04.png)'
+- en: '![Images](Images/3.png) `**Animal()**` invokes the superclass constructor,
+    which pushes the `**Object()**` constructor onto the top of the stack, since Object
+    is the superclass of Animal.'
+  id: totrans-138
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/3.png) `**Animal()**` 调用超类构造函数，将 `**Object()**` 构造函数推入堆栈顶部，因为Object是Animal的超类。'
+- en: '![image](Images/f0254-05.png)'
+  id: totrans-139
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0254-05.png)'
+- en: '![Images](Images/4.png) `**Object()**` completes, and its stack frame is popped
+    off the stack. Execution goes back to the `**Animal()**` constructor and picks
+    up at the line following Animal’s call to its superclass constructor.'
+  id: totrans-140
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/4.png) `**Object()**` 完成，并弹出其堆栈帧。执行返回到 `**Animal()**` 构造函数，并从Animal调用其超类构造函数后的下一行继续执行。'
+- en: '![image](Images/f0254-06.png)'
+  id: totrans-141
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0254-06.png)'
+- en: The first one, A. The Hippo() constructor is invoked first, but it’s the Animal
+    constructor that finishes first.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一个是A. Hippo()构造函数首先被调用，但Animal构造函数先完成。
+- en: '*How* do you invoke a superclass constructor?'
+  id: totrans-143
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '*如何*调用超类构造函数？'
+- en: 'You might think that somewhere in, say, a Duck constructor, if Duck extends
+    Animal you’d call Animal(). But that’s not how it works:'
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能会认为，在鸭子构造函数中的某个地方，如果Duck扩展自Animal，你会调用Animal()。但事实并非如此：
+- en: '![image](Images/f0255-01.png)'
+  id: totrans-145
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0255-01.png)'
+- en: The only way to call a superclass constructor is by calling ***super().*** That’s
+    right—***super()*** calls the ***superclass constructor.***
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 唯一调用超类构造函数的方法是通过***super().*** 是的，***super()*** 调用***超类构造函数***。
+- en: What are the odds?
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 机会有多大？
+- en: '![image](Images/f0255-02.png)'
+  id: totrans-148
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0255-02.png)'
+- en: A call to super() in your constructor puts the superclass constructor on the
+    top of the Stack. And what do you think that superclass constructor does? *Calls
+    its superclass constructor.* And so it goes until the Object constructor is on
+    the top of the Stack. Once Object() finishes, it’s popped off the Stack, and the
+    next thing down the Stack (the subclass constructor that called Object()) is now
+    on top. *That* constructor finishes and so it goes until the original constructor
+    is on the top of the Stack, where it can now finish.
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在你的构造函数中调用super()会把超类构造函数放在Stack的顶部。你觉得那个超类构造函数做什么？*调用它的超类构造函数*。如此循环，直到Object构造函数位于Stack的顶部。一旦Object()完成，它就会从Stack中弹出，下一个位于Stack顶部的东西（调用Object()的子类构造函数）现在位于顶部。*那*构造函数完成，如此循环，直到原始构造函数位于Stack的顶部，现在它可以完成了。
+- en: Can the child exist before the parents?
+  id: totrans-150
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 孩子可以在父母之前存在吗？
+- en: '![image](Images/f0256-01.png)'
+  id: totrans-151
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0256-01.png)'
+- en: If you think of a superclass as the parent to the subclass child, you can figure
+    out which has to exist first. ***The superclass parts of an object have to be
+    fully formed (completely built) before the subclass parts can be constructed.***
+    Remember, the subclass object might depend on things it inherits from the superclass,
+    so it’s important that those inherited things be finished. No way around it. The
+    superclass constructor must finish before its subclass constructor.
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你把超类看作是子类的父类，你就能弄清楚哪个必须先存在。***对象的超类部分必须在子类部分之前完全形成（完全构建）***。记住，子类对象可能依赖于它从超类继承的东西，因此重要的是这些继承的东西已经完成。没有别的办法。超类构造函数必须在其子类构造函数之前完成。
+- en: 'Look at the Stack series in [“Making a Hippo means making the Animal and Object
+    parts too...”](#making_a_hippo_means_making_the_animal_a) again, and you can see
+    that while the Hippo constructor is the *first* to be invoked (it’s the first
+    thing on the Stack), it’s the *last* one to complete! Each subclass constructor
+    immediately invokes its own superclass constructor, until the Object constructor
+    is on the top of the Stack. Then Object’s constructor completes, and we bounce
+    back down the Stack to Animal’s constructor. Only after Animal’s constructor completes
+    do we finally come back down to finish the rest of the Hippo constructor. For
+    that reason:'
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 再看一下[“制作河马意味着制作动物和对象部分……”](#making_a_hippo_means_making_the_animal_a)系列中的Stack，你会发现，虽然Hippo构造函数是第一个被调用的（它是Stack上的第一件事），但它是最后一个完成的！每个子类构造函数立即调用它自己的超类构造函数，直到对象构造函数位于Stack的顶部。然后Object的构造函数完成，我们反弹回Animal的构造函数。只有Animal的构造函数完成后，我们才最终回到完成Hippo构造函数的其余部分。因此：
+- en: '**The call to super() must be the *first* statement in each constructor!***'
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**调用super()必须是每个构造函数中的*第一*条语句！***'
+- en: '*There’s an exception to this rule; you’ll learn it in [“Invoking one overloaded
+    constructor from another”](#invoking_one_overloaded_constructor_from).'
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*There’s an exception to this rule; you’ll learn it in [“调用另一个重载构造函数”](#invoking_one_overloaded_constructor_from).'
+- en: Superclass constructors with arguments
+  id: totrans-156
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 带参数的超类构造函数
+- en: 'What if the superclass constructor has arguments? Can you pass something in
+    to the super() call? Of course. If you couldn’t, you’d never be able to extend
+    a class that didn’t have a no-arg constructor. Imagine this scenario: all animals
+    have a name. There’s a getName() method in class Animal that returns the value
+    of the name instance variable. The instance variable is marked private, but the
+    subclass (in this case, Hippo) inherits the getName() method. So here’s the problem:
+    Hippo has a getName() method (through inheritance) but does not have the name
+    instance variable. Hippo has to depend on the Animal part of himself to keep the
+    name instance variable, and return it when someone calls getName() on a Hippo
+    object. But...how does the Animal part get the name? The only reference Hippo
+    has to the Animal part of himself is through super(), so that’s the place where
+    Hippo sends the Hippo’s name up to the Animal part of himself, so that the Animal
+    part can store it in the private name instance variable.'
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果超类构造函数有参数怎么办？你可以在super()调用中传递参数吗？当然可以。如果不能的话，你将永远无法扩展一个没有无参构造函数的类。想象一下这种情况：所有动物都有一个名字。在Animal类中有一个getName()方法返回名字实例变量的值。这个实例变量标记为私有，但是子类（在这种情况下是Hippo）继承了getName()方法。所以问题来了：Hippo通过继承有了getName()方法，但没有名字实例变量。Hippo必须依赖于他自己Animal部分来保持名字实例变量，并且在有人调用Hippo对象的getName()时返回它。但是...
+    Animal部分如何得到名字呢？Hippo唯一对Animal部分的引用就是通过super()，所以这是Hippo将自己的名字发送到Animal部分的地方，以便Animal部分可以将其存储在私有的名字实例变量中。
+- en: '![image](Images/f0257-01.png)![image](Images/f0257-02.png)![image](Images/f0257-03.png)![image](Images/f0257-04.png)'
+  id: totrans-158
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0257-01.png)![image](Images/f0257-02.png)![image](Images/f0257-03.png)![image](Images/f0257-04.png)'
+- en: Invoking one overloaded constructor from another
+  id: totrans-159
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从另一个重载的构造函数中调用一个构造函数
+- en: '![image](Images/f0258-01.png)'
+  id: totrans-160
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0258-01.png)'
+- en: 'What if you have overloaded constructors that, with the exception of handling
+    different argument types, all do the same thing? You know that you don’t want
+    *duplicate* code sitting in each of the constructors (pain to maintain, etc.),
+    so you’d like to put the bulk of the constructor code (including the call to super())
+    in only *one* of the overloaded constructors. You want whichever constructor is
+    first invoked to call The Real Constructor and let The Real Constructor finish
+    the job of construction. It’s simple: just say *this()*. Or *this(aString)*. Or
+    *this(27, x)*. In other words, just imagine that the keyword *this* is a reference
+    to **the current object.**'
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你有多个重载的构造函数，除了处理不同参数类型外，它们都做同样的事情，你肯定不希望在每个构造函数中重复代码（维护起来很痛苦等等），所以你想把大部分构造函数代码（包括调用super()）放在只有一个重载构造函数中。你希望首先调用的任何构造函数都调用真正的构造函数，让真正的构造函数完成构造工作。很简单：只需说*this()*。或*this(aString)*。或*this(27,
+    x)*。换句话说，只需想象关键字*this*是**当前对象的引用**。
+- en: You can say *this()* only within a constructor, and it must be the first statement
+    in the constructor!
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你只能在构造函数中使用*this()*，并且它必须是构造函数中的第一个语句！
+- en: But that’s a problem, isn’t it? Earlier we said that super() must be the first
+    statement in the constructor. Well, that means you get a choice.
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但这是一个问题，不是吗？早些时候我们说过super()必须是构造函数中的第一个语句。好吧，这意味着你有选择的余地。
+- en: '**Every constructor can have a call to super() or this(), but never both!**'
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**每个构造函数都可以调用super()或this()，但绝不可以两者都有！**'
+- en: You’ll need to choose which to call based on which values you have, which ones
+    you need to set, and which constructors are provided in this class or the superclass.
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要根据你拥有的值、需要设置的值以及这个类或超类中提供的构造函数来选择调用哪个构造函数。
+- en: '![image](Images/f0258-02.png)'
+  id: totrans-166
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0258-02.png)'
+- en: Now we know how an object is born, but how long does an object *live*?
+  id: totrans-167
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 现在我们知道一个对象是如何诞生的，但一个对象的**寿命**有多长呢？
+- en: An *object’s* life depends entirely on the life of references referring to it.
+    If the reference is considered “alive,” the object is still alive on the Heap.
+    If the reference dies (and we’ll look at what that means in just a moment), the
+    object will die.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个*对象*的生命周期完全取决于引用指向它的生命周期。如果引用被认为是“活着的”，那么对象仍然存活在堆上。如果引用死亡（我们马上会看到这意味着什么），对象将会死亡。
+- en: '**So if an object’s life depends on the reference variable’s life, how long
+    does a *variable* live?**'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**所以如果一个对象的生命周期取决于引用变量的生命周期，那么一个*变量*的生命周期有多长呢？**'
+- en: That depends on whether the variable is a *local* variable or an *instance*
+    variable. The code below shows the life of a local variable. In the example, the
+    variable is a primitive, but variable lifetime is the same whether it’s a primitive
+    or reference variable.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这取决于变量是*局部*变量还是*实例*变量。下面的代码展示了局部变量的生命周期。在这个例子中，变量是一个基本类型，但无论是基本类型还是引用类型，变量的生命周期都是相同的。
+- en: '![image](Images/f0260-01.png)'
+  id: totrans-171
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0260-01.png)'
+- en: '**The difference between life and scope for local variables:**'
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**局部变量的生命周期和作用域之间的区别：**'
+- en: '**Life**'
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**生命周期**'
+- en: A local variable is *alive* as long as its Stack frame is on the Stack. In other
+    words, *until the method completes.*
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个局部变量只要其栈帧存在于栈上就会存活。换句话说，*直到方法完成*。
+- en: '**Scope**'
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**作用域**'
+- en: A local variable is in *scope* only within the method in which the variable
+    was declared. When its own method calls another, the variable is alive, but not
+    in scope until its method resumes. ***You can use a variable only when it is in
+    scope.***
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 局部变量只在声明它的方法内部作用域中。当其方法调用另一个方法时，变量是存活的，但直到其方法恢复执行前都不在作用域内。***只有在变量在作用域内时才能使用。***
+- en: Let’s walk through what happens on the stack when something calls the doStuff()
+    method.
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一下当某个东西调用`doStuff()`方法时栈上发生了什么。
+- en: '![image](Images/f0261-01.png)![image](Images/f0261-02.png)'
+  id: totrans-178
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0261-01.png)![图片](Images/f0261-02.png)'
+- en: '![Images](Images/1circle.png) ***doStuff()* goes on the Stack. Variable “b”
+    is alive and in scope.**'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图片](Images/1circle.png) ***doStuff()* 进入栈。变量“b”仍然存活且在作用域内。**'
+- en: '![image](Images/f0261-03.png)'
+  id: totrans-180
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0261-03.png)'
+- en: '![Images](Images/2circle.png) ***go()* plops on top of the Stack. “x” and “z”
+    are alive and in scope, and “b” is alive but not in scope.**'
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图片](Images/2circle.png) ***go()* 压入栈顶。“x”和“z”存活并且在作用域内，“b”存活但不在作用域内。**'
+- en: '![image](Images/f0261-04.png)'
+  id: totrans-182
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0261-04.png)'
+- en: '![Images](Images/3circle.png) ***crazy()* is pushed onto the Stack, with “c”
+    now alive and in scope. The other three variables are alive but out of scope.**'
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图片](Images/3circle.png) ***crazy()* 被推入栈中，此时“c”存活并且在作用域内。其他三个变量存活但超出作用域。**'
+- en: '![image](Images/f0261-05.png)'
+  id: totrans-184
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0261-05.png)'
+- en: '![Images](Images/4circle.png) ***crazy()* completes and is popped off the Stack,
+    so ‘c’ is out of scope and dead. When go() resumes where it left off, “x” and
+    “x” are both alive and back in scope. Variable “b” is still alive but out of scope
+    (until go() completes).**'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图片](Images/4circle.png) ***crazy()* 完成并从栈中弹出，所以‘c’超出作用域并且失效。当`go()`在离开时恢复执行时，“x”和“x”仍然存活并且重新进入作用域。变量“b”仍然存活但超出作用域（直到`go()`完成）。**'
+- en: While a local variable is alive, its state persists. As long as method doStuff()
+    is on the Stack, for example, the “b” variable keeps its value. But the “b” variable
+    can be used only while doStuff()’s Stack frame is at the top. In other words,
+    you can use a local variable *only* while that local variable’s method is actually
+    running (as opposed to waiting for higher Stack frames to complete).
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在局部变量存活期间，其状态会持续存在。例如，只要`doStuff()`方法在栈上，变量“b”就保持其值不变。但是只有在该局部变量的方法实际运行时才能使用该局部变量。换句话说，你只能在该局部变量的方法实际运行时使用局部变量（而不是等待更高的栈帧完成）。
+- en: What about reference variables?
+  id: totrans-187
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 那么引用变量呢？
+- en: 'The rules are the same for primitives and references. A reference variable
+    can be used only when it’s in scope, which means you can’t use an object’s remote
+    control unless you’ve got a reference variable that’s in scope. The *real* question
+    is:'
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于基本类型和引用类型，规则都是一样的。只有在作用域内，引用变量才能被使用，这意味着你不能使用对象的遥控器，除非你有一个在作用域内的引用变量。*真正的*问题是：
+- en: '**“How does *variable* life affect *object* life?”**'
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**“变量生命周期如何影响对象生命周期？”**'
+- en: An object is alive as long as there are live references to it. If a reference
+    variable goes out of scope but is still alive, the object it *refers* to is still
+    alive on the Heap. And then you have to ask...“What happens when the Stack frame
+    holding the reference gets popped off the Stack at the end of the method?”
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 只要有活跃的引用指向对象，对象就会存活。如果引用变量超出作用域但对象仍存活，则它所*指向*的对象仍然存活在堆上。然后你必须问……“当方法结束时，保存引用的栈帧被弹出栈时会发生什么？”
+- en: If that was the *only* live reference to the object, the object is now abandoned
+    on the Heap. The reference variable disintegrated with the Stack frame, so the
+    abandoned object is now, *officially*, toast. The trick is to know the point at
+    which an object becomes ***eligible for garbage collection.***
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果这是对象的*唯一*活跃引用，那么对象现在被遗弃在堆上。引用变量随着栈帧的销毁而消失，因此被遗弃的对象*正式*成为垃圾。关键是要知道对象何时变得***可供垃圾收集***。
+- en: Once an object is eligible for garbage collection (GC), you don’t have to worry
+    about reclaiming the memory that object was using. If your program gets low on
+    memory, GC will destroy some or all of the eligible objects, to keep you from
+    running out of RAM. You can still run out of memory, but *not* before all eligible
+    objects have been hauled off to the dump. Your job is to make sure that you abandon
+    objects (i.e., make them eligible for GC) when you’re done with them, so that
+    the garbage collector has something to reclaim. If you hang on to objects, GC
+    can’t help you, and you run the risk of your program dying a painful out-of-memory
+    death.
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦对象符合垃圾收集的条件（GC），你就不必担心回收该对象使用的内存。如果你的程序内存不足，GC将销毁一些或全部符合条件的对象，以防止内存耗尽。你仍然可能会耗尽内存，但是*不会*在所有符合条件的对象被清理之前。
+- en: '**An object’s life has no value, no meaning, no point, unless somebody has
+    a reference to it.**'
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**一个对象的生命没有价值，没有意义，没有意义，除非有人持有它的引用。**'
+- en: '**If you can’t get to it, you can’t ask it to do anything and it’s just a big
+    fat waste of bits.**'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**如果你不能到达它，就不能要求它做任何事情，它只是一大堆浪费的位。**'
+- en: '**But if an object is unreachable, the Garbage Collector will figure that out.
+    Sooner or later, that object’s goin’ down.**'
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**但是如果一个对象是不可达的，垃圾收集器会找出来。迟早，那个对象就要下岗了。**'
+- en: '**Object-killer #1**'
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**杀手对象 #1**'
+- en: '**Reference goes out of scope, permanently.**'
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**引用超出范围，永久性地。**'
+- en: '![image](Images/f0263-01.png)'
+  id: totrans-198
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0263-01.png)'
+- en: '[PRE11]'
+  id: totrans-199
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: '![image](Images/f0263-03.png)'
+  id: totrans-200
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0263-03.png)'
+- en: '![Images](Images/1-circle.png) ***foof()* is pushed onto the Stack; no variables
+    are declared.**'
+  id: totrans-201
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/1-circle.png) ***foof()* 被推入堆栈；没有变量被声明。**'
+- en: '![image](Images/f0263-04.png)'
+  id: totrans-202
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0263-04.png)'
+- en: '![Images](Images/2-circle.png) **2 *barf()* is pushed onto the Stack, where
+    it declares a reference variable, and creates a new object assigned to that reference.
+    The object is created on the Heap, and the reference is alive and in scope.**'
+  id: totrans-203
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/2-circle.png) **2 *barf()* 被推入堆栈，声明一个引用变量，并创建一个分配给该引用的新对象。对象在堆上创建，并且引用是活动的且在范围内。**'
+- en: '![image](Images/f0263-05.png)'
+  id: totrans-204
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0263-05.png)'
+- en: '![Images](Images/3-circle.png) **3 *barf()* completes and pops off the Stack.
+    Its frame disintegrates, so “d” is now dead and gone. Execution returns to foof(),
+    but foof() can’t use “d.”**'
+  id: totrans-205
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/3-circle.png) **3 *barf()* 完成并弹出堆栈。它的框架消失了，所以“d”现在死了并消失了。执行返回到foof()，但foof()不能使用“d”。**'
+- en: '![image](Images/f0263-06.png)![image](Images/f0263-07.png)'
+  id: totrans-206
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0263-06.png)![image](Images/f0263-07.png)'
+- en: '**Object-killer #2**'
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**杀手对象 #2**'
+- en: '**Assign the reference to another object**'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**将引用分配给另一个对象**'
+- en: '![image](Images/f0264-01.png)'
+  id: totrans-209
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0264-01.png)'
+- en: '[PRE12]'
+  id: totrans-210
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: '![image](Images/f0264-03.png)![image](Images/f0264-04.png)![image](Images/f0264-05.png)'
+  id: totrans-211
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0264-03.png)![image](Images/f0264-04.png)![image](Images/f0264-05.png)'
+- en: '**Object-killer #3**'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**杀手对象 #3**'
+- en: '**Explicitly set the reference to null**'
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**显式地将引用设置为null**'
+- en: '![image](Images/f0265-01.png)'
+  id: totrans-214
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0265-01.png)'
+- en: '[PRE13]'
+  id: totrans-215
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: '![image](Images/f0265-03.png)![image](Images/f0265-04.png)'
+  id: totrans-216
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0265-03.png)![image](Images/f0265-04.png)'
+- en: Exercise
+  id: totrans-217
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 练习
+- en: '![image](Images/common-03.png)'
+  id: totrans-218
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/common-03.png)'
+- en: BE the Garbage Collector
+  id: totrans-219
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 成为垃圾收集器
+- en: '![image](Images/common-05.png)'
+  id: totrans-220
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/common-05.png)'
+- en: '**Which of the lines of code on the right, if added to the class on the left
+    at point A, would cause exactly one additional object to be eligible for the Garbage
+    Collector? (Assume that point A (//call more methods) will execute for a long
+    time, giving the Garbage Collector time to do its stuff.)**'
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**如果在左边的类的点A处添加右边代码中的哪一行，将会使得恰好一个额外的对象可以被垃圾收集器收集？（假设点A（//调用更多方法）将长时间执行，给垃圾收集器足够的时间来完成其工作。）**'
+- en: '[PRE14]'
+  id: totrans-222
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: '![Images](Images/arr.png) **Answers in [“Be the Garbage Collector”](#be_the_garbage_collector_left_parenthesi).**'
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![Images](Images/arr.png) **答案在 [“成为垃圾收集器”](#be_the_garbage_collector_left_parenthesi)。**'
+- en: '**1** `copyGC = null;`'
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**1** `copyGC = null;`'
+- en: '**2** `gc2 = null;`'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**2** `gc2 = null;`'
+- en: '**3** `newGC = gc3;`'
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**3** `newGC = gc3;`'
+- en: '**4** `gc1 = null;`'
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**4** `gc1 = null;**'
+- en: '**5** `newGC = null;`'
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**5** `newGC = null;`'
+- en: '**6** `gc4 = null;`'
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**6** `gc4 = null;`'
+- en: '**7** `gc3 = gc2;`'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**7** `gc3 = gc2;**'
+- en: '**8** `gc1 = gc4;`'
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**8** `gc1 = gc4;**'
+- en: '**9** `gc3 = null;`'
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**9** `gc3 = null;`'
+- en: Popular Objects
+  id: totrans-233
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 流行的对象
+- en: In this code example, several new objects are created. Your challenge is to
+    find the object that is “most popular,” i.e., the one that has the most reference
+    variables referring to it. Then list how many total references there are for that
+    object, and what they are! We’ll start by pointing out one of the new objects
+    and its reference variable.
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这段代码示例中，创建了几个新对象。你的挑战是找出“最流行”的对象，即引用变量最多的对象。然后列出该对象的总引用数及其引用变量！我们先指出一个新对象及其引用变量。
+- en: Good luck!
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 祝你好运！
+- en: '![Images](Images/arr.png) **Answers in [“Popular Objects”](#popular_objects_left_parenthesis_from_pa).**'
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![Images](Images/arr.png) **Answers in [“Popular Objects”](#popular_objects_left_parenthesis_from_pa).**'
+- en: '![image](Images/f0269-01.png)![image](Images/common-04.png)'
+  id: totrans-237
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0269-01.png)![image](Images/common-04.png)'
+- en: “We’ve run the simulation four times, and the main module’s temperature consistently
+    drifts out of nominal toward cold,” Sarah said, exasperated. “We installed the
+    new temp-bots last week. The readings on the radiator bots, designed to cool the
+    living quarters, seem to be within spec, so we’ve focused our analysis on the
+    heat retention bots, the bots that help to warm the quarters.” Tom sighed, at
+    first it had seemed that nanotechnology was going to really put them ahead of
+    schedule. Now, with only five weeks left until launch, some of the orbiter’s key
+    life support systems were still not passing the simulation gauntlet.
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “我们已经运行了模拟四次，主模块的温度始终在正常值向冷端漂移，”Sarah 气愤地说道。“上周我们安装了新的温度机器人。散热机器人的读数，设计用于冷却生活区，似乎在规格内，因此我们将分析重点放在保温机器人身上，这些机器人有助于加热生活区。”
+    Tom 叹了口气，起初，纳米技术似乎真的能让他们提前完成进度。现在，距离发射只剩五周时间，一些轨道飞行器的关键生命支持系统仍然未能通过模拟测试。
+- en: “What ratios are you simulating?” Tom asked.
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “你在模拟什么比率？”Tom 问道。
+- en: Five-Minute Mystery
+  id: totrans-240
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: Five-Minute Mystery
+- en: '![image](Images/common-07.png)'
+  id: totrans-241
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/common-07.png)'
+- en: “Well, if I see where you’re going, we already thought of that,” Sarah replied.
+    “Mission control will not sign off on critical systems if we run them out of spec.
+    We are required to run the v3 radiator bot’s SimUnits in a 2:1 ratio with the
+    v2 radiator’s SimUnits,” Sarah continued. “Overall, the ratio of retention bots
+    to radiator bots is supposed to run 4:3.”
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “如果我看到你的意思，我们已经考虑过了，”Sarah 回答说。“任务控制不会在关键系统超出规范时签署。我们必须以2:1的比例运行v3 散热机器人的模拟单元，”Sarah
+    继续说道。“总体而言，保温机器人与散热机器人的比例应该是4:3。”
+- en: “How’s power consumption, Sarah?” Tom asked. Sarah paused, “Well, that’s another
+    thing, power consumption is running higher than anticipated. We’ve got a team
+    tracking that down too, but because the nanos are wireless, it’s been hard to
+    isolate the power consumption of the radiators from the retention bots.” “Overall
+    power consumption ratios,” Sarah continued, “are designed to run 3:2 with the
+    radiators pulling more power from the wireless grid.”
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “功耗怎么样，Sarah？”Tom 问道。Sarah 暂停了一下，“嗯，还有一件事，功耗比预期高。我们有一个团队正在追踪这个问题，但由于纳米技术是无线的，隔离散热机器人和保温机器人的功耗一直很困难。”Sarah
+    继续说道，“总体功耗比例设计为3:2，散热器从无线网格中提取更多功率。”
+- en: “OK, Sarah,” Tom said. “Let’s take a look at some of the simulation initiation
+    code. We’ve got to find this problem, and find it quick!”
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “好的，Sarah，”Tom 说。“让我们来看看一些模拟初始化代码。我们必须找出这个问题，尽快解决！”
+- en: '[PRE15]'
+  id: totrans-245
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: Tom gave the code a quick look, and a small smile crept across his lips. “I
+    think I’ve found the problem, Sarah, and I bet I know by what percentage your
+    power usage readings are off too!”
+  id: totrans-246
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Tom 快速查看了代码，嘴角露出了一丝微笑。“我想我找到问题了，Sarah，而且我打赌我也知道你的功率使用读数偏差百分比是多少！”
+- en: '***What did Tom suspect? How could he guess the power readings errors, and
+    what few lines of code could you add to help debug this program?***'
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '***Tom 怀疑什么？他如何猜测电力读数错误？你能添加几行代码来帮助调试这个程序吗？***'
+- en: '![Images](Images/arr.png) **Answers in [“Five-Minute Mystery”](#five-minute_mystery_left_parent-id01000).**'
+  id: totrans-248
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![Images](Images/arr.png) **Answers in [“Five-Minute Mystery”](#five-minute_mystery_left_parent-id01000).**'
+- en: Exercise Solutions
+  id: totrans-249
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Exercise Solutions
+- en: '![image](Images/common-03.png)'
+  id: totrans-250
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/common-03.png)'
+- en: Be the Garbage Collector
+  id: totrans-251
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: Be the Garbage Collector
+- en: (from [“Exercise”](#exercise-id000015))
+  id: totrans-252
+  prefs: []
+  type: TYPE_NORMAL
+  zh: (from [“Exercise”](#exercise-id000015))
+- en: '![image](Images/f0272-01.png)'
+  id: totrans-253
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0272-01.png)'
+- en: Popular Objects
+  id: totrans-254
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: Popular Objects
+- en: (from [“Popular Objects”](#popular_objects-id0100010))
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: (from [“Popular Objects”](#popular_objects-id0100010))
+- en: It probably wasn’t too hard to figure out that the Honey object first referred
+    to by the honeyPot variable is by far the most “popular” object in this class.
+    But maybe it was a little trickier to see that all of the variables that point
+    from the code to the Honey object refer to the ***same object!*** There are a
+    total of 12 active references to this object right before the main( ) method completes.
+    The *kit.honeyPot* variable is valid for a while, but kit gets nulled at the end.
+    Since *raccoon.rk* still refers to the Kit object, *raccoon.kit.honeyPot* (although
+    never explicitly declared) refers to the object!
+  id: totrans-256
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 或许很容易想到 honeyPot 变量首先引用的是 Honey 对象，它是这个类中“最受欢迎”的对象。但也许更难看到，所有指向 Honey 对象的变量都指向***同一个对象！***
+    在 main( ) 方法完成之前，对该对象有总共 12 个活动引用。*kit.honeyPot* 变量在一段时间内是有效的，但是在结尾处 kit 被置空。由于
+    *raccoon.rk* 仍然引用 Kit 对象，*raccoon.kit.honeyPot*（虽然从未显式声明）引用的是同一个对象！
+- en: '![image](Images/f0272-03.png)'
+  id: totrans-257
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0272-03.png)'
+- en: Five-Minute Mystery
+  id: totrans-258
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 五分钟之谜
+- en: (from [“Five-Minute Mystery”](#five-minute_mystery-id00002))
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: (来自[“五分钟之谜”](#five-minute_mystery-id00002))
+- en: '![image](Images/common-04.png)'
+  id: totrans-260
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/common-04.png)'
+- en: Tom noticed that the constructor for the V2Radiator class took an ArrayList.
+    That meant that every time the V3Radiator constructor was called, it passed an
+    ArrayList in its super() call to the V2Radiator constructor. That meant that an
+    extra five V2Radiator SimUnits were created. If Tom was right, total power use
+    would have been 120, not the 100 that Sarah’s expected ratios predicted.
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Tom 注意到 V2Radiator 类的构造函数使用了 ArrayList。这意味着每次调用 V3Radiator 构造函数时，它在 super()
+    调用中传递了一个 ArrayList 给 V2Radiator 构造函数。这意味着额外创建了五个 V2Radiator SimUnits。如果 Tom 是对的，总功耗应该是
+    120，而不是 Sarah 预期的 100。
+- en: Since all the Bot classes create SimUnits, writing a constructor for the SimUnit
+    class, which printed out a line every time a SimUnit was created, would have quickly
+    highlighted the problem!
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于所有的 Bot 类都创建 SimUnits，编写一个 SimUnit 类的构造函数，并在每次创建 SimUnit 时打印一行，将很快凸显出问题所在！

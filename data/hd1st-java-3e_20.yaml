@@ -1,0 +1,1845 @@
+- en: 'Chapter 18\. Dealing with Concurrency Issues: Race Conditions and Immutable
+    Data'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第18章。处理并发问题：竞态条件和不可变数据
+- en: '![image](Images/f0639-01.png)'
+  id: totrans-1
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0639-01.png)'
+- en: '**Doing two or more things at once is hard.** Writing multithreaded code is
+    easy. Writing multithreaded code that works the way you expect can be much harder.
+    In this final chapter, we’re going to show you some of the things that can go
+    wrong when two or more threads are working at the same time. You’ll learn about
+    some of the tools in java.util.concurrent that can help you to write multithreaded
+    code that works correctly. You’ll learn how to create immutable objects (objects
+    that don’t change) that are safe for multiple threads to use. By the end of the
+    chapter, you’ll have a lot of different tools in your toolkit for working with
+    concurrency.'
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**同时做两件或更多事情很难。**编写多线程代码很容易。编写按照预期工作的多线程代码可能更难。在这最后一章，我们将向您展示两个或更多线程同时工作时可能出现的问题。您将了解到一些位于java.util.concurrent中的工具，这些工具可以帮助您编写正确工作的多线程代码。您将学习如何创建不可变对象（不会改变的对象），这些对象对多个线程使用是安全的。到本章结束时，您将掌握多种处理并发的工具。'
+- en: What could possibly go wrong?
+  id: totrans-3
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 这可能会出什么问题呢？
+- en: 'At the end of the last chapter we hinted that things may not all be rainbows
+    and sunshine when you’re working with multithreaded code. Well, actually, we did
+    more than hint! We outright said:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章的结尾，我们暗示在处理多线程代码时可能并非一帆风顺。事实上，我们甚至直言不讳地说：
+- en: Note
+  id: totrans-5
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 注意
+- en: '“It all comes down to one potentially deadly scenario: two or more threads
+    have access to a single object’s data.”'
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “这归结为一个潜在的致命场景：两个或更多线程可以访问单个对象的数据。”
+- en: '![image](Images/f0640-01.png)'
+  id: totrans-7
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0640-01.png)'
+- en: '**Marriage in Trouble.**'
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**婚姻有危机。**'
+- en: '![image](Images/f0641-01.png)'
+  id: totrans-9
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0641-01.png)'
+- en: '**Can this couple be saved?**'
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**这对夫妇还能挽救吗？**'
+- en: '***Next, on a very special Dr. Steve Show***'
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '***接下来，在一个非常特别的史蒂夫博士秀***'
+- en: '[Transcript from episode #42]'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[第42集节目录音]'
+- en: Welcome to the Dr. Steve show.
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 欢迎收看史蒂夫博士秀。
+- en: We’ve got a story today that’s centered around one of the top reasons why couples
+    split up—finances.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 今天我们的故事围绕着导致夫妻分手的顶级原因之一——财务问题。
+- en: Today’s troubled pair, Ryan and Monica, share a bank account. But not for long
+    if we can’t find a solution. The problem? The classic “two people—one bank account”
+    thing.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 今天的问题对：赖恩和莫妮卡，共享一个银行账户。但如果我们找不到解决方案，这个情况就将不会长久。问题是？经典的“两个人——一个银行账户”。
+- en: 'Here’s how Monica described it to me:'
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是莫妮卡对我描述的情况：
+- en: “Ryan and I agreed that neither of us will overdraw the checking account. So
+    the procedure is, whoever wants to spend money *must* check the balance in the
+    account *before* withdrawing cash or spending on a card. It all seemed so simple.
+    But suddenly we’re getting hit with overdraft fees!
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “赖恩和我都同意不要透支支票账户。所以程序是，谁想花钱*必须*在提取现金或刷卡之前检查账户余额。这一切看起来是那么简单。但突然间我们开始收到透支费用！
+- en: 'I thought it wasn’t possible; I thought our procedure was safe. But then *this*
+    happened:'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我以为这是不可能的；我以为我们的程序是安全的。但后来*这*发生了：
+- en: Ryan had a full online shopping cart totalling $50\. He checked the balance
+    in the account and saw that it was $100\. No problem. So he started the checkout
+    procedure.
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 赖恩的在线购物车里装了总值为$50的商品。他查看账户余额，发现是$100。没问题。所以他开始结账程序。
+- en: '![image](Images/f0641-02.png)'
+  id: totrans-20
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0641-02.png)'
+- en: And that’s where *I* come in; while Ryan was filling in the shipping details,
+    *I* wanted to spend $100\. I checked the balance, and it’s $100 (because Ryan
+    hasn’t clicked the “Pay” button yet), so I think, no problem. So I spend the money,
+    and again no problem. But then Ryan finally pays, and we’re suddenly overdrawn!
+    He didn’t know that I was spending money at the same time, so he just went ahead
+    and completed his transaction without checking the balance again. You’ve got to
+    help us, Dr. Steve!”
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就在这时，*我*介入了；当赖恩在填写运输细节时，*我*想花费$100。我查看了余额，它是$100（因为赖恩还没有点击“支付”按钮），所以我认为，没问题。所以我花了这笔钱，再次没有问题。但随后赖恩终于支付了，我们突然透支了！他不知道我同时在花钱，所以他只是继续完成了他的交易而没有再次检查余额。你必须帮助我们，史蒂夫博士！”
+- en: Is there a solution? Are they doomed? We can’t help them with their online shopping
+    addiction, but can we make sure one of them can’t start spending while the other
+    one is shopping?
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 是否有解决方案？他们是否注定要分开？我们不能帮助他们摆脱网购成瘾，但我们能确保其中一个人在另一个人购物时不能开始消费吗？
+- en: Take a moment and think about that while we go to a commercial break.
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们在商业广告中思考一下这个问题。
+- en: The Ryan and Monica problem, in code
+  id: totrans-24
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Ryan 和 Monica 的问题，以代码形式
+- en: The following example shows what can happen when *two* threads (Ryan and Monica)
+    share a *single* object (the bank account).
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下示例显示了当*两个*线程（Ryan 和 Monica）共享*一个*对象（银行账户）时可能发生的情况。
+- en: The code has two classes, BankAccount and RyanAndMonicaJob. There’s also a RyanAndMonicaTest
+    with a main method to run everything. The RyanAndMonicaJob class implements Runnable,
+    and represents the behavior that Ryan and Monica both have—checking the balance
+    and spending money.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代码有两个类，BankAccount 和 RyanAndMonicaJob。还有一个 RyanAndMonicaTest 类，其中包含一个主方法用于运行所有内容。RyanAndMonicaJob
+    类实现了 Runnable 接口，表示 Ryan 和 Monica 都会进行的行为——检查余额和花钱。
+- en: 'The RyanAndMonicaJob class has instance variables for the shared BankAccount,
+    the person’s name, and the amount they want to spend. The code works like this:'
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: RyanAndMonicaJob 类有共享的 BankAccount 实例变量、人员姓名和他们想要花费的金额。代码运行方式如下：
+- en: '![image](Images/f0642-01.png)'
+  id: totrans-28
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0642-01.png)'
+- en: '![Images](Images/1.png) **Make an instance of the shared bank account**'
+  id: totrans-29
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/1.png) **创建共享银行账户的实例**'
+- en: Creating a new one will set up all the defaults correctly.
+  id: totrans-30
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 创建一个新的会正确设置所有默认值。
+- en: '[PRE0]'
+  id: totrans-31
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: '![Images](Images/2.png) **Make one instance of RyanAndMonicaJob for each person**'
+  id: totrans-32
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/2.png) **为每个人创建一个 RyanAndMonicaJob 实例**'
+- en: We need one job for each person. We also need to give them access to the BankAccount
+    and tell them how much to spend.
+  id: totrans-33
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 我们需要为每个人创建一个作业。我们还需要让他们能够访问 BankAccount 并告诉他们要花多少钱。
+- en: '[PRE1]'
+  id: totrans-34
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: '![Images](Images/3.png) **Create an ExecutorService and give it the two jobs**'
+  id: totrans-35
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/3.png) **创建一个 ExecutorService 并给它这两个作业**'
+- en: Since we know we have two jobs, one for Ryan and one for Monica, we can create
+    a fixed-sized thread pool with two threads.
+  id: totrans-36
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 由于我们知道有两个作业，一个是为Ryan，一个是为Monica，我们可以创建一个包含两个线程的固定大小线程池。
+- en: '[PRE2]'
+  id: totrans-37
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: '![Images](Images/4.png) **Watch both jobs run**'
+  id: totrans-38
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/4.png) **观察两个作业同时运行**'
+- en: One thread represents Ryan, the other represents Monica. Both threads check
+    the balance before spending money. Remember that when more than one thread is
+    running at a time, you can’t assume that your thread is the only one making changes
+    to a shared object (e.g., the BankAccount). Even if there’s only two lines of
+    code related to the shared object, and they’re right next to each other.
+  id: totrans-39
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 一个线程代表 Ryan，另一个代表 Monica。两个线程在花钱之前都会检查余额。请记住，当多个线程同时运行时，不能假设你的线程是唯一修改共享对象（例如
+    BankAccount）的线程。即使与共享对象相关的代码只有两行，并且它们紧挨着。
+- en: '[PRE3]'
+  id: totrans-40
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: '**In the goShopping() method, do exactly what Ryan and Monica would do—check
+    the balance and, if there’s enough money, spend.**'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**在 goShopping() 方法中，要像 Ryan 和 Monica 一样——检查余额，如果有足够的钱，就花钱。**'
+- en: '**This should protect against overdrawing the account.**'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**这应该防止账户透支。**'
+- en: '**Except...if Ryan and Monica are spending money at the same time, the money
+    in the bank account might be gone before the other one can spend it!**'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**但是...如果 Ryan 和 Monica 同时花钱，银行账户里的钱可能在另一个人花之前就被花完了！**'
+- en: The Ryan and Monica example
+  id: totrans-44
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Ryan 和 Monica 的示例
+- en: '![image](Images/f0643-01.png)![image](Images/f0644-01.png)'
+  id: totrans-45
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0643-01.png)![图片](Images/f0644-01.png)'
+- en: Note
+  id: totrans-46
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 注
+- en: This code is not deterministic; it doesn’t always produce the same result every
+    time. You may need to run it a few times before you see the problem.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此代码不确定性；它并不总是每次都产生相同的结果。您可能需要运行几次才能看到问题。
+- en: This is common with multithreaded code, since it depends upon which threads
+    start first and when each thread gets its time on a CPU core.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这在多线程代码中很常见，因为它依赖于哪些线程首先启动以及每个线程何时获得CPU核心的时间。
+- en: '![image](Images/f0644-02.png)'
+  id: totrans-49
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0644-02.png)'
+- en: '**The goShopping() method always checks the balance before making a withdrawal,
+    but still we went overdrawn.**'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**在进行提款之前，goShopping() 方法总是检查余额，但我们还是透支了。**'
+- en: '**Here’s one scenario:**'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**这是一个场景：**'
+- en: Ryan checks the balance, sees that there’s enough money, and goes to check out.
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Ryan 检查余额，看到有足够的钱，然后去结账。
+- en: Meanwhile, Monica checks the balance. She, too, sees that there’s enough money.
+    She has no idea that Ryan is about to pay for something.
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与此同时，Monica 检查余额。她也看到有足够的钱。她不知道 Ryan 即将付款。
+- en: Ryan completes his purchase.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Ryan 完成了他的购买。
+- en: Monica completes her purchase. Big Problem! In between the time when she checked
+    the balance and spent the money, Ryan had already spent money!
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Monica 完成了她的购买。大问题！在她检查余额并花钱之间，Ryan 已经花了钱！
+- en: '**Monica’s check of the account was not valid, because Ryan had already checked
+    and was still in the middle of making a purchase.**'
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**Monica 对账户的检查无效，因为 Ryan 已经检查过，并且还在进行购买中。**'
+- en: Monica must be stopped from getting into the account until Ryan has finished,
+    and vice versa.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在Ryan完成之前，Monica必须停止访问账户，反之亦然。
+- en: '**They need a lock for account access!**'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**他们需要一个账户访问锁！**'
+- en: '**The lock works like this:**'
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**这把锁的工作方式是这样的：**'
+- en: '![Images](Images/1.png) There’s a lock associated with the bank account transaction
+    (checking the balance and withdrawing money). There’s only one key, and it stays
+    with the lock until somebody wants to access the account.'
+  id: totrans-60
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/1.png) 银行账户交易（检查余额和取款）关联了一个锁。只有一把钥匙，它会一直与锁在一起，直到有人想要访问账户。'
+- en: '![image](Images/f0645-01.png)'
+  id: totrans-61
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0645-01.png)'
+- en: '**The bank account transaction is unlocked when nobody is using the account.**'
+  id: totrans-62
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '**当没有人使用账户时，银行账户交易处于解锁状态。**'
+- en: '![Images](Images/2.png) When Ryan wants to access the bank account (to check
+    the balance and withdraw money), he locks the lock and puts the key in his pocket.
+    Now nobody else can access the account, since the key is gone.'
+  id: totrans-63
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/2.png) 当Ryan想要访问银行账户（检查余额和取款）时，他锁上了锁并把钥匙放在口袋里。现在没有其他人可以访问该账户，因为钥匙不在了。'
+- en: '![image](Images/f0645-02.png)'
+  id: totrans-64
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0645-02.png)'
+- en: '**When Ryan wants to access the account, he secures the lock and takes the
+    key.**'
+  id: totrans-65
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '**当Ryan想要访问账户时，他会锁上锁并带走钥匙。**'
+- en: '![Images](Images/3.png) **Ryan keeps the key in his pocket until he finishes
+    the transaction.** He has the only key, so Monica can’t access the account until
+    Ryan unlocks the account and returns the key.'
+  id: totrans-66
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/3.png) **Ryan在完成交易之前将钥匙放在口袋里。** 由于他独有这把钥匙，Monica在Ryan解锁账户并归还钥匙之前无法访问该账户。'
+- en: Now, even if Ryan gets distracted after he checks the balance, he has a guarantee
+    that the balance will be the same when he spends the money, because he kept the
+    key while he was doing something else!
+  id: totrans-67
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 现在，即使Ryan在检查余额后分心了，他也有保证在花费资金时余额仍然相同，因为他在做其他事情时保持了钥匙！
+- en: '![image](Images/f0645-03.png)'
+  id: totrans-68
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0645-03.png)'
+- en: '**When Ryan is finished, he unlocks the lock and returns the key. Now the key
+    is available for Monica (or Ryan again) to access the account.**'
+  id: totrans-69
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '**当Ryan完成后，他会解锁锁并归还钥匙。现在钥匙可以供Monica（或再次是Ryan）访问账户。**'
+- en: We need to check the balance and spend the money as one atomic thing
+  id: totrans-70
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 我们需要将余额检查和支出资金作为一个原子事务来执行
+- en: '![image](Images/f0646-01a.png)'
+  id: totrans-71
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0646-01a.png)'
+- en: We need to make sure that once a thread starts a shopping transaction, *it must
+    be allowed to finish* before any other thread changes the bank account.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要确保一旦一个线程启动购物交易，*它必须被允许完成*，然后其他线程才能改变银行账户。
+- en: In other words, we need to make sure that once a thread has checked the account
+    balance, that thread has a guarantee that it can spend the money *before any other
+    thread can check the account balance!*
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 换句话说，我们需要确保一旦一个线程检查了账户余额，该线程就有保证可以在任何其他线程检查账户余额之前花费资金！
+- en: Use the **`synchronized`** keyword on a method, or with an object, to lock an
+    object so only one thread can use it at a time.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用**`synchronized`**关键字来锁定一个方法或对象，以便只有一个线程可以同时使用它。
+- en: That’s how you protect the bank account! We can put a lock on the bank account
+    inside the method that does the banking transaction. That way, one thread gets
+    to complete the whole transaction, start to finish, even if that thread is taken
+    out of the “running” state by the thread scheduler or another thread is trying
+    to make changes at exactly the same time.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是如何保护银行账户！我们可以在执行银行交易的方法中锁定银行账户。这样，一个线程可以完成整个交易，从头到尾，即使该线程被线程调度程序挂起，或者另一个线程正试图在完全相同的时间做出更改。
+- en: 'On the next couple of pages we’ll look at the different things that we can
+    lock. With the Ryan and Monica example, it’s quite simple—we want to wrap our
+    shopping transaction in a block that locks the bank account:'
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的几页中，我们将看看我们可以锁定的不同事物。以Ryan和Monica的例子来说，很简单——我们希望将我们的购物交易包裹在一个锁定银行账户的块中：
+- en: '![image](Images/f0646-01.png)'
+  id: totrans-77
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0646-01.png)'
+- en: '**The** `synchronized` **keyword means that a thread needs a key in order to
+    access the synchronized code.**'
+  id: totrans-78
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+  zh: '**`synchronized`** 关键字意味着线程需要一个钥匙才能访问同步代码。'
+- en: ''
+  id: totrans-79
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: '**To protect your *data* (like the bank account), synchronize the code that
+    acts on that data.**'
+  id: totrans-80
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+  zh: '**为了保护您的*数据*（如银行账户），同步处理操作该数据的代码。**'
+- en: '![image](Images/f0646-02.png)'
+  id: totrans-81
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0646-02.png)'
+- en: Note
+  id: totrans-82
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 注意
+- en: '(Note for you physics-savvy readers: yes, the convention of using the word
+    “ atomic ” here does not reflect the whole subatomic particle thing. Think Newton,
+    not Einstein, when you hear the word “ atomic ” in the context of threads or transactions.
+    Hey, it’s not OUR convention. If WE were in charge, we’d apply Heisenberg’s Uncertainty
+    Principle to pretty much everything related to threads.)'
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: （对于精通物理学的读者的说明：是的，在这里使用“原子”一词的惯例并不反映整个亚原子粒子的事物。在涉及线程或事务的上下文中，听到“原子”一词时，请思考牛顿，而不是爱因斯坦。嘿，这不是我们的惯例。如果我们负责的话，我们将把海森堡的不确定性原理应用于与线程相关的几乎所有事物。）
+- en: Using an object’s lock
+  id: totrans-84
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用对象的锁
+- en: '![image](Images/f0647-01.png)'
+  id: totrans-85
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0647-01.png)'
+- en: Every object has a lock. Most of the time, the lock is unlocked, and you can
+    imagine a virtual key sitting with it. Object locks come into play only when there
+    is a **synchronized block**for an object (like in the last page) or a class has
+    **synchronized methods**. A method is synchronized if it has the synchronized
+    keyword in the method declaration.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每个对象都有一个锁。大部分时间，锁是未锁定的，你可以想象一个虚拟的钥匙就在旁边。只有当对象有一个**同步块**（就像在最后一页）或者类有**同步方法**时，对象锁才会起作用。如果一个方法在方法声明中有`synchronized`关键字，那么这个方法就是同步方法。
+- en: When an object has one or more synchronized methods, ***a thread can enter a
+    synchronized method only if the thread can get the key to the object’s lock!***
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当一个对象有一个或多个同步方法时，***只有当线程能获取到对象锁的钥匙时，线程才能进入同步方法！***
+- en: The locks are not per *method*, they are per *object*. If an object has two
+    synchronized methods, it doesn’t *only* mean two threads can’t enter the same
+    method. It means you can’t have two threads entering *any* of the synchronized
+    methods. If you have two synchronized methods on the same object, method1() and
+    method2(), if one thread is in method1(), a second thread can’t enter method1(),
+    obviously, but it *also can’t enter method2()*, or any other synchronized method
+    on that object.
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 锁不是按*方法*而是按*对象*来分配的。如果一个对象有两个同步方法，那么这不仅意味着两个线程不能进入同一个方法。它意味着不能有两个线程同时进入该对象的*任何*同步方法。例如，如果一个对象上有两个同步方法`method1()`和`method2()`，如果一个线程在`method1()`中，那么第二个线程不仅不能进入`method1()`，显然，它*也不能进入method2()*，或者该对象上的任何其他同步方法。
+- en: Think about it. If you have multiple methods that can potentially act on an
+    object’s instance variables, all those methods need to be protected with synchronized.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 想想看。如果你有多种可能作用于对象实例变量的方法，那么所有这些方法都需要用`synchronized`来保护。
+- en: The goal of synchronization is to protect critical data. But remember, you don’t
+    lock the data itself; you synchronize the methods that *access* that data.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 同步的目标是保护关键数据。但请记住，你不锁定数据本身；而是同步访问那些*访问*该数据的方法。
+- en: So what happens when a thread is cranking through its call stack (starting with
+    the run() method) and it suddenly hits a synchronized method? The thread recognizes
+    that it needs a key for that object before it can enter the method. It looks for
+    the key (this is all handled by the JVM; there’s no API in Java for accessing
+    object locks), and if the key is available, the thread grabs the key and enters
+    the method.
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么当一个线程在执行其调用堆栈时（从`run()`方法开始），突然遇到一个同步方法会发生什么呢？线程意识到在进入方法之前需要该对象的钥匙。它查找钥匙（这一切都由JVM处理；Java中没有用于访问对象锁的API），如果钥匙可用，线程就会抢占钥匙并进入方法。
+- en: From that point forward, the thread hangs on to that key like the thread’s life
+    depends on it. The thread won’t give up the key until it completes the synchronized
+    method or block. So while that thread is holding the key, no other threads can
+    enter *any* of that object’s synchronized methods, because the one key for that
+    object won’t be available.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从那时起，线程紧紧抓住这个钥匙，好像线程的生命依赖于它一样。直到线程完成同步方法或块之前，线程都不会放弃这个钥匙。因此，在线程持有该钥匙时，其他线程无法进入该对象的*任何*同步方法，因为该对象的唯一钥匙不可用。
+- en: '![image](Images/f0647-02.png)'
+  id: totrans-93
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0647-02.png)'
+- en: Note
+  id: totrans-94
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Every Java object has a lock. A lock has only one key.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每个Java对象都有一个锁。一个锁只有一个钥匙。
+- en: Most of the time, the lock is unlocked and nobody cares.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 大部分时间，锁是未锁定的，也没人在乎。
+- en: But if an object has synchronized methods, a thread can enter one of the synchronized
+    methods ONLY if the key for the object’s lock is available. In other words, only
+    if another thread hasn’t already grabbed the one key.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是如果一个对象有同步方法，只有当对象的锁的钥匙可用时，线程才能进入其中一个同步方法。换句话说，只有另一个线程还没有抢占该对象锁的钥匙时，线程才能进入。
+- en: Using synchronized methods
+  id: totrans-98
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用同步方法
+- en: Can we synchronize the goShopping() method to fix Ryan and Monica’s problem?
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们能同步`goShopping()`方法来修复Ryan和Monica的问题吗？
+- en: '[PRE4]'
+  id: totrans-100
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: '**It does NOT work!**'
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**它不起作用！**'
+- en: '![image](Images/f0648-01.png)'
+  id: totrans-102
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0648-01.png)'
+- en: The synchronized keyword locks an object. The goShopping() method is in RyanAndMonicaJob.
+    Synchronizing an instance method means “lock *this* RyanAndMonicaJob instance.”
+    However, there are *two* instances of RyanAndMonicaJob; one is “ryan,” and the
+    other is “monica.” If “ryan” is locked, “monica” can still make changes to the
+    bank account; she doesn’t care that the “ryan” job is locked.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`synchronized` 关键字锁定一个对象。`goShopping()` 方法在 `RyanAndMonicaJob` 中。同步实例方法意味着“锁定
+    *这个* `RyanAndMonicaJob` 实例”。然而，`RyanAndMonicaJob` 有*两个*实例；一个是“ryan”，另一个是“monica”。如果“ryan”被锁定，“monica”仍然可以对银行账户进行更改；她不关心“ryan”作业是否被锁定。'
+- en: The object that needs locking, the object these two threads are fighting over,
+    is the BankAccount. Putting synchronized on a method in RyanAndMonicaJob (and
+    locking a RyanAndMonicaJob instance) isn’t going to solve anything.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 需要锁定的对象，这两个线程正在争夺的对象，是`BankAccount`。在`RyanAndMonicaJob`的方法上放置`synchronized`（并锁定一个`RyanAndMonicaJob`实例）并不能解决任何问题。
+- en: It’s important to lock the correct object
+  id: totrans-105
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 锁定正确的对象很重要
+- en: Since it’s the BankAccount object that’s shared, you could argue it should be
+    the BankAccount that’s in charge of making sure it is safe for multiple threads
+    to use. The spend() method on BankAccount could make sure there’s enough money
+    *and* debit the account in a single transaction.
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于是共享`BankAccount`对象，你可以说应该由`BankAccount`来负责确保多个线程安全使用。`BankAccount`上的`spend()`方法可以确保有足够的钱*并且*在单个事务中进行借记。
+- en: '![image](Images/f0649-01.png)'
+  id: totrans-107
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0649-01.png)'
+- en: The dreaded “Lost Update” problem
+  id: totrans-108
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 令人恐惧的“丢失更新”问题
+- en: Here’s another classic concurrency problem. Sometimes you’ll hear them called
+    “race conditions,” where two or more threads are changing the same data at the
+    same time. It’s closely related to the Ryan and Monica story, so we’ll use this
+    example to illustrate a few more points.
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是另一个经典的并发问题。有时你会听到它们被称为“竞争条件”，其中两个或更多线程同时更改同一数据。它与Ryan和Monica的故事密切相关，所以我们将使用这个例子来说明更多的问题。
+- en: 'The lost update revolves around one process:'
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 丢失更新围绕一个过程：
+- en: 'Step 1: Get the balance in the account'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 步骤1：获取账户中的余额
+- en: '[PRE5]'
+  id: totrans-112
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Step 2: Add 1 to that balance'
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 步骤2：将1添加到该余额
+- en: '![image](Images/f0650-01.png)'
+  id: totrans-114
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0650-01.png)'
+- en: 'Even if we used the more common syntax of **`balance++`**, there is no guarantee
+    that the compiled bytecode will be an “atomic process.” In fact, it probably won’t—it’s
+    actually multiple operations: a read of the current value and then adding one
+    to that value and setting it back into the original variable.'
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即使我们使用更常见的语法`balance++`，也不能保证编译后的字节码是一个“原子过程”。实际上，它可能不是—它实际上是多个操作：读取当前值，然后将该值加一并将其设置回原始变量。
+- en: 'In the “Lost Update” problem, we have many threads trying to increment the
+    balance. Take a look at the code, and then we’ll look at the real problem:'
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在“丢失更新”问题中，我们有许多线程试图增加余额。先看看代码，然后我们再看看真正的问题：
+- en: '![image](Images/f0650-02.png)'
+  id: totrans-117
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0650-02.png)'
+- en: Let’s run this code...
+  id: totrans-118
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 让我们运行这段代码...
+- en: '![image](Images/f0651-01.png)'
+  id: totrans-119
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0651-01.png)'
+- en: '**We lost the last updates that Thread A made! Thread B had previously done
+    a “read” of the value of balance, and when B woke up, it just kept going as if
+    it never missed a beat.**'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**我们丢失了线程A最后的更新！线程B之前已经对余额的值进行了“读取”，当B醒来时，它就像从未错过一拍一样继续进行。**'
+- en: Make the increment() method atomic. Synchronize it!
+  id: totrans-121
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使`increment()`方法成为原子操作。同步它！
+- en: '![image](Images/f0646-01a.png)'
+  id: totrans-122
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0646-01a.png)'
+- en: Synchronizing the increment() method solves the “Lost Update” problem, because
+    it keeps the steps in the method (read of balance and increment of balance) as
+    one unbreakable unit.
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对 `increment()` 方法进行同步解决了“丢失更新”问题，因为它将方法中的步骤（读取余额和增加余额）作为一个不可分割的单元。
+- en: '![image](Images/f0652-01.png)'
+  id: totrans-124
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0652-01.png)'
+- en: '**Once a thread enters the method, we have to make sure that all the steps
+    in the method complete (as one atomic process) before any other thread can enter
+    the method.**'
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**一旦线程进入方法，我们必须确保方法中的所有步骤（作为一个原子过程）在任何其他线程可以进入该方法之前完成。**'
+- en: '![Images](Images/1.png) Thread A runs for a while'
+  id: totrans-126
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/1.png) 线程A运行一段时间'
+- en: Attempt to enter the increment() method.
+  id: totrans-127
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 尝试进入`increment()`方法。
+- en: The method is synchronized, so **get the key** for this object
+  id: totrans-128
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 方法是同步的，所以**获取这个对象的关键**
+- en: 'Reads balance: 0'
+  id: totrans-129
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 读取余额：0
+- en: Set the value of balance to 0 + 1.
+  id: totrans-130
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 将余额的值设置为0 + 1。
+- en: Now balance is 1
+  id: totrans-131
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 现在余额是1
+- en: '**Return the key** (it completed the increment() method).'
+  id: totrans-132
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**归还关键**（它完成了 increment() 方法）。'
+- en: Re-enter the increment() method and **get the key**.
+  id: totrans-133
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 重新进入 increment() 方法并**获取关键**。
+- en: 'Reads balance: 1'
+  id: totrans-134
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 读取余额：1
+- en: '*[now thread A is sent back to runnable, but since it has not completed the
+    synchronized method, Thread A keeps the key]*'
+  id: totrans-135
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '*[现在线程 A 被发送回可运行状态，但由于尚未完成同步方法，线程 A 仍然持有关键]*'
+- en: '![image](Images/f0653-01.png)'
+  id: totrans-136
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0653-01.png)'
+- en: '![Images](Images/2.png) Thread B is selected to run'
+  id: totrans-137
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/2.png) 选择运行线程 B。'
+- en: Attempt to enter the increment() method. The method is synchronized, so we need
+    to get the key.
+  id: totrans-138
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 尝试进入 increment() 方法。该方法是同步的，因此我们需要获取关键。
+- en: '**The key is not available.**'
+  id: totrans-139
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '**关键不可用。**'
+- en: '*[now thread B is sent into an “object lock not available” lounge]*'
+  id: totrans-140
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '*[现在线程 B 被发送到“对象锁不可用”的休息室]*'
+- en: '![image](Images/f0653-02.png)'
+  id: totrans-141
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0653-02.png)'
+- en: '![Images](Images/3.png) Thread A runs again, picking up where it left off (remember,
+    it still has the key)'
+  id: totrans-142
+  prefs:
+  - PREF_UL
+  type: TYPE_IMG
+  zh: '![图片](Images/3.png) 线程 A 再次运行，从上次停下的地方继续（请记住，它仍然持有关键）。'
+- en: Set the value of balance 1 + 1.
+  id: totrans-143
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 设置余额值为 1 + 1。
+- en: Now balance is 2
+  id: totrans-144
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 现在余额为 2
+- en: '**Return the key.**'
+  id: totrans-145
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '**归还关键。**'
+- en: '*[now thread A is sent back to runnable, but since it has completed the increment()
+    method, the thread does NOT hold on to the key]*'
+  id: totrans-146
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '*[现在线程 A 被发送回可运行状态，但由于已完成 increment() 方法，线程不再持有关键]*'
+- en: '![image](Images/f0653-01.png)'
+  id: totrans-147
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0653-01.png)'
+- en: '![Images](Images/4.png) Thread B is selected to run'
+  id: totrans-148
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![图片](Images/4.png) 选择运行线程 B。'
+- en: '![image](Images/f0653-02.png)'
+  id: totrans-149
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![图片](Images/f0653-02.png)'
+- en: Attempt to enter the increment() method. The method is synchronized, so we need
+    to get the key.
+  id: totrans-150
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 尝试进入 increment() 方法。该方法是同步的，因此我们需要获取关键。
+- en: This time, the key IS available; get the key.
+  id: totrans-151
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 这次，关键**可用**；拿到关键。
+- en: 'Reads balance: 2'
+  id: totrans-152
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 读取余额：2
+- en: '*[continues to run...]*'
+  id: totrans-153
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '*[继续运行……]*'
+- en: Deadlock, a deadly side of synchronization
+  id: totrans-154
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 死锁，同步的致命副作用
+- en: Synchronization saved Ryan and Monica from using their bank account at the same
+    time, and has saved us from losing updates. But we also mentioned that we shouldn’t
+    synchronize everything, one reason being that synchronization can slow your program
+    down.
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 同步使 Ryan 和 Monica 避免同时使用他们的银行账户，并且使我们免于丢失更新。但我们还提到不应该同步所有内容的一个重要原因是同步会减慢程序速度。
+- en: 'There’s another important consideration: we need to be careful using synchronized
+    code, because nothing will bring your program to its knees like thread deadlock.
+    Thread deadlock happens when you have two threads, both of which are holding a
+    key the other thread wants. There’s no way out of this scenario, so the two threads
+    will simply sit and wait. And wait. And wait.'
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 还有一个重要的考虑因素：我们在使用同步代码时需要小心，因为没有什么能像线程死锁那样让你的程序陷入困境。线程死锁发生在两个线程都持有另一个线程想要的关键时。这种情况没有出路，所以这两个线程将简单地坐下并等待。而等待。
+- en: If you’re familiar with databases or other application servers, you might recognize
+    the problem; databases often have a locking mechanism somewhat like synchronization.
+    But a real transaction management system can sometimes deal with deadlock. It
+    might assume, for example, that deadlock might have occurred when two transactions
+    are taking too long to complete. But unlike Java, the application server can do
+    a “transaction rollback” that returns the state of the rolled-back transaction
+    to where it was before the transaction (the atomic part) began.
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你熟悉数据库或其他应用服务器，你可能会意识到这个问题；数据库经常有类似同步的锁定机制。但是真正的事务管理系统有时可以处理死锁。例如，它可能会假设当两个事务花费太长时间完成时可能发生死锁。但与
+    Java 不同，应用服务器可以执行“事务回滚”，将回滚事务的状态返回到事务（原子部分）开始之前的状态。
+- en: Java has no mechanism to handle deadlock. It won’t even *know* deadlock occurred.
+    So it’s up to you to design carefully. We’re not going to go into more detail
+    about deadlock than you see on this page, so if you find yourself writing multithreaded
+    code, you might want to study *Java Concurrency in Practice* by Brian Goetz, et
+    al. It goes into a lot of detail about the sorts of problems you can face with
+    concurrency (like deadlock), and approaches to address these problems.
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Java 没有处理死锁的机制。它甚至*不知道*发生了死锁。因此，你需要仔细设计。我们不会在这一页上详细讨论死锁以外的更多细节，所以如果你发现自己编写多线程代码，可能需要学习
+    Brian Goetz 等人的《Java并发编程实践》，它详细讨论了你可能面临的各种并发问题（如死锁），以及解决这些问题的方法。
+- en: '**All it takes for deadlock are two objects and two threads.**'
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**导致死锁只需要两个对象和两个线程。**'
+- en: '![image](Images/f0654-01.png)'
+  id: totrans-160
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图片](Images/f0654-01.png)'
+- en: '**A simple deadlock scenario:**'
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**一个简单的死锁场景：**'
+- en: '![image](Images/f0654-02.png)'
+  id: totrans-162
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0654-02.png)'
+- en: You don’t always have to use synchronized
+  id: totrans-163
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 并不总是需要使用同步
+- en: Since synchronization can come with some costs (like performance and potential
+    deadlocks), you should know about other ways to manage data that’s shared between
+    threads. The java.util.concurrent package has lots of classes and utilities for
+    working with multithreaded code.
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于同步可能会带来一些成本（如性能和潜在死锁），你应该了解其他管理多线程共享数据的方式。java.util.concurrent包提供了许多类和工具来处理多线程代码。
+- en: Atomic variables
+  id: totrans-165
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 原子变量
+- en: If the shared data is an int, long, or boolean, we might be able to replace
+    it with an *atomic variable*. These classes provide methods that are atomic, i.e.,
+    can safely be used by a thread without worrying about another thread changing
+    the object’s values at the same time.
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果共享数据是int、long或boolean，我们可能可以用原子变量来替换它们。这些类提供了原子方法，即可以安全地由一个线程使用，而不必担心另一个线程同时更改对象的值。
+- en: There are few types of atomic variable, e.g., **AtomicInteger**, **AtomicLong**,
+    **AtomicBoolean**, and **AtomicReference**.
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有几种类型的原子变量，例如**AtomicInteger**、**AtomicLong**、**AtomicBoolean**和**AtomicReference**。
+- en: We can fix our Lost Update problem with an AtomicInteger, instead of synchronizing
+    the increment method.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用AtomicInteger来解决我们的丢失更新问题，而不是同步增量方法。
+- en: '![image](Images/f0655-01.png)'
+  id: totrans-169
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0655-01.png)'
+- en: Atomic variables get more interesting when you use their *compare-and-swap*
+    (CAS) operations. CAS is yet another way to make an atomic change to a value.
+    You can use CAS on atomic variables by using the **`compareAndSet`** method. Yes,
+    it’s a slightly different name! Gotta love programming, where naming is always
+    the hardest problem to solve.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你使用它们的比较和交换（CAS）操作时，原子变量变得更加有趣。CAS是另一种对值进行原子更改的方法。你可以通过使用**`compareAndSet`**方法在原子变量上使用CAS。是的，这是一个略有不同的名称！编程总是最难解决的问题，名字是如此。
+- en: The compareAndSet method takes a value, which is what you *expect* the atomic
+    variable to be, compares it to the *current* value, and if that matches, *then*
+    the operation will complete.
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: compareAndSet方法接受一个值，这是你期望的原子变量的值，将其与当前值进行比较，如果匹配，则操作将完成。
+- en: In fact, we can use this to fix our Ryan and Monica problem, instead of locking
+    the whole bank account with **`synchronized`**.
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实际上，我们可以使用这种方法来解决Ryan和Monica的问题，而不是用**`synchronized`**锁定整个银行账户。
+- en: Compare-and-swap with atomic variables
+  id: totrans-173
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用原子变量的比较和交换
+- en: How could we make use of atomic variables, and CAS (via **`compareAndSet`**),
+    to solve Ryan and Monica’s problem?
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们如何利用原子变量和CAS（通过**`compareAndSet`**）来解决Ryan和Monica的问题？
+- en: Since Ryan and Monica were both trying to access an int value, the account balance,
+    we could use an AtomicInteger to store that balance. We could then use **`compareAndSet`**
+    to update the balance when someone wants to spend money.
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于Ryan和Monica都试图访问一个int值，即账户余额，我们可以使用AtomicInteger来存储该余额。然后，当有人想花钱时，我们可以使用**`compareAndSet`**来更新余额。
+- en: '![image](Images/f0656-01.png)'
+  id: totrans-176
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0656-01.png)'
+- en: 'In plain English:'
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用通俗的语言说：
+- en: '**“Set the balance to this new value only if the current balance is the same
+    as this expected value, and tell me if the balance was actually changed.”**'
+  id: totrans-178
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+  zh: '**“只有在当前余额与预期余额相同时，才将余额设置为此新值，并告诉我余额是否实际变动了。”**'
+- en: Compare-and-swap uses *optimistic locking*. Optimistic locking means you don’t
+    stop all threads from getting to the object; you *try* to make the change, but
+    you embrace the fact that the change ***might not happen***. If it doesn’t succeed,
+    you decide what to do. You might decide to try again, or to send a message letting
+    the user know it didn’t work.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 比较和交换使用*乐观锁定*。乐观锁定意味着你不会阻止所有线程访问对象；你尝试进行更改，但接受更改***可能不会发生***的事实。如果操作失败，你可以决定该怎么办。你可以决定再试一次，或者发送一条消息告诉用户它没能成功。
+- en: This may be more work than simply locking all other threads out from the object,
+    but it can be faster than locking everything. For example, when the chances of
+    multiple writes happening at the same time are very low or if you have a lot of
+    threads reading and not so many writing, then you may not want to pay the price
+    of a lock on every write.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这可能比简单地锁定对象中的所有其他线程更麻烦，但它可能比锁定所有内容更快。例如，当多个写操作同时发生的机会非常低或者当你有很多线程在读取而写入操作较少时，你可能不想在每次写入时付出锁定的代价。
+- en: When you’re using CAS operations, you have to deal with the times when the operation
+    does NOT succeed.
+  id: totrans-181
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+  zh: 当你使用CAS操作时，你必须处理操作不成功的情况。
+- en: Ryan and Monica, going atomic
+  id: totrans-182
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Ryan和Monica，原子化进行
+- en: Let’s see the whole thing in action in Ryan and Monica’s bank account. We’ll
+    put the balance in an AtomicInteger and use compareAndSet to make an *atomic*
+    change to the balance.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们在Ryan和Monica的银行账户中看到整个过程的实际应用。我们将把余额放在AtomicInteger中，并使用compareAndSet来对余额进行*原子*更改。
+- en: '![image](Images/f0657-01.png)'
+  id: totrans-184
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0657-01.png)'
+- en: Note
+  id: totrans-185
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 注意
+- en: java.util.concurrent has lots of useful classes and utilities for working with
+    multithreaded code. Take a look at what’s there!
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: java.util.concurrent 提供了许多有用的类和工具，用于处理多线程代码。看看那里有什么！
+- en: '![image](Images/f0658-01.png)'
+  id: totrans-187
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0658-01.png)'
+- en: '**Make an object immutable if you’re going to share it between threads and
+    you don’t want the threads to change its data.**'
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**如果要在线程之间共享对象并且不希望线程更改其数据，请使对象不可变。**'
+- en: The very best way to know *for sure* that another thread isn’t changing your
+    data is to make it impossible to change the data in the object. When an object’s
+    data cannot be changed, we call it an **immutable object**.
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要确信*另一个*线程不会更改数据的最佳方法是使对象中的数据无法更改。当对象的数据不能更改时，我们称其为**不可变对象**。
+- en: Writing a class for immutable data
+  id: totrans-190
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 编写不可变数据类
+- en: '![image](Images/f0658-02.png)'
+  id: totrans-191
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0658-02.png)'
+- en: Using immutable objects
+  id: totrans-192
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用不可变对象
+- en: It is terribly convenient to be able to change data on a shared object and assume
+    that all the other threads will be able to see these changes.
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 能够在共享对象上更改数据并假设所有其他线程能够看到这些更改是非常方便的。
+- en: However, we’ve also seen that while it’s *convenient*, it’s not very *safe*.
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，我们也看到，虽然这很*方便*，但并不是很*安全*。
+- en: On the other hand, when a thread is working with an object that cannot be changed,
+    it can make assumptions about the data in that object; e.g., once the thread has
+    read a value from the object, it knows that data can’t change.
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，当线程使用不能更改的对象时，可以对该对象中的数据做出假设；例如，一旦线程从对象中读取了一个值，它就知道数据不会更改。
+- en: We don’t need to use synchronization or other mechanisms to control who changes
+    the data because it can’t change.
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们不需要使用同步或其他机制来控制谁更改数据，因为它无法更改。
+- en: '![image](Images/f0659-01.png)'
+  id: totrans-197
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0659-01.png)'
+- en: '**Working with immutable objects means thinking in a different way.**'
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**使用不可变对象意味着以不同的方式思考。**'
+- en: Instead of making changes to the *same* object, we *replace* the old object
+    with a new one. The new object has the updated values, and any threads that need
+    the new values need to use the new object.
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们不再修改*同一个*对象，而是用新对象*替换*旧对象。新对象具有更新后的值，需要使用新对象的线程才能获取新值。
+- en: What happens to the old object? Well, if it’s still being used by something
+    (and it might be—it’s perfectly valid sometimes to work with older data), it will
+    hang around on the heap. If it’s not being used, it’ll be garbage collected, and
+    we don’t have to worry about it anymore.
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 旧对象会发生什么？如果它仍然被某些东西使用（有时使用旧数据是完全有效的），它将继续存在于堆上。如果不再使用，它将被垃圾收集，我们就不必再担心它了。
+- en: Changing immutable data
+  id: totrans-201
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 更改不可变数据
+- en: Imagine a system that has customers, and that each Customer object has an Address
+    that represents the street address of a customer. If the customer’s Address is
+    an immutable object (all its fields are final and the data cannot be changed),
+    how do you change the customer’s address when they move?
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 想象一个具有客户的系统，每个客户对象都有一个地址，表示客户的街道地址。如果客户的地址是不可变对象（所有字段都是final的，数据不能更改），那么当客户搬家时，如何更改客户的地址？
+- en: '![Images](Images/1-circle.png) **The Customer has a reference to the original
+    Address object containing the customer’s street address data.**'
+  id: totrans-203
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/1-circle.png) **客户引用指向包含客户街道地址数据的原始地址对象。**'
+- en: '![image](Images/f0660-01.png)'
+  id: totrans-204
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0660-01.png)'
+- en: '![Images](Images/2-circle.png) **When the customer moves, a brand new Address
+    object is created with the new street address for the customer.**'
+  id: totrans-205
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/2-circle.png) **当客户搬家时，将创建一个全新的地址对象，其中包含客户的新街道地址。**'
+- en: '![image](Images/f0660-02.png)'
+  id: totrans-206
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0660-02.png)'
+- en: '![Images](Images/3-circle.png) **The Customer object’s reference to their address
+    is changed to point to the new Address object.**'
+  id: totrans-207
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/3-circle.png) **客户对象对其地址的引用被更改为指向新的地址对象。**'
+- en: '![image](Images/f0660-03.png)'
+  id: totrans-208
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0660-03.png)'
+- en: '![image](Images/f0661-01.png)'
+  id: totrans-209
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0661-01.png)'
+- en: Absolutely right. If your system has data that changes, those changes do have
+    to happen somewhere. The key idea to take away from this discussion is that not
+    all of the classes in your application have to have data that changes. In fact,
+    we’d argue for minimizing the places where things change. Then, there are far
+    fewer places where you have to think about what happens if multiple threads are
+    making changes at the same time.
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 绝对正确。如果您的系统中有数据发生变化，这些变化确实必须发生在某个地方。从这次讨论中带走的关键思想是，您应用程序中的不是所有类都必须具有数据变化。事实上，我们建议尽量减少变化的地方。这样，您就不必考虑多个线程同时进行更改的情况。
+- en: There are a number of techniques for working effectively with immutable data
+    classes; we’ve just scratched the surface here. It is interesting to note that
+    Java 16 introduced *records*, which are immutable data classes provided directly
+    by the language.
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有许多有效处理不可变数据类的技术；我们在这里只是浅尝辄止。有趣的是，Java 16引入了*记录*，这些是语言直接提供的不可变数据类。
+- en: Note
+  id: totrans-212
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Use immutable data classes where you can.
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在可能的情况下使用不可变数据类。
+- en: Limit the number of places where data can be changed by multiple threads.
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 限制数据可以被多个线程更改的地方数量。
+- en: More problems with shared data
+  id: totrans-215
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 共享数据的更多问题
+- en: '![image](Images/f0662-01.png)'
+  id: totrans-216
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0662-01.png)'
+- en: We’re nearly there, we promise! Just one last thing to look at.
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们快到了，我们保证！只剩下最后一件事要看一看。
+- en: So far we’ve seen all sorts of problems that can come from many threads writing
+    to the same data. This applies to data in Collections too.
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，我们已经看到许多线程写入相同数据可能会出现的各种问题。这也适用于集合中的数据。
+- en: We can even have problems when we have lots of threads *reading* the same data,
+    even if only one thread is making changes to it.
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即使只有一个线程在修改数据，如果有大量线程**读取**相同的数据，我们甚至可能遇到问题。
+- en: This code has just one thread writing to a collection, but two threads reading
+    it.
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此代码只有一个线程向集合写入，但有两个线程在读取它。
+- en: '![image](Images/f0662-02.png)'
+  id: totrans-221
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0662-02.png)'
+- en: Reading from a changing data structure causes an Exception
+  id: totrans-222
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从一个正在改变的数据结构中读取会导致异常
+- en: Running the code on the last page causes an Exception to be thrown, sometimes.
+    By now you know these sorts of issues depend a lot on the whims of the hardware,
+    the operating system, and the JVM.
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在最后一页运行代码有时会抛出异常。到目前为止，您知道这类问题在很大程度上取决于硬件、操作系统和JVM的心血来潮。
+- en: '![image](Images/f0663-01.png)'
+  id: totrans-224
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0663-01.png)'
+- en: Note
+  id: totrans-225
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 注意
+- en: If a collection is changed by one thread while another thread is reading that
+    collection, you can get a ConcurrentModificationException.
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果一个集合在一个线程修改时，另一个线程正在读取该集合，可能会得到`ConcurrentModificationException`异常。
+- en: Use a thread-safe data structure
+  id: totrans-227
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用线程安全的数据结构
+- en: Clearly good ol’ ArrayList just isn’t going to cut it if you have threads reading
+    data that’s being changed at the same time. Luckily for us, there are other options.
+    We want a thread-safe data structure, one that can be written to, and read from,
+    by multiple threads at the same time.
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 显然，如果有多个线程同时读取正在改变的数据，那么老式的`ArrayList`显然不适合。幸运的是，我们有其他选择。我们需要一个线程安全的数据结构，一个可以被多个线程同时写入和读取的数据结构。
+- en: The java.util.concurrent package has a number of thread-safe data structures,
+    and we’re going to look at **`CopyOnWriteArrayList`** to solve this specific problem.
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`java.util.concurrent`包中有许多线程安全的数据结构，我们将看看**`CopyOnWriteArrayList`**如何解决这个特定的问题。'
+- en: CopyOnWriteArrayList is a reasonable choice when you have a List that is being
+    **read a lot, but not changed very often**. We’ll see why later.
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你有一个列表被**大量读取但很少改变**时，`CopyOnWriteArrayList`是一个合理的选择。稍后我们会看到为什么。
+- en: '![image](Images/f0664-01.png)![image](Images/f0664-02.png)'
+  id: totrans-231
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0664-01.png)![image](Images/f0664-02.png)'
+- en: CopyOnWriteArrayList
+  id: totrans-232
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '`CopyOnWriteArrayList`'
+- en: CopyOnWriteArrayList uses immutability to provide safe access for reading threads
+    while other threads are writing.
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`CopyOnWriteArrayList`利用不可变性提供了在其他线程写入时对读取线程安全的访问。'
+- en: 'How does it work? Well, it does what it says on the tin: when a thread is writing
+    to the list, it’s actually writing to a *copy* of the list. When the changes have
+    been made, then the new copy replaces the original. In the meantime, any threads
+    that were reading the list before the change are happily (and safely!) reading
+    the original.'
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 它是如何工作的？好吧，它做的就是字面意思：当一个线程在写入列表时，它实际上是在写入列表的*副本*。当更改完成后，新副本替换原始副本。同时，任何在更改前读取列表的线程都可以愉快（并安全地！）地读取原始副本。
+- en: '![Images](Images/1circle.png) **An instance of CopyOnWriteArrayList contains
+    an ordered set of data, like an array.**'
+  id: totrans-235
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/1circle.png) **CopyOnWriteArrayList 的一个实例包含一个有序的数据集，就像一个数组。**'
+- en: '![image](Images/f0665-03.png)'
+  id: totrans-236
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0665-03.png)'
+- en: '![Images](Images/2circle.png) When Thread A reads the CopyOnWriteArrayList,
+    it gets an Iterator that allows it to read a **snapshot** of the list data at
+    that point in time.'
+  id: totrans-237
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/2circle.png) 当线程 A 读取 CopyOnWriteArrayList 时，它会获得一个迭代器，允许它在那个时间点读取列表数据的**快照**。'
+- en: '![image](Images/f0665-04.png)'
+  id: totrans-238
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0665-04.png)'
+- en: '![Images](Images/3circle.png) Thread B writes data to the CopyOnWriteArrayList
+    by adding a new element, and the CopyOnWriteArray creates a **copy** of the list
+    data before any changes are made. This is invisible to any of the reading or writing
+    threads.'
+  id: totrans-239
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/3circle.png) 线程 B 通过添加新元素将数据写入 CopyOnWriteArrayList，而 CopyOnWriteArray
+    在进行任何更改之前创建列表数据的**副本**。对于任何读取或写入线程来说，这是不可见的。'
+- en: '![image](Images/f0665-05.png)'
+  id: totrans-240
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0665-05.png)'
+- en: '![Images](Images/4-circle.png) When Thread B makes changes to “the list,” it’s
+    actually making changes to this copy. It’s happy knowing the changes are being
+    made. The reading threads like Thread A are not affected at all; they’re iterating
+    over the snapshot of the original data.'
+  id: totrans-241
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/4-circle.png) 当线程 B 对“列表”进行更改时，实际上是在更改此副本。它非常高兴知道正在进行更改。像线程
+    A 这样的读取线程根本不受影响；它们正在迭代原始数据的快照。'
+- en: '![image](Images/f0665-01.png)'
+  id: totrans-242
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0665-01.png)'
+- en: '![Images](Images/1circlee.png) Once Thread B has finished its updates, then
+    the original data is replaced with the new data.'
+  id: totrans-243
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![Images](Images/1circlee.png) 一旦线程 B 完成其更新，原始数据将被新数据替换。'
+- en: If Thread A is still reading, it’s safely reading the old data. If any other
+    threads start reading after the change, they get the new data.
+  id: totrans-244
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 如果线程 A 仍在读取，则安全地读取旧数据。如果在更改后其他任何线程开始读取，则它们获取新数据。
+- en: '![image](Images/f0665-02.png)'
+  id: totrans-245
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+  zh: '![image](Images/f0665-02.png)'
+- en: Note
+  id: totrans-246
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Thread-safe collections in early versions of Java were made safe via locking.
+    For example, java.util.Vector.
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在早期版本的 Java 中，线程安全集合通过锁定来保证安全，例如 java.util.Vector。
+- en: Java 5 introduced concurrent data structures in java.util.concurrent. These
+    do NOT use locking.
+  id: totrans-248
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Java 5 引入了 java.util.concurrent 中的并发数据结构。这些数据结构不使用锁。
+- en: Exercise
+  id: totrans-249
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 练习
+- en: '![image](Images/exercise.png)'
+  id: totrans-250
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/exercise.png)'
+- en: BE the JVM
+  id: totrans-251
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: BE the JVM
+- en: '![image](Images/f0668-01a.png)'
+  id: totrans-252
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0668-01a.png)'
+- en: '**The Java file on this page represents a complete source file. Your job is
+    to play JVM and determine what the output would be when the program runs.**'
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**此页面上的 Java 文件表示一个完整的源文件。您的任务是扮演 JVM，并确定程序运行时的输出。**'
+- en: '**How might you fix it, making sure the output is correct every time?**'
+  id: totrans-254
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**您如何修复它，确保每次输出都是正确的？**'
+- en: '![Images](Images/arr1.png) **Answers in [“BE the JVM”](#be_the_jvm_left_parenthesisfrom_page_668).**'
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![Images](Images/arr1.png) **答案在 [“BE the JVM”](#be_the_jvm_left_parenthesisfrom_page_668)
+    中。**'
+- en: '[PRE6]'
+  id: totrans-256
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: Near-miss at the airlock
+  id: totrans-257
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 在气闸口险些碰撞
+- en: '![image](Images/f0415-01.png)'
+  id: totrans-258
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0415-01.png)'
+- en: As Sarah joined the onboard development team’s design review meeting, she gazed
+    out the portal at sunrise over the Indian Ocean. Even though the ship’s conference
+    room was incredibly claustrophobic, the sight of the growing blue and white crescent
+    overtaking night on the planet below filled Sarah with awe and appreciation.
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当莎拉加入机载开发团队的设计审查会议时，她凝视着印度洋上升起的日出。尽管飞船的会议室非常令人幽闭恐惧，但看到地球上日夜交替的蓝白新月充满了莎拉敬畏和感激之情。
+- en: Five-Minute Mystery
+  id: totrans-260
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 五分钟的谜团
+- en: '![image](Images/f0415-02.png)'
+  id: totrans-261
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0415-02.png)'
+- en: This morning’s meeting was focused on the control systems for the orbiter’s
+    airlocks. As the final construction phases were nearing their end, the number
+    of spacewalks was scheduled to increase dramatically, and traffic was high both
+    in and out of the ship’s airlocks. “Good morning, Sarah,” said Tom, “Your timing
+    is perfect; we’re just starting the detailed design review.”
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 今天早晨的会议集中讨论轨道飞行器气闸的控制系统。随着最终的建设阶段接近尾声，太空行走的次数预计会大幅增加，船舱气闸的进出交通量也非常高。“早上好，莎拉，”汤姆说，“你的时机太完美了；我们刚开始详细设计审查。”
+- en: “As you all know,” said Tom, “Each airlock is outfitted with space-hardened
+    GUI terminals, both inside and out. Whenever spacewalkers are entering or exiting
+    the orbiter they will use these terminals to initiate the airlock sequences.”
+    Sarah nodded and asked, “Tom, can you tell us what the method sequences are for
+    entry and exit?” Tom rose and floated to the whiteboard, “First, here’s the exit
+    sequence method’s pseudocode.” Tom quickly wrote on the board.
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “正如大家所知道的，”Tom说，“每个气闸都配备了宇航员专用的GUI终端，内外各一。每当宇航员进出轨道飞行器时，他们都会使用这些终端来启动气闸序列。”
+    Sarah点头并问道：“Tom，你能告诉我们进入和退出的方法序列是什么吗？” Tom站起身飘到白板前说：“首先，这是退出序列方法的伪代码。” Tom迅速在白板上写了下来。
+- en: '[PRE7]'
+  id: totrans-264
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: “To ensure that the sequence is not interrupted, we have synchronized all of
+    the methods called by the orbiterAirlockExitSequence() method,” Tom explained.
+    “We’d hate to see a returning spacewalker inadvertently catch a buddy with his
+    space pants down!”
+  id: totrans-265
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “为了确保序列不被中断，我们已经同步了`orbiterAirlockExitSequence()`方法调用的所有方法，” Tom解释道。“我们不希望看到一个返回的宇航员无意中撞到他的同伴没穿空间裤子！”
+- en: Everyone chuckled as Tom erased the whiteboard, but something didn’t feel right
+    to Sarah, and it finally clicked as Tom began to write the entry sequence pseudocode
+    on the whiteboard. “Wait a minute, Tom!” cried Sarah, “I think we’ve got a big
+    flaw in the exit sequence design.
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当Tom抹去白板时，大家都笑了，但Sarah觉得有些不对劲，当Tom开始在白板上写入进入序列的伪代码时，这终于让她恍然大悟。“等一下，Tom！” Sarah喊道，“我觉得我们在退出序列设计上有一个大缺陷。
+- en: Let’s go back and revisit it; it could be critical!”
+  id: totrans-267
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们回头再看看；这可能非常关键！”
+- en: '***Why did Sarah stop the meeting? What did she suspect?***'
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '***为什么Sarah停止了会议？她怀疑什么？***'
+- en: '![Images](Images/arr1.png) **Answers in [“Five-Minute Mystery”](#five-minute_mystery_left_parent-id0002).**'
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![Images](Images/arr1.png) **答案在[“Five-Minute Mystery”](#five-minute_mystery_left_parent-id0002)中。**'
+- en: Exercise Solution
+  id: totrans-270
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 练习解答
+- en: '![image](Images/exercise.png)'
+  id: totrans-271
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/exercise.png)'
+- en: BE the JVM
+  id: totrans-272
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: BE the JVM
+- en: (from [“BE the JVM”](#be_the_jvm))
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: (来源于[“BE the JVM”](#be_the_jvm))
+- en: The answer is the output won’t be the same every time. In theory, one might
+    expect the size to always be 52 (2 × 26 letters in the alphabet), but in fact
+    this is one of those lost-update problems.
+  id: totrans-274
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 答案是输出不会每次都相同。理论上，人们可能期望大小始终为52（字母表中的2 × 26个字母），但实际上这是一个丢失更新的问题之一。
+- en: '![image](Images/f0670-01.png)'
+  id: totrans-275
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0670-01.png)'
+- en: It can be solved in two different ways; both are valid.
+  id: totrans-276
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以用两种不同的方式解决；两种方式都是有效的。
+- en: '**Synchronize the write method**'
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**同步写入方法**'
+- en: '![image](Images/f0670-02.png)'
+  id: totrans-278
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0670-02.png)'
+- en: '**Use a thread-safe collection**'
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**使用线程安全的集合**'
+- en: '![image](Images/f0670-03.png)'
+  id: totrans-280
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0670-03.png)'
+- en: Note
+  id: totrans-281
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Use either solution, you do NOT have to do both!!
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用任一解决方案，您不必两者都做！！
+- en: With a thread-safe collection, you don’t have to synchronize the writing method.
+  id: totrans-283
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用线程安全的集合，您不必同步写入方法。
+- en: Five-Minute Mystery
+  id: totrans-284
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 五分钟谜题
+- en: (from [“BE the JVM”](#be_the_jvm))
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: (来源于[“BE the JVM”](#be_the_jvm))
+- en: '![image](Images/f0415-01.png)'
+  id: totrans-286
+  prefs: []
+  type: TYPE_IMG
+  zh: '![image](Images/f0415-01.png)'
+- en: '**What did Sarah know?**'
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**Sarah知道什么？**'
+- en: Sarah realized that in order to ensure that the entire exit sequence would run
+    without interruption the `orbiterAirlockExitSequence`( ) method needed to be synchronized.
+    As the design stood, it would be possible for a returning spacewalker to interrupt
+    the Exit Sequence! The Exit Sequence thread couldn’t be interrupted in the middle
+    of any of the lower-level method calls, but it could be interrupted in *between*
+    those calls. Sarah knew that the entire sequence should be run as one atomic unit,
+    and if the `orbiterAirlockExitSequence()` method was synchronized, it could not
+    be interrupted at any point.
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Sarah意识到，为了确保整个退出序列能够无中断地运行，`orbiterAirlockExitSequence()`方法需要进行同步。按照现有设计，一个返回的宇航员可能会中断退出序列！退出序列线程不应该在底层方法调用的任何一点上被中断，但它可以在这些调用之间被中断。Sarah知道整个序列应该作为一个原子单元运行，并且如果`orbiterAirlockExitSequence()`方法被同步，它就不能在任何时候被中断。
